@@ -1,7 +1,7 @@
-# Lentil User Manual
+# Leslie User Manual
 
 This guide covers how to write specifications, prove invariants, and establish
-refinement using Lentil. It assumes familiarity with TLA+ or TLA concepts and
+refinement using Leslie. It assumes familiarity with TLA+ or TLA concepts and
 basic Lean 4 proficiency.
 
 ---
@@ -23,7 +23,7 @@ basic Lean 4 proficiency.
 
 ## 1. Core Concepts
 
-Lentil uses a **shallow embedding** of TLA in Lean 4. The fundamental types are:
+Leslie uses a **shallow embedding** of TLA in Lean 4. The fundamental types are:
 
 | Type | Definition | Meaning |
 |------|-----------|---------|
@@ -66,7 +66,7 @@ separates a protocol into named actions with explicit gates (preconditions).
 ### Step 1: Define State and Action Types
 
 ```lean
-import Lentil.Action
+import Leslie.Action
 
 open TLA
 namespace MyProtocol
@@ -421,7 +421,7 @@ simp [abs_map]   -- or: rfl, or manual proof that abs_map s = abs_map s'
 
 ## 6. Layered Refinement (CIVL)
 
-Lentil supports CIVL-style layered verification with mover types and Lipton
+Leslie supports CIVL-style layered verification with mover types and Lipton
 reduction.
 
 ### Mover Types
@@ -510,7 +510,7 @@ deterministic version refines it. See `TicketLock.lean` for this pattern.
 
 ## 7. TLA Formula Syntax
 
-Lentil provides a `tlafml` syntax category for readable formulas:
+Leslie provides a `tlafml` syntax category for readable formulas:
 
 ```lean
 -- State predicates
