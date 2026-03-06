@@ -1,4 +1,4 @@
-# Lentil: TLA in Lean 4
+# Leslie: TLA in Lean 4
 
 > TLA+ is considered to be exhaustively-testable pseudocode, and its use likened
 > to drawing blueprints for software systems; _TLA_ is an acronym for Temporal
@@ -6,12 +6,11 @@
 >
 > (from [TLA+ - Wikipedia](https://en.wikipedia.org/wiki/TLA%2B))
 
-Lentil is a shallow embedding of the Temporal Logic of Actions (TLA) in Lean 4,
-ported from the [`coq-tla`](https://github.com/tchajed/coq-tla) library. It
-provides a framework for specifying and verifying concurrent and distributed
+Leslie is a shallow embedding of the Temporal Logic of Actions (TLA) in Lean 4.
+It provides a framework for specifying and verifying concurrent and distributed
 systems with machine-checked proofs.
 
-The library includes refinement mappings (Abadi-Lamport), structured
+The current library includes refinement mappings (Abadi-Lamport), structured
 multi-action specifications, CIVL-style layered refinement with mover types,
 and the core Lipton reduction theorem.
 
@@ -28,7 +27,7 @@ lake build
 Add this project into your `lakefile.lean` and then:
 
 ```lean
-import Lentil
+import Leslie
 ```
 
 See [MANUAL.md](MANUAL.md) for a complete user guide covering how to write
@@ -37,7 +36,7 @@ specifications, prove invariants, and establish refinement.
 ## Project Structure
 
 ```
-Lentil/
+Leslie/
 ├── Basic.lean              Core TLA definitions, syntax, and operators
 ├── Refinement.lean         Spec structure and refinement mapping theorems
 ├── Action.lean             GatedAction, ActionSpec (multi-action specs)
@@ -71,3 +70,8 @@ Lentil/
 | TwoPhaseCommit | Refinement with invariant (10 actions) | ~280 | Complete, no sorry |
 | TicketLock | Layered refinement, mover types | ~395 | Complete, no sorry |
 | Paxos | Quorum intersection, 14 actions | ~340 | Spec complete, proofs WIP |
+
+## Thanks
+
+Leslie is ported from the ['Lentil'](https://github.com/verse-lab/Lentil) implementation, which came out of 
+the [`coq-tla`](https://github.com/tchajed/coq-tla) library. 
