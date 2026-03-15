@@ -15,7 +15,13 @@ import «Leslie».Action
 import «Leslie».Examples.CounterRefinement
 import «Leslie».Examples.TwoPhaseCommit
 import «Leslie».Layers
+import «Leslie».Round
 import «Leslie».Examples.TicketLock
+import «Leslie».Examples.LeaderBroadcast
+import «Leslie».Examples.FloodMin
+import «Leslie».Examples.BallotLeader
+import «Leslie».Examples.OneThirdRule
+import «Leslie».Examples.VRViewChange
 import «Leslie».Examples.Paxos
 import «Leslie».Examples.KVStore
 import «Leslie».Simulate
