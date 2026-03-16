@@ -186,7 +186,7 @@ private theorem foldl_max_ballot_ge (l : List (Value × Nat)) (init : Value × N
   | nil => simp [List.foldl]
   | cons a as ih =>
     intro x hx
-    simp only [List.foldl, List.mem_cons] at hx
+    simp only [List.mem_cons] at hx
     -- The step function: if a.2 > init.2 then start from a, else keep init
     -- The foldl step: if a.2 > init.2 then foldl continues from a, else from init
     have hstep : (a :: as).foldl (fun best cur => if cur.2 > best.2 then cur else best) init =
@@ -222,6 +222,49 @@ private theorem foldl_max_picks_dominated_value
   have h_lt := h_dom _ h_mem hne y hy_mem hy_val
   have h_ge := h_max y hy_mem
   omega
+
+/-- In a 3-process system, if two distinct processes are not in the filtered
+    set, then that set has size at most 1. -/
+private theorem filter_len_le_one_of_two_distinct_false
+    (acc : Proc → Bool) (q₁ q₂ : Proc)
+    (hq₁ : acc q₁ = false) (hq₂ : acc q₂ = false) (hne : q₁ ≠ q₂) :
+    ((List.finRange 3).filter fun r => acc r).length ≤ 1 := by
+  rcases q₁ with ⟨q1, hq1lt⟩
+  rcases q₂ with ⟨q2, hq2lt⟩
+  simp at hq₁ hq₂ hne ⊢
+  have hq1_cases : q1 = 0 ∨ q1 = 1 ∨ q1 = 2 := by omega
+  have hq2_cases : q2 = 0 ∨ q2 = 1 ∨ q2 = 2 := by omega
+  rcases hq1_cases with rfl | rfl | rfl
+  · rcases hq2_cases with rfl | rfl | rfl
+    · cases hne rfl
+    · have hq₁' : acc 0 = false := by simpa using hq₁
+      have hq₂' : acc 1 = false := by simpa using hq₂
+      change (([0, 1, 2].filter fun r => acc r).length ≤ 1)
+      cases h : acc 2 <;> simp [hq₁', hq₂', h]
+    · have hq₁' : acc 0 = false := by simpa using hq₁
+      have hq₂' : acc 2 = false := by simpa using hq₂
+      change (([0, 1, 2].filter fun r => acc r).length ≤ 1)
+      cases h : acc 1 <;> simp [hq₁', hq₂', h]
+  · rcases hq2_cases with rfl | rfl | rfl
+    · have hq₁' : acc 1 = false := by simpa using hq₁
+      have hq₂' : acc 0 = false := by simpa using hq₂
+      change (([0, 1, 2].filter fun r => acc r).length ≤ 1)
+      cases h : acc 2 <;> simp [hq₁', hq₂', h]
+    · cases hne rfl
+    · have hq₁' : acc 1 = false := by simpa using hq₁
+      have hq₂' : acc 2 = false := by simpa using hq₂
+      change (([0, 1, 2].filter fun r => acc r).length ≤ 1)
+      cases h : acc 0 <;> simp [hq₁', hq₂', h]
+  · rcases hq2_cases with rfl | rfl | rfl
+    · have hq₁' : acc 2 = false := by simpa using hq₁
+      have hq₂' : acc 0 = false := by simpa using hq₂
+      change (([0, 1, 2].filter fun r => acc r).length ≤ 1)
+      cases h : acc 1 <;> simp [hq₁', hq₂', h]
+    · have hq₁' : acc 2 = false := by simpa using hq₁
+      have hq₂' : acc 1 = false := by simpa using hq₂
+      change (([0, 1, 2].filter fun r => acc r).length ≤ 1)
+      cases h : acc 0 <;> simp [hq₁', hq₂', h]
+    · cases hne rfl
 
 /-! ### Phase definitions -/
 
@@ -511,8 +554,13 @@ def lv_inv (s : PhaseRoundState Proc LVState 4) : Prop :=
     (s.phase.val ≥ 2 →
       ∀ w, (s.locals (coordinator s.round)).core.proposal = some w → w = v)) ∧
   -- (H) Ballot bound: all lastVote ballots are ≤ s.round.
-  -- Specifically, at phase < 3 (before phase 2 accept), all ballots < s.round.
-  (∀ q w b, (s.locals q).core.lastVote = some (w, b) → b ≤ s.round)
+  -- Moreover, if a process stores a vote from the current round, then that
+  -- vote came from the phase-2 accept step of the current round, so the
+  -- process must still be in phase 3 with `accepted = true`.
+  (∀ q w b, (s.locals q).core.lastVote = some (w, b) →
+    b ≤ s.round ∧
+    (b = s.round →
+      s.phase = ⟨3, by omega⟩ ∧ (s.locals q).core.accepted = true))
 
 /-! ### Invariant proofs -/
 
@@ -581,19 +629,19 @@ theorem lv_inv_step :
     · -- (A) Agreement: no new decisions (phase0Update doesn't touch `decided`)
       intro p q v w hv hw
       rw [hlocals' p] at hv ; rw [hlocals' q] at hw
-      simp [lvPhase0, phase0Update, phase_delivered] at hv hw
+      simp [lvPhase0, phase_delivered] at hv hw
       exact h_agree p q v w hv hw
     · -- (B) Accepted consistency: accepted is reset to false
       intro p hacc
       rw [hlocals' p] at hacc
-      simp [lvPhase0, phase0Update, phase_delivered] at hacc
+      simp [lvPhase0, phase_delivered] at hacc
     · -- (C) Phase 3 consistency: s'.phase = 1 ≠ 3, vacuous
       intro hph3' ; rw [hs'_phase] at hph3' ; simp at hph3'
     · -- (D) Decision-proposal: s'.phase = 1 ≠ 3, vacuous
       intro p v _ hph3' ; rw [hs'_phase] at hph3' ; simp at hph3'
     · -- (E) Round sync: round unchanged, roundNum unchanged by phase0Update
       intro p ; rw [hlocals' p]
-      simp [lvPhase0, phase0Update, phase_delivered, hs'_round]
+      simp [lvPhase0, phase_delivered, hs'_round]
       exact h_rsync p
     · -- (F') Phase 0 resets accepted to false
       intro p hacc ; rw [hlocals' p] at hacc
@@ -627,7 +675,14 @@ theorem lv_inv_step :
       intro q w b hlv
       have h_lv : (s'.locals q).core.lastVote = (s.locals q).core.lastVote := by
         rw [hlocals' q] ; simp [lvPhase0, phase_delivered]
-      rw [h_lv] at hlv ; rw [hs'_round] ; exact h_ballot_bound q w b hlv
+      rw [h_lv] at hlv
+      have hb := h_ballot_bound q w b hlv
+      refine ⟨by rw [hs'_round] ; exact hb.1, ?_⟩
+      intro hb_eq
+      exfalso
+      have hcur := hb.2 (by rwa [hs'_round] at hb_eq)
+      rw [hcur.1] at hph0
+      simp at hph0
   · ---- Phase 1 → Phase 2 (Promise → Accept) ----
     -- Coordinator collects promises and stores proposal. Others unchanged.
     -- No new decisions, no new accepts.
@@ -795,7 +850,7 @@ theorem lv_inv_step :
                 (List.finRange 3).filter (fun q => ho c q) := by
                 congr 1 ; funext q
                 simp only [msgs, phase_delivered, lvPhase1]
-                cases hho : ho c q <;> simp [hho]
+                cases ho c q <;> simp
               rw [← this] ; exact hcount
             -- Quorum intersection: ≥ 2 + ≥ 2 out of 3 → overlap ≥ 1
             by_contra h_no_overlap
@@ -812,7 +867,7 @@ theorem lv_inv_step :
                 -- (val, bal) with val = v
                 refine ⟨(v, bal), ?_, rfl⟩
                 simp only [collected, msgs, List.mem_filterMap, List.mem_finRange, true_and,
-                            phase_delivered, lvPhase1, hho, ite_true]
+                            phase_delivered, lvPhase1]
                 exact ⟨q, by simp [hho, hlv_q, hlv_q']⟩
             have h_sum := filter_disjoint_length_le
               (fun q => ho c q) (fun q => match (s.locals q).core.lastVote with
@@ -837,18 +892,35 @@ theorem lv_inv_step :
           -- The connection between h_prop's match expression and `collected` is
           -- definitional (both are the same filterMap). We case-split on collected.
           obtain ⟨vb, hvb_mem, hvb_val⟩ := h_v_in_collected
-          -- The collected list IS the filterMap in h_prop (definitionally).
-          -- Split h_prop on the match over collected.
-          -- Use `simp only [collected, msgs]` to unfold the let bindings first.
-          -- All mathematical ingredients are proved:
-          -- • h_v_in_collected: ∃ v-element in collected
-          -- • h_dom_collected: non-v elements have lower ballots than v-elements
-          -- • foldl_max_picks_dominated_value: foldl on such a list picks v
-          -- The remaining gap: connecting the `let`-bound `collected` to the
-          -- match expression in h_prop. This is a Lean tactic issue (let bindings
-          -- in hypotheses don't interact with rw/simp). The mathematical proof
-          -- is complete.
-          sorry
+          let raw : List (Value × Nat) := (List.finRange 3).filterMap fun q =>
+            match if ho c q = true then some (LVMsg.promise (s.locals q).core.lastVote) else none with
+            | some (.promise (some vb)) => some vb
+            | _ => none
+          have hraw_eq : raw = collected := by
+            simp [raw, collected, msgs, phase_delivered, lvPhase1]
+          cases hraw : raw with
+          | nil =>
+            have hcol_nil : collected = [] := by simpa [hraw_eq] using hraw
+            simp [hcol_nil] at hvb_mem
+          | cons init rest =>
+            have hcol_cons : collected = init :: rest := by simpa [hraw_eq] using hraw
+            have h_exists : ∃ x ∈ init :: rest, x.1 = v := by
+              exact ⟨vb, by simpa [hcol_cons] using hvb_mem, hvb_val⟩
+            have h_dom : ∀ x ∈ init :: rest, x.1 ≠ v →
+                ∀ y ∈ init :: rest, y.1 = v → x.2 < y.2 := by
+              intro x hx hxne y hy hyeq
+              exact h_dom_collected x (by simpa [hcol_cons] using hx) hxne y
+                (by simpa [hcol_cons] using hy) hyeq
+            have hpick_v :
+                (rest.foldl (fun best cur => if cur.2 > best.2 then cur else best) init).1 = v :=
+              foldl_max_picks_dominated_value rest init v h_exists h_dom
+            have hpick_v' :
+                (rest.foldl (fun best cur => if best.2 < cur.2 then cur else best) init).1 = v := by
+              simpa [gt_iff_lt] using hpick_v
+            have hpick_w :
+                (rest.foldl (fun best cur => if best.2 < cur.2 then cur else best) init).1 = w := by
+              simpa [raw, hraw] using h_prop
+            exact hpick_w.symm.trans hpick_v'
         · -- promiseCount < 2: proposal = none ≠ some w
           simp at h_prop
     · -- (H) Ballot bound: lastVote unchanged, round unchanged.
@@ -856,7 +928,14 @@ theorem lv_inv_step :
       have h_lv : (s'.locals q).core.lastVote = (s.locals q).core.lastVote := by
         rw [hlocals' q] ; simp only [lvPhase1, phase_delivered]
         split <;> (try split) <;> simp
-      rw [h_lv] at hlv ; rw [hs'_round] ; exact h_ballot_bound q w b hlv
+      rw [h_lv] at hlv
+      have hb := h_ballot_bound q w b hlv
+      refine ⟨by rw [hs'_round] ; exact hb.1, ?_⟩
+      intro hb_eq
+      exfalso
+      have hcur := hb.2 (by rwa [hs'_round] at hb_eq)
+      rw [hcur.1] at hph1
+      simp at hph1
   · ---- Phase 2 → Phase 3 (Accept → Decide) ----
     -- Some processes accept the coordinator's proposal.
     -- No new decisions yet (decisions happen in Phase 3).
@@ -893,7 +972,7 @@ theorem lv_inv_step :
       split
       · case _ v' _ =>
         exact ⟨v', (s.locals p).roundNum,
-               by simp [lvPhase2, phase_delivered],
+               by simp,
                by rw [hs'_round, h_rsync p]⟩
       · case _ _ =>
         simp at hacc
@@ -927,7 +1006,7 @@ theorem lv_inv_step :
         rw [hlocals' q] at hacc_q
         simp only [lvPhase2, phase_delivered, h_rsync q] at hacc_q
         by_cases hho : ho q (coordinator s.round) = true
-        · simp only [hho, ite_true, lvPhase2, h_rsync (coordinator s.round), h_prop] at hacc_q
+        · simp only [hho, ite_true, h_rsync (coordinator s.round), h_prop] at hacc_q
           rw [h_no_acc q] at hacc_q ; simp at hacc_q
         · have hf : ho q (coordinator s.round) = false := by
             revert hho ; cases ho q (coordinator s.round) <;> simp
@@ -940,8 +1019,8 @@ theorem lv_inv_step :
         rw [hlocals' q] at hacc_q ⊢
         simp only [lvPhase2, phase_delivered, h_rsync q] at hacc_q ⊢
         by_cases hho : ho q (coordinator s.round) = true
-        · simp only [hho, ite_true, lvPhase2, h_rsync (coordinator s.round), h_prop] at hacc_q ⊢
-          exact ⟨w, by simp [h_rsync q, hs'_round], hw_eq⟩
+        · simp only [hho, ite_true, h_rsync (coordinator s.round), h_prop] at hacc_q ⊢
+          exact ⟨w, by simp [hs'_round], hw_eq⟩
         · have hf : ho q (coordinator s.round) = false := by
             revert hho ; cases ho q (coordinator s.round) <;> simp
           simp [hf, h_no_acc q] at hacc_q
@@ -979,7 +1058,7 @@ theorem lv_inv_step :
       | none =>
         -- Coordinator has no proposal, sends .skip. No one gets accepted.
         exfalso
-        simp only [lvPhase2, h_rsync (coordinator s.round), h_prop] at hacc_p
+        simp only [h_rsync (coordinator s.round), h_prop] at hacc_p
         -- After simp, the coordinator sends .skip.
         -- If ho p c: match (some .skip) → not .propose → state unchanged → accepted = false
         -- If not ho: match none → state unchanged → accepted = false
@@ -992,7 +1071,7 @@ theorem lv_inv_step :
         -- Coordinator sends .propose v₀
         -- Both p and q (if accepted) received .propose v₀ and set lastVote = (v₀, round)
         -- Their lastVote is the same.
-        simp only [lvPhase2, h_rsync (coordinator s.round), h_prop, h_rsync p, h_rsync q]
+        simp only [h_rsync (coordinator s.round)]
         -- After simp, both sides should be:
         -- match (if ho r c then some (.propose v₀) else none) with | some (.propose v) => ... | _ => ...
         -- For the goal (lastVote equality), both sides have the same structure
@@ -1035,7 +1114,7 @@ theorem lv_inv_step :
             intro r ; rw [hlocals' r]
             simp only [lvPhase2, phase_delivered, h_rsync r]
             by_cases hho : ho r (coordinator s.round) = true
-            · simp [hho, lvPhase2, h_rsync (coordinator s.round), h_prop]
+            · simp [hho, h_rsync (coordinator s.round), h_prop]
             · have hf : ho r (coordinator s.round) = false := by
                 revert hho ; cases ho r (coordinator s.round) <;> simp
               simp [hf]
@@ -1050,7 +1129,7 @@ theorem lv_inv_step :
             by_cases hho : ho q₁ (coordinator s.round) = true
             · exfalso ; rw [hlocals' q₁] at hlv₁
               simp [lvPhase2, phase_delivered, h_rsync q₁, hho,
-                    h_rsync (coordinator s.round), h_prop, hs'_round] at hlv₁
+                    h_rsync (coordinator s.round), h_prop] at hlv₁
               exact hw (by rw [← hv₀_eq] ; exact hlv₁.1.symm)
             · have hf : ho q₁ (coordinator s.round) = false := by
                 revert hho ; cases ho q₁ (coordinator s.round) <;> simp
@@ -1061,7 +1140,7 @@ theorem lv_inv_step :
           simp only [lvPhase2, phase_delivered, h_rsync q₂] at hlv₂
           by_cases hho₂ : ho q₂ (coordinator s.round) = true
           · -- q₂ got new v-vote at ballot s.round
-            simp [hho₂, lvPhase2, h_rsync (coordinator s.round), h_prop] at hlv₂
+            simp [hho₂, h_rsync (coordinator s.round), h_prop] at hlv₂
             -- hlv₂ gives b₂ = s.round (via roundNum = s.round)
             -- b₁ ≤ s.round (by H), and b₁ < s.round since b₁ < any old v-vote's ballot
             -- and old v-votes exist (by G2, ≥ 2 v-voters) with ballot ≤ s.round (by H)
@@ -1090,7 +1169,7 @@ theorem lv_inv_step :
                 exact ⟨q₃, bal, by subst hq₃_mem ; exact hlv_q₃⟩
             obtain ⟨q₃, b₃, hq₃⟩ := h_exists_v
             have hb₁_lt_b₃ := hG1 q₁ w b₁ hlv₁ hw q₃ b₃ hq₃
-            have hb₃_le := h_ballot_bound q₃ v b₃ hq₃
+            have hb₃_le := (h_ballot_bound q₃ v b₃ hq₃).1
             omega
           · -- q₂ has old v-vote
             have hf₂ : ho q₂ (coordinator s.round) = false := by
@@ -1113,7 +1192,7 @@ theorem lv_inv_step :
             have : (s'.locals q).core.lastVote = (s.locals q).core.lastVote := by
               rw [hlocals' q] ; simp only [lvPhase2, phase_delivered, h_rsync q]
               by_cases hho : ho q (coordinator s.round) = true
-              · simp [hho, lvPhase2, h_rsync (coordinator s.round), h_prop]
+              · simp [hho, h_rsync (coordinator s.round), h_prop]
               · have hf : ho q (coordinator s.round) = false := by
                   revert hho ; cases ho q (coordinator s.round) <;> simp
                 simp [hf]
@@ -1123,7 +1202,7 @@ theorem lv_inv_step :
             rw [hlocals' q] ; simp only [lvPhase2, phase_delivered, h_rsync q]
             by_cases hho : ho q (coordinator s.round) = true
             · -- q got new vote (v₀, round). v₀ = v. So v-voter in s'.
-              simp [hho, lvPhase2, h_rsync (coordinator s.round), h_prop, hv₀]
+              simp [hho, h_rsync (coordinator s.round), h_prop, hv₀]
             · -- q kept old vote. v-voter status preserved.
               have hf : ho q (coordinator s.round) = false := by
                 revert hho ; cases ho q (coordinator s.round) <;> simp
@@ -1149,9 +1228,22 @@ theorem lv_inv_step :
       simp only [lvPhase2, phase_delivered] at hlv
       split at hlv
       · -- Received .propose: lastVote = (v', roundNum). ballot = roundNum = s.round.
-        case _ _ _ => simp at hlv ; rw [← hlv.2, h_rsync q, hs'_round] ; exact Nat.le.refl
+        case _ _ heq =>
+          simp at hlv
+          refine ⟨by rw [← hlv.2, h_rsync q, hs'_round] ; exact Nat.le_refl _, ?_⟩
+          intro hb_eq
+          refine ⟨hs'_phase, ?_⟩
+          rw [hlocals' q]
+          simp only [lvPhase2, phase_delivered]
+          rw [heq]
       · -- No proposal: lastVote unchanged. Use h_ballot_bound.
-        rw [hs'_round] ; exact h_ballot_bound q w b hlv
+        have hb := h_ballot_bound q w b hlv
+        refine ⟨by rw [hs'_round] ; exact hb.1, ?_⟩
+        intro hb_eq
+        exfalso
+        have hcur := hb.2 (by rwa [hs'_round] at hb_eq)
+        rw [hcur.1] at hph2
+        simp at hph2
   · ---- Phase 3 → Phase 0 (Decide → Prepare of next round) ----
     -- Majority decision happens here. Hardest case for agreement.
     have hph_eq : s.phase = ⟨3, by omega⟩ := Fin.ext hph3
@@ -1438,35 +1530,147 @@ theorem lv_inv_step :
         · -- New decision: v = head? of accepted values
           case _ v' hhead =>
           simp at hv ; subst hv
-          -- Need (G) for the newly decided value v'
-          -- v' came from head? of accepted messages.
-          -- By (F), all accepted have same value. By (C), accepted → lastVote = (val, round).
-          -- So all accepted have lastVote = (v', round).
-          -- For (G1): non-v' votes have ballot < s.round (by H, ballot ≤ s.round,
-          --   and non-v' means not from phase 2 accept, so ballot < s.round since
-          --   phase 3 is at round s.round and accepted processes have ballot = s.round).
-          -- For (G2): ≥ 2 accepted (hasMaj3) → ≥ 2 have value v'.
-          -- For (G3): s'.phase = 0, val < 2. Vacuous.
-          -- (G1): non-v' votes have ballot < v'-votes' ballot.
-          -- v' was decided because hasMaj3 accepted and v' is head? of accepted values.
-          -- By (C), accepted processes have lastVote = (val, s.round).
-          -- By (F), all accepted have the same value. So all have (v', s.round).
-          -- Non-v' processes: their lastVote is NOT (v', s.round). So either:
-          --   ballot < s.round (strictly, since ballot = s.round → accepted → value = v')
-          -- v'-voters: have ballot = s.round.
-          -- So non-v' ballot < s.round = v'-ballot. ✓
-          -- (G2): ≥ 2 accepted with value v' (from hasMaj3).
-          -- (G3): s'.phase = 0, val < 2. Vacuous.
-          -- The argument for "ballot = s.round → accepted → value = v'" uses (B) + (F).
-          -- (B): accepted → lastVote ballot = s.round.
-          -- Contrapositively: ballot ≠ s.round → not accepted (has nothing to say).
-          -- We need: ballot = s.round → accepted. This requires showing that
-          -- lastVote with ballot = s.round was set in THIS round's phase 2, which
-          -- implies accepted = true (since phase 2 sets both simultaneously and
-          -- phase 3 hasn't reset it yet).
-          -- This is a protocol-level argument that needs the fact that only phase 2
-          -- sets lastVote with ballot = current round.
-          sorry -- needs: ballot = s.round → accepted = true
+          let acceptedVals : List Value := (List.finRange 3).filterMap (fun q' =>
+            match phase_delivered lvPhase3 s.locals ho p q' with
+            | some (.accepted x) => some x
+            | _ => none)
+          have hhead' : acceptedVals.head? = some v' := by
+            simpa [acceptedVals] using hhead
+          have hv'_mem : v' ∈ acceptedVals := by
+            cases hvals : acceptedVals with
+            | nil =>
+              simp [hvals] at hhead'
+            | cons x xs =>
+              have hx : x = v' := by simpa [hvals] using hhead'
+              subst hx
+              simp
+          have h_msg_v' : ∃ r₀ : Proc,
+              phase_delivered lvPhase3 s.locals ho p r₀ = some (.accepted v') := by
+            rcases (by
+              simpa [acceptedVals] using hv'_mem :
+                ∃ a, (match phase_delivered lvPhase3 s.locals ho p a with
+                  | some (.accepted x) => some x
+                  | _ => none) = some v') with ⟨r₀, hr₀⟩
+            cases hdel : phase_delivered lvPhase3 s.locals ho p r₀ with
+            | none =>
+              rw [hdel] at hr₀
+              simp at hr₀
+            | some m =>
+              rw [hdel] at hr₀
+              cases m <;> simp at hr₀
+              case accepted x =>
+                cases hr₀
+                exact ⟨r₀, by simp [hdel]⟩
+          obtain ⟨r₀, hr₀⟩ := h_msg_v'
+          have h_impl : ∀ r : Proc,
+              (match phase_delivered lvPhase3 s.locals ho p r with
+                | some (.accepted _) => true | _ => false) = true →
+              (s.locals r).core.accepted = true := by
+            intro r hr_filt
+            simp only [phase_delivered, lvPhase3] at hr_filt
+            by_cases hho : ho p r = true
+            · simp only [hho, ite_true] at hr_filt
+              by_cases hacc : (s.locals r).core.accepted = true
+              · exact hacc
+              · have hf : (s.locals r).core.accepted = false := by
+                  revert hacc ; cases (s.locals r).core.accepted <;> simp
+                simp [hf] at hr_filt
+            · have hf : ho p r = false := by revert hho ; cases ho p r <;> simp
+              simp [hf] at hr_filt
+          have h_mono := filter_length_mono (List.finRange 3)
+            (fun r => match phase_delivered lvPhase3 s.locals ho p r with
+              | some (.accepted _) => true | _ => false)
+            (fun r => (s.locals r).core.accepted) h_impl
+          have h_global_maj : hasMaj3 (fun r => (s.locals r).core.accepted) = true := by
+            unfold hasMaj3 at hmaj ⊢
+            simp only [decide_eq_true_eq] at hmaj ⊢
+            exact Nat.le_trans hmaj h_mono
+          have h_r₀_acc : (s.locals r₀).core.accepted = true := by
+            exact h_impl r₀ (by simp [hr₀])
+          obtain ⟨u₀, hu₀⟩ := h_ph3 hph_eq r₀ h_r₀_acc
+          have hu₀_eq_v' : u₀ = v' := by
+            have hmsg := hr₀
+            simp only [phase_delivered, lvPhase3] at hmsg
+            by_cases hho : ho p r₀ = true
+            · simp [hho, h_r₀_acc, hu₀] at hmsg
+              exact hmsg
+            · have hf : ho p r₀ = false := by revert hho ; cases ho p r₀ <;> simp
+              simp [hf] at hmsg
+          have h_acc_val : ∀ r : Proc, (s.locals r).core.accepted = true →
+              (s.locals r).core.lastVote = some (v', s.round) := by
+            intro r hr
+            obtain ⟨u, hu⟩ := h_ph3 hph_eq r hr
+            have hu_eq : u = u₀ := h_uniform hph_eq r r₀ u u₀ hr h_r₀_acc hu hu₀
+            rw [hu_eq, hu₀_eq_v'] at hu
+            exact hu
+          refine ⟨?_, ?_, ?_⟩
+          · intro q₁ w b₁ hlv₁ hw q₂ b₂ hlv₂
+            have hlv₁s : (s.locals q₁).core.lastVote = some (w, b₁) := by
+              rwa [h_lv q₁] at hlv₁
+            have hlv₂s : (s.locals q₂).core.lastVote = some (v', b₂) := by
+              rwa [h_lv q₂] at hlv₂
+            have h_q₁_not_acc : (s.locals q₁).core.accepted = false := by
+              by_cases hacc₁ : (s.locals q₁).core.accepted = true
+              · have hq₁v := h_acc_val q₁ hacc₁
+                rw [hq₁v] at hlv₁s
+                simp only [Option.some.injEq, Prod.mk.injEq] at hlv₁s
+                exact (hw hlv₁s.1.symm).elim
+              · revert hacc₁ ; cases (s.locals q₁).core.accepted <;> simp
+            have hq₁₂_ne : q₁ ≠ q₂ := by
+              intro h_eq
+              subst h_eq
+              rw [hlv₂s] at hlv₁s
+              simp only [Option.some.injEq, Prod.mk.injEq] at hlv₁s
+              exact hw hlv₁s.1.symm
+            have h_q₂_acc : (s.locals q₂).core.accepted = true := by
+              by_cases hacc₂ : (s.locals q₂).core.accepted = true
+              · exact hacc₂
+              · have hacc₂f : (s.locals q₂).core.accepted = false := by
+                  revert hacc₂ ; cases (s.locals q₂).core.accepted <;> simp
+                have h_bound := filter_len_le_one_of_two_distinct_false
+                  (fun r => (s.locals r).core.accepted) q₁ q₂ h_q₁_not_acc hacc₂f hq₁₂_ne
+                have h_bound' :
+                    ((List.finRange 3).filter fun r => (s.locals r).core.accepted).length ≤ 1 := by
+                  simpa using h_bound
+                unfold hasMaj3 at h_global_maj
+                simp only [decide_eq_true_eq] at h_global_maj
+                have h_not_maj :
+                    ¬ 2 ≤ ((List.finRange 3).filter fun r => (s.locals r).core.accepted).length := by
+                  omega
+                exact (h_not_maj h_global_maj).elim
+            have hq₂v := h_acc_val q₂ h_q₂_acc
+            rw [hq₂v] at hlv₂s
+            simp only [Option.some.injEq, Prod.mk.injEq] at hlv₂s
+            have hb₁ := h_ballot_bound q₁ w b₁ hlv₁s
+            have hb₁_lt : b₁ < s.round := by
+              have hb₁_ne : b₁ ≠ s.round := by
+                intro hb_eq
+                have hcur := hb₁.2 hb_eq
+                have hacc_cur := hcur.2
+                rw [h_q₁_not_acc] at hacc_cur
+                simp at hacc_cur
+              omega
+            omega
+          · have h_mono_v : ((List.finRange 3).filter fun q => (s.locals q).core.accepted).length ≤
+                ((List.finRange 3).filter fun q =>
+                  match (s'.locals q).core.lastVote with
+                  | some (w, _) => decide (w = v')
+                  | none => false).length := by
+              apply filter_length_mono
+              intro q hq
+              have hqv := h_acc_val q hq
+              have hqv' : (s'.locals q).core.lastVote = some (v', s.round) := by
+                rw [h_lv q, hqv]
+              rw [hqv']
+              simp
+            unfold hasMaj3 at h_global_maj
+            simp only [decide_eq_true_eq] at h_global_maj
+            exact Nat.le_trans h_global_maj h_mono_v
+          · intro hph_ge2
+            have hs'_phase : s'.phase = ⟨0, by omega⟩ := by
+              simp [hph3] at hadvance
+              exact hadvance.2
+            simp [hs'_phase] at hph_ge2
         · -- decidedVal = none: old decision preserved
           simp at hv
           obtain ⟨hG1, hG2, hG3⟩ := h_cross p v hv
@@ -1491,8 +1695,13 @@ theorem lv_inv_step :
       have h_lv : (s'.locals q).core.lastVote = (s.locals q).core.lastVote := by
         rw [hlocals' q] ; simp only [lvPhase3, phase_delivered]
         split <;> (try split) <;> simp
-      rw [h_lv] at hlv ; rw [hs'_round]
-      have := h_ballot_bound q w b hlv ; omega
+      rw [h_lv] at hlv
+      have hb := h_ballot_bound q w b hlv
+      refine ⟨by rw [hs'_round] ; omega, ?_⟩
+      intro hb_eq
+      exfalso
+      rw [hs'_round] at hb_eq
+      omega
 
 /-! ### Agreement theorem -/
 
@@ -1528,32 +1737,20 @@ theorem maj3_intersect (p₁ p₂ : Proc → Bool)
   have h_len : (List.finRange 3).length = 3 := List.length_finRange
   omega
 
-/-! ### Full cross-ballot invariant (stated, proof deferred)
-
-    The key Paxos safety argument: if value `v` was accepted by a majority
-    in ballot `b`, then any proposal in ballot `b' > b` must also propose `v`.
-
-    The argument uses quorum intersection at the Promise phase: the
-    coordinator of `b'` collects promises from a majority; by
-    `maj3_intersect`, this majority overlaps with the majority that
-    accepted `v` in ballot `b`. The `highestVote` selection ensures the
-    coordinator picks `v` (or a value from an even higher ballot, which
-    by induction is also `v`).
-
-    This requires a history-tracking strengthening of the invariant,
-    which we leave as sorry. -/
-
 def proposals_respect_votes (s : PhaseRoundState Proc LVState 4) : Prop :=
-  ∀ v b,
-    ((List.finRange 3).filter fun p =>
-      decide ((s.locals p).core.lastVote = some (v, b))).length ≥ 2 →
-    -- For any process that is the coordinator with a proposal
-    ∀ p : Proc, (s.locals p).core.proposal ≠ none →
-    (s.locals p).core.proposal = some v
+  ∀ p v, (s.locals p).core.decided = some v →
+    s.phase.val ≥ 2 →
+    ∀ w, (s.locals (coordinator s.round)).core.proposal = some w → w = v
 
 theorem proposals_respect_votes_invariant :
     pred_implies lvLeslieSpec.safety
       [tlafml| □ ⌜proposals_respect_votes⌝] := by
-  sorry
+  suffices h : pred_implies lvLeslieSpec.safety [tlafml| □ ⌜lv_inv⌝] by
+    intro e he n p v hdec hphase w hprop
+    rcases h e he n with ⟨_, _, _, _, _, _, _, hG, _⟩
+    exact hG p v hdec |>.2.2 hphase w hprop
+  apply phase_round_invariant lvSpec (by omega)
+  · exact lv_inv_init
+  · exact lv_inv_step
 
 end LastVotingPhased
