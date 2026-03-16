@@ -579,18 +579,52 @@ theorem lv_inv_step :
       intro p ; have := hlocals p ; rwa [h_phase] at this
     refine ⟨?_, ?_, ?_, ?_, ?_⟩
     · -- (A) Agreement: new decisions must agree with old
-      -- If p newly decided v: it saw majority accepted in phase 3
-      -- By conjuncts (C)+(D) of the pre-state: all acceptors have the same value,
-      -- and that value agrees with existing decisions
-      -- The within-ballot agreement argument requires:
-      -- (1) All acceptors broadcast the same value (from Phase 2: they all
-      --     accepted the coordinator's single proposal).
-      -- (2) `head?` on any subset of identical values returns that value.
-      -- (3) Old decisions agree with the proposal (cross-ballot invariant).
-      -- Requirement (1) is captured by a strengthened Phase 2→3 conjunct
-      -- (all acceptors have the same lastVote value), which is one of the
-      -- Phase 2→3 sorry's. Without it, this case cannot be closed.
-      sorry
+      intro p q v w hv hw
+      -- Helper: extract decided from post-state.
+      -- lvPhase3.update either sets decided := some v (majority + head?) or keeps old.
+      -- A process's decided in s' is either:
+      --   (i) a new value from head? of accepted messages (if hasMaj3 in HO set)
+      --   (ii) the old value from s (unchanged)
+      have h_dec_or : ∀ r val, (s'.locals r).core.decided = some val →
+          (s.locals r).core.decided = some val ∨
+          (∃ msgs_accepted,
+            msgs_accepted = (List.finRange 3).filterMap (fun q' =>
+              match (phase_delivered lvPhase3 s.locals ho r q') with
+              | some (.accepted v') => some v'
+              | _ => none) ∧
+            msgs_accepted.head? = some val) := by
+        intro r val hr
+        rw [hlocals' r] at hr
+        simp only [lvPhase3, phase_delivered] at hr
+        split at hr
+        · -- hasMaj3 branch
+          split at hr
+          · -- decidedVal = some val: new decision
+            case _ v' hhead =>
+            right ; simp at hr ; exact ⟨_, rfl, by rw [← hr] ; exact hhead⟩
+          · -- decidedVal = none: old decision preserved
+            left ; simp at hr ; exact hr
+        · -- no majority: old decision preserved
+          left ; simp at hr ; exact hr
+      -- Now case-split on whether p's and q's decisions are old or new
+      rcases h_dec_or p v hv with hp_old | ⟨mp, _, hp_new⟩
+      · -- p's decision is old (from pre-state)
+        rcases h_dec_or q w hw with hq_old | ⟨mq, _, hq_new⟩
+        · -- Both old: use pre-state agreement
+          exact h_agree p q v w hp_old hq_old
+        · -- p old, q new: use conjunct (D) to show w = v
+          -- q's new decision came from head? of accepted messages in q's HO set.
+          -- If p decided v in s, and hasMaj3 of GLOBAL accepted holds, then
+          -- all globally accepted processes have value v (by h_dec_prop).
+          -- The accepted messages q received all carry v, so head? = v = w.
+          sorry -- Needs: received accepted values all = v (from h_dec_prop + global majority)
+      · -- p's decision is new
+        rcases h_dec_or q w hw with hq_old | ⟨mq, _, hq_new⟩
+        · -- p new, q old: symmetric
+          sorry -- Same as the p-old, q-new case with roles swapped
+        · -- Both new: first-ever decision scenario
+          -- Needs all acceptors to have the same lastVote value (Phase 2→3 invariant)
+          sorry
     · -- (B) Accepted: lvPhase3.update always sets accepted := false
       intro p hacc
       have h_false : (s'.locals p).core.accepted = false := by
