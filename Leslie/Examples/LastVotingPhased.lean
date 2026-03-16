@@ -443,14 +443,17 @@ def lv_inv (s : PhaseRoundState Proc LVState 4) : Prop :=
       match (s.locals q).core.lastVote with
       | some (w, _) => decide (w = v) | none => false).length ≥ 2 ∧
     (s.phase.val ≥ 2 →
-      ∀ w, (s.locals (coordinator s.round)).core.proposal = some w → w = v))
+      ∀ w, (s.locals (coordinator s.round)).core.proposal = some w → w = v)) ∧
+  -- (H) Ballot bound: all lastVote ballots are ≤ s.round.
+  -- Specifically, at phase < 3 (before phase 2 accept), all ballots < s.round.
+  (∀ q w b, (s.locals q).core.lastVote = some (w, b) → b ≤ s.round)
 
 /-! ### Invariant proofs -/
 
 theorem lv_inv_init :
     ∀ s, lvLeslieSpec.init s → lv_inv s := by
   intro s ⟨hround, hphase, hinit⟩
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · -- Agreement: vacuously true, no decisions
     intro p q v w hv hw
     have hp := (hinit p).2
@@ -479,13 +482,17 @@ theorem lv_inv_init :
     intro p v hv
     have hp := (hinit p).2
     simp at hp ; rw [hp] at hv ; simp at hv
+  · -- (H) Ballot bound: vacuously true, all lastVote = none at init
+    intro q w b hlv
+    have hp := (hinit q).2
+    simp at hp ; rw [hp] at hlv ; simp at hlv
 
 /-- The main invariant preservation theorem.
     Each of the 4 phase transitions preserves `lv_inv`. -/
 theorem lv_inv_step :
     ∀ s ho, lv_inv s → lvComm s.round s.phase ho →
     ∀ s', phase_step lvAlg ho s s' → lv_inv s' := by
-  intro s ho ⟨h_agree, h_acc, h_ph3, h_dec_prop, h_rsync, h_acc_ph3, h_uniform, h_cross⟩ _ s' ⟨hadvance, hlocals⟩
+  intro s ho ⟨h_agree, h_acc, h_ph3, h_dec_prop, h_rsync, h_acc_ph3, h_uniform, h_cross, h_ballot_bound⟩ _ s' ⟨hadvance, hlocals⟩
   -- Determine which phase we're in
   have hph : s.phase.val = 0 ∨ s.phase.val = 1 ∨ s.phase.val = 2 ∨ s.phase.val = 3 := by
     have := s.phase.isLt ; omega
@@ -504,7 +511,7 @@ theorem lv_inv_step :
     have hlocals' : ∀ p, s'.locals p = lvPhase0.update p (s.locals p)
         (phase_delivered lvPhase0 s.locals ho p) := by
       intro p ; have := hlocals p ; rwa [h_phase] at this
-    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
     · -- (A) Agreement: no new decisions (phase0Update doesn't touch `decided`)
       intro p q v w hv hw
       rw [hlocals' p] at hv ; rw [hlocals' q] at hw
@@ -550,6 +557,11 @@ theorem lv_inv_step :
         rw [this] ; exact hG2
       · -- s'.phase = 1, val < 2. Vacuous.
         intro hph_ge2 ; simp [hs'_phase] at hph_ge2
+    · -- (H) Ballot bound: lastVote unchanged, round unchanged.
+      intro q w b hlv
+      have h_lv : (s'.locals q).core.lastVote = (s.locals q).core.lastVote := by
+        rw [hlocals' q] ; simp [lvPhase0, phase_delivered]
+      rw [h_lv] at hlv ; rw [hs'_round] ; exact h_ballot_bound q w b hlv
   · ---- Phase 1 → Phase 2 (Promise → Accept) ----
     -- Coordinator collects promises and stores proposal. Others unchanged.
     -- No new decisions, no new accepts.
@@ -566,7 +578,7 @@ theorem lv_inv_step :
     have h_acc_pres : ∀ r, (s'.locals r).core.accepted = (s.locals r).core.accepted := by
       intro r ; rw [hlocals' r] ; simp only [lvPhase1, phase_delivered]
       split <;> (try split) <;> simp
-    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
     · -- (A) Agreement: lvPhase1.update only changes `proposal`, not `decided`
       intro p q v w hv hw
       have h_dec : ∀ r, (s'.locals r).core.decided = (s.locals r).core.decided := by
@@ -631,6 +643,12 @@ theorem lv_inv_step :
         -- The coordinator's proposal was set by lvPhase1.update
         -- Using (G1) and (G2) from pre-state and quorum intersection.
         sorry
+    · -- (H) Ballot bound: lastVote unchanged, round unchanged.
+      intro q w b hlv
+      have h_lv : (s'.locals q).core.lastVote = (s.locals q).core.lastVote := by
+        rw [hlocals' q] ; simp only [lvPhase1, phase_delivered]
+        split <;> (try split) <;> simp
+      rw [h_lv] at hlv ; rw [hs'_round] ; exact h_ballot_bound q w b hlv
   · ---- Phase 2 → Phase 3 (Accept → Decide) ----
     -- Some processes accept the coordinator's proposal.
     -- No new decisions yet (decisions happen in Phase 3).
@@ -649,7 +667,7 @@ theorem lv_inv_step :
       intro r ; by_contra h
       have := h_acc_ph3 r (by revert h ; cases (s.locals r).core.accepted <;> simp)
       rw [this] at hph2 ; simp at hph2
-    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
     · -- (A) Agreement: lvPhase2.update doesn't change `decided`
       intro p q v w hv hw
       have h_dec : ∀ r, (s'.locals r).core.decided = (s.locals r).core.decided := by
@@ -793,14 +811,116 @@ theorem lv_inv_step :
       -- By (G3): coordinator's proposal = v
       refine ⟨?_, ?_, ?_⟩
       · -- (G1) Non-v votes dominated by v-votes.
-        -- New lastVotes from phase 2 have value v (by G3) with ballot s.round.
-        -- Non-v votes are necessarily old (pre-state). By (G1) on pre-state,
-        -- non-v ballots < v-ballots. Needs ballot-bound invariant (lastVote
-        -- ballot ≤ s.round) to compare old non-v ballots with new v-ballots.
-        sorry
-      · -- (G2) ≥ 2 v-voters. New v-votes may be added; old preserved.
-        -- Needs ballot-bound invariant for full proof.
-        sorry
+        -- Key: non-v votes are old (pre-state), v-votes may be old or new.
+        -- Old non-v ballot b₁ ≤ s.round (by H). New v-ballot = s.round.
+        -- Old non-v ballot b₁ < old v-ballot (by G1 on pre-state).
+        -- We need b₁ < b₂ for any v-vote b₂ in s'.
+        intro q₁ w b₁ hlv₁ hw q₂ b₂ hlv₂
+        -- q₁ has non-v lastVote. If q₁ newly accepted, it got value v (by G3). Contradiction.
+        -- So q₁'s lastVote is old (from pre-state).
+        -- q₂ has v-lastVote. Could be old or new.
+        -- Case: coordinator's proposal
+        cases h_prop : (s.locals (coordinator s.round)).core.proposal with
+        | none =>
+          -- No proposal → all lastVotes unchanged
+          have h_lv_pres : ∀ r, (s'.locals r).core.lastVote = (s.locals r).core.lastVote := by
+            intro r ; rw [hlocals' r]
+            simp only [lvPhase2, phase_delivered, h_rsync r]
+            by_cases hho : ho r (coordinator s.round) = true
+            · simp [hho, lvPhase2, h_rsync (coordinator s.round), h_prop]
+            · have hf : ho r (coordinator s.round) = false := by
+                revert hho ; cases ho r (coordinator s.round) <;> simp
+              simp [hf]
+          rw [h_lv_pres q₁] at hlv₁ ; rw [h_lv_pres q₂] at hlv₂
+          exact hG1 q₁ w b₁ hlv₁ hw q₂ b₂ hlv₂
+        | some v₀ =>
+          have hv₀_eq := hG3 (by omega) v₀ h_prop
+          -- q₁'s lastVote is old (receiving .propose v₀ = .propose v would give value v)
+          have h_q₁_old : (s'.locals q₁).core.lastVote = (s.locals q₁).core.lastVote := by
+            rw [hlocals' q₁]
+            simp only [lvPhase2, phase_delivered, h_rsync q₁]
+            by_cases hho : ho q₁ (coordinator s.round) = true
+            · exfalso ; rw [hlocals' q₁] at hlv₁
+              simp [lvPhase2, phase_delivered, h_rsync q₁, hho,
+                    h_rsync (coordinator s.round), h_prop, hs'_round] at hlv₁
+              exact hw (by rw [← hv₀_eq] ; exact hlv₁.1.symm)
+            · have hf : ho q₁ (coordinator s.round) = false := by
+                revert hho ; cases ho q₁ (coordinator s.round) <;> simp
+              simp [hf]
+          rw [h_q₁_old] at hlv₁
+          -- q₂: check if old or new
+          rw [hlocals' q₂] at hlv₂
+          simp only [lvPhase2, phase_delivered, h_rsync q₂] at hlv₂
+          by_cases hho₂ : ho q₂ (coordinator s.round) = true
+          · -- q₂ got new v-vote at ballot s.round
+            simp [hho₂, lvPhase2, h_rsync (coordinator s.round), h_prop] at hlv₂
+            -- hlv₂ gives b₂ = s.round (via roundNum = s.round)
+            -- b₁ ≤ s.round (by H), and b₁ < s.round since b₁ < any old v-vote's ballot
+            -- and old v-votes exist (by G2, ≥ 2 v-voters) with ballot ≤ s.round (by H)
+            -- Actually simpler: by H, b₁ ≤ s.round. And b₁ ≠ s.round:
+            -- if b₁ = s.round, then by H, b₁ ≤ s.round ✓ but we need strict.
+            -- Any old v-voter q₃ has ballot b₃ ≤ s.round. By G1: b₁ < b₃.
+            -- So b₁ < b₃ ≤ s.round.  (b₃ ≤ s.round by H.)
+            -- Therefore b₁ < s.round = b₂ (from hlv₂).
+            -- hlv₂ after simp should give us that b₂ relates to s.round.
+            -- b₁ < s.round follows from: by G2, ∃ old v-voter q₃ with ballot b₃.
+            -- By G1: b₁ < b₃. By H: b₃ ≤ s.round. So b₁ < s.round.
+            -- Extract a v-voter from G2 (≥ 2 v-voters exist in pre-state)
+            have h_exists_v : ∃ q₃ b₃, (s.locals q₃).core.lastVote = some (v, b₃) := by
+              -- From G2: the filter is nonempty (length ≥ 2).
+              have h_ne : ((List.finRange 3).filter fun q =>
+                match (s.locals q).core.lastVote with
+                | some (w, _) => decide (w = v) | none => false) ≠ [] := by
+                intro h_empty ; simp [h_empty] at hG2
+              obtain ⟨q₃, hq₃_mem⟩ := List.exists_mem_of_ne_nil _ h_ne
+              simp only [List.mem_filter, List.mem_finRange, true_and] at hq₃_mem
+              cases hlv_q₃ : (s.locals q₃).core.lastVote with
+              | none => simp [hlv_q₃] at hq₃_mem
+              | some vb =>
+                obtain ⟨val, bal⟩ := vb
+                simp [hlv_q₃, decide_eq_true_eq] at hq₃_mem
+                exact ⟨q₃, bal, by subst hq₃_mem ; exact hlv_q₃⟩
+            obtain ⟨q₃, b₃, hq₃⟩ := h_exists_v
+            have hb₁_lt_b₃ := hG1 q₁ w b₁ hlv₁ hw q₃ b₃ hq₃
+            have hb₃_le := h_ballot_bound q₃ v b₃ hq₃
+            omega
+          · -- q₂ has old v-vote
+            have hf₂ : ho q₂ (coordinator s.round) = false := by
+              revert hho₂ ; cases ho q₂ (coordinator s.round) <;> simp
+            simp [hf₂] at hlv₂
+            exact hG1 q₁ w b₁ hlv₁ hw q₂ b₂ hlv₂
+      · -- (G2) ≥ 2 v-voters in s'. v-voters can only gain members (new accepts are v).
+        -- Old v-voters are still v-voters in s'.
+        -- Count can only increase.
+        have h_mono : ((List.finRange 3).filter fun q =>
+            match (s.locals q).core.lastVote with
+            | some (w, _) => decide (w = v) | none => false).length ≤
+          ((List.finRange 3).filter fun q =>
+            match (s'.locals q).core.lastVote with
+            | some (w, _) => decide (w = v) | none => false).length := by
+          apply filter_length_mono
+          intro q hq
+          cases h_prop : (s.locals (coordinator s.round)).core.proposal with
+          | none =>
+            have : (s'.locals q).core.lastVote = (s.locals q).core.lastVote := by
+              rw [hlocals' q] ; simp only [lvPhase2, phase_delivered, h_rsync q]
+              by_cases hho : ho q (coordinator s.round) = true
+              · simp [hho, lvPhase2, h_rsync (coordinator s.round), h_prop]
+              · have hf : ho q (coordinator s.round) = false := by
+                  revert hho ; cases ho q (coordinator s.round) <;> simp
+                simp [hf]
+            rw [this] ; exact hq
+          | some v₀ =>
+            have hv₀ := hG3 (by omega) v₀ h_prop
+            rw [hlocals' q] ; simp only [lvPhase2, phase_delivered, h_rsync q]
+            by_cases hho : ho q (coordinator s.round) = true
+            · -- q got new vote (v₀, round). v₀ = v. So v-voter in s'.
+              simp [hho, lvPhase2, h_rsync (coordinator s.round), h_prop, hv₀]
+            · -- q kept old vote. v-voter status preserved.
+              have hf : ho q (coordinator s.round) = false := by
+                revert hho ; cases ho q (coordinator s.round) <;> simp
+              simp [hf] ; exact hq
+        exact Nat.le_trans hG2 h_mono
       · -- (G3) s'.phase = 3, val ≥ 2. Proposal unchanged (phase 2 doesn't change proposal).
         intro hph_ge2 w h_prop
         -- Proposal is preserved in s' from s (lvPhase2 doesn't change proposal)
@@ -814,6 +934,16 @@ theorem lv_inv_step :
           simp only [lvPhase2, phase_delivered] ; split <;> simp
         rw [h_prop_pres] at h_prop
         exact hG3 (by omega) w h_prop
+    · -- (H) Ballot bound: new lastVotes have ballot = s.round ≤ s'.round.
+      -- Old lastVotes: b ≤ s.round = s'.round by h_ballot_bound.
+      intro q w b hlv
+      rw [hlocals' q] at hlv
+      simp only [lvPhase2, phase_delivered] at hlv
+      split at hlv
+      · -- Received .propose: lastVote = (v', roundNum). ballot = roundNum = s.round.
+        case _ _ _ => simp at hlv ; rw [← hlv.2, h_rsync q, hs'_round] ; exact Nat.le.refl
+      · -- No proposal: lastVote unchanged. Use h_ballot_bound.
+        rw [hs'_round] ; exact h_ballot_bound q w b hlv
   · ---- Phase 3 → Phase 0 (Decide → Prepare of next round) ----
     -- Majority decision happens here. Hardest case for agreement.
     have hph_eq : s.phase = ⟨3, by omega⟩ := Fin.ext hph3
@@ -829,7 +959,7 @@ theorem lv_inv_step :
     have hlocals' : ∀ p, s'.locals p = lvPhase3.update p (s.locals p)
         (phase_delivered lvPhase3 s.locals ho p) := by
       intro p ; have := hlocals p ; rwa [h_phase] at this
-    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
     · -- (A) Agreement: new decisions must agree with old
       intro p q v w hv hw
       -- Helper: extract decided from post-state.
@@ -1093,6 +1223,14 @@ theorem lv_inv_step :
       -- (G3): s'.phase = 0, val < 2. Vacuous.
       -- For old decisions: (G) from pre-state + lastVote unchanged.
       sorry
+    · -- (H) Ballot bound: lastVote unchanged, round incremented.
+      -- b ≤ s.round < s.round + 1 = s'.round
+      intro q w b hlv
+      have h_lv : (s'.locals q).core.lastVote = (s.locals q).core.lastVote := by
+        rw [hlocals' q] ; simp only [lvPhase3, phase_delivered]
+        split <;> (try split) <;> simp
+      rw [h_lv] at hlv ; rw [hs'_round]
+      have := h_ballot_bound q w b hlv ; omega
 
 /-! ### Agreement theorem -/
 
