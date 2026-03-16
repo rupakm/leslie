@@ -100,12 +100,21 @@ inductive DecideMsg where
   | notAccepted
   deriving DecidableEq, Repr
 
-/-- The 4 message types indexed by phase. -/
-def LVMsgs : PhaseMessages 4
-  | ⟨0, _⟩ => PrepareMsg
-  | ⟨1, _⟩ => PromiseMsg
-  | ⟨2, _⟩ => AcceptMsg
-  | ⟨3, _⟩ => DecideMsg
+/-- Uniform message type: a sum of all phase messages.
+    Using a uniform type avoids dependent-type casts in phase
+    definitions and proofs. Each phase sends/receives specific
+    constructors and ignores the others. -/
+inductive LVMsg where
+  | prepare
+  | skip
+  | promise (lastVote : Option (Value × Nat))
+  | propose (v : Value)
+  | accepted (v : Value)
+  | notAccepted
+  deriving DecidableEq, Repr
+
+/-- Uniform message type for all 4 phases. -/
+def LVMsgs : PhaseMessages 4 := fun _ => LVMsg
 
 /-! ### Local state -/
 
@@ -270,44 +279,69 @@ structure LVState where
   core : LState
   deriving DecidableEq, Repr
 
-/-- Build the 4 phases.  Each phase's send/update uses `roundNum` from
-    the local state to determine the coordinator. -/
-def lvPhase0 : Phase Proc LVState PrepareMsg where
-  send := fun p s => phase0Send s.roundNum p s.core
-  update := fun p s msgs =>
-    let core' := phase0Update s.roundNum p s.core
-      (fun q => match msgs q with | some m => some m | none => none)
-    { s with core := core' }
+/-- Build the 4 phases using the uniform LVMsg type. -/
 
-def lvPhase1 : Phase Proc LVState PromiseMsg where
-  send := fun _p s => phase1Send s.roundNum _p s.core
+def lvPhase0 : Phase Proc LVState LVMsg where
+  send := fun p s =>
+    if p = coordinator s.roundNum then .prepare else .skip
   update := fun p s msgs =>
-    let core' := phase1Update s.roundNum p s.core
-      (fun q => match msgs q with | some m => some m | none => none)
-    { s with core := core' }
+    let c := coordinator s.roundNum
+    let heardPrepare := match msgs c with | some .prepare => true | _ => false
+    { s with core := { s.core with
+        prepared := heardPrepare
+        accepted := false
+        proposal := if p = c then none else s.core.proposal } }
 
-def lvPhase2 : Phase Proc LVState AcceptMsg where
-  send := fun p s => phase2Send s.roundNum p s.core
+def lvPhase1 : Phase Proc LVState LVMsg where
+  send := fun _p s => .promise s.core.lastVote
   update := fun p s msgs =>
-    let core' := phase2Update s.roundNum p s.core
-      (fun q => match msgs q with | some m => some m | none => none)
-    { s with core := core' }
+    if p = coordinator s.roundNum then
+      let promiseCount := (List.finRange 3).filter (fun q =>
+        match msgs q with | some (.promise _) => true | _ => false) |>.length
+      if promiseCount ≥ 2 then
+        let collected := (List.finRange 3).filterMap fun q =>
+          match msgs q with
+          | some (.promise (some vb)) => some vb
+          | _ => none
+        let prop := match collected with
+          | [] => defaultValue
+          | (v, b) :: rest =>
+            (rest.foldl (fun best cur => if cur.2 > best.2 then cur else best) (v, b)).1
+        { s with core := { s.core with proposal := some prop } }
+      else { s with core := { s.core with proposal := none } }
+    else s
 
-def lvPhase3 : Phase Proc LVState DecideMsg where
-  send := fun _p s => phase3Send s.roundNum _p s.core
-  update := fun p s msgs =>
-    let core' := phase3Update s.roundNum p s.core
-      (fun q => match msgs q with | some m => some m | none => none)
-    -- Increment roundNum to stay in sync with the global round counter,
-    -- which increments when phase 3 wraps around to phase 0.
+def lvPhase2 : Phase Proc LVState LVMsg where
+  send := fun p s =>
+    if p = coordinator s.roundNum then
+      match s.core.proposal with | some v => .propose v | none => .skip
+    else .skip
+  update := fun _p s msgs =>
+    let c := coordinator s.roundNum
+    match msgs c with
+    | some (.propose v) =>
+      { s with core := { s.core with lastVote := some (v, s.roundNum), accepted := true } }
+    | _ => s
+
+def lvPhase3 : Phase Proc LVState LVMsg where
+  send := fun _p s =>
+    if s.core.accepted then
+      match s.core.lastVote with
+      | some (v, _) => .accepted v
+      | none => .notAccepted
+    else .notAccepted
+  update := fun _p s msgs =>
+    let acceptors : Proc → Bool := fun q =>
+      match msgs q with | some (.accepted _) => true | _ => false
+    let core' :=
+      if hasMaj3 acceptors then
+        let decidedVal := (List.finRange 3).filterMap (fun q =>
+          match msgs q with | some (.accepted v) => some v | _ => none) |>.head?
+        match decidedVal with
+        | some v => { s.core with decided := some v, prepared := false, accepted := false }
+        | none => { s.core with prepared := false, accepted := false }
+      else { s.core with prepared := false, accepted := false }
     { roundNum := s.roundNum + 1, core := core' }
-
-/-- The 4 phases, indexed by `Fin 4`. -/
-def lvPhases : (i : Fin 4) → Phase Proc LVState (LVMsgs i)
-  | ⟨0, _⟩ => lvPhase0
-  | ⟨1, _⟩ => lvPhase1
-  | ⟨2, _⟩ => lvPhase2
-  | ⟨3, _⟩ => lvPhase3
 
 /-- The LastVoting algorithm as a `PhaseRoundAlg`. -/
 def lvAlg : PhaseRoundAlg Proc LVState 4 LVMsgs where
@@ -316,7 +350,11 @@ def lvAlg : PhaseRoundAlg Proc LVState 4 LVMsgs where
     s.core = { lastVote := none, decided := none,
                prepared := false, accepted := false,
                proposal := none }
-  phases := lvPhases
+  phases := fun i =>
+    if i.val = 0 then lvPhase0
+    else if i.val = 1 then lvPhase1
+    else if i.val = 2 then lvPhase2
+    else lvPhase3
 
 /-! ### Communication predicate
 
@@ -414,7 +452,154 @@ theorem lv_inv_init :
 theorem lv_inv_step :
     ∀ s ho, lv_inv s → lvComm s.round s.phase ho →
     ∀ s', phase_step lvAlg ho s s' → lv_inv s' := by
-  sorry
+  intro s ho ⟨h_agree, h_acc, h_ph3, h_dec_prop, h_rsync⟩ _ s' ⟨hadvance, hlocals⟩
+  -- Determine which phase we're in
+  have hph : s.phase.val = 0 ∨ s.phase.val = 1 ∨ s.phase.val = 2 ∨ s.phase.val = 3 := by
+    have := s.phase.isLt ; omega
+  rcases hph with hph0 | hph1 | hph2 | hph3
+  · ---- Phase 0 → Phase 1 (Prepare → Promise) ----
+    -- Phase 0 resets `accepted := false`, sets `prepared`, resets coordinator's proposal.
+    -- No new decisions, no new accepts. Invariant mostly trivially preserved.
+    have hph_eq : s.phase = ⟨0, by omega⟩ := Fin.ext hph0
+    have h_phase : lvAlg.phases s.phase = lvPhase0 := by simp [lvAlg, hph_eq]
+    -- s' has phase = 1, same round
+    have hs'_phase : s'.phase = ⟨1, by omega⟩ := by
+      simp [hph0] at hadvance ; exact hadvance.2
+    have hs'_round : s'.round = s.round := by
+      simp [hph0] at hadvance ; exact hadvance.1
+    -- What hlocals says for each process after unfolding
+    have hlocals' : ∀ p, s'.locals p = lvPhase0.update p (s.locals p)
+        (phase_delivered lvPhase0 s.locals ho p) := by
+      intro p ; have := hlocals p ; rwa [h_phase] at this
+    refine ⟨?_, ?_, ?_, ?_, ?_⟩
+    · -- (A) Agreement: no new decisions (phase0Update doesn't touch `decided`)
+      intro p q v w hv hw
+      rw [hlocals' p] at hv ; rw [hlocals' q] at hw
+      simp [lvPhase0, phase0Update, phase_delivered] at hv hw
+      exact h_agree p q v w hv hw
+    · -- (B) Accepted consistency: accepted is reset to false
+      intro p hacc
+      rw [hlocals' p] at hacc
+      simp [lvPhase0, phase0Update, phase_delivered] at hacc
+    · -- (C) Phase 3 consistency: s'.phase = 1 ≠ 3, vacuous
+      intro hph3' ; rw [hs'_phase] at hph3' ; simp at hph3'
+    · -- (D) Decision-proposal: s'.phase = 1 ≠ 3, vacuous
+      intro p v _ hph3' ; rw [hs'_phase] at hph3' ; simp at hph3'
+    · -- (E) Round sync: round unchanged, roundNum unchanged by phase0Update
+      intro p ; rw [hlocals' p]
+      simp [lvPhase0, phase0Update, phase_delivered, hs'_round]
+      exact h_rsync p
+  · ---- Phase 1 → Phase 2 (Promise → Accept) ----
+    -- Coordinator collects promises and stores proposal. Others unchanged.
+    -- No new decisions, no new accepts.
+    have hph_eq : s.phase = ⟨1, by omega⟩ := Fin.ext hph1
+    have h_phase : lvAlg.phases s.phase = lvPhase1 := by simp [lvAlg, hph_eq]
+    have hs'_phase : s'.phase = ⟨2, by omega⟩ := by
+      simp [hph1] at hadvance ; exact hadvance.2
+    have hs'_round : s'.round = s.round := by
+      simp [hph1] at hadvance ; exact hadvance.1
+    have hlocals' : ∀ p, s'.locals p = lvPhase1.update p (s.locals p)
+        (phase_delivered lvPhase1 s.locals ho p) := by
+      intro p ; have := hlocals p ; rwa [h_phase] at this
+    refine ⟨?_, ?_, ?_, ?_, ?_⟩
+    · -- (A) Agreement: lvPhase1.update only changes `proposal`, not `decided`
+      intro p q v w hv hw
+      -- Show decided is preserved for any process r
+      have h_dec : ∀ r, (s'.locals r).core.decided = (s.locals r).core.decided := by
+        intro r ; rw [hlocals' r]
+        simp only [lvPhase1, phase_delivered]
+        split <;> (try split) <;> simp
+      rw [h_dec p] at hv ; rw [h_dec q] at hw
+      exact h_agree p q v w hv hw
+    · -- (B) Accepted consistency: lvPhase1.update doesn't change `accepted` or `lastVote`
+      intro p hacc
+      have h_acc_pres : (s'.locals p).core.accepted = (s.locals p).core.accepted := by
+        rw [hlocals' p] ; simp only [lvPhase1, phase_delivered]
+        split <;> (try split) <;> simp
+      rw [h_acc_pres] at hacc
+      obtain ⟨v, b, hvb, hb⟩ := h_acc p hacc
+      have h_lv_pres : (s'.locals p).core.lastVote = (s.locals p).core.lastVote := by
+        rw [hlocals' p] ; simp only [lvPhase1, phase_delivered]
+        split <;> (try split) <;> simp
+      exact ⟨v, b, by rw [h_lv_pres, hvb], by rw [hs'_round, hb]⟩
+    · -- (C) Phase 3: s'.phase = 2 ≠ 3, vacuous
+      intro hph3' ; rw [hs'_phase] at hph3' ; simp at hph3'
+    · -- (D) Decision-proposal: s'.phase = 2 ≠ 3, vacuous
+      intro p v _ hph3' ; rw [hs'_phase] at hph3' ; simp at hph3'
+    · -- (E) Round sync: lvPhase1.update doesn't change roundNum
+      intro p ; rw [hlocals' p, hs'_round]
+      simp only [lvPhase1, phase_delivered]
+      split <;> (try split) <;> simp [h_rsync p]
+  · ---- Phase 2 → Phase 3 (Accept → Decide) ----
+    -- Some processes accept the coordinator's proposal.
+    -- No new decisions yet (decisions happen in Phase 3).
+    -- The hard part: establishing conjunct (D) for Phase 3.
+    have hph_eq : s.phase = ⟨2, by omega⟩ := Fin.ext hph2
+    have h_phase : lvAlg.phases s.phase = lvPhase2 := by simp [lvAlg, hph_eq]
+    have hs'_phase : s'.phase = ⟨3, by omega⟩ := by
+      simp [hph2] at hadvance ; exact hadvance.2
+    have hs'_round : s'.round = s.round := by
+      simp [hph2] at hadvance ; exact hadvance.1
+    have hlocals' : ∀ p, s'.locals p = lvPhase2.update p (s.locals p)
+        (phase_delivered lvPhase2 s.locals ho p) := by
+      intro p ; have := hlocals p ; rwa [h_phase] at this
+    refine ⟨?_, ?_, ?_, ?_, ?_⟩
+    · -- (A) Agreement: lvPhase2.update doesn't change `decided`
+      intro p q v w hv hw
+      have h_dec : ∀ r, (s'.locals r).core.decided = (s.locals r).core.decided := by
+        intro r ; rw [hlocals' r]
+        simp only [lvPhase2, phase_delivered]
+        split <;> simp
+      rw [h_dec p] at hv ; rw [h_dec q] at hw
+      exact h_agree p q v w hv hw
+    · -- (B) Accepted: if accepted in s', lastVote matches current round
+      sorry -- Phase 2 accept sets lastVote = (v, round); pre-state accepts have lastVote from IH
+    · -- (C) Phase 3 consistency: s'.phase = 3; acceptors have same-round lastVote
+      sorry -- Requires showing Phase 2 accepts all use the coordinator's proposal
+    · -- (D) Decision-proposal: cross-ballot Paxos invariant
+      sorry -- Existing decisions must agree with current round's acceptors
+    · -- (E) Round sync: lvPhase2.update doesn't change roundNum
+      intro p ; rw [hlocals' p, hs'_round]
+      simp only [lvPhase2, phase_delivered]
+      split <;> simp [h_rsync p]
+  · ---- Phase 3 → Phase 0 (Decide → Prepare of next round) ----
+    -- Majority decision happens here. Hardest case for agreement.
+    have hph_eq : s.phase = ⟨3, by omega⟩ := Fin.ext hph3
+    have h_phase : lvAlg.phases s.phase = lvPhase3 := by
+      show (if s.phase.val = 0 then lvPhase0
+            else if s.phase.val = 1 then lvPhase1
+            else if s.phase.val = 2 then lvPhase2
+            else lvPhase3) = lvPhase3
+      simp [show s.phase.val ≠ 0 by omega,
+            show s.phase.val ≠ 1 by omega, show s.phase.val ≠ 2 by omega]
+    have hs'_round : s'.round = s.round + 1 := by
+      simp [hph3] at hadvance ; exact hadvance.1
+    have hlocals' : ∀ p, s'.locals p = lvPhase3.update p (s.locals p)
+        (phase_delivered lvPhase3 s.locals ho p) := by
+      intro p ; have := hlocals p ; rwa [h_phase] at this
+    refine ⟨?_, ?_, ?_, ?_, ?_⟩
+    · -- (A) Agreement: new decisions must agree with old
+      -- If p newly decided v: it saw majority accepted in phase 3
+      -- By conjuncts (C)+(D) of the pre-state: all acceptors have the same value,
+      -- and that value agrees with existing decisions
+      sorry -- The core Paxos agreement argument for within-ballot decisions
+    · -- (B) Accepted: lvPhase3.update resets accepted to false
+      intro p hacc
+      rw [hlocals' p] at hacc
+      simp only [lvPhase3, phase_delivered] at hacc
+      -- phase3Update always sets accepted := false
+      sorry -- Technical: need to show all branches of phase3Update set accepted = false
+    · -- (C) s'.phase = 0 ≠ 3 (after phase 3 wraps to 0), vacuous
+      intro hph3'
+      have : s'.phase = ⟨0, by omega⟩ := by simp [hph3] at hadvance ; exact hadvance.2
+      rw [this] at hph3' ; simp at hph3'
+    · -- (D) s'.phase = 0 ≠ 3, vacuous
+      intro p v _ hph3'
+      have : s'.phase = ⟨0, by omega⟩ := by simp [hph3] at hadvance ; exact hadvance.2
+      rw [this] at hph3' ; simp at hph3'
+    · -- (E) Round sync: roundNum incremented by lvPhase3.update
+      intro p ; rw [hlocals' p, hs'_round]
+      simp only [lvPhase3, phase_delivered, h_rsync p]
 
 /-! ### Agreement theorem -/
 
