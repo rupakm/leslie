@@ -792,14 +792,14 @@ theorem lv_inv_step :
       obtain ⟨hG1, hG2, hG3⟩ := h_cross p v hv
       -- By (G3): coordinator's proposal = v
       refine ⟨?_, ?_, ?_⟩
-      · -- (G1) Non-v votes dominated by v-votes
-        intro q₁ w b₁ hlv₁ hw q₂ b₂ hlv₂
-        -- Case split: q₁ and q₂ may have new or old lastVotes
-        rw [hlocals' q₁] at hlv₁ ; rw [hlocals' q₂] at hlv₂
-        simp only [lvPhase2, phase_delivered] at hlv₁ hlv₂
-        -- Use sorry for now — this requires careful case analysis
+      · -- (G1) Non-v votes dominated by v-votes.
+        -- New lastVotes from phase 2 have value v (by G3) with ballot s.round.
+        -- Non-v votes are necessarily old (pre-state). By (G1) on pre-state,
+        -- non-v ballots < v-ballots. Needs ballot-bound invariant (lastVote
+        -- ballot ≤ s.round) to compare old non-v ballots with new v-ballots.
         sorry
-      · -- (G2) ≥ 2 v-voters. New v-votes added, old preserved.
+      · -- (G2) ≥ 2 v-voters. New v-votes may be added; old preserved.
+        -- Needs ballot-bound invariant for full proof.
         sorry
       · -- (G3) s'.phase = 3, val ≥ 2. Proposal unchanged (phase 2 doesn't change proposal).
         intro hph_ge2 w h_prop
