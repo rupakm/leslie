@@ -21,6 +21,7 @@ import «Leslie».Examples.TicketLock
 import «Leslie».Examples.LeaderBroadcast
 import «Leslie».Examples.FloodMin
 import «Leslie».Examples.BallotLeader
+import «Leslie».Examples.BallotLeaderPhased
 import «Leslie».Examples.OneThirdRule
 import «Leslie».Examples.BenOr
 import «Leslie».Examples.VRViewChange
@@ -30,3 +31,4 @@ import «Leslie».Examples.Paxos
 import «Leslie».Examples.KVStore
 import «Leslie».Simulate
 import «Leslie».Examples.LastVoting
+import «Leslie».Examples.LastVotingPhased
