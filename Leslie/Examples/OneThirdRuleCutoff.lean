@@ -462,7 +462,7 @@ theorem extSucc_is_valid_unreliable (n : Nat) (c : Config 4 n)
       have hc_dec_zero : c.counts (decidedState v) = 0 := by
         by_contra h
         have := hinv v (by omega)
-        simp [valThreshView, decide_eq_true_eq] at hv_f ; omega
+        simp [valThreshView] at hv_f ; omega
       -- 0 ≤ anything
       omega
   · -- [3] No phantom decisions
@@ -480,16 +480,16 @@ theorem extSucc_is_valid_unreliable (n : Nat) (c : Config 4 n)
       have hc_dec_zero : c.counts (decidedState v) = 0 := by
         by_contra h
         have := hinv v (by omega)
-        simp [valThreshView, decide_eq_true_eq] at hv_f ; omega
+        simp [valThreshView] at hv_f ; omega
       simp only [decidedState] at h_w hc_dec_zero ⊢
       rcases hv' with rfl | rfl <;>
         (have : w = 0 ∨ w = 1 := by omega ;
-         rcases ‹w = 0 ∨ w = 1› with rfl | rfl <;> simp_all <;> omega)
+         (rcases ‹w = 0 ∨ w = 1› with rfl | rfl <;> simp_all; omega))
     · -- Neither: decided-v = 0 in c (lock), successor = current
       have hc_dec_zero : c.counts (decidedState v) = 0 := by
         by_contra h
         have := hinv v (by omega)
-        simp [valThreshView, decide_eq_true_eq] at hv_f ; omega
+        simp [valThreshView] at hv_f ; omega
       -- hw : ¬∃ w, w ≠ v ∧ valThreshView n c w = true
       -- Since Fin 2 has only 0 and 1: both must be false
       have h0 : valThreshView n c 0 = false := by

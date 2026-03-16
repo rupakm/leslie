@@ -245,7 +245,7 @@ theorem filterMap_filter_count_le {α β : Type} [BEq β] [LawfulBEq β]
         simp only [List.filter, hb, hp, List.length]
         exact Nat.succ_le_succ ih
       · have hbf : (val == b) = false := by revert hb ; cases (val == b) <;> simp
-        simp only [List.filter, hbf, ite_false]
+        simp only [List.filter, hbf]
         calc ((as.filterMap f).filter (· == b)).length
           _ ≤ (as.filter pred).length := ih
           _ ≤ ((a :: as).filter pred).length := by
@@ -259,14 +259,14 @@ theorem filter_length_mono {α : Type} (l : List α) (p₁ p₂ : α → Bool)
   induction l with
   | nil => simp
   | cons a as ih =>
-    simp only [List.filter, List.length]
+    simp only [List.filter]
     by_cases h1 : p₁ a = true
     · simp [h1, h a h1] ; omega
     · have h1f : p₁ a = false := by revert h1 ; cases p₁ a <;> simp
-      simp only [h1f, ite_false]
+      simp only [h1f]
       by_cases h2 : p₂ a = true
       · simp [h2] ; omega
       · have h2f : p₂ a = false := by revert h2 ; cases p₂ a <;> simp
-        simp [h2f] ; exact ih
+        simp [h2f]; exact ih
 
 end TLA

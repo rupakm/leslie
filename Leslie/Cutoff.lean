@@ -201,7 +201,7 @@ theorem filter_partition_sum {α : Type} (k : Nat) (l : List α) (f : α → Fin
     have h_pointwise : ∀ v : Fin k,
         ((a :: l).filter fun x => decide (f x = v)).length =
         (l.filter fun x => decide (f x = v)).length + if v = f a then 1 else 0 := by
-      intro v ; simp only [List.filter, decide_eq_true_eq]
+      intro v ; simp only [List.filter]
       by_cases h : f a = v
       · simp [h]
       · simp [h, Ne.symm h]
@@ -363,7 +363,7 @@ theorem thresh_scaling_down (k α_num α_den : Nat) (hα : α_num < α_den)
     funext v ; simp only [Config.threshView, decide_eq_decide]
     constructor
     · intro h ; omega
-    · intro h ; have := h_all_below v ; simp [Config.threshView, decide_eq_true_eq] at this ; omega
+    · intro h ; have := h_all_below v ; simp [Config.threshView] at this ; omega
   · -- Case: some value v₀ is above threshold.
     simp only [not_forall] at h_all_below
     obtain ⟨v₀, hv₀⟩ := h_all_below
@@ -444,7 +444,7 @@ theorem thresh_scaling_down (k α_num α_den : Nat) (hα : α_num < α_den)
     is threshold-determined, `inv n c ↔ inv n' c'`. Since n' ≤ K,
     `inv n' c'` holds by hypothesis. Therefore `inv n c`. -/
 theorem cutoff_reliable
-    (alg : SymThreshAlg k α_num α_den) (hα : α_num < α_den)
+    (_alg : SymThreshAlg k α_num α_den) (hα : α_num < α_den)
     (h_half : 2 * α_num ≥ α_den)
     (inv : ConfigInv k)
     (h_thresh : inv.threshDetermined α_num α_den)
@@ -569,7 +569,7 @@ theorem otr_succ_preserves_supermaj (n : Nat) (c : Config 2 n)
   -- And the other value w ≠ v is false (by pigeonhole: can't both be above threshold)
   have htv_w : ∀ w : Fin 2, w ≠ v → c.threshView 2 3 w = false := by
     intro w hw
-    simp only [Config.threshView, Bool.decide_eq_false]
+    simp only [Config.threshView]
     -- Need: ¬(c.counts w * 3 > 2 * n)
     -- Proof: c.counts v + c.counts w = n (the two values sum to n)
     -- and c.counts v * 3 > 2 * n, so c.counts v > 2n/3

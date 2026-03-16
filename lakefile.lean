@@ -3,6 +3,9 @@ open Lake DSL
 
 require aesop from git "https://github.com/leanprover-community/aesop" @ "v4.27.0"
 
+require lintLlmProofs from git
+  "https://github.com/jessealama/lint-llm-proofs" @ "main"
+
 package «leslie» where
   -- Settings applied to both builds and interactive editing
   leanOptions := #[
