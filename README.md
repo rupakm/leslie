@@ -10,9 +10,17 @@ Leslie is a shallow embedding of the Temporal Logic of Actions (TLA) in Lean 4.
 It provides a framework for specifying and verifying concurrent and distributed
 systems with machine-checked proofs.
 
-The current library includes refinement mappings (Abadi-Lamport), structured
-multi-action specifications, CIVL-style layered refinement with mover types,
-and the core Lipton reduction theorem.
+The library includes:
+
+- **Refinement mappings** (Abadi-Lamport) with stuttering and invariants
+- **Multi-action specifications** (`ActionSpec`) with gated atomic actions
+- **CIVL-style layered refinement** with mover types and Lipton reduction
+- **Round-based distributed algorithms** using the Heard-Of (HO) model,
+  with proof rules for round invariants, process-local invariants, and
+  round refinement
+- **Cutoff theorems** for symmetric threshold protocols, reducing
+  parameterized verification (all n) to finite model checking (n ≤ K)
+- **Random simulation** for testing invariants before formal verification
 
 ## Building
 
@@ -30,8 +38,11 @@ Add this project into your `lakefile.lean` and then:
 import Leslie
 ```
 
-See [MANUAL.md](MANUAL.md) for a complete user guide covering how to write
-specifications, prove invariants, and establish refinement.
+See [MANUAL.md](MANUAL.md) for a complete user guide covering specifications,
+invariants, refinement, and layered verification.
+
+See [docs/round-based-tutorial.md](docs/round-based-tutorial.md) for a tutorial
+on round-based algorithms, the Heard-Of model, and cutoff reasoning.
 
 ## Project Structure
 
@@ -41,6 +52,9 @@ Leslie/
 ├── Refinement.lean         Spec structure and refinement mapping theorems
 ├── Action.lean             GatedAction, ActionSpec (multi-action specs)
 ├── Layers.lean             CIVL-style layers, mover types, Lipton reduction
+├── Round.lean              Round-based algorithms (HO model), proof rules
+├── Cutoff.lean             Cutoff theorems for symmetric threshold protocols
+├── Simulate.lean           Random trace simulation for testing
 ├── Rules/
 │   ├── Basic.lean          Core TLA rules (always, eventually, until, etc.)
 │   ├── StatePred.lean      State predicate rules, init_invariant
@@ -55,23 +69,78 @@ Leslie/
 ├── Gadgets/
 │   ├── TheoremLifting.lean #tla_lift command
 │   └── TheoremDeriving.lean @[tla_derive] attribute
-└── Examples/
-    ├── CounterRefinement.lean   Simple refinement example
-    ├── TwoPhaseCommit.lean      2PC with refinement proof
-    ├── TicketLock.lean          Layered refinement + mover proofs
-    └── Paxos.lean               Single-decree Paxos
+├── Examples/
+│   ├── CounterRefinement.lean      Simple refinement with stuttering
+│   ├── TwoPhaseCommit.lean         2PC with refinement proof
+│   ├── TicketLock.lean             Layered refinement + mover proofs
+│   ├── KVStore.lean                Key-value store, 3 safety properties
+│   ├── Paxos.lean                  Single-decree Paxos (14 actions)
+│   ├── LeaderBroadcast.lean        Round-based leader broadcast
+│   ├── FloodMin.lean               Flood-min consensus with refinement
+│   ├── BallotLeader.lean           Leader election (general n, pigeonhole)
+│   ├── OneThirdRule.lean           OTR consensus (agreement + validity)
+│   ├── OneThirdRuleCutoff.lean     OTR via cutoff (config-level lock inv)
+│   └── VRViewChange.lean           VR view change safety
+└── docs/
+    ├── round-based-tutorial.md     Tutorial: HO model and cutoff reasoning
+    ├── mc-tactic-plan.md           Plan: model-checking tactic
+    └── zero-one-rule.md            Plan: value domain reduction
 ```
 
 ## Examples at a Glance
 
-| Example | What it demonstrates | Lines | Status |
-|---------|---------------------|-------|--------|
-| CounterRefinement | Basic refinement with stuttering | ~100 | Complete |
-| TwoPhaseCommit | Refinement with invariant (10 actions) | ~280 | Complete, no sorry |
-| TicketLock | Layered refinement, mover types | ~395 | Complete, no sorry |
-| Paxos | Quorum intersection, 14 actions | ~340 | Spec complete, proofs WIP |
+### Interleaving protocols (ActionSpec)
+
+| Example | What it demonstrates | Status |
+|---------|---------------------|--------|
+| CounterRefinement | Basic refinement with stuttering | Complete |
+| TwoPhaseCommit | Refinement with invariant (10 actions) | Complete |
+| TicketLock | Layered refinement, mover types | Complete |
+| KVStore | Key-value store, 3 safety properties | Complete |
+| Paxos | Quorum intersection, 14 actions | Spec complete, 2 sorry |
+
+### Round-based protocols (HO model)
+
+| Example | What it demonstrates | Status |
+|---------|---------------------|--------|
+| LeaderBroadcast | Leader-follower agreement (2 processes) | Complete |
+| FloodMin | Flood-min consensus + refinement to consensus spec | Complete |
+| BallotLeader | Leader election for general n (majority pigeonhole) | Complete |
+| OneThirdRule | Agreement (lock invariant) + validity, general n | Complete |
+| OneThirdRuleCutoff | Lock invariant via cutoff, reliable + unreliable comm | Complete |
+| VRViewChange | Viewstamped Replication view change safety | 1 sorry |
+
+### Key results
+
+- **Agreement for OneThirdRule** (`OneThirdRule.lean`): Fully machine-checked
+  proof that the OneThirdRule consensus algorithm satisfies agreement for
+  any number of processes n, under the 2/3-communication predicate. The proof
+  uses a lock invariant (super-majorities persist once established) and
+  pigeonhole (two super-majorities can't coexist). Also proves validity:
+  any decided value was an initial value.
+
+- **Cutoff theorem** (`Cutoff.lean`): For symmetric threshold protocols with
+  communication closure, safety at all n reduces to checking n ≤ K where
+  K = ⌈k·α_den/(α_den−α_num)⌉+1. Fully proved including the scaling lemma,
+  partition sum, and weighted partition sum.
+
+- **Unreliable communication** (`OneThirdRuleCutoff.lean`): The lock invariant
+  is preserved under any valid nondeterministic successor constrained by the
+  HO communication predicate — not just the deterministic reliable case.
+
+## Documentation
+
+- [MANUAL.md](MANUAL.md) — Complete user manual: specifications, proofs,
+  refinement, CIVL layers, tactic reference
+- [docs/round-based-tutorial.md](docs/round-based-tutorial.md) — Tutorial on
+  the Heard-Of model, communication closure, and cutoff reasoning
+- [docs/mc-tactic-plan.md](docs/mc-tactic-plan.md) — Design for a
+  model-checking tactic using `native_decide`
+- [docs/zero-one-rule.md](docs/zero-one-rule.md) — Design for reducing
+  unbounded value domains to binary
 
 ## Thanks
 
-Leslie is ported from the ['Lentil'](https://github.com/verse-lab/Lentil) implementation, which came out of 
-the [`coq-tla`](https://github.com/tchajed/coq-tla) library. 
+Leslie is ported from the ['Lentil'](https://github.com/verse-lab/Lentil)
+implementation, which came out of the
+[`coq-tla`](https://github.com/tchajed/coq-tla) library.
