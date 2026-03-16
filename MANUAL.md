@@ -19,6 +19,26 @@ basic Lean 4 proficiency.
 9. [Theorem Reference](#9-theorem-reference)
 10. [Proof Patterns Cookbook](#10-proof-patterns-cookbook)
 
+### Round-Based Algorithms and Cutoff Reasoning
+
+For a tutorial on modeling and verifying round-based distributed algorithms
+using the Heard-Of model, communication closure, and cutoff theorems, see:
+
+**[Round-Based Algorithms Tutorial](docs/round-based-tutorial.md)**
+
+This tutorial covers:
+- The Heard-Of model and why communication closure simplifies verification
+- How to specify round-based algorithms (`RoundAlg`, `RoundSpec`)
+- Proving safety via lock invariants and pigeonhole arguments
+- The cutoff theorem: reducing verification for all n to finite model checking
+- A worked example with the OneThirdRule consensus algorithm
+
+Related design documents:
+- [Model-Checking Tactic Plan](docs/mc-tactic-plan.md) — automating the
+  small-n verification step via `native_decide`
+- [Zero-One Rule](docs/zero-one-rule.md) — reducing unbounded value domains
+  to binary for value-oblivious threshold protocols
+
 ---
 
 ## 1. Core Concepts
