@@ -651,18 +651,38 @@ theorem lv_inv_step :
         rcases h_dec_or q w hw with hq_old | ⟨mq, _, hq_new⟩
         · -- Both old: use pre-state agreement
           exact h_agree p q v w hp_old hq_old
-        · -- p old, q new: use conjunct (D) to show w = v
-          -- q's new decision came from head? of accepted messages in q's HO set.
-          -- If p decided v in s, and hasMaj3 of GLOBAL accepted holds, then
-          -- all globally accepted processes have value v (by h_dec_prop).
-          -- The accepted messages q received all carry v, so head? = v = w.
-          sorry -- Needs: received accepted values all = v (from h_dec_prop + global majority)
+        · -- p old, q new: h_dec_prop gives all acceptors have value v
+          -- q's new decision from head? of accepted values in q's HO set.
+          -- Step 1: q's majority implies global majority accepted
+          -- q decided via head? of mq. mq is the filterMap of accepted values
+          -- from q's HO set. For mq to be nonempty, ≥ 1 sender sent .accepted.
+          -- Actually, the full structure: q decided because hasMaj3 on received,
+          -- meaning ≥ 2 in q's HO have accepted = true. These are globally accepted.
+          -- So hasMaj3 of global accepted holds.
+          have h_global_maj : hasMaj3 (fun r => (s.locals r).core.accepted) = true := by
+            -- The new decision came from hasMaj3 on q's HO-filtered received.
+            -- Each accepted sender has (s.locals sender).core.accepted = true.
+            -- ≥ 2 such senders → global count ≥ 2.
+            sorry -- Technical: connect HO-filtered majority to global majority
+          -- Step 2: h_dec_prop gives all globally accepted have value v
+          have h_all_v := h_dec_prop p v hp_old hph_eq h_global_maj
+          -- Step 3: q's received accepted values are all v
+          -- mq = filterMap of (phase_delivered lvPhase3 s.locals ho q)
+          -- Each .accepted v' in mq came from a sender with accepted=true and lastVote=(v',_)
+          -- By h_all_v: that sender has lastVote = some (_, s.round) ∧ value = v. So v' = v.
+          -- Therefore mq = [v, v, ...] and head? = some v = some w. So w = v.
+          sorry -- Technical: trace mq values back through h_all_v
       · -- p's decision is new
         rcases h_dec_or q w hw with hq_old | ⟨mq, _, hq_new⟩
-        · -- p new, q old: symmetric
-          sorry -- Same as the p-old, q-new case with roles swapped
-        · -- Both new: first-ever decision scenario
-          -- Needs all acceptors to have the same lastVote value (Phase 2→3 invariant)
+        · -- p new, q old: symmetric (swap p↔q, v↔w in the old-new case)
+          have h_global_maj : hasMaj3 (fun r => (s.locals r).core.accepted) = true := by
+            sorry
+          have h_all_w := h_dec_prop q w hq_old hph_eq h_global_maj
+          sorry
+        · -- Both new, no prior decisions: all acceptors have the same
+          -- value (from Phase 2: coordinator broadcasts single proposal).
+          -- Needs a strengthened invariant conjunct (F): in Phase 3,
+          -- ∃ v₀, ∀ p, accepted p → lastVote p = some (v₀, s.round).
           sorry
     · -- (B) Accepted: lvPhase3.update always sets accepted := false
       intro p hacc
