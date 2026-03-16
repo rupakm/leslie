@@ -105,7 +105,7 @@ namespace TLA
 /-! ### Combinatorial helpers -/
 
 /-- A single element's value is at most the sum. -/
-private theorem mem_le_sum {α : Type} (l : List α) (f : α → Nat) (x : α)
+theorem mem_le_sum {α : Type} (l : List α) (f : α → Nat) (x : α)
     (hx : x ∈ l) : f x ≤ (l.map f).sum := by
   induction l with
   | nil => simp at hx

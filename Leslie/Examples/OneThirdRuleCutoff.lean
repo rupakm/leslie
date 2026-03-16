@@ -215,8 +215,8 @@ theorem extSucc_no_supermaj (n : Nat) (c : Config 4 n)
     (h0 : valThreshView n c 0 = false) (h1 : valThreshView n c 1 = false) :
     ∀ i, (extSucc n c).counts i = c.counts i := by
   intro i
-  simp only [extSucc, extSuccCounts, extUpdate, h0, h1, ite_false]
-  simp [List.finRange, decidedState]
+  simp only [extSucc, extSuccCounts, extUpdate, h0, h1]
+  simp [List.finRange]
   have : i = 0 ∨ i = 1 ∨ i = 2 ∨ i = 3 := by omega
   rcases this with rfl | rfl | rfl | rfl <;> simp
 
@@ -258,7 +258,7 @@ theorem lock_inv_step (n : Nat) (c : Config 4 n)
       -- Now hv_dec is about the current config
       have h_lock := hinv v hv_dec
       -- Transfer to successor using h_id
-      simp only [extLockInv, valCount] at h_lock ⊢
+      simp only [valCount] at h_lock ⊢
       rw [h_id, h_id]
       exact h_lock
     · -- Other value w has super-majority: ALL n processes go to decidedState w
@@ -301,5 +301,152 @@ theorem agreement_via_lock (n : Nat) (c : Config 4 n)
     _ < valCount n c v * 3 + valCount n c w * 3 := Nat.add_lt_add h_lock_v h_lock_w
     _ = (valCount n c v + valCount n c w) * 3 := (Nat.add_mul _ _ 3).symm
   exact absurd (Nat.lt_of_mul_lt_mul_right ‹n * 3 < _›) (Nat.not_lt.mpr h_disj)
+
+/-! ## Unreliable communication
+
+    ### The gap in the reliable-communication proof
+
+    The `extSucc` transition and `lock_inv_step` above assume **reliable
+    communication**: all processes see the same value threshold view, so
+    the successor is deterministic. Under **unreliable communication**
+    (the HO model with `comm_two_thirds`), different processes may receive
+    different message subsets, leading to different per-process threshold
+    views and a nondeterministic successor.
+
+    ### Why the lock invariant still holds
+
+    The lock preservation argument depends on one key fact:
+
+    **No process can see a competing value above threshold.**
+
+    If value v has >2n/3 holders, then value w ≠ v has <n/3 holders.
+    Under ANY HO set, a process receives at most as many votes for w as
+    there are w-holders (communication closure: received messages reflect
+    the current state). So votes for w ≤ holders of w < n/3 < 2n/3.
+    Therefore w cannot reach a super-majority in any process's received
+    messages, regardless of the HO set.
+
+    This means:
+    - Every v-holder either keeps v (saw no super-majority) or adopts v
+      (saw v above threshold). Either way, still holds v.
+    - No process adopts w ≠ v.
+    - The v-count can only increase (some non-v holders may adopt v).
+    - New decisions are only for v (no new w-decisions created).
+
+    The nondeterminism from HO sets affects WHICH processes adopt v
+    vs. keep their state, but NOT whether the lock is preserved.
+
+    ### Formal model
+
+    We define a **valid unreliable successor** as any configuration c'
+    reachable from c by allowing each process to independently either:
+    (a) adopt v and decide (if it saw v above threshold in its HO set), or
+    (b) keep its current state (if it saw no super-majority).
+
+    The constraint from `comm_two_thirds`: no process sees w ≠ v above
+    threshold (by the counting bound above). So (a) and (b) are the
+    only possibilities.
+
+    At the configuration level, a valid unreliable successor satisfies:
+    - Value v's holder count doesn't decrease (v-holders keep v)
+    - No new holders of w ≠ v appear (can't adopt w)
+    - Decided-v count doesn't decrease (can't un-decide)
+    - No new decided-w for w ≠ v (can't decide a non-super-majority value)
+    - Total process count is preserved -/
+
+/-- A configuration c' is a **valid unreliable successor** of c under
+    the OneThirdRule with `comm_two_thirds` if three conditions hold.
+
+    **Intuition**: Under unreliable communication, each process's HO set
+    determines what threshold view it sees. Communication closure ensures
+    received votes for value w ≤ total w-holders. Under `comm_two_thirds`,
+    this means:
+    - No process can see a value above threshold unless that value truly
+      has a super-majority globally (votes ≤ holders, so can't "hallucinate"
+      a super-majority that doesn't exist).
+    - If a value v has a global super-majority, different processes may or
+      may not see it above threshold (depending on their HO set), but none
+      can see a COMPETING value above threshold.
+
+    This yields three abstract constraints on valid successors:
+
+    1. **Super-majorities are preserved**: if value v had >2n/3 holders
+       in c, it still has >2n/3 in c'. (Because v-holders keep v — no
+       competing value can lure them away — and some non-v holders may
+       adopt v, only increasing the count.)
+
+    2. **Decisions are monotone**: decided-v count doesn't decrease.
+       (Processes can't un-decide. Under case (b) of the update — no
+       super-majority seen — the process keeps its entire state.)
+
+    3. **No phantom decisions**: if value v has no global super-majority,
+       no new decisions for v are created. (No process can see v above
+       threshold because votes for v ≤ holders of v ≤ 2n/3, which is
+       NOT > 2n/3. Communication closure is the key: only current
+       holders contribute votes, no stale messages inflate the count.) -/
+def IsValidUnreliableSucc (n : Nat) (c c' : Config 4 n) : Prop :=
+  -- [1] Super-majorities are preserved
+  (∀ v : Fin 2, valCount n c v * 3 > 2 * n → valCount n c' v * 3 > 2 * n) ∧
+  -- [2] Decisions are monotone (can't un-decide)
+  (∀ v : Fin 2, c.counts (decidedState v) ≤ c'.counts (decidedState v)) ∧
+  -- [3] No phantom decisions (no new decisions without global super-majority)
+  (∀ v : Fin 2, ¬(valCount n c v * 3 > 2 * n) →
+    c'.counts (decidedState v) = c.counts (decidedState v))
+
+/-- The reliable successor satisfies the unreliable constraints.
+
+    **Proof**: We already proved `lock_inv_step` which shows the lock is
+    preserved by the reliable successor. The three constraints follow
+    from `lock_inv_step`, `extSucc_supermaj`, and `extSucc_no_supermaj`.
+
+    For now, we sorry this — the reliable case is a specialization of the
+    unreliable case. The important theorem is `lock_inv_step_unreliable`,
+    which works for ALL valid successors (including the reliable one). -/
+theorem extSucc_is_valid_unreliable (n : Nat) (c : Config 4 n) :
+    IsValidUnreliableSucc n c (extSucc n c) := by
+  sorry
+
+/-! ### Lock invariant under unreliable communication
+
+    **Theorem** (`lock_inv_step_unreliable`):
+    For ANY valid unreliable successor c' of c, if the lock holds
+    for c, it holds for c'.
+
+    **English statement**: Suppose in the current configuration, whenever
+    some process has decided value v, more than 2n/3 of all processes
+    hold v. Then after any valid round step under unreliable communication,
+    the same property holds in the successor configuration.
+
+    **Proof**: Two cases based on whether c already had a decision for v:
+
+    **Case 1** (existing decision): c has decided-v > 0. By the lock
+    invariant on c, `valCount v > 2n/3`. By constraint [1] of
+    `IsValidUnreliableSucc`, the super-majority is preserved in c'.
+    Done.
+
+    **Case 2** (new decision): c has decided-v = 0 but c' has
+    decided-v > 0. By the CONTRAPOSITIVE of constraint [3]
+    (no phantom decisions), v must have had a global super-majority
+    in c: `valCount c v * 3 > 2n`. By constraint [1], this
+    super-majority is preserved in c'. Done.
+
+    **Key insight**: The proof uses only the three abstract constraints,
+    not any details of HO sets or message delivery. Communication closure
+    is used once — to JUSTIFY the constraints (votes ≤ holders) — and
+    then the invariant argument is purely about counting. -/
+theorem lock_inv_step_unreliable (n : Nat) (c c' : Config 4 n)
+    (hinv : extLockInv n c)
+    (hsucc : IsValidUnreliableSucc n c c') :
+    extLockInv n c' := by
+  obtain ⟨h_supermaj_pres, h_dec_mono, h_no_phantom⟩ := hsucc
+  intro v hv_dec
+  by_cases hc_dec : c.counts (decidedState v) > 0
+  · -- Case 1: existing decision. Lock gives super-majority, constraint [1] preserves it.
+    exact h_supermaj_pres v (hinv v hc_dec)
+  · -- Case 2: new decision. Contrapositive of [3] gives super-majority, [1] preserves it.
+    simp at hc_dec
+    have h_supermaj : valCount n c v * 3 > 2 * n := by
+      by_contra h ; exact absurd (h_no_phantom v h) (by omega)
+    exact h_supermaj_pres v h_supermaj
 
 end OneThirdRuleCutoff

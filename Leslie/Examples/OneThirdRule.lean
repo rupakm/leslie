@@ -515,7 +515,7 @@ theorem decided_from_initial
         rwa [Nat.add_comm] at this
       obtain ⟨ho, _, _, hlocals⟩ := hstep
       have hp := hlocals p
-      simp only [otr_alg] at hp
+      simp only at hp
       have hp_expanded : (e (t + 1)).locals p =
           match findSuperMajority n ((List.finRange n).filterMap
             (fun r => if ho p r then some ((e t).locals r).val else none)) with
