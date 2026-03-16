@@ -99,79 +99,60 @@ def hasMajority (c : Fin n) (picks : List (Fin n)) : Bool :=
 def findMajority (picks : List (Fin n)) : Option (Fin n) :=
   (List.finRange n).find? fun c => hasMajority n c picks
 
-/-! ### Message type family -/
+/-! ### Uniform message type
 
-/-- Message types indexed by phase: phase 0 uses `NewMsg`, phase 1 uses `AckMsg`. -/
-def BLMsgs : PhaseMessages 2 :=
-  fun i => if i.val = 0 then NewMsg n else AckMsg n
+    To avoid dependent-type casts in the phase definitions, we use a
+    single message type for all phases. Each phase sends/receives a
+    specific subset of constructors and ignores the others. This is
+    standard practice and matches real protocol implementations. -/
+
+inductive BLMsg (n : Nat) where
+  | bid (id : Fin n)
+  | noBid
+  | pick (id : Fin n)
+  | noPick
+  deriving DecidableEq, Repr
+
+/-- Uniform message type for both phases. -/
+def BLMsgs : PhaseMessages 2 := fun _ => BLMsg n
 
 /-! ### Phase definitions -/
 
-/-- Cast helper: `BLMsgs n ⟨0, _⟩ = NewMsg n`. -/
-theorem blmsgs_zero : BLMsgs n ⟨0, by omega⟩ = NewMsg n := by
-  simp [BLMsgs]
+/-- Phase 0 (New): broadcast bid/noBid, compute minimum bidder pick. -/
+def newPhase : Phase (Fin n) (LState n) (BLMsg n) where
+  send := fun p s => if s.bidding then .bid p else .noBid
+  update := fun _p s msgs =>
+    let bids := (List.finRange n).filterMap fun q =>
+      match msgs q with
+      | some (.bid id) => some id
+      | _ => none
+    { s with picked := List.minFin? bids }
 
-/-- Cast helper: `BLMsgs n ⟨1, _⟩ = AckMsg n`. -/
-theorem blmsgs_one : BLMsgs n ⟨1, by omega⟩ = AckMsg n := by
-  simp [BLMsgs]
+/-- Phase 1 (Ack): broadcast pick, elect leader via majority. -/
+def ackPhase : Phase (Fin n) (LState n) (BLMsg n) where
+  send := fun _p s =>
+    match s.picked with
+    | some c => .pick c
+    | none   => .noPick
+  update := fun _p s msgs =>
+    let picks := collectPicks n (fun q => msgs q >>= fun
+      | .pick id => some (.pick id)
+      | _ => none)
+    { s with leader := findMajority n picks }
 
-/-- Phase 0 send: broadcast bid or noBid. -/
-def newSend (p : Fin n) (s : LState n) : NewMsg n :=
-  if s.bidding then .bid p else .noBid
-
-/-- Phase 0 update: pick the minimum bidder from received bids. -/
-def newUpdate (_p : Fin n) (s : LState n)
-    (msgs : Fin n → Option (NewMsg n)) : LState n :=
-  let bids := collectBids n msgs
-  { s with picked := List.minFin? bids }
-
-/-- Phase 1 send: broadcast pick or noPick. -/
-def ackSend (_p : Fin n) (s : LState n) : AckMsg n :=
-  match s.picked with
-  | some c => .pick c
-  | none   => .noPick
-
-/-- Phase 1 update: collect picks and find majority winner. -/
-def ackUpdate (_p : Fin n) (s : LState n)
-    (msgs : Fin n → Option (AckMsg n)) : LState n :=
-  let picks := collectPicks n msgs
-  { s with leader := findMajority n picks }
-
-/-! ### PhaseRoundAlg definition -/
-
-/-- The ballot leader algorithm as a 2-phase round algorithm.
-
-    We define the phases using cast to handle the dependent type indexing. -/
-noncomputable def blAlg : PhaseRoundAlg (Fin n) (LState n) 2 (BLMsgs n) where
+/-- The ballot leader as a 2-phase round algorithm. -/
+def blAlg : PhaseRoundAlg (Fin n) (LState n) 2 (BLMsgs n) where
   init := fun _p s => s.picked = none ∧ s.leader = none
-    -- `bidding` is unconstrained — any Bool value is a valid initial state.
-    -- This encodes the nondeterministic oracle.
   phases := fun i =>
-    if h0 : i.val = 0 then
-      { send := fun p s => by
-          rw [show i = ⟨0, by omega⟩ from Fin.ext h0]
-          exact newSend n p s
-        update := fun p s msgs => by
-          have : i = ⟨0, by omega⟩ := Fin.ext h0
-          exact newUpdate n p s (fun q => by rw [this] at msgs; exact msgs q) }
-    else
-      have h1 : i.val = 1 := by omega
-      { send := fun p s => by
-          rw [show i = ⟨1, by omega⟩ from Fin.ext h1]
-          exact ackSend n p s
-        update := fun p s msgs => by
-          have : i = ⟨1, by omega⟩ := Fin.ext h1
-          exact ackUpdate n p s (fun q => by rw [this] at msgs; exact msgs q) }
+    if i.val = 0 then newPhase n else ackPhase n
 
 /-! ### PhaseRoundSpec -/
 
-/-- The ballot leader specification: lossy communication (any HO set valid). -/
-noncomputable def blSpec : PhaseRoundSpec (Fin n) (LState n) 2 (BLMsgs n) where
+def blSpec : PhaseRoundSpec (Fin n) (LState n) 2 (BLMsgs n) where
   alg := blAlg n
-  comm := fun _ _ _ => True  -- lossy communication
+  comm := fun _ _ _ => True
 
-/-- Convert to a Leslie `Spec`. -/
-noncomputable def blLeslieSpec : Spec (PhaseRoundState (Fin n) (LState n) 2) :=
+def blLeslieSpec : Spec (PhaseRoundState (Fin n) (LState n) 2) :=
   (blSpec n).toSpec (by omega)
 
 /-! ### Safety invariant -/
@@ -289,12 +270,37 @@ theorem at_most_one_leader_invariant :
     have := (hinit p).2
     simp_all
   · -- Inductive step: phase step preserves at most one leader
-    -- The argument splits by phase:
-    -- Phase 0 (New): `leader` field is not modified (only `picked` changes)
-    -- Phase 1 (Ack): leaders elected via findMajority; pigeonhole applies
-    -- The cast-heavy definition of `blAlg` makes direct symbolic computation
-    -- difficult in Lean, so we use sorry here. The mathematical argument is
-    -- identical to `BallotLeader.at_most_one_leader_invariant`.
-    sorry
+    intro s ho hinv _ s' ⟨hadvance, hlocals⟩
+    intro p q l₁ l₂ hl₁ hl₂
+    -- Case split on the current phase (0 or 1)
+    have hph : s.phase.val = 0 ∨ s.phase.val = 1 := by
+      have := s.phase.isLt ; omega
+    -- The phase determines which Phase struct is used:
+    -- (blAlg n).phases i = if i.val = 0 then newPhase n else ackPhase n
+    -- After phase_step, hlocals gives:
+    -- s'.locals p = ((blAlg n).phases s.phase).update p (s.locals p) (delivered ...)
+    -- We need to show this preserves at_most_one_leader.
+    -- Key fact: newPhase.update only changes `picked` (not `leader`).
+    -- ackPhase.update only changes `leader` via findMajority.
+    rcases hph with hph0 | hph1
+    · -- Phase 0 (New): newPhase.update preserves `leader`
+      -- Reduce: (blAlg n).phases s.phase = newPhase n (since phase = 0)
+      have hph : (blAlg n).phases s.phase = newPhase n := by
+        show (if s.phase.val = 0 then newPhase n else ackPhase n) = newPhase n
+        simp [hph0]
+      have h_pres : ∀ r, (s'.locals r).leader = (s.locals r).leader := by
+        intro r
+        have hr := hlocals r
+        simp only [blSpec, blAlg, hph0, ite_true, newPhase, phase_delivered] at hr
+        rw [hr]
+      rw [h_pres p] at hl₁ ; rw [h_pres q] at hl₂
+      exact hinv p q l₁ l₂ hl₁ hl₂
+    · -- Phase 1 (Ack): leaders set via findMajority; pigeonhole applies
+      have hph : (blAlg n).phases s.phase = ackPhase n := by
+        show (if s.phase.val = 0 then newPhase n else ackPhase n) = ackPhase n
+        simp [show s.phase.val ≠ 0 by omega]
+      -- Both leaders come from ackPhase.update → findMajority on picks
+      -- The pigeonhole argument from BallotLeader.lean applies identically
+      sorry
 
 end BallotLeaderPhased
