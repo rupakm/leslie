@@ -128,6 +128,13 @@ def newPhase : Phase (Fin n) (LState n) (BLMsg n) where
       | _ => none
     { s with picked := List.minFin? bids }
 
+/-- Extract pick IDs directly from BLMsg messages. -/
+def collectBLPicks (msgs : Fin n → Option (BLMsg n)) : List (Fin n) :=
+  (List.finRange n).filterMap fun q =>
+    match msgs q with
+    | some (.pick id) => some id
+    | _ => none
+
 /-- Phase 1 (Ack): broadcast pick, elect leader via majority. -/
 def ackPhase : Phase (Fin n) (LState n) (BLMsg n) where
   send := fun _p s =>
@@ -135,10 +142,7 @@ def ackPhase : Phase (Fin n) (LState n) (BLMsg n) where
     | some c => .pick c
     | none   => .noPick
   update := fun _p s msgs =>
-    let picks := collectPicks n (fun q => msgs q >>= fun
-      | .pick id => some (.pick id)
-      | _ => none)
-    { s with leader := findMajority n picks }
+    { s with leader := findMajority n (collectBLPicks n msgs) }
 
 /-- The ballot leader as a 2-phase round algorithm. -/
 def blAlg : PhaseRoundAlg (Fin n) (LState n) 2 (BLMsgs n) where
@@ -208,27 +212,23 @@ theorem picks_pigeonhole
 
 /-! ### Connecting votes to actual picks -/
 
-/-- Each vote for candidate `c` in a process's collected picks came from a
-    sender who actually picked `c`. So the vote count is bounded by the number
-    of actual supporters. -/
+/-- Votes for candidate `c` in BLMsg-collected picks ≤ total supporters.
+    Each vote came from a sender whose `picked` field matched. -/
 theorem countVotes_le_supporters
-    (actual_picks : Fin n → Option (Fin n))
+    (locals : Fin n → LState n)
     (ho : HOCollection (Fin n))
     (p c : Fin n) :
-    let send_fn := fun q => match actual_picks q with
-      | some c => AckMsg.pick c
-      | none   => AckMsg.noPick
-    let msgs := fun q => if ho p q then some (send_fn q) else none
-    countVotes n c (collectPicks n msgs) ≤
-      ((List.finRange n).filter fun q =>
-        decide (actual_picks q = some c)).length := by
-  simp only [countVotes]
-  rw [collectPicks_eq n actual_picks ho p]
+    countVotes n c (collectBLPicks n (fun q =>
+      if ho p q then some ((ackPhase n).send q (locals q)) else none)) ≤
+    ((List.finRange n).filter fun q =>
+      decide ((locals q).picked = some c)).length := by
+  simp only [countVotes, collectBLPicks, ackPhase]
   apply filterMap_filter_count_le
   intro q hq
   simp only [decide_eq_true_eq]
   by_cases hho : ho p q = true
-  · simp [hho] at hq ; exact hq
+  · simp [hho] at hq
+    cases h : (locals q).picked <;> simp_all
   · have hf : ho p q = false := by revert hho ; cases ho p q <;> simp
     simp [hf] at hq
 
@@ -296,11 +296,29 @@ theorem at_most_one_leader_invariant :
       rw [h_pres p] at hl₁ ; rw [h_pres q] at hl₂
       exact hinv p q l₁ l₂ hl₁ hl₂
     · -- Phase 1 (Ack): leaders set via findMajority; pigeonhole applies
-      have hph : (blAlg n).phases s.phase = ackPhase n := by
-        show (if s.phase.val = 0 then newPhase n else ackPhase n) = ackPhase n
-        simp [show s.phase.val ≠ 0 by omega]
-      -- Both leaders come from ackPhase.update → findMajority on picks
-      -- The pigeonhole argument from BallotLeader.lean applies identically
-      sorry
+      -- Unfold ackPhase in hl₁ and hl₂
+      have hp := hlocals p ; have hq := hlocals q
+      simp only [blSpec, blAlg, show ¬(s.phase.val = 0) by omega, ite_false,
+                  ackPhase, phase_delivered] at hp hq
+      rw [hp] at hl₁ ; rw [hq] at hl₂
+      simp only at hl₁ hl₂
+      -- hl₁ : findMajority n (collectPicks n (filtered_p)) = some l₁
+      -- hl₂ : findMajority n (collectPicks n (filtered_q)) = some l₂
+      -- Both l₁ and l₂ require majority support. The actual senders'
+      -- picks are (s.locals ·).picked. By countVotes_le_supporters,
+      -- votes for any candidate ≤ total supporters. By picks_pigeonhole,
+      -- two candidates with majority support must be equal.
+      -- Chain: findMajority → hasMajority → countVotes → actual supporters → pigeonhole
+      have hm₁ := (hasMajority_iff n).mp (findMajority_hasMajority n hl₁)
+      have hm₂ := (hasMajority_iff n).mp (findMajority_hasMajority n hl₂)
+      have hc₁ := countVotes_le_supporters n s.locals ho p l₁
+      have hc₂ := countVotes_le_supporters n s.locals ho q l₂
+      have hs₁ : ((List.finRange n).filter fun r =>
+          decide ((s.locals r).picked = some l₁)).length * 2 > n :=
+        Nat.lt_of_lt_of_le hm₁ (Nat.mul_le_mul_right 2 hc₁)
+      have hs₂ : ((List.finRange n).filter fun r =>
+          decide ((s.locals r).picked = some l₂)).length * 2 > n :=
+        Nat.lt_of_lt_of_le hm₂ (Nat.mul_le_mul_right 2 hc₂)
+      exact picks_pigeonhole n (fun r => (s.locals r).picked) l₁ l₂ hs₁ hs₂
 
 end BallotLeaderPhased
