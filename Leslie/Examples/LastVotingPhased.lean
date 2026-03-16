@@ -1239,7 +1239,26 @@ theorem lv_inv_step :
           --   phase 3 is at round s.round and accepted processes have ballot = s.round).
           -- For (G2): ≥ 2 accepted (hasMaj3) → ≥ 2 have value v'.
           -- For (G3): s'.phase = 0, val < 2. Vacuous.
-          sorry -- Phase 3→0 new decision cross-ballot
+          -- (G1): non-v' votes have ballot < v'-votes' ballot.
+          -- v' was decided because hasMaj3 accepted and v' is head? of accepted values.
+          -- By (C), accepted processes have lastVote = (val, s.round).
+          -- By (F), all accepted have the same value. So all have (v', s.round).
+          -- Non-v' processes: their lastVote is NOT (v', s.round). So either:
+          --   ballot < s.round (strictly, since ballot = s.round → accepted → value = v')
+          -- v'-voters: have ballot = s.round.
+          -- So non-v' ballot < s.round = v'-ballot. ✓
+          -- (G2): ≥ 2 accepted with value v' (from hasMaj3).
+          -- (G3): s'.phase = 0, val < 2. Vacuous.
+          -- The argument for "ballot = s.round → accepted → value = v'" uses (B) + (F).
+          -- (B): accepted → lastVote ballot = s.round.
+          -- Contrapositively: ballot ≠ s.round → not accepted (has nothing to say).
+          -- We need: ballot = s.round → accepted. This requires showing that
+          -- lastVote with ballot = s.round was set in THIS round's phase 2, which
+          -- implies accepted = true (since phase 2 sets both simultaneously and
+          -- phase 3 hasn't reset it yet).
+          -- This is a protocol-level argument that needs the fact that only phase 2
+          -- sets lastVote with ballot = current round.
+          sorry -- needs: ballot = s.round → accepted = true
         · -- decidedVal = none: old decision preserved
           simp at hv
           obtain ⟨hG1, hG2, hG3⟩ := h_cross p v hv
