@@ -22,6 +22,8 @@ import «Leslie».Examples.FloodMin
 import «Leslie».Examples.BallotLeader
 import «Leslie».Examples.OneThirdRule
 import «Leslie».Examples.VRViewChange
+import «Leslie».Cutoff
+import «Leslie».Examples.OneThirdRuleCutoff
 import «Leslie».Examples.Paxos
 import «Leslie».Examples.KVStore
 import «Leslie».Simulate
