@@ -146,14 +146,13 @@ def extLockInv (n : Nat) (c : Config 4 n) : Prop :=
 /-! ### Initial condition -/
 
 def isInitial (_n : Nat) (c : Config 4 _n) : Prop :=
-  c.counts 1 = 0 ∧ c.counts 3 = 0
+  c.counts (decidedState 0) = 0 ∧ c.counts (decidedState 1) = 0
 
 /-- The lock holds vacuously on initial configs (no decisions). -/
 theorem lock_inv_init (n : Nat) (c : Config 4 n) (h : isInitial n c) :
     extLockInv n c := by
   intro v hv
-  simp only [isInitial] at h
-  simp only [decidedState] at hv
+  simp only [isInitial, decidedState] at h hv
   have : v = 0 ∨ v = 1 := by omega
   rcases this with rfl | rfl <;> simp_all
 
@@ -393,6 +392,17 @@ def IsValidUnreliableSucc (n : Nat) (c c' : Config 4 n) : Prop :=
   (∀ v : Fin 2, ¬(valCount n c v * 3 > 2 * n) →
     c'.counts (decidedState v) = c.counts (decidedState v))
 
+/-- Under the lock invariant, if value v has no super-majority, then no
+    process has decided v. (Contrapositive of the lock: decided-v > 0 →
+    super-majority, so no super-majority → decided-v = 0.) -/
+theorem lock_no_supermaj_no_decided (n : Nat) (c : Config 4 n)
+    (hinv : extLockInv n c) (v : Fin 2)
+    (hv_f : valThreshView n c v = false) :
+    c.counts (decidedState v) = 0 := by
+  by_contra h
+  have := hinv v (by omega)
+  simp [valThreshView] at hv_f ; omega
+
 /-- The reliable successor satisfies the unreliable constraints
     **when the lock invariant holds**.
 
@@ -459,10 +469,7 @@ theorem extSucc_is_valid_unreliable (n : Nat) (c : Config 4 n)
     · -- v has no super-majority — need to distinguish (b) and (c)
       have hv_f : valThreshView n c v = false := by revert hv ; cases valThreshView n c v <;> simp
       -- Under the lock: decided-v > 0 would give v super-majority, contradicting hv_f
-      have hc_dec_zero : c.counts (decidedState v) = 0 := by
-        by_contra h
-        have := hinv v (by omega)
-        simp [valThreshView] at hv_f ; omega
+      have hc_dec_zero := lock_no_supermaj_no_decided n c hinv v hv_f
       -- 0 ≤ anything
       omega
   · -- [3] No phantom decisions
@@ -477,19 +484,13 @@ theorem extSucc_is_valid_unreliable (n : Nat) (c : Config 4 n)
       obtain ⟨w, hwne, hwv⟩ := hw
       have h_w := extSucc_supermaj n c w hwv
       have h_sum := (extSucc n c).sum_eq ; simp [List.finRange] at h_sum
-      have hc_dec_zero : c.counts (decidedState v) = 0 := by
-        by_contra h
-        have := hinv v (by omega)
-        simp [valThreshView] at hv_f ; omega
+      have hc_dec_zero := lock_no_supermaj_no_decided n c hinv v hv_f
       simp only [decidedState] at h_w hc_dec_zero ⊢
       rcases hv' with rfl | rfl <;>
         (have : w = 0 ∨ w = 1 := by omega ;
          (rcases ‹w = 0 ∨ w = 1› with rfl | rfl <;> simp_all; omega))
     · -- Neither: decided-v = 0 in c (lock), successor = current
-      have hc_dec_zero : c.counts (decidedState v) = 0 := by
-        by_contra h
-        have := hinv v (by omega)
-        simp [valThreshView] at hv_f ; omega
+      have hc_dec_zero := lock_no_supermaj_no_decided n c hinv v hv_f
       -- hw : ¬∃ w, w ≠ v ∧ valThreshView n c w = true
       -- Since Fin 2 has only 0 and 1: both must be false
       have h0 : valThreshView n c 0 = false := by

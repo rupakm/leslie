@@ -143,55 +143,10 @@ def at_most_one_leader (s : GState n) : Prop :=
     (s.locals q).leader = some l₂ →
     l₁ = l₂
 
-/-! ### Helper lemmas -/
+/-! ### Helper lemmas
 
-/-- For disjoint predicates, the combined filter lengths don't exceed
-    the original list length. -/
-private theorem filter_disjoint_length_le {α : Type} (p₁ p₂ : α → Bool) (l : List α)
-    (h_disj : ∀ x, ¬(p₁ x = true ∧ p₂ x = true)) :
-    (l.filter p₁).length + (l.filter p₂).length ≤ l.length := by
-  induction l with
-  | nil => simp
-  | cons x xs ih =>
-    have hx := h_disj x
-    simp only [List.filter, List.length]
-    by_cases h1 : p₁ x = true <;> by_cases h2 : p₂ x = true
-    · exact absurd ⟨h1, h2⟩ hx
-    · simp [h1, h2] ; omega
-    · simp [h1, h2] ; omega
-    · simp [h1, h2] ; omega
-
-/-- For a function mapping list elements to optional values, filtering the
-    mapped results for `b` gives at most as many hits as filtering the
-    original list for elements that map to `some b`. -/
-private theorem filterMap_filter_count_le {α β : Type} [BEq β] [LawfulBEq β]
-    (l : List α) (f : α → Option β) (b : β)
-    (pred : α → Bool)
-    (h : ∀ a, f a = some b → pred a = true) :
-    ((l.filterMap f).filter (· == b)).length ≤ (l.filter pred).length := by
-  induction l with
-  | nil => simp
-  | cons a as ih =>
-    cases hf : f a with
-    | none =>
-      simp only [List.filterMap_cons, hf]
-      calc ((as.filterMap f).filter (· == b)).length
-        _ ≤ (as.filter pred).length := ih
-        _ ≤ ((a :: as).filter pred).length := by
-            simp only [List.filter] ; split <;> simp_all
-    | some val =>
-      simp only [List.filterMap_cons, hf]
-      by_cases hb : (val == b) = true
-      · have hval : val = b := beq_iff_eq.mp hb
-        have hp := h a (show f a = some b by rw [hf, hval])
-        simp only [List.filter, hb, hp, List.length]
-        exact Nat.succ_le_succ ih
-      · have hbf : (val == b) = false := by revert hb ; cases (val == b) <;> simp
-        simp only [List.filter, hbf]
-        calc ((as.filterMap f).filter (· == b)).length
-          _ ≤ (as.filter pred).length := ih
-          _ ≤ ((a :: as).filter pred).length := by
-              simp only [List.filter] ; split <;> simp_all
+    `filter_disjoint_length_le` and `filterMap_filter_count_le` are
+    imported from `Round.lean` via `open TLA`. -/
 
 /-- The message extraction in `collectPicks` simplifies: with the specific
     send function for the Ack phase, `collectPicks` equals a `filterMap`
