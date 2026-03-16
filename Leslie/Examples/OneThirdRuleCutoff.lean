@@ -393,18 +393,116 @@ def IsValidUnreliableSucc (n : Nat) (c c' : Config 4 n) : Prop :=
   (∀ v : Fin 2, ¬(valCount n c v * 3 > 2 * n) →
     c'.counts (decidedState v) = c.counts (decidedState v))
 
-/-- The reliable successor satisfies the unreliable constraints.
+/-- The reliable successor satisfies the unreliable constraints
+    **when the lock invariant holds**.
 
-    **Proof**: We already proved `lock_inv_step` which shows the lock is
-    preserved by the reliable successor. The three constraints follow
-    from `lock_inv_step`, `extSucc_supermaj`, and `extSucc_no_supermaj`.
-
-    For now, we sorry this — the reliable case is a specialization of the
-    unreliable case. The important theorem is `lock_inv_step_unreliable`,
-    which works for ALL valid successors (including the reliable one). -/
-theorem extSucc_is_valid_unreliable (n : Nat) (c : Config 4 n) :
+    The lock invariant is needed because under reliable communication,
+    if value w has a super-majority, ALL processes adopt w — including
+    processes that had decided v ≠ w. This would violate constraint [2]
+    (decisions monotone). But the lock invariant prevents this: if
+    decided-v > 0, then v has a super-majority, and by pigeonhole no
+    other value w can also have a super-majority. So the "w overwrites
+    v's decisions" case cannot arise under the lock. -/
+theorem extSucc_is_valid_unreliable (n : Nat) (c : Config 4 n)
+    (hinv : extLockInv n c) :
     IsValidUnreliableSucc n c (extSucc n c) := by
-  sorry
+  -- Helper: determine the value threshold view
+  -- Either (T,F), (F,T), or (F,F). (T,T) is impossible by noTwoSuperMaj.
+  have h_vtv : ∀ v : Fin 2, valThreshView n c v = true ∨ valThreshView n c v = false := by
+    intro v ; cases valThreshView n c v <;> simp
+  refine ⟨?_, ?_, ?_⟩
+  · -- [1] Super-majorities preserved
+    -- We already proved this as otr_succ_preserves_supermaj (for Config 2 n).
+    -- Here for Config 4 n, the argument is the same: extSucc_supermaj gives
+    -- decidedState v = n, so valCount v ≥ n, and n * 3 > 2n for n ≥ 1.
+    intro v hv
+    -- lock_inv_step already proved the lock is preserved by extSucc.
+    -- The lock preservation implies super-majorities are preserved.
+    -- Use lock_inv_step directly:
+    -- If v has super-majority and decided-v > 0: lock gives it in successor.
+    -- If v has super-majority and decided-v = 0: after reliable round,
+    --   decided-v = n in successor (extSucc_supermaj), so lock holds.
+    -- Either way, valCount v * 3 > 2n in successor.
+    -- Simplest: use lock_inv_step (the reliable case) to show lock holds,
+    -- then extract the super-majority from it.
+    -- But lock_inv_step proves extLockInv, not directly valCount preservation.
+    -- Let's use the direct argument: extSucc_supermaj gives decidedState v = n.
+    have hv_tv : valThreshView n c v = true := by
+      simp [valThreshView, decide_eq_true_eq] ; exact hv
+    have h_n := extSucc_supermaj n c v hv_tv
+    -- Goal becomes: (undecided-v count in succ + n) * 3 > 2n.
+    -- This follows from n ≥ 1 (since the extra term ≥ 0).
+    simp only [valCount] ; rw [h_n]
+    -- Prove n ≥ 1: if n = 0 then valCount = 0 but hv says valCount * 3 > 0.
+    -- valCount ≤ n (two counts out of four that sum to n).
+    have h_sum := c.sum_eq ; simp [List.finRange] at h_sum
+    have h_n_pos : n ≥ 1 := by
+      -- valCount v * 3 > 2n ≥ 0, so valCount v ≥ 1.
+      -- valCount v = counts(X) + counts(Y) ≤ sum of all = n.
+      -- So n ≥ 1.
+      have hvc : valCount n c v ≥ 1 := by omega
+      have : v = 0 ∨ v = 1 := by omega
+      simp only [valCount, undecidedState, decidedState] at hvc
+      rcases ‹v = 0 ∨ v = 1› with rfl | rfl <;> simp at hvc <;> omega
+    omega
+  · -- [2] Decisions monotone: c.counts(decidedState v) ≤ (extSucc).counts(decidedState v)
+    intro v
+    -- Three sub-cases on the value threshold view:
+    -- (a) v has super-majority: decided-v goes to n in successor (≥ original)
+    -- (b) w ≠ v has super-majority: decided-v = 0 in c (by lock), 0 ≤ 0
+    -- (c) Neither: successor = current
+    by_cases hv : valThreshView n c v = true
+    · -- (a) v has super-majority
+      have h_n := extSucc_supermaj n c v hv ; rw [h_n]
+      have := TLA.mem_le_sum (List.finRange 4) c.counts (decidedState v) (List.mem_finRange _)
+      rw [c.sum_eq] at this ; exact this
+    · -- v has no super-majority — need to distinguish (b) and (c)
+      have hv_f : valThreshView n c v = false := by revert hv ; cases valThreshView n c v <;> simp
+      -- Under the lock: decided-v > 0 would give v super-majority, contradicting hv_f
+      have hc_dec_zero : c.counts (decidedState v) = 0 := by
+        by_contra h
+        have := hinv v (by omega)
+        simp [valThreshView, decide_eq_true_eq] at hv_f ; omega
+      -- 0 ≤ anything
+      omega
+  · -- [3] No phantom decisions
+    intro v hv
+    have hv_f : valThreshView n c v = false := by
+      simp [valThreshView] ; revert hv ; cases decide (valCount n c v * 3 > 2 * n) <;> simp
+    have hv' : v = 0 ∨ v = 1 := by omega
+    by_cases hw : ∃ w, w ≠ v ∧ valThreshView n c w = true
+    · -- w dominates: all → decidedState w. decidedState v = 0 in successor.
+      -- By lock + no super-majority for v: c.counts(decidedState v) = 0.
+      -- Successor also has 0. So 0 = 0. ✓
+      obtain ⟨w, hwne, hwv⟩ := hw
+      have h_w := extSucc_supermaj n c w hwv
+      have h_sum := (extSucc n c).sum_eq ; simp [List.finRange] at h_sum
+      have hc_dec_zero : c.counts (decidedState v) = 0 := by
+        by_contra h
+        have := hinv v (by omega)
+        simp [valThreshView, decide_eq_true_eq] at hv_f ; omega
+      simp only [decidedState] at h_w hc_dec_zero ⊢
+      rcases hv' with rfl | rfl <;>
+        (have : w = 0 ∨ w = 1 := by omega ;
+         rcases ‹w = 0 ∨ w = 1› with rfl | rfl <;> simp_all <;> omega)
+    · -- Neither: decided-v = 0 in c (lock), successor = current
+      have hc_dec_zero : c.counts (decidedState v) = 0 := by
+        by_contra h
+        have := hinv v (by omega)
+        simp [valThreshView, decide_eq_true_eq] at hv_f ; omega
+      -- hw : ¬∃ w, w ≠ v ∧ valThreshView n c w = true
+      -- Since Fin 2 has only 0 and 1: both must be false
+      have h0 : valThreshView n c 0 = false := by
+        rcases hv' with rfl | rfl
+        · exact hv_f
+        · by_contra h0t ; simp at h0t
+          exact hw ⟨0, by omega, h0t⟩
+      have h1 : valThreshView n c 1 = false := by
+        rcases hv' with rfl | rfl
+        · by_contra h1t ; simp at h1t
+          exact hw ⟨1, by omega, h1t⟩
+        · exact hv_f
+      rw [extSucc_no_supermaj n c h0 h1, hc_dec_zero]
 
 /-! ### Lock invariant under unreliable communication
 
