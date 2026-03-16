@@ -98,6 +98,12 @@ def vc_safety (s : VCState) : Prop :=
     s.newLeaderLog ≠ none →
     s.newLeaderLog = some cmd
 
+/-- Auxiliary invariant: accepted_set and the accepted flag agree, and any
+    accepted replica's log matches the proposed command. -/
+def replica_inv (s : VCState) : Prop :=
+  ∀ r, s.accepted_set r = (s.replicas r).accepted ∧
+       ((s.replicas r).accepted = true → (s.replicas r).log = s.proposed)
+
 /-! ### Quorum intersection for 3 replicas -/
 
 theorem majority3_intersect (p₁ p₂ : Replica → Bool)
@@ -116,37 +122,85 @@ theorem majority3_intersect (p₁ p₂ : Replica → Bool)
 
 theorem vc_safety_invariant :
     pred_implies vrSpec.safety [tlafml| □ ⌜vc_safety⌝] := by
+  -- We prove the stronger combined invariant vc_safety ∧ replica_inv
+  suffices h : pred_implies vrSpec.safety [tlafml| □ ⌜fun s => vc_safety s ∧ replica_inv s⌝] by
+    intro e he n
+    exact (h e he n).1
   apply init_invariant
-  · -- Init: newLeaderLog = none, vacuously true
-    intro s ⟨_, _, hnl, _, _⟩ cmd _ _ hne
-    exact absurd hnl hne
+  · -- Init
+    intro s ⟨_, _, hnl, hrep, hacc⟩
+    exact ⟨fun _ _ _ hne => absurd hnl hne,
+           fun r => by simp [hrep r, hacc r]⟩
   · -- Inductive step
-    intro s s' hnext hinv
-    intro cmd hprop haccepted hnewleader
+    intro s s' hnext ⟨hinv_safety, hinv_rep⟩
     rcases hnext with ⟨ho, c, hstep⟩ | ⟨ho, hstep⟩ | hstep
     · -- Normal operation: newLeaderLog stays none
-      obtain ⟨_, _, _, _, _, hnl⟩ := hstep
-      exact absurd hnl hnewleader
+      obtain ⟨_, _, hprop', hrep, hacc, hnl⟩ := hstep
+      refine ⟨fun _ _ _ hne => absurd hnl hne, fun r => ?_⟩
+      constructor
+      · rw [hacc, hrep] ; by_cases hho : ho 0 r = true <;> simp [hho]
+      · intro hr ; rw [hrep] at hr ⊢
+        by_cases hho : ho 0 r = true <;> simp [hho] at hr ⊢; exact hprop'.symm
     · -- View change: apply quorum intersection
       obtain ⟨_, _, hquorum, hpick, hprop', hreplicas, haccepted'⟩ := hstep
-      rw [hprop'] at hprop
-      rw [haccepted'] at haccepted
-      -- Commit quorum: ≥ 2 replicas accepted
-      -- DVC quorum: ≥ 2 replicas sent DoViewChange to new leader
-      obtain ⟨r, hr_acc, hr_dvc⟩ := majority3_intersect
-        (fun r => s.accepted_set r)
-        (fun r => ho r (1 : Replica))
-        haccepted hquorum
-      -- r accepted the command AND is in the DVC quorum.
-      -- The new leader heard from r, saw r.accepted = true,
-      -- and r.log = some cmd. So the new leader picks cmd.
-      -- The detailed argument: r is in heard_accepted, so
-      -- head? of heard_accepted returns some r (or another accepted replica),
-      -- and that replica's log = some cmd.
-      sorry
+      constructor
+      · -- vc_safety for s'
+        intro cmd hprop haccepted hnewleader
+        rw [hprop'] at hprop
+        rw [haccepted'] at haccepted
+        -- Rewrite accepted quorum using replica_inv
+        have haccepted_rep : ((List.finRange 3).filter
+            fun r => (s.replicas r).accepted).length ≥ 2 := by
+          rw [show (fun r => (s.replicas r).accepted) = s.accepted_set from
+            funext (fun r => ((hinv_rep r).1).symm)]
+          exact haccepted
+        -- Quorum intersection
+        obtain ⟨r, hr_acc, hr_dvc⟩ := majority3_intersect
+          (fun r => (s.replicas r).accepted)
+          (fun r => ho r (1 : Replica))
+          haccepted_rep hquorum
+        -- r is in dvc_quorum and heard_accepted
+        have hr_in_dvc : r ∈ (List.finRange 3).filter (fun r => ho r (1 : Replica)) :=
+          List.mem_filter.mpr ⟨List.mem_finRange r, hr_dvc⟩
+        have hr_in_heard : r ∈ ((List.finRange 3).filter (fun r => ho r (1 : Replica))).filter
+            (fun r => (s.replicas r).accepted) :=
+          List.mem_filter.mpr ⟨hr_in_dvc, hr_acc⟩
+        -- heard_accepted is nonempty
+        have hne : ((List.finRange 3).filter (fun r => ho r (1 : Replica))).filter
+            (fun r => (s.replicas r).accepted) ≠ [] :=
+          fun h => absurd (h ▸ hr_in_heard) (List.not_mem_nil)
+        -- Case-split on the list to determine head?
+        -- The hpick hypothesis has a let/match; we need to work with it
+        -- Let's rewrite hpick by examining what heard_accepted.head? equals
+        have : ∃ y ys, ((List.finRange 3).filter (fun r => ho r (1 : Replica))).filter
+            (fun r => (s.replicas r).accepted) = y :: ys := by
+          cases hlist : ((List.finRange 3).filter (fun r => ho r (1 : Replica))).filter
+              (fun r => (s.replicas r).accepted)
+          · exact absurd hlist hne
+          · exact ⟨_, _, rfl⟩
+        obtain ⟨y, ys, hlist⟩ := this
+        -- y is in heard_accepted, so y.accepted = true
+        have hy_mem : y ∈ ((List.finRange 3).filter (fun r => ho r (1 : Replica))).filter
+            (fun r => (s.replicas r).accepted) := hlist ▸ List.Mem.head ys
+        have hy_acc : (s.replicas y).accepted = true := (List.mem_filter.mp hy_mem).2
+        -- y.log = s.proposed = some cmd
+        have hy_log : (s.replicas y).log = some cmd := by
+          rw [(hinv_rep y).2 hy_acc, hprop]
+        -- Now we need to show s'.newLeaderLog = some cmd
+        -- hpick says: match heard_accepted.head? with some r => ... | none => ...
+        -- with hlist, head? = some y, so hpick gives s'.newLeaderLog = (s.replicas y).log
+        -- The tricky part is connecting hpick (which has `let` bindings) to our hlist
+        -- Let's try to simplify hpick using hlist
+        simp only [hlist, List.head?] at hpick
+        rw [hpick, hy_log]
+      · -- replica_inv preserved
+        intro r
+        have ⟨h1, h2⟩ := hinv_rep r
+        exact ⟨by rw [haccepted', hreplicas]; exact h1,
+               fun hr => by rw [hreplicas] at hr ⊢; rw [hprop']; exact h2 hr⟩
     · -- Done: state unchanged, use IH
       obtain ⟨_, heq⟩ := hstep
       subst heq
-      exact hinv cmd hprop haccepted hnewleader
+      exact ⟨hinv_safety, hinv_rep⟩
 
 end VRViewChange
