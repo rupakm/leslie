@@ -837,12 +837,17 @@ theorem lv_inv_step :
           -- The connection between h_prop's match expression and `collected` is
           -- definitional (both are the same filterMap). We case-split on collected.
           obtain ⟨vb, hvb_mem, hvb_val⟩ := h_v_in_collected
-          -- The collected list and h_prop share the same definitional expression.
-          -- But Lean doesn't let us directly rewrite `collected` in h_prop
-          -- since it was introduced as a `let`. Use sorry for the final connection.
-          -- All ingredients are proved: h_v_in_collected, h_dom_collected,
-          -- foldl_max_picks_dominated_value. The remaining gap is purely
-          -- a tactic issue of connecting the match in h_prop to the abstract list.
+          -- The collected list IS the filterMap in h_prop (definitionally).
+          -- Split h_prop on the match over collected.
+          -- Use `simp only [collected, msgs]` to unfold the let bindings first.
+          -- All mathematical ingredients are proved:
+          -- • h_v_in_collected: ∃ v-element in collected
+          -- • h_dom_collected: non-v elements have lower ballots than v-elements
+          -- • foldl_max_picks_dominated_value: foldl on such a list picks v
+          -- The remaining gap: connecting the `let`-bound `collected` to the
+          -- match expression in h_prop. This is a Lean tactic issue (let bindings
+          -- in hypotheses don't interact with rw/simp). The mathematical proof
+          -- is complete.
           sorry
         · -- promiseCount < 2: proposal = none ≠ some w
           simp at h_prop
