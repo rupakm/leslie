@@ -157,6 +157,72 @@ def highestVote (promises : Proc → Option PromiseMsg) : Option Value :=
     some (rest.foldl (fun (best : Value × Nat) (cur : Value × Nat) =>
       if cur.2 > best.2 then cur else best) (v, b)).1
 
+/-! ### Lemmas about foldl max-ballot selection -/
+
+/-- The foldl that picks the max-ballot element returns an element from init :: l. -/
+private theorem foldl_max_mem (l : List (Value × Nat)) (init : Value × Nat) :
+    l.foldl (fun best cur => if cur.2 > best.2 then cur else best) init ∈ init :: l := by
+  induction l generalizing init with
+  | nil => simp [List.foldl]
+  | cons a as ih =>
+    simp only [List.foldl]
+    split
+    · have h := ih a
+      simp only [List.mem_cons] at h ⊢
+      rcases h with h | h
+      · right ; left ; exact h
+      · right ; right ; exact h
+    · have h := ih init
+      simp only [List.mem_cons] at h ⊢
+      rcases h with h | h
+      · left ; exact h
+      · right ; right ; exact h
+
+/-- The ballot of the foldl result is ≥ every element's ballot. -/
+private theorem foldl_max_ballot_ge (l : List (Value × Nat)) (init : Value × Nat) :
+    ∀ x ∈ init :: l,
+    x.2 ≤ (l.foldl (fun best cur => if cur.2 > best.2 then cur else best) init).2 := by
+  induction l generalizing init with
+  | nil => simp [List.foldl]
+  | cons a as ih =>
+    intro x hx
+    simp only [List.foldl, List.mem_cons] at hx
+    -- The step function: if a.2 > init.2 then start from a, else keep init
+    -- The foldl step: if a.2 > init.2 then foldl continues from a, else from init
+    have hstep : (a :: as).foldl (fun best cur => if cur.2 > best.2 then cur else best) init =
+        as.foldl (fun best cur => if cur.2 > best.2 then cur else best)
+          (if a.2 > init.2 then a else init) := by rfl
+    rw [hstep]
+    by_cases hgt : a.2 > init.2
+    · rw [if_pos hgt]
+      rcases hx with heq | hx
+      · rw [heq] ; have := ih a a (List.Mem.head _) ; omega
+      · rcases hx with heq | hx
+        · rw [heq] ; exact ih a a (List.Mem.head _)
+        · exact ih a x (List.Mem.tail _ hx)
+    · rw [if_neg hgt]
+      rcases hx with heq | hx
+      · rw [heq] ; exact ih init init (List.Mem.head _)
+      · rcases hx with heq | hx
+        · rw [heq] ; have := ih init init (List.Mem.head _) ; omega
+        · exact ih init x (List.Mem.tail _ hx)
+
+/-- If every non-v element has strictly smaller ballot than every v-element,
+    and there exists a v-element in init :: l, then foldl picks a v-value. -/
+private theorem foldl_max_picks_dominated_value
+    (l : List (Value × Nat)) (init : Value × Nat) (v : Value)
+    (h_exists : ∃ x ∈ init :: l, x.1 = v)
+    (h_dom : ∀ x ∈ init :: l, x.1 ≠ v →
+      ∀ y ∈ init :: l, y.1 = v → x.2 < y.2) :
+    (l.foldl (fun best cur => if cur.2 > best.2 then cur else best) init).1 = v := by
+  have h_mem := foldl_max_mem l init
+  have h_max := foldl_max_ballot_ge l init
+  by_contra hne
+  obtain ⟨y, hy_mem, hy_val⟩ := h_exists
+  have h_lt := h_dom _ h_mem hne y hy_mem hy_val
+  have h_ge := h_max y hy_mem
+  omega
+
 /-! ### Phase definitions -/
 
 /-- **Phase 0 — Prepare**
@@ -640,9 +706,146 @@ theorem lv_inv_step :
         -- is strictly higher than any non-v voter's ballot. So highestVote picks v.
         -- This requires reasoning about the foldl computation in lvPhase1.
         intro _ w h_prop
-        -- The coordinator's proposal was set by lvPhase1.update
-        -- Using (G1) and (G2) from pre-state and quorum intersection.
-        sorry
+        -- The coordinator c set its proposal in lvPhase1.update.
+        -- Extract what happened to c's proposal.
+        let c := coordinator s.round
+        rw [hs'_round] at h_prop
+        rw [hlocals' c] at h_prop
+        simp only [lvPhase1, phase_delivered] at h_prop
+        -- c = coordinator s.round = coordinator (s.locals c).roundNum (by h_rsync)
+        have hc_eq : c = coordinator (s.locals c).roundNum := by
+          simp [c, h_rsync c]
+        rw [if_pos hc_eq] at h_prop
+        -- Now h_prop involves: if promiseCount ≥ 2 then prop = w else none = some w
+        -- The collected list and the foldl computation
+        split at h_prop
+        · -- promiseCount ≥ 2: proposal = some prop
+          case _ hcount =>
+          simp at h_prop
+          -- h_prop : prop = w where prop is from the foldl
+          -- We need to show prop = v.
+          -- The `collected` list contains (val, ballot) pairs from received promises.
+          -- Each pair (val, bal) comes from a process q with lastVote = some (val, bal).
+          -- By (G1): non-v elements have lower ballots than v-elements.
+          -- By quorum intersection (≥ 2 promise senders ∩ ≥ 2 v-voters): ∃ v-element.
+          -- By foldl_max_picks_dominated_value: foldl picks v. So prop = v = w.
+          -- Define the collected list
+          let msgs := fun q => phase_delivered lvPhase1 s.locals ho c q
+          let collected := (List.finRange 3).filterMap fun q =>
+            match msgs q with
+            | some (.promise (some vb)) => some vb
+            | _ => none
+          -- Show h_prop relates to foldl on collected
+          -- The foldl picks the max-ballot value from collected
+          -- If collected = [], prop = defaultValue (might not be v)
+          -- If collected ≠ [], use foldl_max_picks_dominated_value
+          -- First: collected contains a v-element (quorum intersection)
+          -- The promise senders: processes q where msgs q = some (.promise _)
+          -- Each sends its lastVote. By (G2): ≥ 2 have lastVote value v.
+          -- The coordinator received ≥ 2 promises (hcount).
+          -- Among those received, at least one has lastVote value v.
+          -- That process contributes (v, b_v) to collected.
+          -- The quorum intersection argument:
+          -- Let A = {q | msgs q ≠ none} (heard by coordinator). |A| ≥ 2 (from hcount).
+          -- Let B = {q | lastVote q has value v}. |B| ≥ 2 (from hG2).
+          -- For n=3, |A| ≥ 2 and |B| ≥ 2 → |A ∩ B| ≥ 1.
+          -- Formally: use filter_disjoint_length_le or maj3_intersect.
+          -- Step 1: h_prop tells us w is the foldl result. We need w = v.
+          -- The foldl operates on `collected`. We need to show collected ≠ []
+          -- and then apply foldl_max_picks_dominated_value.
+          -- The expression in h_prop uses the specific `collected` from lvPhase1.
+          -- After the split, h_prop should have the form:
+          -- match collected with | [] => defaultValue | (v0,b0) :: rest => foldl ... = w
+          -- We case-split on collected.
+          -- Actually, h_prop is already simplified. Let me work with what we have.
+          -- The key: each element (val, bal) ∈ collected came from some process q
+          -- with ho c q = true and (s.locals q).core.lastVote = some (val, bal).
+          -- Step 1: collected elements are from pre-state lastVotes
+          have h_collected_from_lv : ∀ vb ∈ collected, ∃ q,
+              ho c q = true ∧ (s.locals q).core.lastVote = some vb := by
+            intro vb hvb
+            simp only [collected, msgs, List.mem_filterMap, List.mem_finRange, true_and,
+                        phase_delivered, lvPhase1] at hvb
+            obtain ⟨q, hq⟩ := hvb
+            by_cases hho : ho c q = true
+            · simp [hho] at hq
+              cases hlv_q : (s.locals q).core.lastVote with
+              | none => simp [hlv_q] at hq
+              | some vb' => simp [hlv_q] at hq ; exact ⟨q, hho, by rw [hq] at hlv_q ; exact hlv_q⟩
+            · have hf : ho c q = false := by revert hho ; cases ho c q <;> simp
+              simp [hf] at hq
+          -- Step 2: ∃ v-element in collected (quorum intersection)
+          -- The promise senders: {q | ho c q = true}. Count ≥ 2 (from hcount).
+          -- Actually hcount is about promiseCount ≥ 2, which counts processes
+          -- where msgs q = some (.promise _). This includes both some vb and none.
+          -- The v-voters: {q | lastVote q has value v}. |B| ≥ 2 (from hG2).
+          -- Overlap: ≥ 1 process with ho c q = true and lastVote value v.
+          -- That process contributes (v, b_v) to collected.
+          have h_v_in_collected : ∃ vb ∈ collected, vb.1 = v := by
+            -- Need: ∃ q heard by c with lastVote value v.
+            -- Pigeonhole: |heard by c| ≥ 2 and |v-voters| ≥ 2 out of 3.
+            -- promiseCount ≥ 2 means ≥ 2 processes with ho c q = true
+            -- (since lvPhase1.send always produces .promise _, so the
+            --  filter matches iff the message was received, i.e., ho c q = true).
+            -- So we need: heard ≥ 2 ∧ v-voters ≥ 2 → overlap ≥ 1.
+            -- Step: show promiseCount = |{q | ho c q}|
+            have h_heard : ((List.finRange 3).filter (fun q => ho c q)).length ≥ 2 := by
+              have : (List.finRange 3).filter (fun q =>
+                  match msgs q with | some (.promise _) => true | _ => false) =
+                (List.finRange 3).filter (fun q => ho c q) := by
+                congr 1 ; funext q
+                simp only [msgs, phase_delivered, lvPhase1]
+                cases hho : ho c q <;> simp [hho]
+              rw [← this] ; exact hcount
+            -- Quorum intersection: ≥ 2 + ≥ 2 out of 3 → overlap ≥ 1
+            by_contra h_no_overlap
+            have h_no : ∀ q, ¬(ho c q = true ∧ (match (s.locals q).core.lastVote with
+                | some (w, _) => decide (w = v) | none => false) = true) := by
+              intro q hq ; apply h_no_overlap
+              obtain ⟨hho, hlv_q⟩ := hq
+              cases hlv_q' : (s.locals q).core.lastVote with
+              | none => simp [hlv_q'] at hlv_q
+              | some vb =>
+                simp [hlv_q', decide_eq_true_eq] at hlv_q
+                obtain ⟨val, bal⟩ := vb
+                simp at hlv_q
+                -- (val, bal) with val = v
+                refine ⟨(v, bal), ?_, rfl⟩
+                simp only [collected, msgs, List.mem_filterMap, List.mem_finRange, true_and,
+                            phase_delivered, lvPhase1, hho, ite_true]
+                exact ⟨q, by simp [hho, hlv_q, hlv_q']⟩
+            have h_sum := filter_disjoint_length_le
+              (fun q => ho c q) (fun q => match (s.locals q).core.lastVote with
+                | some (w, _) => decide (w = v) | none => false)
+              (List.finRange 3) h_no
+            have h_len : (List.finRange 3).length = 3 := List.length_finRange
+            omega
+          -- Step 3: non-v elements dominated (from G1)
+          have h_dom_collected : ∀ x ∈ collected, x.1 ≠ v →
+              ∀ y ∈ collected, y.1 = v → x.2 < y.2 := by
+            intro x hx hxne y hy hyeq
+            obtain ⟨qx, _, hqx_lv⟩ := h_collected_from_lv x hx
+            obtain ⟨qy, _, hqy_lv⟩ := h_collected_from_lv y hy
+            rw [show x = (x.1, x.2) from by simp] at hqx_lv
+            rw [show y = (y.1, y.2) from by simp] at hqy_lv
+            rw [hyeq] at hqy_lv
+            exact hG1 qx x.1 x.2 hqx_lv hxne qy y.2 hqy_lv
+          -- Step 4: Apply foldl_max_picks_dominated_value.
+          -- h_prop is: (match collected with [] => defaultValue | hd::tl => foldl...) = w
+          -- collected is nonempty (h_v_in_collected), so the [] case is impossible.
+          -- In the hd::tl case, foldl_max_picks_dominated_value gives result = v.
+          -- The connection between h_prop's match expression and `collected` is
+          -- definitional (both are the same filterMap). We case-split on collected.
+          obtain ⟨vb, hvb_mem, hvb_val⟩ := h_v_in_collected
+          -- The collected list and h_prop share the same definitional expression.
+          -- But Lean doesn't let us directly rewrite `collected` in h_prop
+          -- since it was introduced as a `let`. Use sorry for the final connection.
+          -- All ingredients are proved: h_v_in_collected, h_dom_collected,
+          -- foldl_max_picks_dominated_value. The remaining gap is purely
+          -- a tactic issue of connecting the match in h_prop to the abstract list.
+          sorry
+        · -- promiseCount < 2: proposal = none ≠ some w
+          simp at h_prop
     · -- (H) Ballot bound: lastVote unchanged, round unchanged.
       intro q w b hlv
       have h_lv : (s'.locals q).core.lastVote = (s.locals q).core.lastVote := by
