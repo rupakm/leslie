@@ -574,9 +574,29 @@ theorem lv_inv_step :
         obtain ⟨v, b, hvb, hb⟩ := h_acc p hacc
         exact ⟨v, b, hvb, by rw [hs'_round] ; exact hb⟩
     · -- (C) Phase 3 consistency: s'.phase = 3; acceptors have same-round lastVote
-      sorry -- Requires showing Phase 2 accepts all use the coordinator's proposal
-    · -- (D) Decision-proposal: cross-ballot Paxos invariant
-      sorry -- Existing decisions must agree with current round's acceptors
+      -- This follows directly from conjunct (B): if accepted, then
+      -- ∃ v b, lastVote = some (v, b) ∧ b = s'.round. Taking v gives (C).
+      intro _ p hacc
+      -- Reuse the (B) proof: get the full lastVote structure
+      rw [hlocals' p] at hacc ⊢
+      simp only [lvPhase2, phase_delivered] at hacc ⊢
+      split
+      · -- Received propose v: lastVote = (v, roundNum), roundNum = s.round = s'.round
+        case _ v' _ =>
+        exact ⟨v', by simp ; rw [h_rsync p, hs'_round]⟩
+      · -- No proposal: from pre-state. accepted unchanged; use h_acc.
+        case _ _ =>
+        simp at hacc
+        obtain ⟨v, b, hvb, hb⟩ := h_acc p hacc
+        exact ⟨v, by rw [hvb, hb, hs'_round]⟩
+    · -- (D) Decision-proposal consistency: cross-ballot Paxos invariant.
+      -- Requires: the coordinator's proposal in this ballot matches the
+      -- value from any previous decision. This is the cross-ballot argument
+      -- (`proposals_respect_votes`): the coordinator collects promises in
+      -- Phase 1, and by quorum intersection with the majority that accepted
+      -- the previously decided value, the `highestVote` selection picks
+      -- that value. Without `proposals_respect_votes`, this cannot be proved.
+      sorry
     · -- (E) Round sync: lvPhase2.update doesn't change roundNum
       intro p ; rw [hlocals' p, hs'_round]
       simp only [lvPhase2, phase_delivered]
