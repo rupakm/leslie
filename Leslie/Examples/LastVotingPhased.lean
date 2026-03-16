@@ -553,7 +553,26 @@ theorem lv_inv_step :
       rw [h_dec p] at hv ; rw [h_dec q] at hw
       exact h_agree p q v w hv hw
     · -- (B) Accepted: if accepted in s', lastVote matches current round
-      sorry -- Phase 2 accept sets lastVote = (v, round); pre-state accepts have lastVote from IH
+      -- Two cases: (1) newly accepted in Phase 2 → lastVote = (v, roundNum)
+      --            (2) already accepted before → from pre-state IH
+      intro p hacc
+      rw [hlocals' p] at hacc
+      simp only [lvPhase2, phase_delivered] at hacc
+      -- Case split: did p receive a proposal from the coordinator?
+      rw [hlocals' p]
+      simp only [lvPhase2, phase_delivered]
+      split
+      · -- Received propose v from coordinator: lastVote = (v, roundNum), accepted = true
+        -- roundNum = s.round (by h_rsync), s.round = s'.round (by hs'_round)
+        case _ v' _ =>
+        exact ⟨v', (s.locals p).roundNum,
+               by simp [lvPhase2, phase_delivered],
+               by rw [hs'_round, h_rsync p]⟩
+      · -- No proposal: state unchanged, use pre-state IH
+        case _ _ =>
+        simp at hacc
+        obtain ⟨v, b, hvb, hb⟩ := h_acc p hacc
+        exact ⟨v, b, hvb, by rw [hs'_round] ; exact hb⟩
     · -- (C) Phase 3 consistency: s'.phase = 3; acceptors have same-round lastVote
       sorry -- Requires showing Phase 2 accepts all use the coordinator's proposal
     · -- (D) Decision-proposal: cross-ballot Paxos invariant
