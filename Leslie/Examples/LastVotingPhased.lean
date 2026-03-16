@@ -1222,7 +1222,42 @@ theorem lv_inv_step :
       -- So (G1): non-v ballot < v ballot. (G2): ≥ 2 v-voters.
       -- (G3): s'.phase = 0, val < 2. Vacuous.
       -- For old decisions: (G) from pre-state + lastVote unchanged.
-      sorry
+      -- Case split on decided: old (from s) or new (from this phase 3 step)
+      split at hv
+      · -- hasMaj3 branch
+        case _ hmaj =>
+        split at hv
+        · -- New decision: v = head? of accepted values
+          case _ v' hhead =>
+          simp at hv ; subst hv
+          -- Need (G) for the newly decided value v'
+          -- v' came from head? of accepted messages.
+          -- By (F), all accepted have same value. By (C), accepted → lastVote = (val, round).
+          -- So all accepted have lastVote = (v', round).
+          -- For (G1): non-v' votes have ballot < s.round (by H, ballot ≤ s.round,
+          --   and non-v' means not from phase 2 accept, so ballot < s.round since
+          --   phase 3 is at round s.round and accepted processes have ballot = s.round).
+          -- For (G2): ≥ 2 accepted (hasMaj3) → ≥ 2 have value v'.
+          -- For (G3): s'.phase = 0, val < 2. Vacuous.
+          sorry -- Phase 3→0 new decision cross-ballot
+        · -- decidedVal = none: old decision preserved
+          simp at hv
+          obtain ⟨hG1, hG2, hG3⟩ := h_cross p v hv
+          exact ⟨fun q₁ w b₁ hlv₁ hw q₂ b₂ hlv₂ => hG1 q₁ w b₁ (by rwa [h_lv q₁] at hlv₁) hw q₂ b₂ (by rwa [h_lv q₂] at hlv₂),
+                 by have : (List.finRange 3).filter (fun q => match (s'.locals q).core.lastVote with | some (w, _) => decide (w = v) | none => false) =
+                      (List.finRange 3).filter (fun q => match (s.locals q).core.lastVote with | some (w, _) => decide (w = v) | none => false) := by
+                      congr 1 ; funext q ; simp [h_lv q]
+                    rw [this] ; exact hG2,
+                 fun hph_ge2 => by simp [show s'.phase = ⟨0, by omega⟩ from by simp [hph3] at hadvance ; exact hadvance.2] at hph_ge2⟩
+      · -- no majority: old decision preserved
+        simp at hv
+        obtain ⟨hG1, hG2, hG3⟩ := h_cross p v hv
+        exact ⟨fun q₁ w b₁ hlv₁ hw q₂ b₂ hlv₂ => hG1 q₁ w b₁ (by rwa [h_lv q₁] at hlv₁) hw q₂ b₂ (by rwa [h_lv q₂] at hlv₂),
+               by have : (List.finRange 3).filter (fun q => match (s'.locals q).core.lastVote with | some (w, _) => decide (w = v) | none => false) =
+                    (List.finRange 3).filter (fun q => match (s.locals q).core.lastVote with | some (w, _) => decide (w = v) | none => false) := by
+                    congr 1 ; funext q ; simp [h_lv q]
+                  rw [this] ; exact hG2,
+               fun hph_ge2 => by simp [show s'.phase = ⟨0, by omega⟩ from by simp [hph3] at hadvance ; exact hadvance.2] at hph_ge2⟩
     · -- (H) Ballot bound: lastVote unchanged, round incremented.
       -- b ≤ s.round < s.round + 1 = s'.round
       intro q w b hlv
