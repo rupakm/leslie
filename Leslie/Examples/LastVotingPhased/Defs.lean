@@ -299,6 +299,21 @@ def lvPhase0 : Phase Proc LVState LVMsg where
         accepted := false
         proposal := if p = c then none else s.core.proposal } }
 
+/-- Collect (value, ballot) pairs from received promise messages. -/
+def collectPromiseVotes (msgs : Proc → Option LVMsg) : List (Value × Nat) :=
+  (List.finRange 3).filterMap fun q =>
+    match msgs q with
+    | some (.promise (some vb)) => some vb
+    | _ => none
+
+/-- Pick the proposal value from collected promise votes:
+    the value with the highest ballot, or `defaultValue` if empty. -/
+def pickProposal (collected : List (Value × Nat)) : Value :=
+  match collected with
+  | [] => defaultValue
+  | (v, b) :: rest =>
+    (rest.foldl (fun best cur => if cur.2 > best.2 then cur else best) (v, b)).1
+
 def lvPhase1 : Phase Proc LVState LVMsg where
   send := fun _p s => .promise s.core.lastVote
   update := fun p s msgs =>
@@ -306,15 +321,7 @@ def lvPhase1 : Phase Proc LVState LVMsg where
       let promiseCount := (List.finRange 3).filter (fun q =>
         match msgs q with | some (.promise _) => true | _ => false) |>.length
       if promiseCount ≥ 2 then
-        let collected := (List.finRange 3).filterMap fun q =>
-          match msgs q with
-          | some (.promise (some vb)) => some vb
-          | _ => none
-        let prop := match collected with
-          | [] => defaultValue
-          | (v, b) :: rest =>
-            (rest.foldl (fun best cur => if cur.2 > best.2 then cur else best) (v, b)).1
-        { s with core := { s.core with proposal := some prop } }
+        { s with core := { s.core with proposal := some (pickProposal (collectPromiseVotes msgs)) } }
       else { s with core := { s.core with proposal := none } }
     else s
 
@@ -380,5 +387,89 @@ def lvSpec : PhaseRoundSpec Proc LVState 4 LVMsgs where
 def lvLeslieSpec : Spec (PhaseRoundState Proc LVState 4) :=
   lvSpec.toSpec (by omega)
 
+
+/-! ### Lemmas about foldl max-ballot selection -/
+
+/-- The foldl that picks the max-ballot element returns an element from init :: l. -/
+theorem foldl_max_mem (l : List (Value × Nat)) (init : Value × Nat) :
+    l.foldl (fun best cur => if cur.2 > best.2 then cur else best) init ∈ init :: l := by
+  induction l generalizing init with
+  | nil => simp [List.foldl]
+  | cons a as ih =>
+    simp only [List.foldl]
+    split
+    · have h := ih a
+      simp only [List.mem_cons] at h ⊢
+      rcases h with h | h
+      · right ; left ; exact h
+      · right ; right ; exact h
+    · have h := ih init
+      simp only [List.mem_cons] at h ⊢
+      rcases h with h | h
+      · left ; exact h
+      · right ; right ; exact h
+
+/-- The ballot of the foldl result is ≥ every element's ballot. -/
+theorem foldl_max_ballot_ge (l : List (Value × Nat)) (init : Value × Nat) :
+    ∀ x ∈ init :: l,
+    x.2 ≤ (l.foldl (fun best cur => if cur.2 > best.2 then cur else best) init).2 := by
+  induction l generalizing init with
+  | nil => simp [List.foldl]
+  | cons a as ih =>
+    intro x hx
+    simp only [List.mem_cons] at hx
+    -- The step function: if a.2 > init.2 then start from a, else keep init
+    -- The foldl step: if a.2 > init.2 then foldl continues from a, else from init
+    have hstep : (a :: as).foldl (fun best cur => if cur.2 > best.2 then cur else best) init =
+        as.foldl (fun best cur => if cur.2 > best.2 then cur else best)
+          (if a.2 > init.2 then a else init) := by rfl
+    rw [hstep]
+    by_cases hgt : a.2 > init.2
+    · rw [if_pos hgt]
+      rcases hx with heq | hx
+      · rw [heq] ; have := ih a a (List.Mem.head _) ; omega
+      · rcases hx with heq | hx
+        · rw [heq] ; exact ih a a (List.Mem.head _)
+        · exact ih a x (List.Mem.tail _ hx)
+    · rw [if_neg hgt]
+      rcases hx with heq | hx
+      · rw [heq] ; exact ih init init (List.Mem.head _)
+      · rcases hx with heq | hx
+        · rw [heq] ; have := ih init init (List.Mem.head _) ; omega
+        · exact ih init x (List.Mem.tail _ hx)
+
+/-- If every non-v element has strictly smaller ballot than every v-element,
+    and there exists a v-element in init :: l, then foldl picks a v-value. -/
+theorem foldl_max_picks_dominated_value
+    (l : List (Value × Nat)) (init : Value × Nat) (v : Value)
+    (h_exists : ∃ x ∈ init :: l, x.1 = v)
+    (h_dom : ∀ x ∈ init :: l, x.1 ≠ v →
+      ∀ y ∈ init :: l, y.1 = v → x.2 < y.2) :
+    (l.foldl (fun best cur => if cur.2 > best.2 then cur else best) init).1 = v := by
+  have h_mem := foldl_max_mem l init
+  have h_max := foldl_max_ballot_ge l init
+  by_contra hne
+  obtain ⟨y, hy_mem, hy_val⟩ := h_exists
+  have h_lt := h_dom _ h_mem hne y hy_mem hy_val
+  have h_ge := h_max y hy_mem
+  omega
+
+/-- If there exists a v-element at ballot ≥ b_safe and all non-v elements
+    have ballot < b_safe, then foldl picks a v-value.
+    This is a weaker precondition than `foldl_max_picks_dominated_value`
+    (uses a "gap" at b_safe instead of pairwise domination) and is needed
+    for the general-n Paxos proof where pairwise domination doesn't hold. -/
+theorem foldl_max_picks_safe_value
+    (l : List (Value × Nat)) (init : Value × Nat) (v : Value) (b_safe : Nat)
+    (h_exists : ∃ x ∈ init :: l, x.1 = v ∧ x.2 ≥ b_safe)
+    (h_below : ∀ x ∈ init :: l, x.1 ≠ v → x.2 < b_safe) :
+    (l.foldl (fun best cur => if cur.2 > best.2 then cur else best) init).1 = v := by
+  have h_mem := foldl_max_mem l init
+  have h_max := foldl_max_ballot_ge l init
+  by_contra hne
+  obtain ⟨y, hy_mem, hy_val, hy_ge⟩ := h_exists
+  have h_below_r := h_below _ h_mem hne
+  have h_ge := h_max y hy_mem
+  omega
 
 end LastVotingPhased

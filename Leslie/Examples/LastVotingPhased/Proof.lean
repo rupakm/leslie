@@ -10,71 +10,7 @@ open TLA
 
 namespace LastVotingPhased
 
-/-! ### Lemmas about foldl max-ballot selection -/
-
-/-- The foldl that picks the max-ballot element returns an element from init :: l. -/
-private theorem foldl_max_mem (l : List (Value × Nat)) (init : Value × Nat) :
-    l.foldl (fun best cur => if cur.2 > best.2 then cur else best) init ∈ init :: l := by
-  induction l generalizing init with
-  | nil => simp [List.foldl]
-  | cons a as ih =>
-    simp only [List.foldl]
-    split
-    · have h := ih a
-      simp only [List.mem_cons] at h ⊢
-      rcases h with h | h
-      · right ; left ; exact h
-      · right ; right ; exact h
-    · have h := ih init
-      simp only [List.mem_cons] at h ⊢
-      rcases h with h | h
-      · left ; exact h
-      · right ; right ; exact h
-
-/-- The ballot of the foldl result is ≥ every element's ballot. -/
-private theorem foldl_max_ballot_ge (l : List (Value × Nat)) (init : Value × Nat) :
-    ∀ x ∈ init :: l,
-    x.2 ≤ (l.foldl (fun best cur => if cur.2 > best.2 then cur else best) init).2 := by
-  induction l generalizing init with
-  | nil => simp [List.foldl]
-  | cons a as ih =>
-    intro x hx
-    simp only [List.mem_cons] at hx
-    -- The step function: if a.2 > init.2 then start from a, else keep init
-    -- The foldl step: if a.2 > init.2 then foldl continues from a, else from init
-    have hstep : (a :: as).foldl (fun best cur => if cur.2 > best.2 then cur else best) init =
-        as.foldl (fun best cur => if cur.2 > best.2 then cur else best)
-          (if a.2 > init.2 then a else init) := by rfl
-    rw [hstep]
-    by_cases hgt : a.2 > init.2
-    · rw [if_pos hgt]
-      rcases hx with heq | hx
-      · rw [heq] ; have := ih a a (List.Mem.head _) ; omega
-      · rcases hx with heq | hx
-        · rw [heq] ; exact ih a a (List.Mem.head _)
-        · exact ih a x (List.Mem.tail _ hx)
-    · rw [if_neg hgt]
-      rcases hx with heq | hx
-      · rw [heq] ; exact ih init init (List.Mem.head _)
-      · rcases hx with heq | hx
-        · rw [heq] ; have := ih init init (List.Mem.head _) ; omega
-        · exact ih init x (List.Mem.tail _ hx)
-
-/-- If every non-v element has strictly smaller ballot than every v-element,
-    and there exists a v-element in init :: l, then foldl picks a v-value. -/
-private theorem foldl_max_picks_dominated_value
-    (l : List (Value × Nat)) (init : Value × Nat) (v : Value)
-    (h_exists : ∃ x ∈ init :: l, x.1 = v)
-    (h_dom : ∀ x ∈ init :: l, x.1 ≠ v →
-      ∀ y ∈ init :: l, y.1 = v → x.2 < y.2) :
-    (l.foldl (fun best cur => if cur.2 > best.2 then cur else best) init).1 = v := by
-  have h_mem := foldl_max_mem l init
-  have h_max := foldl_max_ballot_ge l init
-  by_contra hne
-  obtain ⟨y, hy_mem, hy_val⟩ := h_exists
-  have h_lt := h_dom _ h_mem hne y hy_mem hy_val
-  have h_ge := h_max y hy_mem
-  omega
+/-! ### N=3 specific lemmas -/
 
 /-- In a 3-process system, if two distinct processes are not in the filtered
     set, then that set has size at most 1. -/
@@ -430,10 +366,7 @@ theorem lv_inv_step :
           -- By foldl_max_picks_dominated_value: foldl picks v. So prop = v = w.
           -- Define the collected list
           let msgs := fun q => phase_delivered lvPhase1 s.locals ho c q
-          let collected := (List.finRange 3).filterMap fun q =>
-            match msgs q with
-            | some (.promise (some vb)) => some vb
-            | _ => none
+          let collected := collectPromiseVotes msgs
           -- Show h_prop relates to foldl on collected
           -- The foldl picks the max-ballot value from collected
           -- If collected = [], prop = defaultValue (might not be v)
@@ -463,8 +396,8 @@ theorem lv_inv_step :
           have h_collected_from_lv : ∀ vb ∈ collected, ∃ q,
               ho c q = true ∧ (s.locals q).core.lastVote = some vb := by
             intro vb hvb
-            simp only [collected, msgs, List.mem_filterMap, List.mem_finRange, true_and,
-                        phase_delivered, lvPhase1] at hvb
+            simp only [collected, collectPromiseVotes, msgs, List.mem_filterMap,
+                        List.mem_finRange, true_and, phase_delivered, lvPhase1] at hvb
             obtain ⟨q, hq⟩ := hvb
             by_cases hho : ho c q = true
             · simp [hho] at hq
@@ -510,8 +443,8 @@ theorem lv_inv_step :
                 simp at hlv_q
                 -- (val, bal) with val = v
                 refine ⟨(v, bal), ?_, rfl⟩
-                simp only [collected, msgs, List.mem_filterMap, List.mem_finRange, true_and,
-                            phase_delivered, lvPhase1]
+                simp only [collected, collectPromiseVotes, msgs, List.mem_filterMap,
+                            List.mem_finRange, true_and, phase_delivered, lvPhase1]
                 exact ⟨q, by simp [hho, hlv_q, hlv_q']⟩
             have h_sum := filter_disjoint_length_le
               (fun q => ho c q) (fun q => match (s.locals q).core.lastVote with
@@ -536,38 +469,29 @@ theorem lv_inv_step :
           -- The connection between h_prop's match expression and `collected` is
           -- definitional (both are the same filterMap). We case-split on collected.
           obtain ⟨vb, hvb_mem, hvb_val⟩ := h_v_in_collected
-          let raw : List (Value × Nat) := (List.finRange 3).filterMap fun q =>
-            match if ho c q = true then some (LVMsg.promise (s.locals q).core.lastVote) else none with
-            | some (.promise (some vb)) => some vb
-            | _ => none
-          have hraw_eq : raw = collected := by
-            simp [raw, collected, msgs, phase_delivered, lvPhase1]
-          cases hraw : raw with
-          | nil =>
-            have hcol_nil : collected = [] := by simpa [hraw_eq] using hraw
-            simp [hcol_nil] at hvb_mem
+          -- Case split on collected (= collectPromiseVotes msgs)
+          cases hcol : collected with
+          | nil => simp [hcol] at hvb_mem
           | cons init rest =>
-            have hcol_cons : collected = init :: rest := by simpa [hraw_eq] using hraw
-            have h_exists : ∃ x ∈ init :: rest, x.1 = v := by
-              exact ⟨vb, by simpa [hcol_cons] using hvb_mem, hvb_val⟩
+            have h_exists : ∃ x ∈ init :: rest, x.1 = v :=
+              ⟨vb, hcol ▸ hvb_mem, hvb_val⟩
             have h_dom : ∀ x ∈ init :: rest, x.1 ≠ v →
                 ∀ y ∈ init :: rest, y.1 = v → x.2 < y.2 := by
               intro x hx hxne y hy hyeq
-              exact h_dom_collected x (by simpa [hcol_cons] using hx) hxne y
-                (by simpa [hcol_cons] using hy) hyeq
+              exact h_dom_collected x (hcol ▸ hx) hxne y (hcol ▸ hy) hyeq
             have hpick_v :
                 (rest.foldl (fun best cur => if cur.2 > best.2 then cur else best) init).1 = v :=
               foldl_max_picks_dominated_value rest init v h_exists h_dom
+            -- h_prop says pickProposal collected = w. Unfold pickProposal with hcol.
+            have hpick_w : pickProposal collected = w := by
+              simp only [lvPhase1, collectPromiseVotes, pickProposal] at h_prop
+              exact h_prop
+            rw [hcol, pickProposal] at hpick_w
+            -- hpick_w : foldl ... = w, hpick_v : foldl ... = v
+            -- The foldl uses `cur.2 > best.2` while hpick_w may use `best.2 < cur.2`
             have hpick_v' :
                 (rest.foldl (fun best cur => if best.2 < cur.2 then cur else best) init).1 = v := by
               simpa [gt_iff_lt] using hpick_v
-            have hpick_w :
-                (rest.foldl (fun best cur => if best.2 < cur.2 then cur else best) init).1 = w := by
-              -- This step was `simpa [raw, hraw] using h_prop` before the file split.
-              -- Cross-module let-binding opacity prevents simp from bridging
-              -- the definitional equality between `raw` and `collected` (inside lvPhase1).
-              -- The proof is sound — both expressions reduce to the same term.
-              sorry
             exact hpick_w.symm.trans hpick_v'
         · -- promiseCount < 2: proposal = none ≠ some w
           simp at h_prop
