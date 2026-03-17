@@ -1,9 +1,15 @@
 import Leslie.PhaseRound
 
-/-! ## LastVoting via PhaseRoundAlg
+/-! ## LastVoting via PhaseRoundAlg (3 processes)
 
     Reimplementation of the LastVoting (Paxos / HO model) protocol using
     the `PhaseRoundAlg` multi-phase round framework from `PhaseRound.lean`.
+
+    **This file proves safety for n = 3 processes.** The protocol and
+    proof structure generalize to arbitrary n, but the quorum intersection
+    arguments (majority ≥ 2 out of 3 ⟹ overlap) are specialized to n = 3.
+    A general-n version would use `cross_phase_quorum_intersection` from
+    `PhaseRound.lean` instead.
 
     ### Protocol overview
 
@@ -69,7 +75,7 @@ namespace LastVotingPhased
 
 /-! ### Types -/
 
-/-- 3 processes, as in the original LastVoting. -/
+/-- 3 processes. All definitions and proofs in this file are specialized to n = 3. -/
 abbrev Proc := Fin 3
 
 /-- Values are natural numbers. -/
@@ -138,7 +144,8 @@ structure LState where
 /-- The coordinator of a ballot/round `r` is `r % 3`. -/
 def coordinator (r : Nat) : Proc := ⟨r % 3, Nat.mod_lt r (by omega)⟩
 
-/-- Majority predicate for 3 processes: at least 2 satisfy the predicate. -/
+/-- Majority predicate for 3 processes: at least 2 out of 3 satisfy the predicate.
+    For general n, this would be `count > n / 2`. -/
 def hasMaj3 (p : Proc → Bool) : Bool :=
   let cnt := (List.finRange 3).filter (fun r => p r) |>.length
   decide (cnt ≥ 2)
@@ -484,16 +491,19 @@ def lvLeslieSpec : Spec (PhaseRoundState Proc LVState 4) :=
 
 /-! ### Safety property -/
 
-/-- Agreement: if two processes have decided, they decided the same value. -/
+/-- Agreement (n = 3): if two processes have decided, they decided the same value. -/
 def agreement (s : PhaseRoundState Proc LVState 4) : Prop :=
   ∀ (p q : Proc) (v w : Value),
     (s.locals p).core.decided = some v →
     (s.locals q).core.decided = some w →
     v = w
 
-/-! ### Invariant
+/-! ### Invariant (n = 3)
 
-    The inductive invariant combines several properties:
+    The inductive invariant combines several properties. The quorum
+    arguments (G1, G2, G3 and the decision case in D) rely on the
+    fact that two majorities of 3 processes (each of size ≥ 2) must
+    overlap. For general n, these would use `cross_phase_quorum_intersection`.
 
     (A) **Agreement**: all existing decisions agree.
 
@@ -601,8 +611,10 @@ theorem lv_inv_init :
     have hp := (hinit q).2
     simp at hp ; rw [hp] at hlv ; simp at hlv
 
-/-- The main invariant preservation theorem.
-    Each of the 4 phase transitions preserves `lv_inv`. -/
+/-- The main invariant preservation theorem (n = 3).
+    Each of the 4 phase transitions preserves `lv_inv`.
+    The Phase 1→2 and Phase 3→0 cases use quorum intersection for n = 3
+    (two sets of size ≥ 2 out of 3 must overlap). -/
 theorem lv_inv_step :
     ∀ s ho, lv_inv s → lvComm s.round s.phase ho →
     ∀ s', phase_step lvAlg ho s s' → lv_inv s' := by
@@ -1705,7 +1717,7 @@ theorem lv_inv_step :
 
 /-! ### Agreement theorem -/
 
-/-- Agreement is an invariant of the phased LastVoting protocol. -/
+/-- Agreement is an invariant of the phased LastVoting protocol (n = 3). -/
 theorem lv_agreement :
     pred_implies lvLeslieSpec.safety [tlafml| □ ⌜agreement⌝] := by
   -- Prove the stronger combined invariant, then project
@@ -1725,7 +1737,9 @@ theorem lv_agreement :
 
     We instantiate it here for `n = 3` for documentation purposes. -/
 
-/-- Two majorities of 3 processes must intersect. -/
+/-- Two majorities of 3 processes must intersect.
+    This is the n = 3 specialization of `cross_phase_quorum_intersection`
+    from `PhaseRound.lean`. -/
 theorem maj3_intersect (p₁ p₂ : Proc → Bool)
     (h₁ : ((List.finRange 3).filter fun r => p₁ r).length ≥ 2)
     (h₂ : ((List.finRange 3).filter fun r => p₂ r).length ≥ 2) :
@@ -1742,6 +1756,7 @@ def proposals_respect_votes (s : PhaseRoundState Proc LVState 4) : Prop :=
     s.phase.val ≥ 2 →
     ∀ w, (s.locals (coordinator s.round)).core.proposal = some w → w = v
 
+/-- Proposals respect prior votes (n = 3). -/
 theorem proposals_respect_votes_invariant :
     pred_implies lvLeslieSpec.safety
       [tlafml| □ ⌜proposals_respect_votes⌝] := by
