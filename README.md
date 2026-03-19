@@ -55,6 +55,9 @@ Leslie/
 ├── Round.lean              Round-based algorithms (HO model), proof rules
 ├── Cutoff.lean             Cutoff theorems for symmetric threshold protocols
 ├── Simulate.lean           Random trace simulation for testing
+├── Rust/
+│   ├── CoreSemantics.lean  Lean-side semantics for the Rust protocol core
+│   └── RuntimeSemantics.lean Lean-side semantics for the Rust runtime contract
 ├── Rules/
 │   ├── Basic.lean          Core TLA rules (always, eventually, until, etc.)
 │   ├── StatePred.lean      State predicate rules, init_invariant
@@ -81,10 +84,19 @@ Leslie/
 │   ├── OneThirdRule.lean           OTR consensus (agreement + validity)
 │   ├── OneThirdRuleCutoff.lean     OTR via cutoff (config-level lock inv)
 │   └── VRViewChange.lean           VR view change safety
+├── rust/
+│   ├── Cargo.toml                  Rust crate for communication, protocol, and driver code
+│   └── src/
+│       ├── comm.rs                 Round-based communication abstractions
+│       ├── protocol.rs             Pure protocol trait
+│       └── driver.rs               Runs a protocol over a communication object
 └── docs/
     ├── round-based-tutorial.md     Tutorial: HO model and cutoff reasoning
     ├── mc-tactic-plan.md           Plan: model-checking tactic
-    └── zero-one-rule.md            Plan: value domain reduction
+    ├── zero-one-rule.md            Plan: value domain reduction
+    ├── communication-contract.md   Runtime contract for tag-based inbox collection
+    ├── rust-verification-v2.md     Revised Rust verification architecture
+    └── rust-verification-plan-v2.md Revised implementation plan
 ```
 
 ## Examples at a Glance

@@ -484,7 +484,7 @@ theorem lv_inv_step :
               foldl_max_picks_dominated_value rest init v h_exists h_dom
             -- h_prop says pickProposal collected = w. Unfold pickProposal with hcol.
             have hpick_w : pickProposal collected = w := by
-              simp only [lvPhase1, collectPromiseVotes, pickProposal] at h_prop
+              simp only [collectPromiseVotes, pickProposal] at h_prop
               exact h_prop
             rw [hcol, pickProposal] at hpick_w
             -- hpick_w : foldl ... = w, hpick_v : foldl ... = v
