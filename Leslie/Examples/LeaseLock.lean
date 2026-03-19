@@ -526,4 +526,41 @@ theorem write_serialization :
   · apply always_monotone
     intro e h ; exact h.2.2.2.1
 
+/-! ### Design note: why this is action-based, not round-based
+
+    Fencing tokens resemble "rounds" or "ballots" (as in Paxos): each
+    is a monotonically increasing identifier assigned to successive
+    leaders. Generation numbers (writeSeq) resemble "phases" within
+    a round. However, the protocol is NOT round-based in the Leslie
+    `RoundAlg` sense:
+
+    | Round-based (`RoundAlg`)              | Lease Lock                          |
+    |-----------------------------------------|-------------------------------------|
+    | All processes act simultaneously        | Only the leader writes; others idle |
+    | Communication is synchronous per round  | Writes are asynchronous             |
+    | Round advances are global               | Token advances are local (acquire)  |
+    | Messages broadcast to all               | Writes go to one storage node       |
+    | HO sets model message loss              | Lease expiry models loss of authority |
+
+    The lease lock is fundamentally **asynchronous and asymmetric**:
+    one leader writes, the storage node validates, and other processes
+    are passive until they acquire. There is no "everyone sends,
+    everyone receives" structure that `RoundAlg` assumes.
+
+    A round-based formulation could force each fencing token generation
+    into a "round" (Phase 0 = acquire, Phase 1..k = writes, Phase 2 =
+    expire/release), but this distorts the model: the number of writes
+    per generation is unbounded, other processes don't participate, and
+    the interesting behavior (stale leader writes after expiry) spans
+    across rounds rather than within a single round.
+
+    That said, the **safety argument** mirrors round-based proofs:
+    the fencing token plays the role of the ballot number, the
+    high-water mark at the storage node plays the role of "last
+    accepted ballot," and the invariant "writes are ordered by token"
+    mirrors the Paxos ballot ordering. The key difference is that
+    ordering is enforced by the **storage node** (rejecting stale
+    tokens) rather than by **communication closure** (messages
+    delivered only within their round). -/
+
 end LeaseLock
