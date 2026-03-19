@@ -15,6 +15,7 @@
 
 #![allow(dead_code)]
 use std::collections::BTreeMap;
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 // ── Round-based simulator ──────────────────────────────────────────
 
@@ -92,9 +93,110 @@ pub fn ho_reliable(_round: usize, _recv: usize, _send: usize) -> bool {
 }
 
 /// Self-only delivery: each process hears only itself.
-#[allow(dead_code)]
 pub fn ho_self_only(_round: usize, recv: usize, send: usize) -> bool {
     recv == send
+}
+
+/// Random delivery: each process always hears itself, and hears each
+/// other process independently with probability ~50%.
+///
+/// Deterministic given the seed: the delivery decision for
+/// `(round, receiver, sender)` is a pure function of those three values
+/// plus the seed. This means re-running with the same seed reproduces
+/// the exact same execution — important for debugging failing tests.
+///
+/// The randomness is a simple hash-based PRNG, not cryptographic.
+pub fn ho_random(seed: u64) -> impl Fn(usize, usize, usize) -> bool {
+    move |round: usize, recv: usize, send: usize| -> bool {
+        // Always hear yourself (self-delivery)
+        if recv == send {
+            return true;
+        }
+        // Hash (seed, round, recv, send) to get a deterministic pseudo-random bit
+        let mut hasher = DefaultHasher::new();
+        seed.hash(&mut hasher);
+        round.hash(&mut hasher);
+        recv.hash(&mut hasher);
+        send.hash(&mut hasher);
+        hasher.finish() % 2 == 0 // ~50% delivery probability
+    }
+}
+
+/// Random delivery with a configurable delivery probability.
+///
+/// `prob_percent` is 0..=100. Each non-self message is delivered
+/// with approximately that probability. Self-delivery is always guaranteed.
+pub fn ho_random_prob(seed: u64, prob_percent: u64) -> impl Fn(usize, usize, usize) -> bool {
+    move |round: usize, recv: usize, send: usize| -> bool {
+        if recv == send {
+            return true;
+        }
+        let mut hasher = DefaultHasher::new();
+        seed.hash(&mut hasher);
+        round.hash(&mut hasher);
+        recv.hash(&mut hasher);
+        send.hash(&mut hasher);
+        hasher.finish() % 100 < prob_percent
+    }
+}
+
+/// Random delivery with a minimum quorum guarantee.
+///
+/// Each process hears itself plus at least `min_heard` other processes
+/// (chosen pseudo-randomly). Additional processes are delivered with ~50%
+/// probability.
+///
+/// Useful for protocols like OneThirdRule that require >2n/3 delivery:
+/// set `min_heard` to `2*n/3 + 1` to guarantee the communication predicate.
+pub fn ho_random_quorum(seed: u64, n: usize, min_heard: usize) -> impl Fn(usize, usize, usize) -> bool {
+    // Precompute: for each (round, receiver), which senders are guaranteed.
+    // We use a Cell to cache the per-round-receiver selection without
+    // requiring &mut in the closure.
+    let cache: std::sync::Mutex<BTreeMap<(usize, usize), Vec<bool>>> =
+        std::sync::Mutex::new(BTreeMap::new());
+
+    move |round: usize, recv: usize, send: usize| -> bool {
+        if recv == send {
+            return true;
+        }
+
+        let mut guard = cache.lock().unwrap();
+        let key = (round, recv);
+        let delivered = guard.entry(key).or_insert_with(|| {
+            // Build delivery vector for this (round, receiver)
+            let mut others: Vec<usize> = (0..n).filter(|&s| s != recv).collect();
+
+            // Deterministic shuffle using seed + round + recv
+            for i in (1..others.len()).rev() {
+                let mut hasher = DefaultHasher::new();
+                seed.hash(&mut hasher);
+                round.hash(&mut hasher);
+                recv.hash(&mut hasher);
+                i.hash(&mut hasher);
+                let j = (hasher.finish() as usize) % (i + 1);
+                others.swap(i, j);
+            }
+
+            // First min_heard are guaranteed, rest are ~50%
+            let mut deliver = vec![false; n];
+            deliver[recv] = true; // self
+            for (idx, &sender) in others.iter().enumerate() {
+                if idx < min_heard {
+                    deliver[sender] = true;
+                } else {
+                    let mut hasher = DefaultHasher::new();
+                    seed.hash(&mut hasher);
+                    round.hash(&mut hasher);
+                    recv.hash(&mut hasher);
+                    sender.hash(&mut hasher);
+                    deliver[sender] = hasher.finish() % 2 == 0;
+                }
+            }
+            deliver
+        });
+
+        delivered[send]
+    }
 }
 
 // ── Action-based simulator ─────────────────────────────────────────

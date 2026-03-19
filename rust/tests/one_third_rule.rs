@@ -268,3 +268,51 @@ fn decision_is_permanent() {
         assert_eq!(s.val, 5, "value should remain decided value");
     }
 }
+
+#[test]
+fn agreement_under_random_delivery() {
+    // n=5 processes with random ~50% message delivery.
+    // With ho_random, each process hears itself + ~50% of others.
+    // Super-majority needs >10/3 ≈ 3.33 received, so ≥4.
+    // With 5 processes and ~50% delivery, a process hears ~1 (self) + ~2 = ~3.
+    // Usually not enough for super-majority, so few decisions expected.
+    // But agreement must ALWAYS hold regardless of delivery pattern.
+    for seed in 0..20 {
+        let states = run_otr(5, 20, vec![0, 0, 1, 1, 0], common::ho_random(seed));
+        check_agreement(&states);
+    }
+}
+
+#[test]
+fn unanimous_input_decides_under_random_delivery() {
+    // n=5, all start with value 42. Even with random delivery,
+    // if enough messages get through (≥4 of 5), super-majority holds.
+    // With ~50% delivery + self, a process hears ~3 of 5 on average.
+    // Some rounds may reach super-majority, some may not.
+    // But whenever a decision is made, it must be 42 (validity).
+    for seed in 0..20 {
+        let states = run_otr(5, 30, vec![42; 5], common::ho_random(seed));
+        check_agreement(&states);
+        check_validity(&states, &[42; 5]);
+    }
+}
+
+#[test]
+fn agreement_with_quorum_guaranteed_random_delivery() {
+    // n=7, with ho_random_quorum guaranteeing each process hears ≥5 others.
+    // Super-majority threshold: > 14/3 ≈ 4.67, so need ≥5 of same value.
+    // With 7 processes all starting with value 1 and guaranteed ≥5 delivery,
+    // each process sees ≥5+1=6 copies of 1.
+    // 6*3 = 18 > 14. Decides in round 1.
+    for seed in 0..10 {
+        let states = run_otr(
+            7, 5,
+            vec![1; 7],
+            common::ho_random_quorum(seed, 7, 5),
+        );
+        for s in &states {
+            assert_eq!(s.decided, Some(1),
+                "with quorum guarantee and unanimous input, should decide (seed={})", seed);
+        }
+    }
+}
