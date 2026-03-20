@@ -35,6 +35,7 @@ import «Leslie».Examples.LastVoting
 import «Leslie».Examples.LastVotingPhased
 import «Leslie».Examples.CASCounterRefinement
 import «Leslie».Examples.SnapshotRefinement
+import «Leslie».Examples.Peterson
 -- import «Leslie».Rust.CoreSemantics
 -- import «Leslie».Rust.RuntimeSemantics
 -- import «Leslie».Rust.Examples.BallotLeaderPhased

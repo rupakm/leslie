@@ -7,6 +7,10 @@
   "repo_salt": "3c18dae82d95e209dac3d942f043620a93a9190b",
   "endpoint": "https://sageox.ai",
   "fingerprint": {
+    "first_commit": "3c18dae82d95e209dac3d942f043620a93a9190b",
+    "monthly_checkpoints": {
+      "2026-03": "3c18dae82d95e209dac3d942f043620a93a9190b"
+    },
     "ancestry_samples": [
       "3c18dae82d95e209dac3d942f043620a93a9190b",
       "02838b78a0f5ea46d40ba73dff75daa683c1f0ff",
@@ -15,10 +19,6 @@
       "45f033e5f5f8f38f98f0f490eb32e80cf8cce281",
       "778cd6956a1491285872ecb9eff4ebcb1fce72cc"
     ],
-    "first_commit": "3c18dae82d95e209dac3d942f043620a93a9190b",
-    "monthly_checkpoints": {
-      "2026-03": "3c18dae82d95e209dac3d942f043620a93a9190b"
-    },
     "remote_hashes": [
       "sha256:80bb5bc78e769b024071c29c94e17e7aa14d549ea402a3683421ccd53828a8e5"
     ]
