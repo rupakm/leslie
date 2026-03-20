@@ -33,6 +33,8 @@ import «Leslie».Examples.LeaseLock
 import «Leslie».Simulate
 import «Leslie».Examples.LastVoting
 import «Leslie».Examples.LastVotingPhased
+import «Leslie».Examples.CASCounterRefinement
+import «Leslie».Examples.SnapshotRefinement
 -- import «Leslie».Rust.CoreSemantics
 -- import «Leslie».Rust.RuntimeSemantics
 -- import «Leslie».Rust.Examples.BallotLeaderPhased
