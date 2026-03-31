@@ -80,7 +80,21 @@ That first scope should prove:
 - `EnvAbstraction.lean`
   Focus/environment abstraction for scaling local proofs to arbitrary `n`.
 
-## Immediate next step
+## Current atomic scope
 
-Implement Stage 0 and Stage 1 from `IMPLEMENTATION_PLAN.md`: define the shared
-types and the first atomic TL-C transfer model for one line.
+The current `Atomic/` files are at an early Stage 1b checkpoint:
+
+- `AcquirePerm` installs writable authority without valid data
+- `Release` and `ReleaseData` are separate actions with abstract TileLink
+  prune/report parameters
+- shared state tracks home memory, a directory summary, pending grant metadata,
+  and pending `GrantAck`/`ReleaseAck` obligations
+- the proved safety theorem now covers writer exclusivity, pending-ack
+  discipline, directory agreement, local line well-formedness, and clean valid
+  data agreement with memory
+- a derived theorem now identifies the dirty owner as the source of the
+  atomic model's logical line value
+
+The remaining Stage 1 work is to refine that metadata into explicit pending
+probe/transfer obligations and prove the sequential-line refinement target from
+the implementation plan.

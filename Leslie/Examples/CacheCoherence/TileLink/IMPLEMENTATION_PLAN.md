@@ -149,6 +149,29 @@ Build the simplest TL-C-flavored model that still reflects:
 - voluntary downgrades by `Release*`
 - serialization completion by `GrantAck` and `ReleaseAck`
 
+### Current status
+
+The checked-in files under `Atomic/` currently implement an early Stage 1b
+checkpoint:
+
+- `AcquirePerm` grants write authority without valid data
+- `Release` and `ReleaseData` are already split and carry abstract
+  prune/report parameters
+- local state distinguishes permission, validity, dirtiness, and data
+- shared state includes home memory, a directory summary, pending grant
+  metadata, and pending `GrantAck`/`ReleaseAck` obligations
+- the proved invariant currently covers writer exclusivity, pending-ack
+  discipline, directory agreement, local well-formedness, and clean valid data
+  agreement with memory
+- a derived theorem identifies the dirty owner as the source of the atomic
+  model's logical line value
+
+The remaining Stage 1 work is to strengthen the shared state and the proof to
+cover:
+
+- explicit outstanding probe obligations / pending serialized transfer metadata
+- sequential one-line refinement
+
 ### Files
 
 - `Atomic/Model.lean`
@@ -181,6 +204,18 @@ Keep the first version largely atomic:
 - one step can represent "all required probe responses consumed"
 - one step can represent "grant delivered and locally consumed"
 
+The current Stage 1b checkpoint intentionally implements only:
+
+- `mem`
+- directory summary
+- pending grant metadata
+- pending `GrantAck`
+- pending `ReleaseAck`
+
+That is enough to validate the TL-C permission shape, prove a first memory
+agreement invariant, and keep the next extensions focused on serialized
+transfer metadata rather than basic permission bookkeeping.
+
 ### Proof goals
 
 Prove an inductive invariant combining:
@@ -196,6 +231,10 @@ Prove an inductive invariant combining:
 
 Then prove refinement to a sequential one-line memory abstraction, in the same
 style as `MESIParam`.
+
+The current checked-in proof stops short of this point. It proves the
+structural safety core first, and Stage 1b should add the data and refinement
+theorems above without collapsing the file structure.
 
 ### Success criterion
 
