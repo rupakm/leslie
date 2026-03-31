@@ -42,7 +42,7 @@ import «Leslie».EnvAbstraction
 import «Leslie».AssumeGuarantee
 import «Leslie».Examples.CacheCoherence.MESI
 import «Leslie».Examples.CacheCoherence.MESIParam
-import «Leslie».Examples.CacheCoherence.German
+import «Leslie».Examples.CacheCoherence.GermanSimple
 import «Leslie».Examples.CacheCoherence.GermanMessages.Theorem
 -- import «Leslie».Rust.CoreSemantics
 -- import «Leslie».Rust.RuntimeSemantics
