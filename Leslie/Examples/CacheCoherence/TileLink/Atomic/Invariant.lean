@@ -12,6 +12,32 @@ def pendingInv (n : Nat) (s : SymState HomeState CacheLine n) : Prop :=
   (∀ i : Fin n, s.shared.pendingReleaseAck = some i.1 → (s.locals i).dirty = false) ∧
   (s.shared.pendingGrantAck = none ∨ s.shared.pendingReleaseAck = none)
 
+def grantMetaShape (pg : PendingGrantMeta) : Prop :=
+  match pg.kind with
+  | .block => pg.requesterPerm = .B ∨ pg.requesterPerm = .T
+  | .perm => pg.requesterPerm = .T
+
+def scheduledGrantMatchesState (n : Nat) : SymState HomeState CacheLine n → PendingGrantMeta → Prop
+  | _, _ => True
+
+def deliveredGrantMatchesState (n : Nat) : SymState HomeState CacheLine n → PendingGrantMeta → Prop
+  | _, _ => True
+
+def grantMetaInv (n : Nat) (s : SymState HomeState CacheLine n) : Prop :=
+  match s.shared.pendingGrantMeta with
+  | none => s.shared.pendingGrantAck = none
+  | some pg =>
+      pg.requester < n ∧
+      s.shared.pendingReleaseAck = none ∧
+      grantMetaShape pg ∧
+      pg.probesNeeded pg.requester = false ∧
+      ((s.shared.pendingGrantAck = none ∧
+        (∀ k : Nat, pg.probesRemaining k = pg.probesNeeded k) ∧
+        scheduledGrantMatchesState n s pg) ∨
+       (s.shared.pendingGrantAck = some pg.requester ∧
+        (∀ k : Nat, pg.probesRemaining k = false) ∧
+        deliveredGrantMatchesState n s pg))
+
 def dirInv (n : Nat) (s : SymState HomeState CacheLine n) : Prop :=
   ∀ i : Fin n, s.shared.dir i.1 = (s.locals i).perm
 
@@ -73,12 +99,18 @@ theorem init_pendingInv (n : Nat) :
   · intro i hi
     simp [hrel] at hi
 
+theorem init_grantMetaInv (n : Nat) :
+    ∀ s : SymState HomeState CacheLine n, (tlAtomic.toSpec n).init s → grantMetaInv n s := by
+  intro s hinit
+  rcases hinit with ⟨⟨_, _, hmeta, hgrant, _⟩, _⟩
+  simpa [grantMetaInv, hmeta] using hgrant
+
 theorem init_atomicInv (n : Nat) :
     ∀ s : SymState HomeState CacheLine n, (tlAtomic.toSpec n).init s →
-      swmr n s ∧ pendingInv n s ∧ dirInv n s ∧ lineWF n s ∧ cleanDataInv n s := by
+      swmr n s ∧ pendingInv n s ∧ grantMetaInv n s ∧ dirInv n s ∧ lineWF n s ∧ cleanDataInv n s := by
   intro s hinit
-  refine ⟨init_swmr n s hinit, init_pendingInv n s hinit, init_dirInv n s hinit,
-    init_lineWF n s hinit, ?_⟩
+  refine ⟨init_swmr n s hinit, init_pendingInv n s hinit, init_grantMetaInv n s hinit,
+    init_dirInv n s hinit, init_lineWF n s hinit, ?_⟩
   intro i hvalid _
   rcases hinit with ⟨⟨_, _, _, _, _⟩, hlocals⟩
   rcases hlocals i with ⟨_, hlineValid, _, hdata⟩
@@ -87,25 +119,25 @@ theorem init_atomicInv (n : Nat) :
 theorem init_cleanDataInv (n : Nat) :
     ∀ s : SymState HomeState CacheLine n, (tlAtomic.toSpec n).init s → cleanDataInv n s := by
   intro s hinit
-  rcases init_atomicInv n s hinit with ⟨_, _, _, _, hcleanData⟩
+  rcases init_atomicInv n s hinit with ⟨_, _, _, _, _, hcleanData⟩
   exact hcleanData
 
 theorem atomicInv_implies_dirtyExclusive (n : Nat) :
     ∀ s : SymState HomeState CacheLine n,
-      (swmr n s ∧ pendingInv n s ∧ dirInv n s ∧ lineWF n s ∧ cleanDataInv n s) →
+      (swmr n s ∧ pendingInv n s ∧ grantMetaInv n s ∧ dirInv n s ∧ lineWF n s ∧ cleanDataInv n s) →
       dirtyExclusive n s := by
   intro s hinv i j hij hdirty
-  rcases hinv with ⟨hswmr, _, _, hwf, _⟩
+  rcases hinv with ⟨hswmr, _, _, _, hwf, _⟩
   have hiT : (s.locals i).perm = .T := (hwf i).1 hdirty |>.1
   exact hswmr i j hij hiT
 
 theorem atomicInv_implies_dirtyOwnerDataInv (n : Nat) :
     ∀ s : SymState HomeState CacheLine n,
-      (swmr n s ∧ pendingInv n s ∧ dirInv n s ∧ lineWF n s ∧ cleanDataInv n s) →
+      (swmr n s ∧ pendingInv n s ∧ grantMetaInv n s ∧ dirInv n s ∧ lineWF n s ∧ cleanDataInv n s) →
       dirtyOwnerDataInv n s := by
   classical
   intro s hinv i hdirty
-  rcases hinv with ⟨hswmr, _, _, hwf, _⟩
+  rcases hinv with ⟨hswmr, _, _, _, hwf, _⟩
   let hsome : ∃ j : Fin n, (s.locals j).dirty = true := ⟨i, hdirty⟩
   have hchooseDirty : (s.locals (Classical.choose hsome)).dirty = true := Classical.choose_spec hsome
   have hiT : (s.locals i).perm = .T := (hwf i).1 hdirty |>.1

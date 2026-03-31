@@ -89,12 +89,16 @@ The current `Atomic/` files are at an early Stage 1b checkpoint:
   prune/report parameters
 - shared state tracks home memory, a directory summary, pending grant metadata,
   and pending `GrantAck`/`ReleaseAck` obligations
+- acquires now schedule a pending probe/grant wave, and `finishGrant`
+  discharges that wave before `GrantAck`
 - the proved safety theorem now covers writer exclusivity, pending-ack
   discipline, directory agreement, local line well-formedness, and clean valid
   data agreement with memory
 - a derived theorem now identifies the dirty owner as the source of the
   atomic model's logical line value
+- the metadata invariant now distinguishes scheduled and delivered grant
+  phases, but it intentionally tracks phase/shape facts rather than a full
+  post-grant state correspondence
 
-The remaining Stage 1 work is to refine that metadata into explicit pending
-probe/transfer obligations and prove the sequential-line refinement target from
-the implementation plan.
+The remaining Stage 1 work is to strengthen that phase metadata if needed and
+then prove the sequential-line refinement target from the implementation plan.

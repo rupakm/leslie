@@ -5,10 +5,11 @@ open TLA SymShared
 
 /-! ## TileLink TL-C Atomic Model
 
-    A first atomic single-line model for TileLink TL-C. Probe fanout, probe
-    responses, and grant delivery are folded into the effects of `AcquireBlock`
-    and `AcquirePerm`, while `GrantAck` and `ReleaseAck` remain explicit so the
-    model still tracks same-block serialization obligations.
+    A first atomic single-line model for TileLink TL-C. The initial acquire
+    step schedules a probe/grant wave, `finishGrant` atomically consumes the
+    required probe obligations and delivers the grant, and `GrantAck` /
+    `ReleaseAck` remain explicit so the model still tracks same-block
+    serialization obligations.
 -/
 
 namespace TileLink.Atomic
@@ -23,8 +24,11 @@ inductive GrantKind where
 structure PendingGrantMeta where
   requester : Nat
   kind : GrantKind
+  requesterPerm : TLPerm
   usedDirtySource : Bool
-  probed : Nat → Bool
+  transferVal : Val
+  probesNeeded : Nat → Bool
+  probesRemaining : Nat → Bool
 
 structure HomeState where
   mem : Val
@@ -36,6 +40,7 @@ structure HomeState where
 inductive Act where
   | acquireBlock
   | acquirePerm
+  | finishGrant
   | store (v : Val)
   | grantAck
   | release (param : PruneReportParam)
@@ -183,8 +188,14 @@ def allOthersInvalid (n : Nat) (i : Fin n) (s : SymState HomeState CacheLine n) 
 def noProbeMask : Nat → Bool :=
   fun _ => false
 
+@[simp] theorem noProbeMask_apply (k : Nat) : noProbeMask k = false := rfl
+
 def singleProbeMask (j : Nat) : Nat → Bool :=
   fun k => decide (k = j)
+
+theorem singleProbeMask_eq_true {j k : Nat} :
+    singleProbeMask j k = true ↔ k = j := by
+  simp [singleProbeMask]
 
 def writableProbeMask {n : Nat}
     (s : SymState HomeState CacheLine n) (i : Fin n) : Nat → Bool :=
@@ -232,6 +243,9 @@ def acquirePermLocals {n : Nat}
     else
       invalidateLine (s.locals k)
 
+def deliveredGrantMeta (pg : PendingGrantMeta) : PendingGrantMeta :=
+  { pg with probesRemaining := noProbeMask }
+
 def tlAtomic : SymSharedSpec where
   Shared := HomeState
   Local := CacheLine
@@ -250,66 +264,152 @@ def tlAtomic : SymSharedSpec where
   step := fun n i a s s' =>
     match a with
     | .acquireBlock =>
+        s.shared.pendingGrantMeta = none ∧
         s.shared.pendingGrantAck = none ∧
         s.shared.pendingReleaseAck = none ∧
         (s.locals i).perm = .N ∧
         ((∃ j : Fin n, j ≠ i ∧ (s.locals j).dirty = true ∧
-          s' = { shared := { mem := (s.locals j).data
-                           , dir := syncDir s.shared.dir (acquireBlockDirtyLocals s i j)
-                           , pendingGrantMeta := some {
+          s' = { shared := { s.shared with
+                               pendingGrantMeta := some {
                                requester := i.1
                                kind := .block
+                               requesterPerm := .B
                                usedDirtySource := true
-                               probed := singleProbeMask j.1 }
-                           , pendingGrantAck := some i.1
-                           , pendingReleaseAck := none }
-               , locals := acquireBlockDirtyLocals s i j }) ∨
+                               transferVal := (s.locals j).data
+                               probesNeeded := singleProbeMask j.1
+                               probesRemaining := singleProbeMask j.1 }
+                             , pendingGrantAck := none
+                             , pendingReleaseAck := none }
+               , locals := s.locals }) ∨
          ((¬hasDirtyOther n i s) ∧ hasCachedOther n i s ∧
           s' = { shared := { s.shared with
-                               dir := syncDir s.shared.dir (acquireBlockSharedLocals s i),
                                pendingGrantMeta := some {
                                  requester := i.1
                                  kind := .block
+                                 requesterPerm := .B
                                  usedDirtySource := false
-                                 probed := writableProbeMask s i },
-                               pendingGrantAck := some i.1 }
-               , locals := acquireBlockSharedLocals s i }) ∨
+                                 transferVal := s.shared.mem
+                                 probesNeeded := writableProbeMask s i
+                                 probesRemaining := writableProbeMask s i },
+                               pendingGrantAck := none,
+                               pendingReleaseAck := none }
+               , locals := s.locals }) ∨
          (allOthersInvalid n i s ∧
           s' = { shared := { s.shared with
-                               dir := syncDir s.shared.dir (setFn s.locals i (tipLine s.shared.mem)),
                                pendingGrantMeta := some {
                                  requester := i.1
                                  kind := .block
+                                 requesterPerm := .T
                                  usedDirtySource := false
-                                 probed := noProbeMask },
-                               pendingGrantAck := some i.1 }
-               , locals := setFn s.locals i (tipLine s.shared.mem) }))
+                                 transferVal := s.shared.mem
+                                 probesNeeded := noProbeMask
+                                 probesRemaining := noProbeMask },
+                               pendingGrantAck := none,
+                               pendingReleaseAck := none }
+               , locals := s.locals }))
     | .acquirePerm =>
+        s.shared.pendingGrantMeta = none ∧
         s.shared.pendingGrantAck = none ∧
         s.shared.pendingReleaseAck = none ∧
         (s.locals i).perm ≠ .T ∧
         ((∃ j : Fin n, j ≠ i ∧ (s.locals j).dirty = true ∧
-          s' = { shared := { mem := (s.locals j).data
-                           , dir := syncDir s.shared.dir (acquirePermLocals s i)
-                           , pendingGrantMeta := some {
+          s' = { shared := { s.shared with
+                               pendingGrantMeta := some {
                                requester := i.1
                                kind := .perm
+                               requesterPerm := .T
                                usedDirtySource := true
-                               probed := cachedProbeMask s i }
-                           , pendingGrantAck := some i.1
-                           , pendingReleaseAck := none }
-               , locals := acquirePermLocals s i }) ∨
+                               transferVal := (s.locals j).data
+                               probesNeeded := cachedProbeMask s i
+                               probesRemaining := cachedProbeMask s i }
+                             , pendingGrantAck := none
+                             , pendingReleaseAck := none }
+               , locals := s.locals }) ∨
          ((¬hasDirtyOther n i s) ∧
           s' = { shared := { s.shared with
-                               dir := syncDir s.shared.dir (acquirePermLocals s i),
                                pendingGrantMeta := some {
                                  requester := i.1
                                  kind := .perm
+                                 requesterPerm := .T
                                  usedDirtySource := false
-                                 probed := cachedProbeMask s i },
-                               pendingGrantAck := some i.1 }
-               , locals := acquirePermLocals s i }))
+                                 transferVal := s.shared.mem
+                                 probesNeeded := cachedProbeMask s i
+                                 probesRemaining := cachedProbeMask s i },
+                               pendingGrantAck := none,
+                               pendingReleaseAck := none }
+               , locals := s.locals }))
+    | .finishGrant =>
+        (∃ pg, s.shared.pendingGrantMeta = some pg ∧
+          s.shared.pendingGrantAck = none ∧
+          s.shared.pendingReleaseAck = none ∧
+          pg.requester = i.1 ∧
+          ((∃ j : Fin n, j ≠ i ∧ (s.locals j).dirty = true ∧
+              pg.kind = .block ∧
+              pg.requesterPerm = .B ∧
+              pg.usedDirtySource = true ∧
+              pg.transferVal = (s.locals j).data ∧
+              pg.probesNeeded = singleProbeMask j.1 ∧
+              pg.probesRemaining = singleProbeMask j.1 ∧
+              s' = { shared := { mem := (s.locals j).data
+                               , dir := syncDir s.shared.dir (acquireBlockDirtyLocals s i j)
+                               , pendingGrantMeta := some (deliveredGrantMeta pg)
+                               , pendingGrantAck := some i.1
+                               , pendingReleaseAck := none }
+                   , locals := acquireBlockDirtyLocals s i j }) ∨
+           ((¬hasDirtyOther n i s) ∧ hasCachedOther n i s ∧
+            pg.kind = .block ∧
+            pg.requesterPerm = .B ∧
+            pg.usedDirtySource = false ∧
+            pg.transferVal = s.shared.mem ∧
+            pg.probesNeeded = writableProbeMask s i ∧
+            pg.probesRemaining = writableProbeMask s i ∧
+            s' = { shared := { mem := s.shared.mem
+                             , dir := syncDir s.shared.dir (acquireBlockSharedLocals s i)
+                             , pendingGrantMeta := some (deliveredGrantMeta pg)
+                             , pendingGrantAck := some i.1
+                             , pendingReleaseAck := none }
+                 , locals := acquireBlockSharedLocals s i }) ∨
+           (allOthersInvalid n i s ∧
+            pg.kind = .block ∧
+            pg.requesterPerm = .T ∧
+            pg.usedDirtySource = false ∧
+            pg.transferVal = s.shared.mem ∧
+            pg.probesNeeded = noProbeMask ∧
+            pg.probesRemaining = noProbeMask ∧
+            s' = { shared := { mem := s.shared.mem
+                             , dir := syncDir s.shared.dir (setFn s.locals i (tipLine s.shared.mem))
+                             , pendingGrantMeta := some (deliveredGrantMeta pg)
+                             , pendingGrantAck := some i.1
+                             , pendingReleaseAck := none }
+                 , locals := setFn s.locals i (tipLine s.shared.mem) }) ∨
+           (∃ j : Fin n, j ≠ i ∧ (s.locals j).dirty = true ∧
+              pg.kind = .perm ∧
+              pg.requesterPerm = .T ∧
+              pg.usedDirtySource = true ∧
+              pg.transferVal = (s.locals j).data ∧
+              pg.probesNeeded = cachedProbeMask s i ∧
+              pg.probesRemaining = cachedProbeMask s i ∧
+              s' = { shared := { mem := (s.locals j).data
+                               , dir := syncDir s.shared.dir (acquirePermLocals s i)
+                               , pendingGrantMeta := some (deliveredGrantMeta pg)
+                               , pendingGrantAck := some i.1
+                               , pendingReleaseAck := none }
+                   , locals := acquirePermLocals s i }) ∨
+           ((¬hasDirtyOther n i s) ∧
+            pg.kind = .perm ∧
+            pg.requesterPerm = .T ∧
+            pg.usedDirtySource = false ∧
+            pg.transferVal = s.shared.mem ∧
+            pg.probesNeeded = cachedProbeMask s i ∧
+            pg.probesRemaining = cachedProbeMask s i ∧
+            s' = { shared := { mem := s.shared.mem
+                             , dir := syncDir s.shared.dir (acquirePermLocals s i)
+                             , pendingGrantMeta := some (deliveredGrantMeta pg)
+                             , pendingGrantAck := some i.1
+                             , pendingReleaseAck := none }
+                 , locals := acquirePermLocals s i })))
     | .store v =>
+        s.shared.pendingGrantMeta = none ∧
         s.shared.pendingGrantAck = none ∧
         s.shared.pendingReleaseAck = none ∧
         (s.locals i).perm = .T ∧
@@ -320,6 +420,7 @@ def tlAtomic : SymSharedSpec where
         s' = { shared := { s.shared with pendingGrantMeta := none, pendingGrantAck := none }
              , locals := s.locals }
     | .release param =>
+        s.shared.pendingGrantMeta = none ∧
         s.shared.pendingGrantAck = none ∧
         s.shared.pendingReleaseAck = none ∧
         param ≠ .NtoN ∧
@@ -333,6 +434,7 @@ def tlAtomic : SymSharedSpec where
                          , pendingReleaseAck := some i.1 }
              , locals := setFn s.locals i (releasedLine (s.locals i) param.result) }
     | .releaseData param =>
+        s.shared.pendingGrantMeta = none ∧
         s.shared.pendingGrantAck = none ∧
         s.shared.pendingReleaseAck = none ∧
         param ≠ .NtoN ∧

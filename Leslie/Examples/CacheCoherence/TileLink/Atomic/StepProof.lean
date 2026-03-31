@@ -17,23 +17,36 @@ private theorem swmr_preserved (n : Nat)
   intro p q hpq hpT
   match a with
   | .acquireBlock =>
-      rcases hstep with ⟨_, hrelNone, _, hcases⟩
+      rcases hstep with ⟨_, _, _, _, hcases⟩
+      rcases hcases with ⟨_, _, _, rfl⟩ | ⟨_, _, rfl⟩ | ⟨_, rfl⟩
+      all_goals
+        exact hswmr p q hpq hpT
+  | .acquirePerm =>
+      rcases hstep with ⟨_, _, _, _, hcases⟩
+      rcases hcases with ⟨_, _, _, rfl⟩ | ⟨_, rfl⟩
+      all_goals
+        exact hswmr p q hpq hpT
+  | .finishGrant =>
+      rcases hstep with ⟨pg, _, _, _, hreq, hcases⟩
       rcases hcases with
-        ⟨j, hji, hjdirty, rfl⟩ |
-        ⟨_, _, rfl⟩ |
-        ⟨hallN, rfl⟩
-      · by_cases hpi : p = i
+        ⟨j, hji, hjdirty, _, _, _, _, _, _, rfl⟩ |
+        ⟨_, _, _, _, _, _, _, _, rfl⟩ |
+        ⟨hallN, _, _, _, _, _, _, rfl⟩ |
+        ⟨j, hji, hjdirty, _, _, _, _, _, _, rfl⟩ |
+        ⟨_, _, _, _, _, _, _, rfl⟩
+      ·
+        by_cases hpi : p = i
         · simp [acquireBlockDirtyLocals, hpi] at hpT
         · by_cases hpj : p = j
           · simp [acquireBlockDirtyLocals, hpj] at hpT
           · have hpTpre : (s.locals p).perm = .T := by
               simpa [acquireBlockDirtyLocals, hpi, hpj] using hpT
             have hjT : (s.locals j).perm = .T := (hwf j).1 hjdirty |>.1
-            have hpN : (s.locals p).perm = .N := by
-              exact hswmr j p (fun h => hpj h.symm) hjT
+            have hpN : (s.locals p).perm = .N := hswmr j p (fun h => hpj h.symm) hjT
             rw [hpN] at hpTpre
             cases hpTpre
-      · by_cases hpi : p = i
+      ·
+        by_cases hpi : p = i
         · simp [acquireBlockSharedLocals, hpi] at hpT
         · have hpTpre_or_false : False := by
             by_cases hpTip : (s.locals p).perm = .T
@@ -44,7 +57,8 @@ private theorem swmr_preserved (n : Nat)
                 simpa [acquireBlockSharedLocals, hpi, hpTip] using hpT
               exact hpTip this
           exact False.elim hpTpre_or_false
-      · by_cases hpi : p = i
+      ·
+        by_cases hpi : p = i
         · have hqi : q ≠ i := by
             intro h
             exact hpq (hpi ▸ h.symm)
@@ -54,10 +68,18 @@ private theorem swmr_preserved (n : Nat)
             simpa [setFn, hpi] using hpT
           rw [hpN] at hpTpre
           cases hpTpre
-  | .acquirePerm =>
-      rcases hstep with ⟨_, _, _, hcases⟩
-      rcases hcases with ⟨_, _, _, rfl⟩ | ⟨_, rfl⟩
-      all_goals
+      ·
+        by_cases hpi : p = i
+        · have hqi : q ≠ i := by
+            intro h
+            exact hpq (hpi ▸ h.symm)
+          simp [acquirePermLocals, hqi]
+        · have hpTfalse : False := by
+            have hpTpre : (invalidateLine (s.locals p)).perm = .T := by
+              simpa [acquirePermLocals, hpi] using hpT
+            simp at hpTpre
+          exact False.elim hpTfalse
+      ·
         by_cases hpi : p = i
         · have hqi : q ≠ i := by
             intro h
@@ -69,7 +91,7 @@ private theorem swmr_preserved (n : Nat)
             simp at hpTpre
           exact False.elim hpTfalse
   | .store v =>
-      rcases hstep with ⟨_, _, hpreT, rfl⟩
+      rcases hstep with ⟨_, _, _, hpreT, rfl⟩
       by_cases hpi : p = i
       · have hqi : q ≠ i := by
           intro h
@@ -86,7 +108,7 @@ private theorem swmr_preserved (n : Nat)
       rcases hstep with ⟨_, rfl⟩
       exact hswmr p q hpq hpT
   | .release param =>
-      rcases hstep with ⟨_, _, hnn, hlegal, hclean, _, rfl⟩
+      rcases hstep with ⟨_, _, _, hnn, hlegal, hclean, _, rfl⟩
       by_cases hpi : p = i
       · have hqi : q ≠ i := by
           intro h
@@ -111,7 +133,7 @@ private theorem swmr_preserved (n : Nat)
           exact False.elim this
         · simpa [setFn, hqi, releasedLine] using hswmr p q hpq hpTpre
   | .releaseData param =>
-      rcases hstep with ⟨_, _, hnn, hlegal, hdirty, rfl⟩
+      rcases hstep with ⟨_, _, _, hnn, hlegal, hdirty, rfl⟩
       by_cases hpi : p = i
       · have hqi : q ≠ i := by
           intro h
@@ -148,39 +170,43 @@ private theorem pendingInv_preserved (n : Nat)
   rcases hpending with ⟨hgrant, hrel, hnone⟩
   match a with
   | .acquireBlock =>
-      rcases hstep with ⟨_, hrelNone, _, hcases⟩
-      rcases hcases with ⟨w, _, _, rfl⟩ | ⟨_, _, rfl⟩ | ⟨_, rfl⟩
+      rcases hstep with ⟨_, hgrantNone, hrelNone, _, hcases⟩
+      rcases hcases with ⟨_, _, _, rfl⟩ | ⟨_, _, rfl⟩ | ⟨_, rfl⟩
       all_goals
-        refine ⟨?_, ?_, Or.inr ?_⟩
+        refine ⟨?_, ?_, Or.inl (by simpa using hgrantNone)⟩
         · intro p hp
-          have hpi : p = i := by
-            apply Fin.ext
-            simpa using hp.symm
-          subst hpi
-          simp [acquireBlockDirtyLocals, acquireBlockSharedLocals, setFn]
+          simp [hgrantNone] at hp
         · intro p hp
-          have : False := by
-            simp [hrelNone] at hp
-          exact False.elim this
-        · simp [hrelNone]
+          simp [hrelNone] at hp
   | .acquirePerm =>
-      rcases hstep with ⟨_, hrelNone, _, hcases⟩
+      rcases hstep with ⟨_, hgrantNone, hrelNone, _, hcases⟩
       rcases hcases with ⟨_, _, _, rfl⟩ | ⟨_, rfl⟩
       all_goals
-        refine ⟨?_, ?_, Or.inr ?_⟩
+        refine ⟨?_, ?_, Or.inl (by simpa using hgrantNone)⟩
+        · intro p hp
+          simp [hgrantNone] at hp
+        · intro p hp
+          simp [hrelNone] at hp
+  | .finishGrant =>
+      rcases hstep with ⟨pg, _, hgrantNone, hrelNone, hreq, hcases⟩
+      rcases hcases with
+        ⟨j, _, _, _, _, _, _, _, _, rfl⟩ |
+        ⟨_, _, _, _, _, _, _, _, rfl⟩ |
+        ⟨_, _, _, _, _, _, _, rfl⟩ |
+        ⟨j, _, _, _, _, _, _, _, _, rfl⟩ |
+        ⟨_, _, _, _, _, _, _, rfl⟩
+      all_goals
+        refine ⟨?_, ?_, Or.inr (by simpa using hrelNone)⟩
         · intro p hp
           have hpi : p = i := by
             apply Fin.ext
             simpa using hp.symm
           subst hpi
-          simp [acquirePermLocals]
+          simp [acquireBlockDirtyLocals, acquireBlockSharedLocals, acquirePermLocals, setFn]
         · intro p hp
-          have : False := by
-            simp [hrelNone] at hp
-          exact False.elim this
-        · simp [hrelNone]
+          simp [hrelNone] at hp
   | .store v =>
-      rcases hstep with ⟨hgrantNone, hrelNone, _, rfl⟩
+      rcases hstep with ⟨_, hgrantNone, hrelNone, _, rfl⟩
       refine ⟨?_, ?_, Or.inl hgrantNone⟩
       · intro p hp
         have : False := by
@@ -204,7 +230,7 @@ private theorem pendingInv_preserved (n : Nat)
       · intro p hp
         exact hrel p hp
   | .release param =>
-      rcases hstep with ⟨hgrantNone, hrelNone, _, _, _, _, rfl⟩
+      rcases hstep with ⟨_, hgrantNone, hrelNone, _, _, _, _, rfl⟩
       refine ⟨?_, ?_, Or.inl rfl⟩
       · intro p hp
         simp at hp
@@ -217,7 +243,7 @@ private theorem pendingInv_preserved (n : Nat)
         have hdirty := releasedLine_dirty (s.locals p) param.result
         simpa [setFn] using hdirty
   | .releaseData param =>
-      rcases hstep with ⟨hgrantNone, hrelNone, _, _, _, rfl⟩
+      rcases hstep with ⟨_, hgrantNone, hrelNone, _, _, _, rfl⟩
       refine ⟨?_, ?_, Or.inl rfl⟩
       · intro p hp
         simp at hp
@@ -247,17 +273,27 @@ private theorem dirInv_preserved (n : Nat)
   intro p
   match a with
   | .acquireBlock =>
-      rcases hstep with ⟨_, _, _, hcases⟩
-      rcases hcases with ⟨j, _, _, rfl⟩ | ⟨_, _, rfl⟩ | ⟨_, rfl⟩
+      rcases hstep with ⟨_, _, _, _, hcases⟩
+      rcases hcases with ⟨_, _, _, rfl⟩ | ⟨_, _, rfl⟩ | ⟨_, rfl⟩
       all_goals
-        simp [syncDir_apply_fin]
+        exact hdir p
   | .acquirePerm =>
-      rcases hstep with ⟨_, _, _, hcases⟩
+      rcases hstep with ⟨_, _, _, _, hcases⟩
       rcases hcases with ⟨_, _, _, rfl⟩ | ⟨_, rfl⟩
+      all_goals
+        exact hdir p
+  | .finishGrant =>
+      rcases hstep with ⟨pg, _, _, _, _, hcases⟩
+      rcases hcases with
+        ⟨j, _, _, _, _, _, _, _, _, rfl⟩ |
+        ⟨_, _, _, _, _, _, _, _, rfl⟩ |
+        ⟨_, _, _, _, _, _, _, rfl⟩ |
+        ⟨_, _, _, _, _, _, _, _, _, rfl⟩ |
+        ⟨_, _, _, _, _, _, _, rfl⟩
       all_goals
         simp [syncDir_apply_fin]
   | .store v =>
-      rcases hstep with ⟨_, _, hpreT, rfl⟩
+      rcases hstep with ⟨_, _, _, hpreT, rfl⟩
       by_cases hpi : p = i
       · simpa [hpi, hpreT] using hdir p
       · simpa [setFn, hpi] using hdir p
@@ -265,10 +301,10 @@ private theorem dirInv_preserved (n : Nat)
       rcases hstep with ⟨_, rfl⟩
       exact hdir p
   | .release param =>
-      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
+      rcases hstep with ⟨_, _, _, _, _, _, _, rfl⟩
       simp [syncDir_apply_fin]
   | .releaseData param =>
-      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       simp [syncDir_apply_fin]
   | .releaseAck =>
       rcases hstep with ⟨_, rfl⟩
@@ -283,8 +319,23 @@ private theorem lineWF_preserved (n : Nat)
   intro p
   match a with
   | .acquireBlock =>
-      rcases hstep with ⟨_, _, _, hcases⟩
-      rcases hcases with ⟨j, _, _, rfl⟩ | ⟨_, _, rfl⟩ | ⟨_, rfl⟩
+      rcases hstep with ⟨_, _, _, _, hcases⟩
+      rcases hcases with ⟨_, _, _, rfl⟩ | ⟨_, _, rfl⟩ | ⟨_, rfl⟩
+      all_goals
+        exact hwf p
+  | .acquirePerm =>
+      rcases hstep with ⟨_, _, _, _, hcases⟩
+      rcases hcases with ⟨_, _, _, rfl⟩ | ⟨_, rfl⟩
+      all_goals
+        exact hwf p
+  | .finishGrant =>
+      rcases hstep with ⟨pg, _, _, _, _, hcases⟩
+      rcases hcases with
+        ⟨j, _, _, _, _, _, _, _, _, rfl⟩ |
+        ⟨_, _, _, _, _, _, _, _, rfl⟩ |
+        ⟨_, _, _, _, _, _, _, rfl⟩ |
+        ⟨_, _, _, _, _, _, _, _, _, rfl⟩ |
+        ⟨_, _, _, _, _, _, _, rfl⟩
       · by_cases hpi : p = i
         · simp [acquireBlockDirtyLocals, hpi]
         · by_cases hpj : p = j
@@ -298,15 +349,14 @@ private theorem lineWF_preserved (n : Nat)
       · by_cases hpi : p = i
         · simp [setFn, hpi]
         · simpa [setFn, hpi] using hwf p
-  | .acquirePerm =>
-      rcases hstep with ⟨_, _, _, hcases⟩
-      rcases hcases with ⟨_, _, _, rfl⟩ | ⟨_, rfl⟩
-      all_goals
-        by_cases hpi : p = i
+      · by_cases hpi : p = i
+        · simp [acquirePermLocals, hpi]
+        · simp [acquirePermLocals, hpi]
+      · by_cases hpi : p = i
         · simp [acquirePermLocals, hpi]
         · simp [acquirePermLocals, hpi]
   | .store v =>
-      rcases hstep with ⟨_, _, _, rfl⟩
+      rcases hstep with ⟨_, _, _, _, rfl⟩
       by_cases hpi : p = i
       · simp [setFn, hpi]
       · simpa [setFn, hpi] using hwf p
@@ -314,13 +364,13 @@ private theorem lineWF_preserved (n : Nat)
       rcases hstep with ⟨_, rfl⟩
       exact hwf p
   | .release param =>
-      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
+      rcases hstep with ⟨_, _, _, _, _, _, _, rfl⟩
       by_cases hpi : p = i
       · have hwf' := releasedLine_wf (s.locals i) param.result
         simpa [setFn, hpi] using hwf'
       · simpa [setFn, hpi] using hwf p
   | .releaseData param =>
-      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       by_cases hpi : p = i
       · have hwf' := releasedLine_wf (s.locals i) param.result
         simpa [setFn, hpi] using hwf'
@@ -339,9 +389,25 @@ private theorem cleanDataInv_preserved (n : Nat)
   intro p hpvalid hpclean
   match a with
   | .acquireBlock =>
-      rcases hstep with ⟨_, _, _, hcases⟩
-      rcases hcases with ⟨j, hji, hjdirty, rfl⟩ | ⟨_, _, rfl⟩ | ⟨hallN, rfl⟩
-      · by_cases hpi : p = i
+      rcases hstep with ⟨_, _, _, _, hcases⟩
+      rcases hcases with ⟨_, _, _, rfl⟩ | ⟨_, _, rfl⟩ | ⟨_, rfl⟩
+      all_goals
+        exact hcleanData p hpvalid hpclean
+  | .acquirePerm =>
+      rcases hstep with ⟨_, _, _, _, hcases⟩
+      rcases hcases with ⟨_, _, _, rfl⟩ | ⟨_, rfl⟩
+      all_goals
+        exact hcleanData p hpvalid hpclean
+  | .finishGrant =>
+      rcases hstep with ⟨pg, _, _, _, hreq, hcases⟩
+      rcases hcases with
+        ⟨j, hji, hjdirty, _, _, _, _, _, _, rfl⟩ |
+        ⟨_, _, _, _, _, _, _, _, rfl⟩ |
+        ⟨hallN, _, _, _, _, _, _, rfl⟩ |
+        ⟨j, hji, hjdirty, _, _, _, _, _, _, rfl⟩ |
+        ⟨_, _, _, _, _, _, _, rfl⟩
+      ·
+        by_cases hpi : p = i
         · subst hpi
           simp [acquireBlockDirtyLocals]
         · by_cases hpj : p = j
@@ -354,7 +420,8 @@ private theorem cleanDataInv_preserved (n : Nat)
             have hpvalidFalse : (s.locals p).valid = false := (hwf p).2.2 hpN |>.1
             rw [hpvalidFalse] at hpvalidPre
             cases hpvalidPre
-      · by_cases hpi : p = i
+      ·
+        by_cases hpi : p = i
         · subst hpi
           simp [acquireBlockSharedLocals]
         · by_cases hpTip : (s.locals p).perm = .T
@@ -364,7 +431,8 @@ private theorem cleanDataInv_preserved (n : Nat)
             have hpcleanPre : (s.locals p).dirty = false := by
               simpa [acquireBlockSharedLocals, hpi, hpTip] using hpclean
             simpa [acquireBlockSharedLocals, hpi, hpTip] using hcleanData p hpvalidPre hpcleanPre
-      · by_cases hpi : p = i
+      ·
+        by_cases hpi : p = i
         · subst hpi
           simp [setFn]
         · have hpN : (s.locals p).perm = .N := hallN p hpi
@@ -373,10 +441,15 @@ private theorem cleanDataInv_preserved (n : Nat)
           have hpvalidFalse : (s.locals p).valid = false := (hwf p).2.2 hpN |>.1
           rw [hpvalidFalse] at hpvalidPre
           cases hpvalidPre
-  | .acquirePerm =>
-      rcases hstep with ⟨_, _, _, hcases⟩
-      rcases hcases with ⟨_, _, _, rfl⟩ | ⟨_, rfl⟩
-      all_goals
+      ·
+        by_cases hpi : p = i
+        · have : False := by
+            simpa [acquirePermLocals, hpi] using hpvalid
+          exact False.elim this
+        · have : False := by
+            simpa [acquirePermLocals, hpi] using hpvalid
+          exact False.elim this
+      ·
         by_cases hpi : p = i
         · have : False := by
             simpa [acquirePermLocals, hpi] using hpvalid
@@ -385,7 +458,7 @@ private theorem cleanDataInv_preserved (n : Nat)
             simpa [acquirePermLocals, hpi] using hpvalid
           exact False.elim this
   | .store v =>
-      rcases hstep with ⟨_, _, _, rfl⟩
+      rcases hstep with ⟨_, _, _, _, rfl⟩
       by_cases hpi : p = i
       · have : False := by
           simpa [setFn, hpi] using hpclean
@@ -399,7 +472,7 @@ private theorem cleanDataInv_preserved (n : Nat)
       rcases hstep with ⟨_, rfl⟩
       exact hcleanData p hpvalid hpclean
   | .release param =>
-      rcases hstep with ⟨_, _, _, _, hcleanPre, hvalidOrN, rfl⟩
+      rcases hstep with ⟨_, _, _, _, _, hcleanPre, hvalidOrN, rfl⟩
       by_cases hpi : p = i
       · subst hpi
         have hvalidPre : (s.locals p).valid = true := by
@@ -416,7 +489,7 @@ private theorem cleanDataInv_preserved (n : Nat)
           simpa [setFn, hpi] using hpclean
         simpa [setFn, hpi] using hcleanData p hpvalidPre hpcleanPre
   | .releaseData param =>
-      rcases hstep with ⟨_, _, _, _, hdirty, rfl⟩
+      rcases hstep with ⟨_, _, _, _, _, hdirty, rfl⟩
       by_cases hpi : p = i
       · subst hpi
         simpa [setFn, releasedLine] using releasedLine_data (s.locals p) param.result
@@ -431,16 +504,132 @@ private theorem cleanDataInv_preserved (n : Nat)
       rcases hstep with ⟨_, rfl⟩
       exact hcleanData p hpvalid hpclean
 
+private theorem grantMetaInv_preserved (n : Nat)
+    (s s' : SymState HomeState CacheLine n)
+    (hmetaInv : grantMetaInv n s) (hnext : (tlAtomic.toSpec n).next s s') :
+    grantMetaInv n s' := by
+  simp only [SymSharedSpec.toSpec, tlAtomic] at hnext
+  obtain ⟨i, a, hstep⟩ := hnext
+  match a with
+  | .acquireBlock =>
+      rcases hstep with ⟨_, hgrantNone, hrelNone, _, hcases⟩
+      rcases hcases with ⟨j, hji, _, rfl⟩ | ⟨_, _, rfl⟩ | ⟨_, rfl⟩
+      · refine ⟨i.is_lt, by simpa using hrelNone, ?_, ?_, Or.inl ?_⟩
+        · simp [grantMetaShape]
+        · simp [singleProbeMask]
+          intro h
+          exact hji (Fin.ext h.symm)
+        · refine ⟨by simpa using hgrantNone, ?_, trivial⟩
+          intro k
+          simp [singleProbeMask]
+      · refine ⟨i.is_lt, by simpa using hrelNone, ?_, ?_, Or.inl ?_⟩
+        · simp [grantMetaShape]
+        · simp [writableProbeMask]
+        · refine ⟨by simpa using hgrantNone, ?_, trivial⟩
+          intro k
+          simp [writableProbeMask]
+      · refine ⟨i.is_lt, by simpa using hrelNone, ?_, ?_, Or.inl ?_⟩
+        · simp [grantMetaShape]
+        · simp
+        · refine ⟨by simpa using hgrantNone, ?_, trivial⟩
+          intro k
+          simp
+  | .acquirePerm =>
+      rcases hstep with ⟨_, hgrantNone, hrelNone, _, hcases⟩
+      rcases hcases with ⟨_, _, _, rfl⟩ | ⟨_, rfl⟩
+      all_goals
+        refine ⟨i.is_lt, by simpa using hrelNone, ?_, ?_, Or.inl ?_⟩
+        · simp [grantMetaShape]
+        · simp [cachedProbeMask]
+        · refine ⟨by simpa using hgrantNone, ?_, trivial⟩
+          intro k
+          simp [cachedProbeMask]
+  | .finishGrant =>
+      rcases hstep with ⟨pg, hmetaSome, hgrantNone, hrelNone, hreq, hcases⟩
+      rcases hcases with
+        ⟨j, hji, _, hkind, hperm, _, _, hneed, _, rfl⟩ |
+        ⟨_, _, hkind, hperm, _, _, hneed, _, rfl⟩ |
+        ⟨_, hkind, hperm, _, _, hneed, _, rfl⟩ |
+        ⟨j, hji, _, hkind, hperm, _, _, hneed, _, rfl⟩ |
+        ⟨_, hkind, hperm, _, _, hneed, _, rfl⟩
+      · refine ⟨by simpa [deliveredGrantMeta, hreq] using i.is_lt,
+          by simpa using hrelNone,
+          by simpa [deliveredGrantMeta, grantMetaShape, hkind, hperm],
+          ?_, Or.inr ?_⟩
+        · simp [deliveredGrantMeta, hneed, hreq, singleProbeMask]
+          intro h
+          exact hji (Fin.ext h.symm)
+        · refine ⟨by simpa [deliveredGrantMeta, hreq], ?_, trivial⟩
+          intro k
+          simp [deliveredGrantMeta, noProbeMask]
+      · refine ⟨by simpa [deliveredGrantMeta, hreq] using i.is_lt,
+          by simpa using hrelNone,
+          by simpa [deliveredGrantMeta, grantMetaShape, hkind, hperm],
+          by simp [deliveredGrantMeta, hneed, hreq, writableProbeMask],
+          Or.inr ?_⟩
+        refine ⟨by simpa [deliveredGrantMeta, hreq], ?_, trivial⟩
+        intro k
+        simp [deliveredGrantMeta, noProbeMask]
+      · refine ⟨by simpa [deliveredGrantMeta, hreq] using i.is_lt,
+          by simpa using hrelNone,
+          by simpa [deliveredGrantMeta, grantMetaShape, hkind, hperm],
+          by simp [deliveredGrantMeta, hneed, hreq],
+          Or.inr ?_⟩
+        refine ⟨by simpa [deliveredGrantMeta, hreq], ?_, trivial⟩
+        intro k
+        simp [deliveredGrantMeta, noProbeMask]
+      · refine ⟨by simpa [deliveredGrantMeta, hreq] using i.is_lt,
+          by simpa using hrelNone,
+          by simpa [deliveredGrantMeta, grantMetaShape, hkind, hperm],
+          by simp [deliveredGrantMeta, hneed, hreq, cachedProbeMask],
+          Or.inr ?_⟩
+        refine ⟨by simpa [deliveredGrantMeta, hreq], ?_, trivial⟩
+        intro k
+        simp [deliveredGrantMeta, noProbeMask]
+      · refine ⟨by simpa [deliveredGrantMeta, hreq] using i.is_lt,
+          by simpa using hrelNone,
+          by simpa [deliveredGrantMeta, grantMetaShape, hkind, hperm],
+          by simp [deliveredGrantMeta, hneed, hreq, cachedProbeMask],
+          Or.inr ?_⟩
+        refine ⟨by simpa [deliveredGrantMeta, hreq], ?_, trivial⟩
+        intro k
+        simp [deliveredGrantMeta, noProbeMask]
+  | .store v =>
+      rcases hstep with ⟨hmetaNone, hgrantNone, _, _, rfl⟩
+      simpa [grantMetaInv, hmetaNone, hgrantNone]
+  | .grantAck =>
+      rcases hstep with ⟨_, rfl⟩
+      simp [grantMetaInv]
+  | .release param =>
+      rcases hstep with ⟨hmetaNone, hgrantNone, _, _, _, _, _, rfl⟩
+      simpa [grantMetaInv, hmetaNone, hgrantNone]
+  | .releaseData param =>
+      rcases hstep with ⟨hmetaNone, hgrantNone, _, _, _, _, rfl⟩
+      simpa [grantMetaInv, hmetaNone, hgrantNone]
+  | .releaseAck =>
+      rcases hstep with ⟨hrelSome, rfl⟩
+      cases hmeta : s.shared.pendingGrantMeta with
+      | none =>
+          simpa [grantMetaInv, hmeta] using hmetaInv
+      | some pg =>
+          have : False := by
+            rw [grantMetaInv, hmeta] at hmetaInv
+            rcases hmetaInv with ⟨_, hrelNone, _⟩
+            rw [hrelSome] at hrelNone
+            simp at hrelNone
+          exact False.elim this
+
 def atomicInv (n : Nat) (s : SymState HomeState CacheLine n) : Prop :=
-  swmr n s ∧ pendingInv n s ∧ dirInv n s ∧ lineWF n s ∧ cleanDataInv n s
+  swmr n s ∧ pendingInv n s ∧ grantMetaInv n s ∧ dirInv n s ∧ lineWF n s ∧ cleanDataInv n s
 
 theorem atomicInv_preserved (n : Nat)
     (s s' : SymState HomeState CacheLine n)
     (hinv : atomicInv n s) (hnext : (tlAtomic.toSpec n).next s s') :
     atomicInv n s' := by
-  rcases hinv with ⟨hswmr, hpending, hdir, hwf, hcleanData⟩
+  rcases hinv with ⟨hswmr, hpending, hmetaInv, hdir, hwf, hcleanData⟩
   exact ⟨swmr_preserved n s s' hswmr hwf hnext,
          pendingInv_preserved n s s' hpending hnext,
+         grantMetaInv_preserved n s s' hmetaInv hnext,
          dirInv_preserved n s s' hdir hnext,
          lineWF_preserved n s s' hwf hnext,
          cleanDataInv_preserved n s s' hcleanData hswmr hwf hnext⟩

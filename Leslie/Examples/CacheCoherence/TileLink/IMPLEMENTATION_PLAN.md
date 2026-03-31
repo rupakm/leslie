@@ -160,16 +160,20 @@ checkpoint:
 - local state distinguishes permission, validity, dirtiness, and data
 - shared state includes home memory, a directory summary, pending grant
   metadata, and pending `GrantAck`/`ReleaseAck` obligations
+- acquires schedule a pending probe/grant wave and `finishGrant` resolves that
+  wave before the explicit `GrantAck`
 - the proved invariant currently covers writer exclusivity, pending-ack
   discipline, directory agreement, local well-formedness, and clean valid data
   agreement with memory
 - a derived theorem identifies the dirty owner as the source of the atomic
   model's logical line value
+- pending grant metadata now records both scheduled and delivered grant phases;
+  the checked-in invariant tracks phase/shape facts, while stronger coupling to
+  post-grant cache/home state remains a follow-on strengthening step
 
-The remaining Stage 1 work is to strengthen the shared state and the proof to
-cover:
+The remaining Stage 1 work is to strengthen the proof to cover:
 
-- explicit outstanding probe obligations / pending serialized transfer metadata
+- richer delivered/scheduled metadata facts if they are useful for refinement
 - sequential one-line refinement
 
 ### Files
@@ -213,8 +217,8 @@ The current Stage 1b checkpoint intentionally implements only:
 - pending `ReleaseAck`
 
 That is enough to validate the TL-C permission shape, prove a first memory
-agreement invariant, and keep the next extensions focused on serialized
-transfer metadata rather than basic permission bookkeeping.
+agreement invariant, prove the dirty-owner data theorem, and model the
+scheduled-vs-delivered grant split before the message-level development.
 
 ### Proof goals
 
