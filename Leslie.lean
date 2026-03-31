@@ -43,6 +43,7 @@ import «Leslie».AssumeGuarantee
 import «Leslie».Examples.CacheCoherence.MESI
 import «Leslie».Examples.CacheCoherence.MESIParam
 import «Leslie».Examples.CacheCoherence.German
+import «Leslie».Examples.CacheCoherence.GermanMessages
 -- import «Leslie».Rust.CoreSemantics
 -- import «Leslie».Rust.RuntimeSemantics
 -- import «Leslie».Rust.Examples.BallotLeaderPhased
