@@ -401,11 +401,6 @@ def strongInvariant (n : Nat) (s : MState n) : Prop :=
   chanImpliesShrSet n s ∧
   uniqueShrSetWhenExGntd n s
 
-theorem strongInvariant_implies_invariant (n : Nat) :
-    ∀ s : MState n, strongInvariant n s → invariant n s := by
-  intro s hs
-  exact hs.1
-
 theorem germanMessages_init_ctrlProp (n : Nat) :
     ∀ s : MState n, init n s → ctrlProp n s := by
   intro s hinit i j hij
@@ -413,11 +408,11 @@ theorem germanMessages_init_ctrlProp (n : Nat) :
   constructor
   · intro hiE
     have hj := hcache j
-    simpa [hj] using hj
+    simp [hj]
   · intro hiS
     left
     have hj := hcache j
-    simpa [hj] using hj
+    simp [hj]
 
 theorem germanMessages_init_dataProp (n : Nat) :
     ∀ s : MState n, init n s → dataProp n s := by
@@ -473,305 +468,7 @@ theorem germanMessages_init_exclusiveSelfClean (n : Nat) :
   intro s hinit i hiE
   rcases hinit with ⟨hcache, _, hchan2, hchan3, _, _, _, _, _, _⟩
   have hc := hcache i
-  have h2 := hchan2 i
-  have h3 := hchan3 i
-  simp [hc, h2, h3] at hiE
-
-theorem germanMessages_init_grantImpliesInvalid (n : Nat) :
-    ∀ s : MState n, init n s → grantImpliesInvalid n s := by
-  intro s hinit i hgrant
-  rcases hinit with ⟨hcache, _, hchan2, _, _, _, _, _, _, _⟩
-  have hc := hcache i
-  have h2 := hchan2 i
-  simp [hc, h2] at hgrant
-
-theorem germanMessages_init_invAckImpliesInvalid (n : Nat) :
-    ∀ s : MState n, init n s → invAckImpliesInvalid n s := by
-  intro s hinit i hack
-  rcases hinit with ⟨hcache, _, _, hchan3, _, _, _, _, _, _⟩
-  have hc := hcache i
-  have h3 := hchan3 i
-  simp [hc, h3] at hack
-
-theorem germanMessages_init_pendingRequesterInvalid (n : Nat) :
-    ∀ s : MState n, init n s → pendingRequesterInvalid n s := by
-  intro s hinit
-  rcases hinit with ⟨hcache, _, _, _, _, _, _, hcur, _, _⟩
-  left
-  exact hcur
-
-theorem exclusiveSelfClean_of_strengthened
-    {n : Nat} {s : MState n}
-    (hs : strongInvariant n s)
-    (hgrantI : grantImpliesInvalid n s)
-    (hackI : invAckImpliesInvalid n s) :
-    exclusiveSelfClean n s := by
-  rcases hs with ⟨_, _, _, _, _, _, hexImpl, hnoSharedEx, _, _⟩
-  intro i hcacheE
-  have hexTrue : s.exGntd = true := hexImpl i (Or.inl hcacheE)
-  constructor
-  · exact (hnoSharedEx hexTrue i).2
-  constructor
-  · intro hgntE
-    have hcacheI : (s.cache i).state = .I := hgrantI i (Or.inr hgntE)
-    cases hcacheE.symm.trans hcacheI
-  · intro hack
-    have hcacheI : (s.cache i).state = .I := hackI i hack
-    cases hcacheE.symm.trans hcacheI
-
-private theorem grantImpliesInvalid_preserved_sendInvAck
-    {n : Nat} {s : MState n} {i : Fin n}
-    (hgrantI : grantImpliesInvalid n s)
-    (hstep : (s.chan2 i).cmd = .inv ∧ (s.chan3 i).cmd = .empty) :
-    grantImpliesInvalid n (sendInvAckState s i) := by
-  rcases hstep with ⟨hchan2i, _⟩
-  intro j hjGrant
-  by_cases hji : j = i
-  · subst hji
-    rcases hjGrant with hjGntS | hjGntE
-    · simp [sendInvAckState] at hjGntS
-    · simp [sendInvAckState] at hjGntE
-  · have hjGrant' : (s.chan2 j).cmd = .gntS ∨ (s.chan2 j).cmd = .gntE := by
-      simpa [sendInvAckState, hji] using hjGrant
-    simpa [sendInvAckState, hji] using hgrantI j hjGrant'
-
-private theorem invAckImpliesInvalid_preserved_sendInvAck
-    {n : Nat} {s : MState n} {i : Fin n}
-    (hackI : invAckImpliesInvalid n s)
-    (hstep : (s.chan2 i).cmd = .inv ∧ (s.chan3 i).cmd = .empty) :
-    invAckImpliesInvalid n (sendInvAckState s i) := by
-  rcases hstep with ⟨_, hchan3i⟩
-  intro j hjAck
-  by_cases hji : j = i
-  · subst hji
-    simp [sendInvAckState]
-  · have hjAck' : (s.chan3 j).cmd = .invAck := by
-      simpa [sendInvAckState, hji] using hjAck
-    simpa [sendInvAckState, hji] using hackI j hjAck'
-
-private theorem grantImpliesInvalid_preserved_sendReqS
-    {n : Nat} {s s' : MState n} {i : Fin n}
-    (hgrantI : grantImpliesInvalid n s)
-    (hstep : (s.chan1 i).cmd = .empty ∧ (s.cache i).state = .I ∧
-      s' = { s with chan1 := setFn s.chan1 i { (s.chan1 i) with cmd := .reqS } }) :
-    grantImpliesInvalid n s' := by
-  rcases hstep with ⟨_, _, rfl⟩
-  simpa [grantImpliesInvalid] using hgrantI
-
-private theorem grantImpliesInvalid_preserved_sendReqE
-    {n : Nat} {s s' : MState n} {i : Fin n}
-    (hgrantI : grantImpliesInvalid n s)
-    (hstep : (s.chan1 i).cmd = .empty ∧ ((s.cache i).state = .I ∨ (s.cache i).state = .S) ∧
-      s' = { s with chan1 := setFn s.chan1 i { (s.chan1 i) with cmd := .reqE } }) :
-    grantImpliesInvalid n s' := by
-  rcases hstep with ⟨_, _, rfl⟩
-  simpa [grantImpliesInvalid] using hgrantI
-
-private theorem grantImpliesInvalid_preserved_recvReqS
-    {n : Nat} {s s' : MState n} {i : Fin n}
-    (hgrantI : grantImpliesInvalid n s)
-    (hstep : s.curCmd = .empty ∧ (s.chan1 i).cmd = .reqS ∧
-      s' = { s with
-              curCmd := .reqS
-              curPtr := i
-              chan1 := setFn s.chan1 i { (s.chan1 i) with cmd := .empty }
-              invSet := fun j => s.shrSet j }) :
-    grantImpliesInvalid n s' := by
-  rcases hstep with ⟨_, _, rfl⟩
-  simpa [grantImpliesInvalid] using hgrantI
-
-private theorem grantImpliesInvalid_preserved_recvReqE
-    {n : Nat} {s s' : MState n} {i : Fin n}
-    (hgrantI : grantImpliesInvalid n s)
-    (hstep : s.curCmd = .empty ∧ (s.chan1 i).cmd = .reqE ∧
-      s' = { s with
-              curCmd := .reqE
-              curPtr := i
-              chan1 := setFn s.chan1 i { (s.chan1 i) with cmd := .empty }
-              invSet := fun j => s.shrSet j }) :
-    grantImpliesInvalid n s' := by
-  rcases hstep with ⟨_, _, rfl⟩
-  simpa [grantImpliesInvalid] using hgrantI
-
-private theorem grantImpliesInvalid_preserved_sendInv
-    {n : Nat} {s s' : MState n} {i : Fin n}
-    (hgrantI : grantImpliesInvalid n s)
-    (hstep : (s.chan2 i).cmd = .empty ∧ s.invSet i = true ∧
-      (s.curCmd = .reqE ∨ (s.curCmd = .reqS ∧ s.exGntd = true)) ∧
-      s' = { s with
-              chan2 := setFn s.chan2 i { (s.chan2 i) with cmd := .inv }
-              invSet := setFn s.invSet i false }) :
-    grantImpliesInvalid n s' := by
-  rcases hstep with ⟨hchan2i, _, _, rfl⟩
-  intro j hjGrant
-  by_cases hji : j = i
-  · subst hji
-    rcases hjGrant with hjGntS | hjGntE
-    · simp [setFn, hchan2i] at hjGntS
-    · simp [setFn, hchan2i] at hjGntE
-  · have hjGrant' : (s.chan2 j).cmd = .gntS ∨ (s.chan2 j).cmd = .gntE := by
-      simpa [setFn, hji] using hjGrant
-    simpa [setFn, hji] using hgrantI j hjGrant'
-
-private theorem grantImpliesInvalid_preserved_recvGntS
-    {n : Nat} {s s' : MState n} {i : Fin n}
-    (hgrantI : grantImpliesInvalid n s)
-    (hstep : (s.chan2 i).cmd = .gntS ∧
-      s' = { s with
-              cache := setFn s.cache i { state := .S, data := (s.chan2 i).data }
-              chan2 := setFn s.chan2 i { (s.chan2 i) with cmd := .empty } }) :
-    grantImpliesInvalid n s' := by
-  rcases hstep with ⟨hchan2i, rfl⟩
-  intro j hjGrant
-  by_cases hji : j = i
-  · subst hji
-    rcases hjGrant with hjGntS | hjGntE
-    · simp [setFn] at hjGntS
-    · simp [setFn] at hjGntE
-  · have hjGrant' : (s.chan2 j).cmd = .gntS ∨ (s.chan2 j).cmd = .gntE := by
-      simpa [setFn, hji] using hjGrant
-    have hcacheI : (s.cache j).state = .I := hgrantI j hjGrant'
-    simpa [setFn, hji] using hcacheI
-
-private theorem grantImpliesInvalid_preserved_recvGntE
-    {n : Nat} {s : MState n} {i : Fin n}
-    (hgrantI : grantImpliesInvalid n s)
-    (hstep : (s.chan2 i).cmd = .gntE) :
-    grantImpliesInvalid n (recvGntEState s i) := by
-  intro j hjGrant
-  by_cases hji : j = i
-  · subst hji
-    rcases hjGrant with hjGntS | hjGntE
-    · simp [recvGntEState] at hjGntS
-    · simp [recvGntEState] at hjGntE
-  · have hjGrant' : (s.chan2 j).cmd = .gntS ∨ (s.chan2 j).cmd = .gntE := by
-      simpa [recvGntEState, hji] using hjGrant
-    have hcacheI : (s.cache j).state = .I := hgrantI j hjGrant'
-    simpa [recvGntEState, hji] using hcacheI
-
-private theorem pendingRequesterInvalid_preserved_sendReqS
-    {n : Nat} {s s' : MState n} {i : Fin n}
-    (hpending : pendingRequesterInvalid n s)
-    (hstep : (s.chan1 i).cmd = .empty ∧ (s.cache i).state = .I ∧
-      s' = { s with chan1 := setFn s.chan1 i { (s.chan1 i) with cmd := .reqS } }) :
-    pendingRequesterInvalid n s' := by
-  rcases hstep with ⟨_, _, rfl⟩
-  simpa [pendingRequesterInvalid] using hpending
-
-private theorem pendingRequesterInvalid_preserved_sendReqE
-    {n : Nat} {s s' : MState n} {i : Fin n}
-    (hpending : pendingRequesterInvalid n s)
-    (hstep : (s.chan1 i).cmd = .empty ∧ ((s.cache i).state = .I ∨ (s.cache i).state = .S) ∧
-      s' = { s with chan1 := setFn s.chan1 i { (s.chan1 i) with cmd := .reqE } }) :
-    pendingRequesterInvalid n s' := by
-  rcases hstep with ⟨_, _, rfl⟩
-  simpa [pendingRequesterInvalid] using hpending
-
-private theorem pendingRequesterInvalid_preserved_recvReqS
-    {n : Nat} {s s' : MState n} {i : Fin n}
-    (hcacheI : (s.cache i).state = .I)
-    (hstep : s.curCmd = .empty ∧ (s.chan1 i).cmd = .reqS ∧
-      s' = { s with
-              curCmd := .reqS
-              curPtr := i
-              chan1 := setFn s.chan1 i { (s.chan1 i) with cmd := .empty }
-              invSet := fun j => s.shrSet j }) :
-    pendingRequesterInvalid n s' := by
-  rcases hstep with ⟨hcur, _, rfl⟩
-  right
-  simpa [hcur] using hcacheI
-
-private theorem pendingRequesterInvalid_preserved_recvReqE
-    {n : Nat} {s s' : MState n} {i : Fin n}
-    (hcacheI : (s.cache i).state = .I)
-    (hstep : s.curCmd = .empty ∧ (s.chan1 i).cmd = .reqE ∧
-      s' = { s with
-              curCmd := .reqE
-              curPtr := i
-              chan1 := setFn s.chan1 i { (s.chan1 i) with cmd := .empty }
-              invSet := fun j => s.shrSet j }) :
-    pendingRequesterInvalid n s' := by
-  rcases hstep with ⟨hcur, _, rfl⟩
-  right
-  simpa [hcur] using hcacheI
-
-private theorem pendingRequesterInvalid_preserved_sendInv
-    {n : Nat} {s s' : MState n} {i : Fin n}
-    (hpending : pendingRequesterInvalid n s)
-    (hstep : (s.chan2 i).cmd = .empty ∧ s.invSet i = true ∧
-      (s.curCmd = .reqE ∨ (s.curCmd = .reqS ∧ s.exGntd = true)) ∧
-      s' = { s with
-              chan2 := setFn s.chan2 i { (s.chan2 i) with cmd := .inv }
-              invSet := setFn s.invSet i false }) :
-    pendingRequesterInvalid n s' := by
-  rcases hstep with ⟨_, _, _, rfl⟩
-  simpa [pendingRequesterInvalid] using hpending
-
-private theorem pendingRequesterInvalid_preserved_sendInvAck
-    {n : Nat} {s : MState n} {i : Fin n}
-    (hpending : pendingRequesterInvalid n s)
-    (hstep : (s.chan2 i).cmd = .inv ∧ (s.chan3 i).cmd = .empty) :
-    pendingRequesterInvalid n (sendInvAckState s i) := by
-  rcases hstep with ⟨_, _⟩
-  rcases hpending with hcur | hcacheI
-  · left
-    simpa [pendingRequesterInvalid] using hcur
-  · by_cases hsame : s.curPtr = i
-    · subst hsame
-      right
-      simp [sendInvAckState]
-    · right
-      simpa [pendingRequesterInvalid, sendInvAckState, hsame] using hcacheI
-
-private theorem grantImpliesInvalid_preserved_sendGntS
-    {n : Nat} {s s' : MState n} {i : Fin n}
-    (hgrantI : grantImpliesInvalid n s)
-    (hpending : pendingRequesterInvalid n s)
-    (hstep : s.curCmd = .reqS ∧ s.curPtr = i ∧ (s.chan2 i).cmd = .empty ∧ s.exGntd = false ∧
-      s' = { s with
-              chan2 := setFn s.chan2 i { cmd := .gntS, data := s.memData }
-              shrSet := setFn s.shrSet i true
-              curCmd := .empty }) :
-    grantImpliesInvalid n s' := by
-  rcases hstep with ⟨hcur, hptr, hchan2i, _, rfl⟩
-  have hcacheI : (s.cache i).state = .I := by
-    rcases hpending with hempty | hcacheI
-    · rw [hcur] at hempty
-      simp at hempty
-    · simpa [hptr] using hcacheI
-  intro j hjGrant
-  by_cases hji : j = i
-  · subst hji
-    simpa [setFn] using hcacheI
-  · have hjGrant' : (s.chan2 j).cmd = .gntS ∨ (s.chan2 j).cmd = .gntE := by
-      simpa [setFn, hji] using hjGrant
-    simpa [setFn, hji] using hgrantI j hjGrant'
-
-private theorem grantImpliesInvalid_preserved_sendGntE
-    {n : Nat} {s s' : MState n} {i : Fin n}
-    (hgrantI : grantImpliesInvalid n s)
-    (hpending : pendingRequesterInvalid n s)
-    (hstep : s.curCmd = .reqE ∧ s.curPtr = i ∧ (s.chan2 i).cmd = .empty ∧ s.exGntd = false ∧
-      (∀ j, s.shrSet j = false) ∧
-      s' = { s with
-              chan2 := setFn s.chan2 i { cmd := .gntE, data := s.memData }
-              shrSet := setFn s.shrSet i true
-              exGntd := true
-              curCmd := .empty }) :
-    grantImpliesInvalid n s' := by
-  rcases hstep with ⟨hcur, hptr, hchan2i, _, hshrFalse, rfl⟩
-  have hcacheI : (s.cache i).state = .I := by
-    rcases hpending with hempty | hcacheI
-    · rw [hcur] at hempty
-      simp at hempty
-    · simpa [hptr] using hcacheI
-  intro j hjGrant
-  by_cases hji : j = i
-  · subst hji
-    simpa [setFn] using hcacheI
-  · have hjGrant' : (s.chan2 j).cmd = .gntS ∨ (s.chan2 j).cmd = .gntE := by
-      simpa [setFn, hji] using hjGrant
-    simpa [setFn, hji] using hgrantI j hjGrant'
+  simp [hc] at hiE
 
 private theorem strongInvariant_preserved_sendReqS
     {n : Nat} {s s' : MState n} {i : Fin n}
@@ -842,7 +539,7 @@ private theorem strongInvariant_preserved_sendInv
   · intro j hj
     by_cases hji : j = i
     · subst hji
-      simp [setFn, hchan2i] at hj
+      simp [setFn] at hj
     · have hj' : (s.chan2 j).cmd = .gntS ∨ (s.chan2 j).cmd = .gntE := by
         simpa [setFn, hji] using hj
       simpa [setFn, hji] using hgrant j hj'
@@ -864,7 +561,7 @@ private theorem strongInvariant_preserved_sendInv
     by_cases hji : j = i
     · subst hji
       have hj' : (s.cache j).state = .E ∨ (s.chan2 j).cmd = .gntE := by
-        simp [setFn, hchan2i] at hj
+        simp [setFn] at hj
         exact Or.inl hj
       exact hexImpl j hj'
     · have hj' : (s.cache j).state = .E ∨ (s.chan2 j).cmd = .gntE := by
@@ -882,8 +579,8 @@ private theorem strongInvariant_preserved_sendInv
     · subst hji
       rcases hj with hj | hj | hj | hj
       · exact hinvSub j hinvi
-      · simp [setFn, hchan2i] at hj
-      · simp [setFn, hchan2i] at hj
+      · simp [setFn] at hj
+      · simp [setFn] at hj
       · have hj' : (s.chan3 j).cmd = .invAck := by simpa using hj
         exact hchanShr j (Or.inr <| Or.inr <| Or.inr hj')
     · have hj' : ((s.chan2 j).cmd = .inv) ∨
@@ -941,17 +638,15 @@ private theorem strongInvariant_preserved_sendGntS
         simpa [setFn, hji] using hj
       exact hexImpl j hj'
   · intro hexTrue
-    have : False := by simpa [hexFalse] using hexTrue
-    intro j
-    exact False.elim this
+    simp [hexFalse] at hexTrue
   · intro j hj
     by_cases hji : j = i
     · subst hji
       rcases hj with hj | hj | hj | hj
-      · simp [setFn, hchan2i] at hj
-      · simpa [setFn] using (show (setFn s.shrSet j true) j = true by simp [setFn])
       · simp [setFn] at hj
-      · simpa [setFn] using hchanShr j (Or.inr <| Or.inr <| Or.inr hj)
+      · simp [setFn]
+      · simp [setFn] at hj
+      · simp [setFn]
     · have hj' : ((s.chan2 j).cmd = .inv) ∨
         ((s.chan2 j).cmd = .gntS) ∨
         ((s.chan2 j).cmd = .gntE) ∨
@@ -959,9 +654,7 @@ private theorem strongInvariant_preserved_sendGntS
           simpa [setFn, hji] using hj
       simpa [setFn, hji] using hchanShr j hj'
   · intro hexTrue
-    have : False := by simpa [hexFalse] using hexTrue
-    intro j k hjk
-    exact False.elim this
+    simp [hexFalse] at hexTrue
 
 private theorem cache_I_of_shr_false
     {n : Nat} {s : MState n}
@@ -1101,7 +794,7 @@ private theorem strongInvariant_preserved_sendGntE
     by_cases hji : j = i
     · subst hji
       rcases hjMsg with hjInv | hjRest
-      · simp [setFn, hchan2i] at hjInv
+      · simp [setFn] at hjInv
       · rcases hjRest with hjGntS | hjRest
         · simp [setFn] at hjGntS
         · rcases hjRest with hjGntE | hjAck
@@ -1218,9 +911,7 @@ private theorem strongInvariant_preserved_recvGntS
         simpa [setFn, hji] using hjEx
       exact hexImpl j hjEx'
   · intro hexTrue
-    have : False := by simpa [hexFalse] using hexTrue
-    intro j
-    exact False.elim this
+    simp [hexFalse] at hexTrue
   · intro j hjMsg
     by_cases hji : j = i
     · subst hji
@@ -1238,9 +929,7 @@ private theorem strongInvariant_preserved_recvGntS
           simpa [setFn, hji] using hjMsg
       simpa [setFn, hji] using hchanShr j hjMsg'
   · intro hexTrue
-    have : False := by simpa [hexFalse] using hexTrue
-    intro j k hjk
-    exact False.elim this
+    simp [hexFalse] at hexTrue
 
 private theorem strongInvariant_preserved_recvGntE
     {n : Nat} {s : MState n} {i : Fin n}
@@ -1285,7 +974,7 @@ private theorem strongInvariant_preserved_recvGntE
       · intro j hjNotI
         by_cases hji : j = i
         · subst hji
-          simpa [recvGntEState, hdataI]
+          simp [recvGntEState, hdataI]
         · have hjNotI' : (s.cache j).state ≠ .I := by simpa [recvGntEState, hji] using hjNotI
           simpa [recvGntEState, hji] using hinv.2.2 j hjNotI'
   · intro j hjNotI
@@ -1762,8 +1451,6 @@ private theorem strongInvariant_preserved_sendInvAck
 private theorem strongInvariant_preserved_recvInvAck
     {n : Nat} {s s' : MState n} {i : Fin n}
     (hs : strongInvariant n s)
-    (hexcl : exclusiveSelfClean n s)
-    (hgrantExcl : grantExcludesInvAck n s)
     (hackI : invAckImpliesInvalid n s)
     (hInvSetClean : invSetImpliesClean n s)
     (hackClears : invAckClearsGrant n s)
@@ -1789,7 +1476,7 @@ private theorem strongInvariant_preserved_recvInvAck
       by_cases hji : j = i
       · subst hji
         simp [hcacheI] at hjE
-      · have hjShr : s.shrSet j = true := hcacheShr j (by simpa [hjE])
+      · have hjShr : s.shrSet j = true := hcacheShr j (by simp [hjE])
         have hjFalse := huniqShr hexTrue i j (Ne.symm hji) hshrI
         simp [hjShr] at hjFalse
     have hnoGntE : ∀ j : Fin n, (s.chan2 j).cmd ≠ .gntE := by
@@ -1871,7 +1558,7 @@ private theorem strongInvariant_preserved_recvInvAck
       · simpa [setFn, hji] using hcacheShr j hjNotI
     · exact hgrant
     · intro j hexFalse' hjAck
-      exact False.elim (by simpa [hexFalse] using hexFalse')
+      simp [hexFalse] at hexFalse'
     · intro _ j
       exact hnoExFalse hexFalse j
     · intro j hj
