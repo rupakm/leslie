@@ -289,15 +289,25 @@ The checked-in `Messages/` files now cover the next Stage 2 checkpoint:
 - `recvReleaseAckAtMaster` explicitly consumes D and clears the releaser's
   local release-in-flight obligation
 - `FrameLemmas.lean`, `InvariantCore.lean`, `InvariantChannels.lean`,
-  `InitProof.lean`, `StepAcquire.lean`, `StepProbe.lean`, `StepGrant.lean`,
-  `StepRelease.lean`, and `Theorem.lean` are all present and build
+  `InvariantSerialization.lean`, `InitProof.lean`, `StepAcquire.lean`,
+  `StepProbe.lean`, `StepGrant.lean`, `StepRelease.lean`, and `Theorem.lean`
+  are all present and build
 - `Messages/Theorem.lean` proves the first message-level invariant theorem for
   the acquire/probe/grant/release slice
 
 What remains for Stage 2 is still substantial:
 
-- stronger serialization and same-block exclusion invariants
-- eventual refinement from the message model back to the atomic model
+- the actual forward-simulation theorem from the message model back to the
+  atomic model
+
+Stage 2e refinement prep is now started in code:
+
+- `Messages/Refinement.lean` defines refinement-specific helper invariants
+  (`noDirtyInv`, `txnDataInv`, `refinementInv`) together with their init lemmas
+- manager-side `AcquireBlock` has been tightened to the Stage 1 atomic scope,
+  so the explicit and atomic models now agree on the current request variant
+- explicit release submission is now single-wave on the one modeled line,
+  removing a source of overlap the atomic model cannot summarize
 
 ### Files
 

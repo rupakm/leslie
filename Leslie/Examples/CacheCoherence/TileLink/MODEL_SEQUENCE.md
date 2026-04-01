@@ -395,7 +395,7 @@ General lesson:
 
 ### Stage 2e: Message-Level Refinement Back to the Atomic Model
 
-Status: `planned`
+Status: `active`
 
 Likely files:
 
@@ -405,6 +405,8 @@ What this stage should add:
 
 - a refinement map from explicit messages and transaction state back to the
   atomic wave-level model
+- refinement-specific reachability facts for the current message slice, so the
+  forward simulation can talk about the same semantic fragment as Stage 1
 
 What it intentionally omits:
 
@@ -414,6 +416,18 @@ What it intentionally omits:
 Theorem target:
 
 - every message-level execution refines the already-proved atomic model
+
+Current checkpoint:
+
+- `Messages/Refinement.lean` now exists and contains the first refinement-side
+  helper invariants: `noDirtyInv`, `txnDataInv`, and `refinementInv`, together
+  with their init lemmas
+- the message model has been tightened to match the current atomic scope more
+  closely:
+  manager-side `AcquireBlock` now accepts only the Stage 1 no-dirty,
+  requester-from-`N` cases, and queued C-channel releases are now serialized
+  on the single modeled line
+- the forward-simulation theorem itself is still pending
 
 Why this stage matters:
 

@@ -335,6 +335,12 @@ theorem releaseMsg_of_dirty (source : SourceId) (param : PruneReportParam) (line
 def hasDirtyOther {n : Nat} (s : SymState HomeState NodeState n) (i : Fin n) : Prop :=
   ∃ j : Fin n, j ≠ i ∧ (s.locals j).line.dirty = true
 
+def hasCachedOther {n : Nat} (s : SymState HomeState NodeState n) (i : Fin n) : Prop :=
+  ∃ j : Fin n, j ≠ i ∧ (s.locals j).line.perm ≠ .N
+
+def allOthersInvalid {n : Nat} (s : SymState HomeState NodeState n) (i : Fin n) : Prop :=
+  ∀ j : Fin n, j ≠ i → (s.locals j).line.perm = .N
+
 noncomputable def dirtyOwnerOpt {n : Nat}
     (s : SymState HomeState NodeState n) (i : Fin n) : Option (Fin n) :=
   if h : ∃ j : Fin n, j ≠ i ∧ (s.locals j).line.dirty = true then
@@ -652,6 +658,7 @@ def SendAcquireBlock {n : Nat}
   (s.locals i).chanC = none ∧
   (s.locals i).pendingSource = none ∧
   (s.locals i).releaseInFlight = false ∧
+  (s.locals i).line.perm = .N ∧
   grow.legalFrom (s.locals i).line.perm ∧
   s' = { shared := s.shared
        , locals := setFn s.locals i
@@ -683,7 +690,11 @@ def RecvAcquireBlockAtManager {n : Nat}
   s.shared.pendingReleaseAck = none ∧
   (∀ j : Fin n, (s.locals j).chanC = none) ∧
   (s.locals i).chanA = some (mkAcquireBlockMsg grow source) ∧
+  (s.locals i).line.perm = .N ∧
   grow.legalFrom (s.locals i).line.perm ∧
+  ¬hasDirtyOther s i ∧
+  ((hasCachedOther s i ∧ grow.result = .B) ∨
+   (allOthersInvalid s i ∧ grow.result = .T)) ∧
   allTargetBsEmpty s (probeMaskForResult s i grow.result) ∧
   s' = recvAcquireState s i .acquireBlock grow source
 
@@ -697,6 +708,7 @@ def RecvAcquirePermAtManager {n : Nat}
   (s.locals i).chanA = some (mkAcquirePermMsg grow source) ∧
   grow.legalFrom (s.locals i).line.perm ∧
   grow.result = .T ∧
+  ¬hasDirtyOther s i ∧
   allTargetBsEmpty s (probeMaskForResult s i grow.result) ∧
   s' = recvAcquireState s i .acquirePerm grow source
 
@@ -777,6 +789,7 @@ def SendRelease {n : Nat}
   s.shared.currentTxn = none ∧
   s.shared.pendingGrantAck = none ∧
   s.shared.pendingReleaseAck = none ∧
+  (∀ j : Fin n, j ≠ i → (s.locals j).chanC = none) ∧
   (s.locals i).chanA = none ∧
   (s.locals i).chanB = none ∧
   (s.locals i).chanC = none ∧
@@ -795,6 +808,7 @@ def SendReleaseData {n : Nat}
   s.shared.currentTxn = none ∧
   s.shared.pendingGrantAck = none ∧
   s.shared.pendingReleaseAck = none ∧
+  (∀ j : Fin n, j ≠ i → (s.locals j).chanC = none) ∧
   (s.locals i).chanA = none ∧
   (s.locals i).chanB = none ∧
   (s.locals i).chanC = none ∧

@@ -85,7 +85,7 @@ theorem coreInv_preserved_sendRelease (n : Nat)
     {i : Fin n} {param : PruneReportParam} (hstep : SendRelease s s' i param) :
     coreInv n s' := by
   rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
-  rcases hstep with ⟨hcur, hgrant, hrel, hA, hB, hC, hD, hE, _, _, _, _, _, rfl⟩
+  rcases hstep with ⟨hcur, hgrant, hrel, _, hA, hB, hC, hD, hE, _, _, _, _, _, rfl⟩
   refine ⟨?_, ?_, ?_, ?_⟩
   · intro j
     by_cases hji : j = i
@@ -108,7 +108,7 @@ theorem coreInv_preserved_sendReleaseData (n : Nat)
     {i : Fin n} {param : PruneReportParam} (hstep : SendReleaseData s s' i param) :
     coreInv n s' := by
   rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
-  rcases hstep with ⟨hcur, hgrant, hrel, hA, hB, hC, hD, hE, _, _, _, _, _, rfl⟩
+  rcases hstep with ⟨hcur, hgrant, hrel, _, hA, hB, hC, hD, hE, _, _, _, _, _, rfl⟩
   refine ⟨?_, ?_, ?_, ?_⟩
   · intro j
     by_cases hji : j = i
@@ -131,7 +131,7 @@ theorem channelInv_preserved_sendRelease (n : Nat)
     {i : Fin n} {param : PruneReportParam} (hstep : SendRelease s s' i param) :
     channelInv n s' := by
   rcases hinv with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
-  rcases hstep with ⟨hcur, hgrant, hrel, hA, hB, hC, hD, hE, _, _, _, _, _, rfl⟩
+  rcases hstep with ⟨hcur, hgrant, hrel, _, hA, hB, hC, hD, hE, _, _, _, _, _, rfl⟩
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · intro j
     by_cases hji : j = i
@@ -177,7 +177,7 @@ theorem channelInv_preserved_sendReleaseData (n : Nat)
     {i : Fin n} {param : PruneReportParam} (hstep : SendReleaseData s s' i param) :
     channelInv n s' := by
   rcases hinv with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
-  rcases hstep with ⟨hcur, hgrant, hrel, hA, hB, hC, hD, hE, _, _, _, _, _, rfl⟩
+  rcases hstep with ⟨hcur, hgrant, hrel, _, hA, hB, hC, hD, hE, _, _, _, _, _, rfl⟩
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · intro j
     by_cases hji : j = i
@@ -350,50 +350,63 @@ theorem fullInv_preserved_with_release (n : Nat)
     (s s' : SymState HomeState NodeState n)
     (hinv : fullInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     fullInv n s' := by
-  rcases hinv with ⟨hcore, hchan⟩
+  rcases hinv with ⟨hcore, hchan, _hser⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   match a with
   | .sendAcquireBlock grow source =>
-      exact ⟨coreInv_preserved_sendAcquireBlock n s s' hcore hstep,
-        channelInv_preserved_sendAcquireBlock n s s' hchan hstep⟩
+      have hcore' := coreInv_preserved_sendAcquireBlock n s s' hcore hstep
+      have hchan' := channelInv_preserved_sendAcquireBlock n s s' hchan hstep
+      exact ⟨hcore', hchan', serializationInv_of_core_channel n s' hcore' hchan'⟩
   | .sendAcquirePerm grow source =>
-      exact ⟨coreInv_preserved_sendAcquirePerm n s s' hcore hstep,
-        channelInv_preserved_sendAcquirePerm n s s' hchan hstep⟩
+      have hcore' := coreInv_preserved_sendAcquirePerm n s s' hcore hstep
+      have hchan' := channelInv_preserved_sendAcquirePerm n s s' hchan hstep
+      exact ⟨hcore', hchan', serializationInv_of_core_channel n s' hcore' hchan'⟩
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
       · rcases hblk with ⟨grow, source, hrecv⟩
-        exact ⟨coreInv_preserved_recvAcquireBlock n s s' hcore hrecv,
-          channelInv_preserved_recvAcquireBlock n s s' hcore hchan hrecv⟩
+        have hcore' := coreInv_preserved_recvAcquireBlock n s s' hcore hrecv
+        have hchan' := channelInv_preserved_recvAcquireBlock n s s' hcore hchan hrecv
+        exact ⟨hcore', hchan', serializationInv_of_core_channel n s' hcore' hchan'⟩
       · rcases hperm with ⟨grow, source, hrecv⟩
-        exact ⟨coreInv_preserved_recvAcquirePerm n s s' hcore hrecv,
-          channelInv_preserved_recvAcquirePerm n s s' hcore hchan hrecv⟩
+        have hcore' := coreInv_preserved_recvAcquirePerm n s s' hcore hrecv
+        have hchan' := channelInv_preserved_recvAcquirePerm n s s' hcore hchan hrecv
+        exact ⟨hcore', hchan', serializationInv_of_core_channel n s' hcore' hchan'⟩
   | .recvProbeAtMaster =>
-      exact ⟨coreInv_preserved_recvProbeAtMaster n s s' hcore hstep,
-        channelInv_preserved_recvProbeAtMaster n s s' hchan hstep⟩
+      have hcore' := coreInv_preserved_recvProbeAtMaster n s s' hcore hstep
+      have hchan' := channelInv_preserved_recvProbeAtMaster n s s' hchan hstep
+      exact ⟨hcore', hchan', serializationInv_of_core_channel n s' hcore' hchan'⟩
   | .recvProbeAckAtManager =>
-      exact ⟨coreInv_preserved_recvProbeAckAtManager n s s' hcore hstep,
-        channelInv_preserved_recvProbeAckAtManager n s s' hchan hstep⟩
+      have hcore' := coreInv_preserved_recvProbeAckAtManager n s s' hcore hstep
+      have hchan' := channelInv_preserved_recvProbeAckAtManager n s s' hchan hstep
+      exact ⟨hcore', hchan', serializationInv_of_core_channel n s' hcore' hchan'⟩
   | .sendGrantToRequester =>
-      exact ⟨coreInv_preserved_sendGrantToRequester n s s' hcore hstep,
-        channelInv_preserved_sendGrantToRequester n s s' hchan hstep⟩
+      have hcore' := coreInv_preserved_sendGrantToRequester n s s' hcore hstep
+      have hchan' := channelInv_preserved_sendGrantToRequester n s s' hchan hstep
+      exact ⟨hcore', hchan', serializationInv_of_core_channel n s' hcore' hchan'⟩
   | .recvGrantAtMaster =>
-      exact ⟨coreInv_preserved_recvGrantAtMaster n s s' hcore hstep,
-        channelInv_preserved_recvGrantAtMaster n s s' hchan hstep⟩
+      have hcore' := coreInv_preserved_recvGrantAtMaster n s s' hcore hstep
+      have hchan' := channelInv_preserved_recvGrantAtMaster n s s' hchan hstep
+      exact ⟨hcore', hchan', serializationInv_of_core_channel n s' hcore' hchan'⟩
   | .recvGrantAckAtManager =>
-      exact ⟨coreInv_preserved_recvGrantAckAtManager n s s' hcore hstep,
-        channelInv_preserved_recvGrantAckAtManager n s s' hchan hstep⟩
+      have hcore' := coreInv_preserved_recvGrantAckAtManager n s s' hcore hstep
+      have hchan' := channelInv_preserved_recvGrantAckAtManager n s s' hchan hstep
+      exact ⟨hcore', hchan', serializationInv_of_core_channel n s' hcore' hchan'⟩
   | .sendRelease param =>
-      exact ⟨coreInv_preserved_sendRelease n s s' hcore hstep,
-        channelInv_preserved_sendRelease n s s' hchan hstep⟩
+      have hcore' := coreInv_preserved_sendRelease n s s' hcore hstep
+      have hchan' := channelInv_preserved_sendRelease n s s' hchan hstep
+      exact ⟨hcore', hchan', serializationInv_of_core_channel n s' hcore' hchan'⟩
   | .sendReleaseData param =>
-      exact ⟨coreInv_preserved_sendReleaseData n s s' hcore hstep,
-        channelInv_preserved_sendReleaseData n s s' hchan hstep⟩
+      have hcore' := coreInv_preserved_sendReleaseData n s s' hcore hstep
+      have hchan' := channelInv_preserved_sendReleaseData n s s' hchan hstep
+      exact ⟨hcore', hchan', serializationInv_of_core_channel n s' hcore' hchan'⟩
   | .recvReleaseAtManager =>
-      exact ⟨coreInv_preserved_recvReleaseAtManager n s s' hcore hstep,
-        channelInv_preserved_recvReleaseAtManager n s s' hchan hstep⟩
+      have hcore' := coreInv_preserved_recvReleaseAtManager n s s' hcore hstep
+      have hchan' := channelInv_preserved_recvReleaseAtManager n s s' hchan hstep
+      exact ⟨hcore', hchan', serializationInv_of_core_channel n s' hcore' hchan'⟩
   | .recvReleaseAckAtMaster =>
-      exact ⟨coreInv_preserved_recvReleaseAckAtMaster n s s' hcore hstep,
-        channelInv_preserved_recvReleaseAckAtMaster n s s' hchan hstep⟩
+      have hcore' := coreInv_preserved_recvReleaseAckAtMaster n s s' hcore hstep
+      have hchan' := channelInv_preserved_recvReleaseAckAtMaster n s s' hchan hstep
+      exact ⟨hcore', hchan', serializationInv_of_core_channel n s' hcore' hchan'⟩
 
 end TileLink.Messages

@@ -173,7 +173,7 @@ open TileLink SymShared
     {s s' : SymState HomeState NodeState n} {i : Fin n} {grow : GrowParam} {source : SourceId}
     (h : SendAcquireBlock s s' i grow source) :
     s'.shared = s.shared := by
-  rcases h with ⟨_, _, _, _, _, _, rfl⟩
+  rcases h with ⟨_, _, _, _, _, _, _, rfl⟩
   rfl
 
 @[simp] theorem sendAcquirePerm_shared {n : Nat}
@@ -187,7 +187,7 @@ open TileLink SymShared
     {s s' : SymState HomeState NodeState n} {i j : Fin n} {grow : GrowParam} {source : SourceId}
     (h : SendAcquireBlock s s' i grow source) :
     (s'.locals j).line = (s.locals j).line := by
-  rcases h with ⟨_, _, _, _, _, _, rfl⟩
+  rcases h with ⟨_, _, _, _, _, _, _, rfl⟩
   by_cases hji : j = i <;> simp [setFn, hji]
 
 @[simp] theorem sendAcquirePerm_line {n : Nat}
@@ -201,7 +201,7 @@ open TileLink SymShared
     {s s' : SymState HomeState NodeState n} {i j : Fin n} {grow : GrowParam} {source : SourceId}
     (h : SendAcquireBlock s s' i grow source) :
     (s'.locals j).chanB = (s.locals j).chanB := by
-  rcases h with ⟨_, _, _, _, _, _, rfl⟩
+  rcases h with ⟨_, _, _, _, _, _, _, rfl⟩
   by_cases hji : j = i <;> simp [setFn, hji]
 
 @[simp] theorem sendAcquirePerm_chanB {n : Nat}
@@ -215,7 +215,7 @@ open TileLink SymShared
     {s s' : SymState HomeState NodeState n} {i j : Fin n} {grow : GrowParam} {source : SourceId}
     (h : SendAcquireBlock s s' i grow source) :
     (s'.locals j).chanC = (s.locals j).chanC := by
-  rcases h with ⟨_, _, _, _, _, _, rfl⟩
+  rcases h with ⟨_, _, _, _, _, _, _, rfl⟩
   by_cases hji : j = i <;> simp [setFn, hji]
 
 @[simp] theorem sendAcquirePerm_chanC {n : Nat}
@@ -229,7 +229,7 @@ open TileLink SymShared
     {s s' : SymState HomeState NodeState n} {i j : Fin n} {grow : GrowParam} {source : SourceId}
     (h : SendAcquireBlock s s' i grow source) :
     (s'.locals j).chanD = (s.locals j).chanD := by
-  rcases h with ⟨_, _, _, _, _, _, rfl⟩
+  rcases h with ⟨_, _, _, _, _, _, _, rfl⟩
   by_cases hji : j = i <;> simp [setFn, hji]
 
 @[simp] theorem sendAcquirePerm_chanD {n : Nat}
@@ -243,7 +243,7 @@ open TileLink SymShared
     {s s' : SymState HomeState NodeState n} {i j : Fin n} {grow : GrowParam} {source : SourceId}
     (h : SendAcquireBlock s s' i grow source) :
     (s'.locals j).chanE = (s.locals j).chanE := by
-  rcases h with ⟨_, _, _, _, _, _, rfl⟩
+  rcases h with ⟨_, _, _, _, _, _, _, rfl⟩
   by_cases hji : j = i <;> simp [setFn, hji]
 
 @[simp] theorem sendAcquirePerm_chanE {n : Nat}
@@ -257,7 +257,7 @@ open TileLink SymShared
     {s s' : SymState HomeState NodeState n} {i j : Fin n} {grow : GrowParam} {source : SourceId}
     (h : SendAcquireBlock s s' i grow source) :
     (s'.locals j).pendingSink = (s.locals j).pendingSink := by
-  rcases h with ⟨_, _, _, _, _, _, rfl⟩
+  rcases h with ⟨_, _, _, _, _, _, _, rfl⟩
   by_cases hji : j = i <;> simp [setFn, hji]
 
 @[simp] theorem sendAcquirePerm_pendingSink {n : Nat}
@@ -271,7 +271,7 @@ open TileLink SymShared
     {s s' : SymState HomeState NodeState n} {i j : Fin n} {grow : GrowParam} {source : SourceId}
     (h : SendAcquireBlock s s' i grow source) :
     (s'.locals j).releaseInFlight = (s.locals j).releaseInFlight := by
-  rcases h with ⟨_, _, _, _, _, _, rfl⟩
+  rcases h with ⟨_, _, _, _, _, _, _, rfl⟩
   by_cases hji : j = i <;> simp [setFn, hji]
 
 @[simp] theorem sendAcquirePerm_releaseInFlight {n : Nat}

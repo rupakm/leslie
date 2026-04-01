@@ -48,7 +48,7 @@ theorem coreInv_preserved_sendAcquireBlock (n : Nat)
     (hstep : SendAcquireBlock s s' i grow source) :
     coreInv n s' := by
   rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
-  rcases hstep with ⟨hA, hB, hC, hPendingSource, hFlightFalse, hlegal, rfl⟩
+  rcases hstep with ⟨hA, hB, hC, hPendingSource, hFlightFalse, _, hlegal, rfl⟩
   refine ⟨?_, ?_, ?_, ?_⟩
   · intro j
     by_cases hji : j = i
@@ -130,7 +130,7 @@ theorem coreInv_preserved_recvAcquireBlock (n : Nat)
     (hstep : RecvAcquireBlockAtManager s s' i grow source) :
     coreInv n s' := by
   rcases hinv with ⟨hlineWF, hdir, _, _⟩
-  rcases hstep with ⟨_, _, _, _, _, _, ⟨_, rfl⟩⟩
+  rcases hstep with ⟨_, _, _, _, _, _, _, _, _, ⟨_, rfl⟩⟩
   refine ⟨?_, ?_, ?_, ?_⟩
   · intro j
     simpa [recvAcquireState, recvAcquireLocals_line] using hlineWF j
@@ -158,7 +158,7 @@ theorem coreInv_preserved_recvAcquirePerm (n : Nat)
     (hstep : RecvAcquirePermAtManager s s' i grow source) :
     coreInv n s' := by
   rcases hinv with ⟨hlineWF, hdir, _, _⟩
-  rcases hstep with ⟨_, _, _, _, _, _, hresT, ⟨_, rfl⟩⟩
+  rcases hstep with ⟨_, _, _, _, _, _, hresT, _, _, ⟨_, rfl⟩⟩
   refine ⟨?_, ?_, ?_, ?_⟩
   · intro j
     simpa [recvAcquireState, recvAcquireLocals_line] using hlineWF j
@@ -190,15 +190,15 @@ theorem channelInv_preserved_sendAcquireBlock (n : Nat)
   · intro j
     by_cases hji : j = i
     · subst j
-      rcases hstep with ⟨_, _, _, _, _, hlegal, rfl⟩
+      rcases hstep with ⟨_, _, _, _, _, hpermN, hlegal, rfl⟩
       simp [setFn]
       exact ⟨rfl, Or.inl ⟨rfl, hlegal⟩⟩
-    · rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
+    · rcases hstep with ⟨_, _, _, _, _, _, _, rfl⟩
       simpa [chanAInv, setFn, hji] using hchanA j
   · intro j
     simpa [sendAcquireBlock_shared hstep, sendAcquireBlock_chanB hstep] using hchanB j
   · intro j
-    rcases hstep with ⟨_, _, hCpre, _, _, _, rfl⟩
+    rcases hstep with ⟨_, _, hCpre, _, _, _, _, rfl⟩
     by_cases hji : j = i
     · subst j
       cases hC : (s.locals i).chanC with
@@ -274,7 +274,7 @@ theorem channelInv_preserved_recvAcquireBlock (n : Nat)
     (hstep : RecvAcquireBlockAtManager s s' i grow source) :
     channelInv n s' := by
   rcases hinv with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
-  rcases hstep with ⟨hcur, hgrant, hrel, hCnoneAll, _, _, _, rfl⟩
+  rcases hstep with ⟨hcur, hgrant, hrel, hCnoneAll, _, _, _, _, _, _, rfl⟩
   have hBnone := chanB_none_of_no_txn n s hchanB hcur
   have hDnone := chanD_none_of_pendingGrant_none n s hchanD hgrant hrel
   have hEnone := chanE_none_of_pendingGrant_none n s hchanE hgrant
@@ -336,7 +336,7 @@ theorem channelInv_preserved_recvAcquirePerm (n : Nat)
     (hstep : RecvAcquirePermAtManager s s' i grow source) :
     channelInv n s' := by
   rcases hinv with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
-  rcases hstep with ⟨hcur, hgrant, hrel, hCnoneAll, _, _, _, _, rfl⟩
+  rcases hstep with ⟨hcur, hgrant, hrel, hCnoneAll, _, _, _, _, _, _, rfl⟩
   have hBnone := chanB_none_of_no_txn n s hchanB hcur
   have hDnone := chanD_none_of_pendingGrant_none n s hchanD hgrant hrel
   have hEnone := chanE_none_of_pendingGrant_none n s hchanE hgrant

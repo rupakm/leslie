@@ -140,7 +140,7 @@ The current `Messages/` files now implement the next Stage 2 checkpoint:
 - `recvReleaseAckAtMaster` consumes the D ack and clears the releaser's local
   `releaseInFlight` flag
 - the proof is already split by concern into model, frame lemmas, core
-  invariants, channel invariants, init proof, acquire-step preservation,
+  invariants, serialization invariants, init proof, acquire-step preservation,
   probe-step preservation, grant-step preservation, release-step preservation,
   and the exported theorem
 
@@ -156,6 +156,8 @@ explicit release path. The established invariant covers:
   directory entry to lag behind a just-downgraded local line only while a
   C-channel probe acknowledgment is still pending at that node
 - well-scoped pending `GrantAck` / `ReleaseAck` metadata
+- factored serialization consequences for pending grant/release acknowledgments
+  and release/grant channel obligations
 - well-formed manager transaction metadata for the active acquire/probe wave
 - well-formed D/E grant state for a live `grantPendingAck` transaction
 - A-channel well-formedness for in-flight acquires
@@ -164,5 +166,20 @@ explicit release path. The established invariant covers:
 - D-channel well-formedness for live grants
 - E-channel well-formedness for returned `GrantAck`s
 
-The next Stage 2 step is to factor the stronger serialization-specific
-invariants into their own file and then prove message-to-atomic refinement.
+The next Stage 2 step is message-to-atomic refinement in
+[Refinement.lean](/Users/rupak/Code/tla/leslie/Leslie/Examples/CacheCoherence/TileLink/Messages/Refinement.lean).
+
+At the current Stage 2e checkpoint, that refinement work has started but is
+not finished yet:
+
+- manager-side `AcquireBlock` acceptance has been tightened to the Stage 1
+  atomic scope: requester starts from `N`, the no-dirty case only, and the
+  requested result permission now matches the current sharing situation
+- `sendRelease` / `sendReleaseData` now serialize queued C-channel releases so
+  the single-line message model no longer admits overlapping release waves
+- `Messages/Refinement.lean` now contains refinement-specific helper
+  invariants (`noDirtyInv`, `txnDataInv`, `refinementInv`) and their initial
+  lemmas
+
+What remains is the actual forward-simulation theorem from the explicit
+message model back to the atomic model.
