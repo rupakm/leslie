@@ -85,7 +85,7 @@ theorem coreInv_preserved_sendRelease (n : Nat)
     {i : Fin n} {param : PruneReportParam} (hstep : SendRelease s s' i param) :
     coreInv n s' := by
   rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
-  rcases hstep with ⟨hcur, hgrant, hrel, _, hA, hB, hC, hD, hE, _, _, _, _, _, rfl⟩
+  rcases hstep with ⟨hcur, hgrant, hrel, _, hA, hB, hC, hD, hE, _, _, _, _, _, _, rfl⟩
   refine ⟨?_, ?_, ?_, ?_⟩
   · intro j
     by_cases hji : j = i
@@ -108,7 +108,7 @@ theorem coreInv_preserved_sendReleaseData (n : Nat)
     {i : Fin n} {param : PruneReportParam} (hstep : SendReleaseData s s' i param) :
     coreInv n s' := by
   rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
-  rcases hstep with ⟨hcur, hgrant, hrel, _, hA, hB, hC, hD, hE, _, _, _, _, _, rfl⟩
+  rcases hstep with ⟨hcur, hgrant, hrel, _, hA, hB, hC, hD, hE, _, _, _, _, _, _, rfl⟩
   refine ⟨?_, ?_, ?_, ?_⟩
   · intro j
     by_cases hji : j = i
@@ -131,7 +131,7 @@ theorem channelInv_preserved_sendRelease (n : Nat)
     {i : Fin n} {param : PruneReportParam} (hstep : SendRelease s s' i param) :
     channelInv n s' := by
   rcases hinv with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
-  rcases hstep with ⟨hcur, hgrant, hrel, _, hA, hB, hC, hD, hE, _, _, _, _, _, rfl⟩
+  rcases hstep with ⟨hcur, hgrant, hrel, _, hA, hB, hC, hD, hE, _, _, _, _, _, _, rfl⟩
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · intro j
     by_cases hji : j = i

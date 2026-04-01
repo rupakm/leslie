@@ -808,6 +808,7 @@ def SendRelease {n : Nat}
   (s.locals i).releaseInFlight = false ∧
   param.legalFrom (s.locals i).line.perm ∧
   (s.locals i).line.dirty = false ∧
+  ((s.locals i).line.valid = true ∨ param.result = .N) ∧
   s' = sendReleaseState s i param false
 
 def SendReleaseData {n : Nat}

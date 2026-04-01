@@ -234,7 +234,8 @@ theorem noDirtyInv_preserved (n : Nat)
       rw [hs']
       simpa [recvGrantAckState_line] using hnoDirty j
   | .sendRelease param =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, htail⟩
+      rcases htail with ⟨_, hs'⟩
       intro j
       rw [hs']
       by_cases hji : j = i
@@ -307,7 +308,8 @@ theorem txnDataInv_preserved (n : Nat)
       rw [hs']
       simp [txnDataInv, recvGrantAckState, recvGrantAckShared]
   | .sendRelease param =>
-      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, _, _, htail⟩
+      rcases htail with ⟨_, hs'⟩
       rw [hs']
       simp [txnDataInv, hcur, sendReleaseState]
   | .sendReleaseData param =>
@@ -377,7 +379,8 @@ theorem preLinesNoDirtyInv_preserved (n : Nat)
       rw [hs']
       simp [preLinesNoDirtyInv, recvGrantAckState, recvGrantAckShared]
   | .sendRelease _ =>
-      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, _, _, htail⟩
+      rcases htail with ⟨_, hs'⟩
       rw [hs']
       simp [preLinesNoDirtyInv, hcur, sendReleaseState]
   | .sendReleaseData _ =>
@@ -453,7 +456,8 @@ theorem preLinesCleanInv_preserved (n : Nat)
       rw [hs']
       simp [preLinesCleanInv, recvGrantAckState, recvGrantAckShared]
   | .sendRelease _ =>
-      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, _, _, htail⟩
+      rcases htail with ⟨_, hs'⟩
       rw [hs']
       simp [preLinesCleanInv, hcur, sendReleaseState]
   | .sendReleaseData _ =>
@@ -2124,6 +2128,154 @@ theorem refMap_recvGrantAtMaster_eq {n : Nat}
         exact Fin.ext ((hreq.symm.trans hreq').symm)
       simpa [refMap, refMapLine, recvGrantState, recvGrantShared, recvGrantLocals,
         recvGrantLocal, setFn, hcur, hphase, hreqj, hji]
+
+theorem refMap_recvGrantAckAtManager_next {n : Nat}
+    {s s' : SymState HomeState NodeState n}
+    {i : Fin n}
+    (hfull : fullInv n s) (htxnLine : txnLineInv n s)
+    (hstep : RecvGrantAckAtManager s s' i) :
+    (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
+  rcases hfull with ⟨hcore, hchan, _⟩
+  rcases hcore with ⟨_, hdir, hpending, htxnCore⟩
+  rcases hchan with ⟨_, _, hchanC, _, _⟩
+  rcases hstep with ⟨tx, msg, hcur, hreq, hphase, hpendingGrant, hD, hE, hSink, hmsg, hs'⟩
+  have hpendPair : s.shared.pendingReleaseAck = none ∧ s.shared.pendingGrantAck = some tx.requester := by
+    simpa [pendingInv, hcur, hphase] using hpending
+  have hpendRel : s.shared.pendingReleaseAck = none := hpendPair.1
+  have hCnone : ∀ j : Fin n, (s.locals j).chanC = none := by
+    intro j
+    specialize hchanC j
+    cases hC : (s.locals j).chanC with
+    | none => exact rfl
+    | some _ =>
+        rw [hC] at hchanC
+        rcases hchanC with hprobe | hrel
+        · rcases hprobe with ⟨tx0, hcur0, hprobing, _, _, _, _, _⟩
+          rw [hcur] at hcur0
+          injection hcur0 with htx
+          subst htx
+          rw [hphase] at hprobing
+          cases hprobing
+        · rcases hrel with ⟨_, htxnNone, _, _, _, _, _, _⟩
+          rw [hcur] at htxnNone
+          simp at htxnNone
+  have hCnone' : ∀ j : Fin n, ((recvGrantAckState s i).locals j).chanC = none := by
+    intro j
+    by_cases hji : j = i
+    · simpa [recvGrantAckState, recvGrantAckLocals, setFn, hji] using hCnone j
+    · simpa [recvGrantAckState, recvGrantAckLocals, setFn, hji] using hCnone j
+  have hqueuedNone : queuedReleaseIdx n (recvGrantAckState s i) = none :=
+    queuedReleaseIdx_eq_none_of_all_chanC_none (recvGrantAckState s i) hCnone'
+  rw [hs']
+  simp only [SymSharedSpec.toSpec, TileLink.Atomic.tlAtomic]
+  refine ⟨i, .grantAck, ?_⟩
+  constructor
+  · simpa [refMap, refMapShared, hcur, hphase, hpendingGrant, hreq]
+  · apply SymState.ext
+    · change refMapShared n (recvGrantAckState s i) =
+          { (refMap n s).shared with pendingGrantMeta := none, pendingGrantAck := none }
+      rw [TileLink.Atomic.HomeState.mk.injEq]
+      constructor
+      · simp [refMap, refMapShared, recvGrantAckState, recvGrantAckShared, hcur]
+      constructor
+      · funext k
+        by_cases hk : k < n
+        · let j : Fin n := ⟨k, hk⟩
+          by_cases hji : j = i
+          · have hreqj : tx.requester = j.1 := by simpa [hji] using hreq
+            have hEj : (s.locals j).chanE = some msg := by simpa [hji] using hE
+            have hlinej : (s.locals j).line = grantLine (tx.preLines j.1) tx := by
+              have hlines : ∀ u : Fin n, (s.locals u).line = txnSnapshotLine tx (s.locals u) u := by
+                simpa [txnLineInv, hcur] using htxnLine
+              specialize hlines j
+              simpa [txnSnapshotLine, probeSnapshotLine, hphase, hreqj, hEj] using hlines
+            have hgrantPerm : (grantLine (tx.preLines j.1) tx).perm = tx.resultPerm := by
+              unfold grantLine
+              by_cases hdata : tx.grantHasData
+              · rw [if_pos hdata]
+                cases hperm : tx.resultPerm <;> simp
+              · rw [if_neg hdata]
+                have hdataFalse : tx.grantHasData = false := by
+                  cases hgd : tx.grantHasData with
+                  | false => rfl
+                  | true => exact False.elim (hdata hgd)
+                have hresT : tx.resultPerm = .T := by
+                  rcases (by simpa [txnCoreInv, hcur] using htxnCore) with
+                    ⟨_, _, _, hnoData, _, _, _, _⟩
+                  exact hnoData hdataFalse
+                simp [hresT]
+            have hdirj : s.shared.dir j.1 = (s.locals j).line.perm := hdir j (hCnone j)
+            have hpermEq : (s.locals j).line.perm = tx.resultPerm := by
+              rw [hlinej]
+              exact hgrantPerm
+            calc
+              TileLink.Atomic.syncDir s.shared.dir
+                  (fun u => ((recvGrantAckState s i).locals u).line) k =
+                    ((recvGrantAckState s i).locals j).line.perm := by
+                      simp [j, TileLink.Atomic.syncDir, hk]
+              _ = (s.locals j).line.perm := by
+                    simp [recvGrantAckState, recvGrantAckLocals, setFn, hji]
+              _ = s.shared.dir k := by simpa [j] using hdirj.symm
+              _ = tx.resultPerm := by simpa [j] using hdirj.trans hpermEq
+              _ = (refMap n s).shared.dir k := by
+                    have hkreq : tx.requester < n := by simpa [j, hreqj] using j.is_lt
+                    have hkeq : k = tx.requester := by simpa [j] using hreqj.symm
+                    simp [refMap, refMapShared, hcur, hphase, grantPendingDir, hkreq, updateDirAt, hkeq]
+          · have hki : k ≠ i.1 := by
+              intro h
+              apply hji
+              exact Fin.ext h
+            have hdirj : s.shared.dir j.1 = (s.locals j).line.perm := hdir j (hCnone j)
+            calc
+              TileLink.Atomic.syncDir s.shared.dir
+                  (fun u => ((recvGrantAckState s i).locals u).line) k
+                  = ((recvGrantAckState s i).locals j).line.perm := by
+                      simp [j, TileLink.Atomic.syncDir, hk]
+              _ = (s.locals j).line.perm := by
+                    simp [recvGrantAckState, recvGrantAckLocals, setFn, hji]
+              _ = s.shared.dir k := by simpa [j] using hdirj.symm
+              _ = (refMap n s).shared.dir k := by
+                    simp [j, refMap, refMapShared, hcur, hphase, grantPendingDir, updateDirAt, hreq, hki]
+        · have hki : k ≠ i.1 := by
+            intro h
+            apply hk
+            simpa [h] using i.is_lt
+          have hkreq : tx.requester < n := by simpa [hreq] using i.is_lt
+          have hkreq' : k ≠ tx.requester := by
+            intro h
+            apply hk
+            rw [h]
+            exact hkreq
+          simp [refMap, refMapShared, recvGrantAckState, recvGrantAckShared,
+            TileLink.Atomic.syncDir, grantPendingDir, updateDirAt, hcur, hphase, hk, hkreq, hkreq']
+      constructor
+      · simp [refMap, refMapShared, recvGrantAckState, recvGrantAckShared, hcur]
+      constructor
+      · simp [refMap, refMapShared, recvGrantAckState, recvGrantAckShared, hcur, hphase]
+      · simpa [refMap, refMapShared, recvGrantAckState, recvGrantAckShared, hcur, hphase, hpendRel]
+          using hqueuedNone
+    · change (refMap n (recvGrantAckState s i)).locals = (refMap n s).locals
+      funext j
+      by_cases hji : j = i
+      · have hreqj : tx.requester = j.1 := by simpa [hji] using hreq
+        have hEj : (s.locals j).chanE = some msg := by simpa [hji] using hE
+        have hlinej : (s.locals j).line = grantLine (tx.preLines j.1) tx := by
+          have hlines : ∀ u : Fin n, (s.locals u).line = txnSnapshotLine tx (s.locals u) u := by
+            simpa [txnLineInv, hcur] using htxnLine
+          specialize hlines j
+          simpa [txnSnapshotLine, probeSnapshotLine, hphase, hreqj, hEj] using hlines
+        calc
+          refMapLine (recvGrantAckState s i) j = (s.locals j).line := by
+            simp [refMapLine, recvGrantAckState, recvGrantAckShared, recvGrantAckLocals, setFn, hji]
+          _ = grantLine (tx.preLines j.1) tx := hlinej
+          _ = refMapLine s j := by
+            simp [refMapLine, hcur, hphase, hreqj]
+      · have hreqj : tx.requester ≠ j.1 := by
+          intro h
+          apply hji
+          exact Fin.ext (h.symm.trans hreq)
+        simpa [refMap, refMapLine, recvGrantAckState, recvGrantAckShared, recvGrantAckLocals,
+          setFn, hcur, hphase, hreqj, hji]
 
 theorem refinement_inv_invariant (n : Nat) :
     pred_implies (tlMessages.toSpec n).safety [tlafml| □ ⌜ refinementInv n ⌝] := by
