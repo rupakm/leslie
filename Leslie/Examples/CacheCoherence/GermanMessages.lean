@@ -1,4 +1,5 @@
 import Leslie.Action
+import Leslie.Gadgets.SetFn
 
 open TLA
 
@@ -85,16 +86,6 @@ inductive MAction (n : Nat) where
   | store (i : Fin n) (d : Val)
   deriving DecidableEq
 
-def setFn {α : Type} {n : Nat} (f : Fin n → α) (i : Fin n) (x : α) : Fin n → α :=
-  fun j => if j = i then x else f j
-
-@[simp] theorem setFn_same {α : Type} {n : Nat} (f : Fin n → α) (i : Fin n) (x : α) :
-    setFn f i x i = x := by
-  simp [setFn]
-
-@[simp] theorem setFn_ne {α : Type} {n : Nat} (f : Fin n → α) {i j : Fin n} (x : α)
-    (h : j ≠ i) : setFn f i x j = f j := by
-  simp [setFn, h]
 
 @[simp] theorem cache_set_other {n : Nat} (cache : Fin n → CacheLine) {i j : Fin n} (line : CacheLine)
     (h : j ≠ i) : (setFn cache i line j).state = (cache j).state := by
