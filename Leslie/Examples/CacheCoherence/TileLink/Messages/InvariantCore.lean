@@ -11,10 +11,15 @@ def dirInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   ∀ i : Fin n, (s.locals i).chanC = none → s.shared.dir i.1 = (s.locals i).line.perm
 
 def pendingInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
-  s.shared.pendingReleaseAck = none ∧
   match s.shared.currentTxn with
-  | none => s.shared.pendingGrantAck = none
+  | none =>
+      s.shared.pendingGrantAck = none ∧
+      match s.shared.pendingReleaseAck with
+      | none => True
+      | some i =>
+          i < n ∧ ∃ fi : Fin n, fi.1 = i ∧ (s.locals fi).releaseInFlight = true
   | some tx =>
+      s.shared.pendingReleaseAck = none ∧
       if tx.phase = .grantPendingAck then
         s.shared.pendingGrantAck = some tx.requester
       else

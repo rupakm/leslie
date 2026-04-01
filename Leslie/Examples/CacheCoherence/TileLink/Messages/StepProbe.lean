@@ -29,11 +29,15 @@ private theorem chanD_none_of_phase_ne_grantPendingAck (n : Nat)
   | none => exact rfl
   | some _ =>
       rw [hD] at hchanD
-      rcases hchanD with ⟨tx0, hcur0, _, hphase0, _, _, _, _⟩
-      rw [hcur] at hcur0
-      injection hcur0 with htx
-      subst htx
-      contradiction
+      rcases hchanD with hgrantBranch | hrelBranch
+      · rcases hgrantBranch with ⟨tx0, hcur0, _, hphase0, _, _, _, _⟩
+        rw [hcur] at hcur0
+        injection hcur0 with htx
+        subst htx
+        contradiction
+      · rcases hrelBranch with ⟨hcurNone, _, _, _, _, _⟩
+        rw [hcur] at hcurNone
+        simp at hcurNone
 
 private theorem chanE_none_of_phase_ne_grantPendingAck (n : Nat)
     (s : SymState HomeState NodeState n) (hchanE : chanEInv n s)
@@ -58,7 +62,7 @@ theorem coreInv_preserved_recvProbeAtMaster (n : Nat)
     coreInv n s' := by
   rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
   rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, ⟨hCnone, rfl⟩⟩
-  refine ⟨?_, ?_, hpending, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_⟩
   · intro j
     by_cases hji : j = i
     · subst j
@@ -71,6 +75,7 @@ theorem coreInv_preserved_recvProbeAtMaster (n : Nat)
     · have hCnone_old : (s.locals j).chanC = none := by
         simpa [recvProbeState, recvProbeLocals, recvProbeLocal, setFn, hji] using hCnone
       simpa [recvProbeState, recvProbeLocals, recvProbeLocal, setFn, hji] using hdir j hCnone_old
+  · simpa [pendingInv, recvProbeState, hcur] using hpending
   · simpa [recvProbeState] using htxn
 
 theorem channelInv_preserved_recvProbeAtMaster (n : Nat)
@@ -103,6 +108,7 @@ theorem channelInv_preserved_recvProbeAtMaster (n : Nat)
           ((recvProbeState s i msg).locals i).chanB = none := by
         simp [recvProbeState, recvProbeLocals, recvProbeLocal]
       rw [hCi]
+      left
       refine ⟨tx, ?_⟩
       refine ⟨hcur, hphase, hremain, hAi, hBi, ?_, probeAckMsg_wf i (s.locals i).line⟩
       · simp [probeAckMsg]
@@ -214,8 +220,11 @@ theorem channelInv_preserved_recvProbeAckAtManager (n : Nat)
       have hBi : (s.locals i).chanB = none := by
         specialize hchanC i
         rw [hC] at hchanC
-        rcases hchanC with ⟨_, _, _, _, _, hBnone, _, _⟩
-        exact hBnone
+        rcases hchanC with hprobe | hrel
+        · rcases hprobe with ⟨_, _, _, _, _, hBnone, _, _⟩
+          exact hBnone
+        · rcases hrel with ⟨_, _, _, _, hBnone, _, _, _⟩
+          exact hBnone
       simp [recvProbeAckState, recvProbeAckLocals, setFn, hBi]
     · cases hBj : (s.locals j).chanB with
       | none =>
@@ -252,27 +261,32 @@ theorem channelInv_preserved_recvProbeAckAtManager (n : Nat)
       | some cmsg =>
           have hchanCj := hchanC j
           rw [hCj] at hchanCj
-          rcases hchanCj with ⟨tx0, hcur0, hphase0, hrem0, hA0, hBnone, hsrc0, hwf0⟩
-          rw [hcur] at hcur0
-          injection hcur0 with htx
-          subst htx
-          let tx' : ManagerTxn :=
-            { tx with
-                probesRemaining := clearProbeIdx tx.probesRemaining i.1
-                phase := probeAckPhase (n := n) (clearProbeIdx tx.probesRemaining i.1) }
-          have hrem' : tx'.probesRemaining j.1 = true := by
-            have hvalne := fin_val_ne_of_ne hji
-            simp [tx', clearProbeIdx, hvalne, hrem0]
-          have hphase' : tx'.phase = .probing := by
-            exact probeAckPhase_of_true hrem'
-          have hCj' : ((recvProbeAckState s i tx).locals j).chanC = some cmsg := by
-            simp [recvProbeAckState, recvProbeAckLocals, setFn, hji, hCj]
-          rw [hCj']
-          refine ⟨tx', ?_⟩
-          refine ⟨?_, hphase', hrem', ?_, ?_, hsrc0, hwf0⟩
-          · simp [recvProbeAckState, recvProbeAckShared, tx']
-          · simpa [recvProbeAckState, recvProbeAckLocals, setFn, hji] using hA0
-          · simpa [recvProbeAckState, recvProbeAckLocals, setFn, hji] using hBnone
+          rcases hchanCj with hprobe | hrel
+          · rcases hprobe with ⟨tx0, hcur0, hphase0, hrem0, hA0, hBnone, hsrc0, hwf0⟩
+            rw [hcur] at hcur0
+            injection hcur0 with htx
+            subst htx
+            let tx' : ManagerTxn :=
+              { tx with
+                  probesRemaining := clearProbeIdx tx.probesRemaining i.1
+                  phase := probeAckPhase (n := n) (clearProbeIdx tx.probesRemaining i.1) }
+            have hrem' : tx'.probesRemaining j.1 = true := by
+              have hvalne := fin_val_ne_of_ne hji
+              simp [tx', clearProbeIdx, hvalne, hrem0]
+            have hphase' : tx'.phase = .probing := by
+              exact probeAckPhase_of_true hrem'
+            have hCj' : ((recvProbeAckState s i tx).locals j).chanC = some cmsg := by
+              simp [recvProbeAckState, recvProbeAckLocals, setFn, hji, hCj]
+            rw [hCj']
+            left
+            refine ⟨tx', ?_⟩
+            refine ⟨?_, hphase', hrem', ?_, ?_, hsrc0, hwf0⟩
+            · simp [recvProbeAckState, recvProbeAckShared, tx']
+            · simpa [recvProbeAckState, recvProbeAckLocals, setFn, hji] using hA0
+            · simpa [recvProbeAckState, recvProbeAckLocals, setFn, hji] using hBnone
+          · rcases hrel with ⟨_, hcurNone, _, _, _, _, _, _⟩
+            rw [hcur] at hcurNone
+            simp at hcurNone
   · intro j
     have hnone : ((recvProbeAckState s i tx).locals j).chanD = none := by
       by_cases hji : j = i

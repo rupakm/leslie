@@ -14,10 +14,12 @@ open TLA SymShared Classical
     - shared state tracks manager memory, directory metadata, and the current
       serialized transaction
     - the current action slice covers acquire send/receive, explicit probe
-      receive and probe-ack handling, and explicit D/E grant completion:
+      receive and probe-ack handling, explicit D/E grant completion, and
+      explicit C/D release completion:
       `sendAcquireBlock`, `sendAcquirePerm`, `recvAcquireAtManager`,
       `recvProbeAtMaster`, `recvProbeAckAtManager`, `sendGrantToRequester`,
-      `recvGrantAtMaster`, and `recvGrantAckAtManager`
+      `recvGrantAtMaster`, `recvGrantAckAtManager`, `sendRelease`,
+      `sendReleaseData`, `recvReleaseAtManager`, and `recvReleaseAckAtMaster`
     - `recvAcquireAtManager` enqueues the required B-channel probes,
       `recvProbeAtMaster` turns a B probe into a C probe acknowledgment, and
       `recvProbeAckAtManager` clears one outstanding probe and can move the
@@ -127,6 +129,10 @@ inductive Act where
   | sendGrantToRequester
   | recvGrantAtMaster
   | recvGrantAckAtManager
+  | sendRelease (param : PruneReportParam)
+  | sendReleaseData (param : PruneReportParam)
+  | recvReleaseAtManager
+  | recvReleaseAckAtMaster
   deriving DecidableEq
 
 def mkAcquireBlockMsg (grow : GrowParam) (source : SourceId) : AMsg :=
@@ -247,6 +253,33 @@ def grantLine (line : CacheLine) (tx : ManagerTxn) : CacheLine :=
   else
     { line with perm := .T, valid := false, dirty := false }
 
+def releasedLine (line : CacheLine) (perm : TLPerm) : CacheLine :=
+  match perm with
+  | .N => invalidatedLine line
+  | .B => branchAfterProbe line
+  | .T => tipAfterProbe line
+
+def releaseOpcode (withData : Bool) : COpcode :=
+  if withData then .releaseData else .release
+
+def releaseDataPayload (withData : Bool) (line : CacheLine) : Option Val :=
+  if withData then some line.data else none
+
+def releaseMsg (source : SourceId) (param : PruneReportParam)
+    (withData : Bool) (line : CacheLine) : CMsg :=
+  { opcode := releaseOpcode withData
+  , param := some param
+  , source := source
+  , data := releaseDataPayload withData line }
+
+def releaseAckMsg (source : SourceId) : DMsg :=
+  { opcode := .releaseAck, sink := 0, source := source }
+
+def releaseMsgWellFormed (msg : CMsg) : Prop :=
+  (msg.opcode = .release ∧ ∃ param : PruneReportParam, msg.param = some param ∧ msg.data = none) ∨
+  (msg.opcode = .releaseData ∧ ∃ param : PruneReportParam, ∃ v : Val,
+    msg.param = some param ∧ msg.data = some v)
+
 def probeAckMsgWellFormed (msg : CMsg) : Prop :=
   (msg.opcode = .probeAck ∧ msg.data = none) ∨
   (msg.opcode = .probeAckData ∧ ∃ v : Val, msg.data = some v)
@@ -278,6 +311,26 @@ theorem grantLine_perm_eq_result (line : CacheLine) (tx : ManagerTxn)
   cases hdata : tx.grantHasData
   · simp [grantLine, hdata, hnoData hdata]
   · cases hperm : tx.resultPerm <;> simp [grantLine, hdata, hperm, invalidatedLine_perm]
+
+@[simp] theorem releasedLine_perm (line : CacheLine) (perm : TLPerm) :
+    (releasedLine line perm).perm = perm := by
+  cases perm <;> rfl
+
+@[simp] theorem releasedLine_wf (line : CacheLine) (perm : TLPerm) :
+    (releasedLine line perm).WellFormed := by
+  cases perm <;> simp [releasedLine]
+
+theorem releaseMsg_of_clean (source : SourceId) (param : PruneReportParam) (line : CacheLine) :
+    releaseMsgWellFormed (releaseMsg source param false line) := by
+  left
+  refine ⟨by simp [releaseMsg, releaseOpcode], ?_⟩
+  exact ⟨param, by simp [releaseMsg, releaseDataPayload]⟩
+
+theorem releaseMsg_of_dirty (source : SourceId) (param : PruneReportParam) (line : CacheLine) :
+    releaseMsgWellFormed (releaseMsg source param true line) := by
+  right
+  refine ⟨by simp [releaseMsg, releaseOpcode], ?_⟩
+  exact ⟨param, line.data, by simp [releaseMsg, releaseDataPayload]⟩
 
 def hasDirtyOther {n : Nat} (s : SymState HomeState NodeState n) (i : Fin n) : Prop :=
   ∃ j : Fin n, j ≠ i ∧ (s.locals j).line.dirty = true
@@ -464,6 +517,81 @@ noncomputable def recvGrantAckState {n : Nat}
   { shared := recvGrantAckShared s
   , locals := recvGrantAckLocals s i }
 
+def sendReleaseLocal (node : NodeState) (source : SourceId)
+    (param : PruneReportParam) (withData : Bool) : NodeState :=
+  { node with
+      line := releasedLine node.line param.result
+      chanC := some (releaseMsg source param withData node.line)
+      releaseInFlight := true }
+
+def sendReleaseLocals {n : Nat}
+    (s : SymState HomeState NodeState n)
+    (i : Fin n)
+    (param : PruneReportParam)
+    (withData : Bool) : Fin n → NodeState :=
+  setFn s.locals i (sendReleaseLocal (s.locals i) i.1 param withData)
+
+noncomputable def sendReleaseState {n : Nat}
+    (s : SymState HomeState NodeState n)
+    (i : Fin n)
+    (param : PruneReportParam)
+    (withData : Bool) : SymState HomeState NodeState n :=
+  { shared := s.shared
+  , locals := sendReleaseLocals s i param withData }
+
+def releaseWriteback (mem : Val) (msg : CMsg) : Val :=
+  match msg.data with
+  | some v => v
+  | none => mem
+
+noncomputable def recvReleaseShared {n : Nat}
+    (s : SymState HomeState NodeState n)
+    (i : Fin n)
+    (msg : CMsg)
+    (param : PruneReportParam) : HomeState :=
+  { s.shared with
+      mem := releaseWriteback s.shared.mem msg
+      dir := updateDirAt s.shared.dir i param.result
+      pendingReleaseAck := some i.1 }
+
+def recvReleaseLocal (node : NodeState) (source : SourceId) : NodeState :=
+  { node with
+      chanC := none
+      chanD := some (releaseAckMsg source) }
+
+def recvReleaseLocals {n : Nat}
+    (s : SymState HomeState NodeState n)
+    (i : Fin n) : Fin n → NodeState :=
+  setFn s.locals i (recvReleaseLocal (s.locals i) i.1)
+
+noncomputable def recvReleaseState {n : Nat}
+    (s : SymState HomeState NodeState n)
+    (i : Fin n)
+    (msg : CMsg)
+    (param : PruneReportParam) : SymState HomeState NodeState n :=
+  { shared := recvReleaseShared s i msg param
+  , locals := recvReleaseLocals s i }
+
+noncomputable def recvReleaseAckShared {n : Nat}
+    (s : SymState HomeState NodeState n) : HomeState :=
+  { s.shared with pendingReleaseAck := none }
+
+def recvReleaseAckLocal (node : NodeState) : NodeState :=
+  { node with
+      chanD := none
+      releaseInFlight := false }
+
+def recvReleaseAckLocals {n : Nat}
+    (s : SymState HomeState NodeState n)
+    (i : Fin n) : Fin n → NodeState :=
+  setFn s.locals i (recvReleaseAckLocal (s.locals i))
+
+noncomputable def recvReleaseAckState {n : Nat}
+    (s : SymState HomeState NodeState n)
+    (i : Fin n) : SymState HomeState NodeState n :=
+  { shared := recvReleaseAckShared s
+  , locals := recvReleaseAckLocals s i }
+
 def scheduleProbeLocals {n : Nat}
     (s : SymState HomeState NodeState n)
     (requester : Fin n)
@@ -553,6 +681,7 @@ def RecvAcquireBlockAtManager {n : Nat}
   s.shared.currentTxn = none ∧
   s.shared.pendingGrantAck = none ∧
   s.shared.pendingReleaseAck = none ∧
+  (∀ j : Fin n, (s.locals j).chanC = none) ∧
   (s.locals i).chanA = some (mkAcquireBlockMsg grow source) ∧
   grow.legalFrom (s.locals i).line.perm ∧
   allTargetBsEmpty s (probeMaskForResult s i grow.result) ∧
@@ -564,6 +693,7 @@ def RecvAcquirePermAtManager {n : Nat}
   s.shared.currentTxn = none ∧
   s.shared.pendingGrantAck = none ∧
   s.shared.pendingReleaseAck = none ∧
+  (∀ j : Fin n, (s.locals j).chanC = none) ∧
   (s.locals i).chanA = some (mkAcquirePermMsg grow source) ∧
   grow.legalFrom (s.locals i).line.perm ∧
   grow.result = .T ∧
@@ -608,6 +738,7 @@ def SendGrantToRequester {n : Nat}
     tx.requester = i.1 ∧
     tx.phase = .grantReady ∧
     s.shared.pendingGrantAck = none ∧
+    s.shared.pendingReleaseAck = none ∧
     (s.locals i).chanD = none ∧
     (s.locals i).chanE = none ∧
     (s.locals i).pendingSink = none ∧
@@ -640,6 +771,68 @@ def RecvGrantAckAtManager {n : Nat}
     msg = ({ sink := tx.sink } : EMsg) ∧
     s' = recvGrantAckState s i
 
+def SendRelease {n : Nat}
+    (s s' : SymState HomeState NodeState n)
+    (i : Fin n) (param : PruneReportParam) : Prop :=
+  s.shared.currentTxn = none ∧
+  s.shared.pendingGrantAck = none ∧
+  s.shared.pendingReleaseAck = none ∧
+  (s.locals i).chanA = none ∧
+  (s.locals i).chanB = none ∧
+  (s.locals i).chanC = none ∧
+  (s.locals i).chanD = none ∧
+  (s.locals i).chanE = none ∧
+  (s.locals i).pendingSource = none ∧
+  (s.locals i).pendingSink = none ∧
+  (s.locals i).releaseInFlight = false ∧
+  param.legalFrom (s.locals i).line.perm ∧
+  (s.locals i).line.dirty = false ∧
+  s' = sendReleaseState s i param false
+
+def SendReleaseData {n : Nat}
+    (s s' : SymState HomeState NodeState n)
+    (i : Fin n) (param : PruneReportParam) : Prop :=
+  s.shared.currentTxn = none ∧
+  s.shared.pendingGrantAck = none ∧
+  s.shared.pendingReleaseAck = none ∧
+  (s.locals i).chanA = none ∧
+  (s.locals i).chanB = none ∧
+  (s.locals i).chanC = none ∧
+  (s.locals i).chanD = none ∧
+  (s.locals i).chanE = none ∧
+  (s.locals i).pendingSource = none ∧
+  (s.locals i).pendingSink = none ∧
+  (s.locals i).releaseInFlight = false ∧
+  param.legalFrom (s.locals i).line.perm ∧
+  (s.locals i).line.dirty = true ∧
+  s' = sendReleaseState s i param true
+
+def RecvReleaseAtManager {n : Nat}
+    (s s' : SymState HomeState NodeState n) (i : Fin n) : Prop :=
+  ∃ msg param,
+    s.shared.currentTxn = none ∧
+    s.shared.pendingGrantAck = none ∧
+    s.shared.pendingReleaseAck = none ∧
+    (s.locals i).releaseInFlight = true ∧
+    (s.locals i).chanC = some msg ∧
+    msg.source = i.1 ∧
+    releaseMsgWellFormed msg ∧
+    msg.param = some param ∧
+    (s.locals i).line.perm = param.result ∧
+    (s.locals i).chanD = none ∧
+    s' = recvReleaseState s i msg param
+
+def RecvReleaseAckAtMaster {n : Nat}
+    (s s' : SymState HomeState NodeState n) (i : Fin n) : Prop :=
+  ∃ msg,
+    s.shared.currentTxn = none ∧
+    s.shared.pendingGrantAck = none ∧
+    s.shared.pendingReleaseAck = some i.1 ∧
+    (s.locals i).releaseInFlight = true ∧
+    (s.locals i).chanD = some msg ∧
+    msg = releaseAckMsg i.1 ∧
+    s' = recvReleaseAckState s i
+
 noncomputable def tlMessages : SymSharedSpec where
   Shared := HomeState
   Local := NodeState
@@ -671,5 +864,9 @@ noncomputable def tlMessages : SymSharedSpec where
     | .sendGrantToRequester => SendGrantToRequester s s' i
     | .recvGrantAtMaster => RecvGrantAtMaster s s' i
     | .recvGrantAckAtManager => RecvGrantAckAtManager s s' i
+    | .sendRelease param => SendRelease s s' i param
+    | .sendReleaseData param => SendReleaseData s s' i param
+    | .recvReleaseAtManager => RecvReleaseAtManager s s' i
+    | .recvReleaseAckAtMaster => RecvReleaseAckAtMaster s s' i
 
 end TileLink.Messages

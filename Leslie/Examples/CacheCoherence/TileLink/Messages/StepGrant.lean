@@ -35,15 +35,20 @@ private theorem chanC_none_of_phase_ne_probing (n : Nat)
   | none => exact rfl
   | some _ =>
       rw [hC] at hchanC
-      rcases hchanC with ⟨tx0, hcur0, hprobing, _, _, _, _, _⟩
-      rw [hcur] at hcur0
-      injection hcur0 with htx
-      subst htx
-      contradiction
+      rcases hchanC with hprobe | hrel
+      · rcases hprobe with ⟨tx0, hcur0, hprobing, _, _, _, _, _⟩
+        rw [hcur] at hcur0
+        injection hcur0 with htx
+        subst htx
+        contradiction
+      · rcases hrel with ⟨_, hcurNone, _, _, _, _, _, _⟩
+        rw [hcur] at hcurNone
+        simp at hcurNone
 
 private theorem chanD_none_of_pendingGrant_none (n : Nat)
     (s : SymState HomeState NodeState n) (hchanD : chanDInv n s)
-    (hgrant : s.shared.pendingGrantAck = none) :
+    (hgrant : s.shared.pendingGrantAck = none)
+    (hrel : s.shared.pendingReleaseAck = none) :
     ∀ j : Fin n, (s.locals j).chanD = none := by
   intro j
   specialize hchanD j
@@ -51,9 +56,13 @@ private theorem chanD_none_of_pendingGrant_none (n : Nat)
   | none => exact rfl
   | some _ =>
       rw [hD] at hchanD
-      rcases hchanD with ⟨_, _, _, _, hpending, _, _, _⟩
-      rw [hgrant] at hpending
-      simp at hpending
+      rcases hchanD with hgrantBranch | hrelBranch
+      · rcases hgrantBranch with ⟨_, _, _, _, hpending, _, _, _⟩
+        rw [hgrant] at hpending
+        simp at hpending
+      · rcases hrelBranch with ⟨_, _, hpendingRel, _, _, _⟩
+        rw [hrel] at hpendingRel
+        simp at hpendingRel
 
 private theorem chanE_none_of_pendingGrant_none (n : Nat)
     (s : SymState HomeState NodeState n) (hchanE : chanEInv n s)
@@ -79,13 +88,17 @@ private theorem chanD_none_of_other_requester (n : Nat)
   | none => exact rfl
   | some _ =>
       rw [hD] at hchanD
-      rcases hchanD with ⟨tx0, hcur0, hreq0, _, _, _, _, _⟩
-      rw [hcur] at hcur0
-      injection hcur0 with htx
-      subst htx
-      exfalso
-      apply hji
-      exact Fin.ext (hreq0.symm.trans hreq)
+      rcases hchanD with hgrantBranch | hrelBranch
+      · rcases hgrantBranch with ⟨tx0, hcur0, hreq0, _, _, _, _, _⟩
+        rw [hcur] at hcur0
+        injection hcur0 with htx
+        subst htx
+        exfalso
+        apply hji
+        exact Fin.ext (hreq0.symm.trans hreq)
+      · rcases hrelBranch with ⟨hcurNone, _, _, _, _, _⟩
+        rw [hcur] at hcurNone
+        simp at hcurNone
 
 private theorem chanE_none_of_other_requester (n : Nat)
     (s : SymState HomeState NodeState n) (hchanE : chanEInv n s)
@@ -110,7 +123,7 @@ theorem coreInv_preserved_sendGrantToRequester (n : Nat)
     {i : Fin n} (hstep : SendGrantToRequester s s' i) :
     coreInv n s' := by
   rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
-  rcases hstep with ⟨tx, hcur, hreq, hphase, hgrantNone, hDnone, hEnone, hSinkNone, rfl⟩
+  rcases hstep with ⟨tx, hcur, hreq, hphase, hgrantNone, hrelNone, hDnone, hEnone, hSinkNone, rfl⟩
   have htxn' : tx.requester < n ∧
       (tx.phase = .probing ∨ tx.phase = .grantReady ∨ tx.phase = .grantPendingAck) ∧
       tx.resultPerm = tx.grow.result ∧
@@ -121,9 +134,6 @@ theorem coreInv_preserved_sendGrantToRequester (n : Nat)
       (tx.phase = .grantPendingAck → ∀ j : Fin n, tx.probesRemaining j.1 = false) := by
     simpa [txnCoreInv, hcur] using htxn
   rcases htxn' with ⟨hreqLt, _, hresult, hnoDataT, hreqFalse, hsubset, hready, hgrant⟩
-  have hpendPair : s.shared.pendingReleaseAck = none ∧ s.shared.pendingGrantAck = none := by
-    simpa [pendingInv, hcur, hphase] using hpending
-  rcases hpendPair with ⟨hrelNone, _⟩
   have hallFalse : ∀ j : Fin n, tx.probesRemaining j.1 = false := hready hphase
   refine ⟨?_, ?_, ?_, ?_⟩
   · intro j
@@ -149,10 +159,10 @@ theorem channelInv_preserved_sendGrantToRequester (n : Nat)
     {i : Fin n} (hstep : SendGrantToRequester s s' i) :
     channelInv n s' := by
   rcases hinv with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
-  rcases hstep with ⟨tx, hcur, hreq, hphase, hgrantNone, hDnone, hEnone, hSinkNone, rfl⟩
+  rcases hstep with ⟨tx, hcur, hreq, hphase, hgrantNone, hrelNone, hDnone, hEnone, hSinkNone, rfl⟩
   have hBnone := chanB_none_of_phase_ne_probing n s hchanB hcur (by simp [hphase])
   have hCnone := chanC_none_of_phase_ne_probing n s hchanC hcur (by simp [hphase])
-  have hDnoneAll := chanD_none_of_pendingGrant_none n s hchanD hgrantNone
+  have hDnoneAll := chanD_none_of_pendingGrant_none n s hchanD hgrantNone hrelNone
   have hEnoneAll := chanE_none_of_pendingGrant_none n s hchanE hgrantNone
   let tx' : ManagerTxn := { tx with phase := .grantPendingAck }
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
@@ -181,6 +191,7 @@ theorem channelInv_preserved_sendGrantToRequester (n : Nat)
           ((sendGrantState s i tx).locals i).chanD = some (grantMsgOfTxn tx) := by
         simp [sendGrantState, sendGrantLocals, grantMsgOfTxn]
       rw [hmsg]
+      left
       refine ⟨tx', ?_⟩
       refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
       · simp [sendGrantState, sendGrantShared, tx']
@@ -236,7 +247,7 @@ theorem coreInv_preserved_recvGrantAtMaster (n : Nat)
       have hdirj := hdir j hCnone_old
       simpa [recvGrantState, recvGrantShared, recvGrantLocals, recvGrantLocal, setFn, hji,
         updateDirAt, fin_val_ne_of_ne hji] using hdirj
-  · simpa [recvGrantState, recvGrantShared] using hpending
+  · simpa [pendingInv, recvGrantState, recvGrantShared, hcur, hphase, hpendingGrant] using hpending
   · simpa [recvGrantState, recvGrantShared] using htxn
 
 theorem channelInv_preserved_recvGrantAtMaster (n : Nat)
@@ -366,43 +377,5 @@ theorem channelInv_preserved_recvGrantAckAtManager (n : Nat)
         simp [recvGrantAckState, recvGrantAckLocals, setFn, hji, hEotherNone j hji]
       rw [hnone]
       trivial
-
-theorem fullInv_preserved (n : Nat)
-    (s s' : SymState HomeState NodeState n)
-    (hinv : fullInv n s) (hnext : (tlMessages.toSpec n).next s s') :
-    fullInv n s' := by
-  rcases hinv with ⟨hcore, hchan⟩
-  simp only [SymSharedSpec.toSpec, tlMessages] at hnext
-  obtain ⟨i, a, hstep⟩ := hnext
-  match a with
-  | .sendAcquireBlock grow source =>
-      exact ⟨coreInv_preserved_sendAcquireBlock n s s' hcore hstep,
-        channelInv_preserved_sendAcquireBlock n s s' hchan hstep⟩
-  | .sendAcquirePerm grow source =>
-      exact ⟨coreInv_preserved_sendAcquirePerm n s s' hcore hstep,
-        channelInv_preserved_sendAcquirePerm n s s' hchan hstep⟩
-  | .recvAcquireAtManager =>
-      rcases hstep with hblk | hperm
-      · rcases hblk with ⟨grow, source, hrecv⟩
-        exact ⟨coreInv_preserved_recvAcquireBlock n s s' hcore hrecv,
-          channelInv_preserved_recvAcquireBlock n s s' hcore hchan hrecv⟩
-      · rcases hperm with ⟨grow, source, hrecv⟩
-        exact ⟨coreInv_preserved_recvAcquirePerm n s s' hcore hrecv,
-          channelInv_preserved_recvAcquirePerm n s s' hcore hchan hrecv⟩
-  | .recvProbeAtMaster =>
-      exact ⟨coreInv_preserved_recvProbeAtMaster n s s' hcore hstep,
-        channelInv_preserved_recvProbeAtMaster n s s' hchan hstep⟩
-  | .recvProbeAckAtManager =>
-      exact ⟨coreInv_preserved_recvProbeAckAtManager n s s' hcore hstep,
-        channelInv_preserved_recvProbeAckAtManager n s s' hchan hstep⟩
-  | .sendGrantToRequester =>
-      exact ⟨coreInv_preserved_sendGrantToRequester n s s' hcore hstep,
-        channelInv_preserved_sendGrantToRequester n s s' hchan hstep⟩
-  | .recvGrantAtMaster =>
-      exact ⟨coreInv_preserved_recvGrantAtMaster n s s' hcore hstep,
-        channelInv_preserved_recvGrantAtMaster n s s' hchan hstep⟩
-  | .recvGrantAckAtManager =>
-      exact ⟨coreInv_preserved_recvGrantAckAtManager n s s' hcore hstep,
-        channelInv_preserved_recvGrantAckAtManager n s s' hchan hstep⟩
 
 end TileLink.Messages

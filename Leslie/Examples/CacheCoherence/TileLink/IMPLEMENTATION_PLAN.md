@@ -268,7 +268,8 @@ The checked-in `Messages/` files now cover the next Stage 2 checkpoint:
 - the current action slice is:
   `sendAcquireBlock`, `sendAcquirePerm`, `recvAcquireAtManager`,
   `recvProbeAtMaster`, `recvProbeAckAtManager`, `sendGrantToRequester`,
-  `recvGrantAtMaster`, and `recvGrantAckAtManager`
+  `recvGrantAtMaster`, `recvGrantAckAtManager`, `sendRelease`,
+  `sendReleaseData`, `recvReleaseAtManager`, and `recvReleaseAckAtMaster`
 - `recvAcquireAtManager` creates the serialized manager transaction and
   explicitly enqueues the B-channel probes required by the acquire
 - `recvProbeAtMaster` explicitly turns a B probe into a downgraded local line
@@ -281,15 +282,23 @@ The checked-in `Messages/` files now cover the next Stage 2 checkpoint:
 - `recvGrantAtMaster` explicitly consumes that grant, installs the granted
   line, and emits an E-channel `GrantAck`
 - `recvGrantAckAtManager` explicitly consumes E and retires the transaction
+- `sendRelease` / `sendReleaseData` explicitly emit C-channel release traffic
+  and update the releaser's local line to the reported/pruned permission
+- `recvReleaseAtManager` explicitly consumes the C release, updates memory and
+  directory state, and emits a D-channel `ReleaseAck`
+- `recvReleaseAckAtMaster` explicitly consumes D and clears the releaser's
+  local release-in-flight obligation
 - `FrameLemmas.lean`, `InvariantCore.lean`, `InvariantChannels.lean`,
   `InitProof.lean`, `StepAcquire.lean`, `StepProbe.lean`, `StepGrant.lean`,
-  and `Theorem.lean` are all present and build
+  `StepRelease.lean`, and `Theorem.lean` are all present and build
 - `Messages/Theorem.lean` proves the first message-level invariant theorem for
-  the acquire/probe/grant slice
+  the acquire/probe/grant slice; the release-preservation theorems in
+  `StepRelease.lean` are still placeholder-backed (`sorry`) and need to be
+  discharged to finish Stage 2d
 
 What remains for Stage 2 is still substantial:
 
-- C/D release paths
+- discharging the `StepRelease.lean` placeholders
 - stronger serialization and same-block exclusion invariants
 - eventual refinement from the message model back to the atomic model
 

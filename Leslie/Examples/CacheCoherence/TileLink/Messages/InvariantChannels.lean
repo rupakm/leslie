@@ -28,27 +28,42 @@ def chanCInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   ∀ i : Fin n, match (s.locals i).chanC with
     | none => True
     | some msg =>
-        ∃ tx,
+        (∃ tx,
           s.shared.currentTxn = some tx ∧
           tx.phase = .probing ∧
           tx.probesRemaining i.1 = true ∧
           (s.locals i).chanA = none ∧
           (s.locals i).chanB = none ∧
           msg.source = i.1 ∧
-          probeAckMsgWellFormed msg
+          probeAckMsgWellFormed msg) ∨
+        (∃ param,
+          s.shared.currentTxn = none ∧
+          (s.locals i).releaseInFlight = true ∧
+          (s.locals i).chanA = none ∧
+          (s.locals i).chanB = none ∧
+          msg.source = i.1 ∧
+          msg.param = some param ∧
+          (s.locals i).line.perm = param.result ∧
+          releaseMsgWellFormed msg)
 
 def chanDInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   ∀ i : Fin n, match (s.locals i).chanD with
     | none => True
     | some msg =>
-        ∃ tx,
+        (∃ tx,
           s.shared.currentTxn = some tx ∧
           tx.requester = i.1 ∧
           tx.phase = .grantPendingAck ∧
           s.shared.pendingGrantAck = some i.1 ∧
           (s.locals i).pendingSink = some tx.sink ∧
           (s.locals i).chanE = none ∧
-          msg = grantMsgOfTxn tx
+          msg = grantMsgOfTxn tx) ∨
+        (s.shared.currentTxn = none ∧
+          s.shared.pendingGrantAck = none ∧
+          s.shared.pendingReleaseAck = some i.1 ∧
+          (s.locals i).releaseInFlight = true ∧
+          (s.locals i).chanE = none ∧
+          msg = releaseAckMsg i.1)
 
 def chanEInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   ∀ i : Fin n, match (s.locals i).chanE with

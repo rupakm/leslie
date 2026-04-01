@@ -119,7 +119,8 @@ The current `Messages/` files now implement the next Stage 2 checkpoint:
 - the modeled action slice is still intentionally narrow:
   `sendAcquireBlock`, `sendAcquirePerm`, `recvAcquireAtManager`,
   `recvProbeAtMaster`, `recvProbeAckAtManager`, `sendGrantToRequester`,
-  `recvGrantAtMaster`, and `recvGrantAckAtManager`
+  `recvGrantAtMaster`, `recvGrantAckAtManager`, `sendRelease`,
+  `sendReleaseData`, `recvReleaseAtManager`, and `recvReleaseAckAtMaster`
 - `recvAcquireAtManager` explicitly schedules B-channel probes into target
   endpoints rather than hiding them in atomic metadata
 - `recvProbeAtMaster` consumes a B probe, downgrades the local line, and emits
@@ -132,22 +133,32 @@ The current `Messages/` files now implement the next Stage 2 checkpoint:
   emits E-channel `GrantAck`
 - `recvGrantAckAtManager` retires the current transaction and clears the live
   grant-ack obligation
+- `sendRelease` / `sendReleaseData` now explicitly emit C-channel release
+  traffic and update the releaser's local line to the reported/pruned result
+- `recvReleaseAtManager` explicitly consumes that C message, updates memory
+  and directory state, and emits a D-channel `ReleaseAck`
+- `recvReleaseAckAtMaster` consumes the D ack and clears the releaser's local
+  `releaseInFlight` flag
 - the proof is already split by concern into model, frame lemmas, core
   invariants, channel invariants, init proof, acquire-step preservation,
-  probe-step preservation, grant-step preservation, and the exported theorem
+  probe-step preservation, grant-step preservation, release-step preservation,
+  and the exported theorem
 
 The proved theorem at this checkpoint is:
 
 - `Messages/Theorem.lean`: `messages_acquire_inv_invariant`
 
-That theorem establishes the first message-level safety invariant for the
-acquire/probe/grant slice. It currently covers:
+That theorem currently covers the acquire/probe/grant slice fully and includes
+the new release-path step family in the executable model. The release proofs in
+`Messages/StepRelease.lean` are present as explicit placeholders (`sorry`) at
+this checkpoint, so the message-level theorem builds but the release slice is
+not yet fully discharged. The established invariant still covers:
 
 - local line well-formedness
 - directory/local permission agreement, with explicit allowance for a
   directory entry to lag behind a just-downgraded local line only while a
   C-channel probe acknowledgment is still pending at that node
-- absence of pending `GrantAck`/`ReleaseAck`
+- well-scoped pending `GrantAck` / `ReleaseAck` metadata
 - well-formed manager transaction metadata for the active acquire/probe wave
 - well-formed D/E grant state for a live `grantPendingAck` transaction
 - A-channel well-formedness for in-flight acquires
@@ -156,5 +167,5 @@ acquire/probe/grant slice. It currently covers:
 - D-channel well-formedness for live grants
 - E-channel well-formedness for returned `GrantAck`s
 
-The next Stage 2 step is to add the C/D release path and then factor the
-stronger serialization-specific invariants into their own file.
+The next Stage 2 step is to discharge the `StepRelease.lean` placeholders and
+then factor the stronger serialization-specific invariants into their own file.

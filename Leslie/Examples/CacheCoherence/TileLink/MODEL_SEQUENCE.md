@@ -13,6 +13,8 @@ The current codebase already covers the early part of this sequence:
 - the atomic model already refines to a sequential one-line memory view
 - the first explicit message-level slice is implemented for acquires plus
   probes, grants, and grant acknowledgments
+- the explicit release path is modeled, but its preservation proofs are still
+  placeholder-backed in `Messages/StepRelease.lean`
 
 Everything after that is the staged path toward a fuller TL-C model.
 
@@ -341,22 +343,24 @@ General lesson:
 Current checkpoint note:
 
 - the current message theorem now covers the acquire/probe/grant path through
-  explicit D and E handling, but release traffic and a dedicated
-  serialization-invariant file are still future work
+  explicit D and E handling
+- release traffic is now present in the executable model, but the dedicated
+  release-preservation file still contains explicit proof placeholders
 
 ### Stage 2d: Explicit Release and Release Acknowledgment Paths
 
-Status: `planned`
+Status: `active`
 
-Likely files:
+Files:
 
 - `Messages/StepRelease.lean`
 
-What this stage should add:
+What this stage adds:
 
 - C-channel `Release` and `ReleaseData`
 - D-channel `ReleaseAck`
 - manager-side processing of voluntary downgrades and writeback
+- local `releaseInFlight` bookkeeping
 
 What it can still omit:
 
@@ -369,6 +373,15 @@ Theorem target:
 - safety and data-coherence preservation across both manager-driven invalidation
   waves and cache-driven release waves
 
+Current checkpoint:
+
+- `Messages/Model.lean` includes the release send/receive/ack actions
+- the core and channel invariants mention release messages and
+  `pendingReleaseAck`
+- `Messages/Theorem.lean` now routes through `Messages/StepRelease.lean`
+- `Messages/StepRelease.lean` is still placeholder-backed with `sorry`, so the
+  proof boundary is staged but not yet closed
+
 Why this stage is separate:
 
 - releases introduce a different source of protocol initiative and should not
@@ -378,6 +391,8 @@ General lesson:
 
 - separate "manager pulls permissions back" from "cache gives permissions up"
   when building the proof decomposition
+- once a new action family is stable in the model, it can still be useful to
+  checkpoint the proof split before finishing every preservation lemma
 
 ### Stage 2e: Message-Level Refinement Back to the Atomic Model
 
