@@ -308,6 +308,14 @@ Stage 2e refinement prep is now started in code:
   so the explicit and atomic models now agree on the current request variant
 - explicit release submission is now single-wave on the one modeled line,
   removing a source of overlap the atomic model cannot summarize
+- live manager transactions now record a `preLines` snapshot so the refinement
+  map can hide probe-side local mutations until the atomic wave commits
+- the refinement map now synthesizes the abstract post-release
+  `pendingReleaseAck` state from a queued clean release, so concrete
+  `sendRelease` can line up with atomic release timing
+- `Atomic/Model.lean` now allows `NtoN` releases, which removes a remaining
+  mismatch between the message slice, the atomic slice, and the TL-C prune/report
+  space
 
 ### Files
 

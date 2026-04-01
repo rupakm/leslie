@@ -427,6 +427,14 @@ Current checkpoint:
   manager-side `AcquireBlock` now accepts only the Stage 1 no-dirty,
   requester-from-`N` cases, and queued C-channel releases are now serialized
   on the single modeled line
+- live acquire transactions now carry a `preLines` snapshot of the pre-wave
+  local cache-line state; the refinement map uses that snapshot so explicit
+  probe handling can stutter against the atomic model
+- the refinement map also synthesizes the abstract post-release
+  `pendingReleaseAck` view from a queued clean release, which aligns concrete
+  release timing with the atomic release step more closely
+- the atomic model now accepts `NtoN` release/report transitions, so the
+  current atomic/message pair is closer to the TL-C prune/report space
 - the forward-simulation theorem itself is still pending
 
 Why this stage matters:
@@ -438,6 +446,10 @@ General lesson:
 
 - message-level safety theorems are easier to manage if they can discharge
   semantic obligations by refinement instead of restating them all directly
+- when the concrete protocol exposes intermediate transport steps that mutate
+  local state before the abstract linearization point, it is often cheaper to
+  snapshot the pre-step semantic state than to force the abstract model to grow
+  a matching intermediate phase
 
 ### Stage 3: More Complete Single-Line TL-C Transfer Layer
 

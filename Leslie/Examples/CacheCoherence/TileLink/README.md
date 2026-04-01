@@ -180,6 +180,14 @@ not finished yet:
 - `Messages/Refinement.lean` now contains refinement-specific helper
   invariants (`noDirtyInv`, `txnDataInv`, `refinementInv`) and their initial
   lemmas
+- the refinement map now uses a per-transaction snapshot of pre-wave local
+  lines (`preLines`) so probe-side local mutations can be hidden until the
+  atomic linearization point
+- the refinement map also synthesizes the abstract post-release
+  `pendingReleaseAck` view as soon as a clean release is queued, matching the
+  atomic release timing more closely
+- the atomic release model now accepts `NtoN`, so the prune/report parameter
+  space is aligned more closely with TL-C and with the message model
 
 What remains is the actual forward-simulation theorem from the explicit
 message model back to the atomic model.

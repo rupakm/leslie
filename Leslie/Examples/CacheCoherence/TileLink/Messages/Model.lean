@@ -99,6 +99,7 @@ structure ManagerTxn where
   usedDirtySource : Bool
   probesNeeded : Nat → Bool
   probesRemaining : Nat → Bool
+  preLines : Nat → CacheLine
 
 structure HomeState where
   mem : Val
@@ -400,6 +401,12 @@ noncomputable def plannedTxn {n : Nat}
     (source : SourceId) : ManagerTxn :=
   let resultPerm := grow.result
   let probeMask := probeMaskForResult s requester resultPerm
+  let preLines : Nat → CacheLine :=
+    fun k =>
+      if hk : k < n then
+        (s.locals ⟨k, hk⟩).line
+      else
+        ({ perm := .N, valid := false, dirty := false, data := 0 } : CacheLine)
   { requester := requester.1
   , source := source
   , sink := s.shared.nextSink
@@ -411,7 +418,8 @@ noncomputable def plannedTxn {n : Nat}
   , transferVal := plannedTransferVal s requester
   , usedDirtySource := plannedUsedDirtySource s requester
   , probesNeeded := probeMask
-  , probesRemaining := probeMask }
+  , probesRemaining := probeMask
+  , preLines := preLines }
 
 def recvProbeLocal {n : Nat} (node : NodeState) (i : Fin n) (msg : BMsg) : NodeState :=
   { node with

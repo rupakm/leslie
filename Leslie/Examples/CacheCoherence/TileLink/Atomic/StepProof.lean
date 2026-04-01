@@ -108,7 +108,7 @@ private theorem swmr_preserved (n : Nat)
       rcases hstep with ⟨_, rfl⟩
       exact hswmr p q hpq hpT
   | .release param =>
-      rcases hstep with ⟨_, _, _, hnn, hlegal, hclean, _, rfl⟩
+      rcases hstep with ⟨_, _, _, hlegal, hclean, _, rfl⟩
       by_cases hpi : p = i
       · have hqi : q ≠ i := by
           intro h
@@ -128,12 +128,24 @@ private theorem swmr_preserved (n : Nat)
             exact hswmr p i (by
               intro h
               exact hpq (h.trans hqi.symm)) hpTpre
-          have : False := by
-            cases param <;> simp [PruneReportParam.legalFrom, PruneReportParam.source, hiN] at hlegal hnn
-          exact False.elim this
+          have hresN : param.result = .N := by
+            cases param with
+            | TtoB =>
+                simp [PruneReportParam.legalFrom, PruneReportParam.source, hiN] at hlegal
+            | TtoN =>
+                simp [PruneReportParam.legalFrom, PruneReportParam.source, hiN] at hlegal
+            | BtoN =>
+                simp [PruneReportParam.legalFrom, PruneReportParam.source, hiN] at hlegal
+            | TtoT =>
+                simp [PruneReportParam.legalFrom, PruneReportParam.source, hiN] at hlegal
+            | BtoB =>
+                simp [PruneReportParam.legalFrom, PruneReportParam.source, hiN] at hlegal
+            | NtoN =>
+                rfl
+          simpa [setFn, hqi, releasedLine, hresN]
         · simpa [setFn, hqi, releasedLine] using hswmr p q hpq hpTpre
   | .releaseData param =>
-      rcases hstep with ⟨_, _, _, hnn, hlegal, hdirty, rfl⟩
+      rcases hstep with ⟨_, _, _, hlegal, hdirty, rfl⟩
       by_cases hpi : p = i
       · have hqi : q ≠ i := by
           intro h
@@ -143,7 +155,7 @@ private theorem swmr_preserved (n : Nat)
             simpa [setFn, hpi] using hpT
           simpa using this
         have hiT : (s.locals i).perm = .T := (hwf i).1 hdirty |>.1
-        cases param <;> simp [PruneReportParam.result, PruneReportParam.legalFrom, PruneReportParam.source] at hresT hlegal hnn
+        cases param <;> simp [PruneReportParam.result, PruneReportParam.legalFrom, PruneReportParam.source] at hresT hlegal
         simpa [setFn, hqi, releasedLine] using hswmr i q (fun h => hqi h.symm) hiT
       · have hpTpre : (s.locals p).perm = .T := by
           simpa [setFn, hpi, releasedLine] using hpT
@@ -472,7 +484,7 @@ private theorem cleanDataInv_preserved (n : Nat)
       rcases hstep with ⟨_, rfl⟩
       exact hcleanData p hpvalid hpclean
   | .release param =>
-      rcases hstep with ⟨_, _, _, _, _, hcleanPre, hvalidOrN, rfl⟩
+      rcases hstep with ⟨_, _, _, _, hcleanPre, hvalidOrN, rfl⟩
       by_cases hpi : p = i
       · subst hpi
         have hvalidPre : (s.locals p).valid = true := by
@@ -489,7 +501,7 @@ private theorem cleanDataInv_preserved (n : Nat)
           simpa [setFn, hpi] using hpclean
         simpa [setFn, hpi] using hcleanData p hpvalidPre hpcleanPre
   | .releaseData param =>
-      rcases hstep with ⟨_, _, _, _, _, hdirty, rfl⟩
+      rcases hstep with ⟨_, _, _, _, hdirty, rfl⟩
       by_cases hpi : p = i
       · subst hpi
         simpa [setFn, releasedLine] using releasedLine_data (s.locals p) param.result

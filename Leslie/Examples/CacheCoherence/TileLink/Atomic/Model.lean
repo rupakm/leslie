@@ -459,7 +459,6 @@ def tlAtomic : SymSharedSpec where
         s.shared.pendingGrantMeta = none ∧
         s.shared.pendingGrantAck = none ∧
         s.shared.pendingReleaseAck = none ∧
-        param ≠ .NtoN ∧
         param.legalFrom (s.locals i).perm ∧
         (s.locals i).dirty = false ∧
         ((s.locals i).valid = true ∨ param.result = .N) ∧
@@ -473,7 +472,6 @@ def tlAtomic : SymSharedSpec where
         s.shared.pendingGrantMeta = none ∧
         s.shared.pendingGrantAck = none ∧
         s.shared.pendingReleaseAck = none ∧
-        param ≠ .NtoN ∧
         param.legalFrom (s.locals i).perm ∧
         (s.locals i).dirty = true ∧
         s' = { shared := { mem := (s.locals i).data
