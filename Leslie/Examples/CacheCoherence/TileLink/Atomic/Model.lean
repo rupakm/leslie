@@ -10,6 +10,42 @@ open TLA SymShared
     required probe obligations and delivers the grant, and `GrantAck` /
     `ReleaseAck` remain explicit so the model still tracks same-block
     serialization obligations.
+
+    Status of this model:
+
+    - It is a parameterized single-line model over `n` symmetric caches.
+    - Shared state tracks home memory, a directory summary, pending grant
+      metadata, and pending `GrantAck` / `ReleaseAck` obligations.
+    - Local state tracks permission, validity, dirtiness, and data.
+    - `AcquirePerm` grants `T` permission without valid data.
+    - `AcquireBlock` / `AcquirePerm` schedule a pending coherence wave, and
+      `finishGrant` resolves that wave atomically.
+    - `Release` and `ReleaseData` are distinct abstract C-channel actions.
+
+    Verified properties are proved in `Invariant.lean`, `StepProof.lean`, and
+    `Theorem.lean`. The current invariant establishes:
+
+    - single-writer / single-tip safety
+    - pending `GrantAck` / `ReleaseAck` discipline
+    - directory agreement with local permissions
+    - local cache-line well-formedness
+    - clean valid copies agree with home memory
+    - the dirty owner determines the model's logical line value
+
+    Important differences from full TL-C:
+
+    - one address / one cache line only
+    - no explicit A/B/C/D/E message network
+    - no source/sink IDs, multibeat transfers, `denied`, or `corrupt`
+    - probe fanout / probe responses are abstracted into metadata plus
+      `finishGrant`
+    - no forwarded B/C access flows
+    - no liveness proof
+    - no explicit-message refinement yet
+
+    The current pending-grant invariant distinguishes scheduled and delivered
+    grant phases, but only at the phase/shape level. It does not yet encode a
+    stronger post-grant state correspondence.
 -/
 
 namespace TileLink.Atomic

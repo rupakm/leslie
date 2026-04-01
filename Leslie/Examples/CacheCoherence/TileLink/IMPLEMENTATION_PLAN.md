@@ -21,6 +21,7 @@ later extensions compatible with earlier work.
 Leslie/Examples/CacheCoherence/TileLink/
   README.md
   IMPLEMENTATION_PLAN.md
+  MODEL_SEQUENCE.md
   Types.lean
   Permissions.lean
   Common.lean
@@ -41,6 +42,7 @@ Leslie/Examples/CacheCoherence/TileLink/
     StepProbe.lean
     StepRelease.lean
     StepAccess.lean
+    Refinement.lean
     Theorem.lean
   Parameterized/
     Model.lean
@@ -167,6 +169,8 @@ checkpoint:
   agreement with memory
 - a derived theorem identifies the dirty owner as the source of the atomic
   model's logical line value
+- `Atomic/Refinement.lean` now proves refinement to a sequential one-line
+  memory using that logical line value as the refinement map
 - pending grant metadata now records both scheduled and delivered grant phases;
   the checked-in invariant tracks phase/shape facts, while stronger coupling to
   post-grant cache/home state remains a follow-on strengthening step
@@ -174,7 +178,6 @@ checkpoint:
 The remaining Stage 1 work is to strengthen the proof to cover:
 
 - richer delivered/scheduled metadata facts if they are useful for refinement
-- sequential one-line refinement
 
 ### Files
 
@@ -236,9 +239,10 @@ Prove an inductive invariant combining:
 Then prove refinement to a sequential one-line memory abstraction, in the same
 style as `MESIParam`.
 
-The current checked-in proof stops short of this point. It proves the
-structural safety core first, and Stage 1b should add the data and refinement
-theorems above without collapsing the file structure.
+The current checked-in proof now reaches this point for the atomic model:
+coherence safety, data coherence, and sequential one-line refinement are all
+proved. The remaining Stage 1b work is optional strengthening of the
+scheduled/delivered metadata before moving to Stage 2.
 
 ### Success criterion
 
@@ -255,6 +259,40 @@ An end-to-end theorem for the atomic model:
 Replace atomic waves with explicit channels and in-flight messages, following
 the organization pattern of `GermanMessages/`.
 
+### Current status
+
+The checked-in `Messages/` files now cover the next Stage 2 checkpoint:
+
+- `Model.lean` defines explicit A/B/C/D/E message records, manager state, and
+  per-master endpoint state
+- the current action slice is:
+  `sendAcquireBlock`, `sendAcquirePerm`, `recvAcquireAtManager`,
+  `recvProbeAtMaster`, `recvProbeAckAtManager`, `sendGrantToRequester`,
+  `recvGrantAtMaster`, and `recvGrantAckAtManager`
+- `recvAcquireAtManager` creates the serialized manager transaction and
+  explicitly enqueues the B-channel probes required by the acquire
+- `recvProbeAtMaster` explicitly turns a B probe into a downgraded local line
+  plus a C probe acknowledgment
+- `recvProbeAckAtManager` explicitly consumes a C acknowledgment, updates the
+  manager directory for that node, and can advance the transaction from
+  `probing` to `grantReady`
+- `sendGrantToRequester` explicitly creates the D-channel grant for the
+  requester and moves the transaction to `grantPendingAck`
+- `recvGrantAtMaster` explicitly consumes that grant, installs the granted
+  line, and emits an E-channel `GrantAck`
+- `recvGrantAckAtManager` explicitly consumes E and retires the transaction
+- `FrameLemmas.lean`, `InvariantCore.lean`, `InvariantChannels.lean`,
+  `InitProof.lean`, `StepAcquire.lean`, `StepProbe.lean`, `StepGrant.lean`,
+  and `Theorem.lean` are all present and build
+- `Messages/Theorem.lean` proves the first message-level invariant theorem for
+  the acquire/probe/grant slice
+
+What remains for Stage 2 is still substantial:
+
+- C/D release paths
+- stronger serialization and same-block exclusion invariants
+- eventual refinement from the message model back to the atomic model
+
 ### Files
 
 - `Messages/Model.lean`
@@ -265,8 +303,10 @@ the organization pattern of `GermanMessages/`.
 - `Messages/InitProof.lean`
 - `Messages/StepAcquire.lean`
 - `Messages/StepProbe.lean`
+- `Messages/StepGrant.lean`
 - `Messages/StepRelease.lean`
 - `Messages/StepAccess.lean`
+- `Messages/Refinement.lean`
 - `Messages/Theorem.lean`
 
 ### State design
