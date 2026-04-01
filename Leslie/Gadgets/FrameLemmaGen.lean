@@ -17,10 +17,11 @@ def getFieldIdx (env : Environment) (structName fieldName : Name) : Option Nat :
   let fields := getStructureFields env structName
   fields.findIdx? (· == fieldName)
 
-/-- Build a projection expression: `s.fieldName` -/
-def mkFieldProj (structName fieldName : Name) (struct : Expr) (env : Environment) : Option Expr := do
-  let idx ← getFieldIdx env structName fieldName
-  return .proj structName idx struct
+/-- Build a projection expression as a function application: `StructName.fieldName s`
+    This produces the same form as user-written `s.fieldName` after elaboration,
+    which is important for `rw` compatibility. -/
+def mkFieldProj (structName fieldName : Name) (struct : Expr) (_env : Environment) : MetaM Expr :=
+  mkAppM (structName ++ fieldName) #[struct]
 
 /-- Check if an expression is a `setFn` application. Returns (fn, idx, val) if so. -/
 def matchSetFn? (e : Expr) : Option (Expr × Expr × Expr) :=
@@ -36,8 +37,8 @@ def indexSuffix (env : Environment) (stateParam : Expr) (structName : Name)
     if ← isDefEq idxExpr p then return "self"
   let fields := getStructureFields env structName
   for f in fields do
-    if let some proj := mkFieldProj structName f stateParam env then
-      if ← isDefEq idxExpr proj then return f.toString
+    let proj ← mkFieldProj structName f stateParam env
+    if ← isDefEq idxExpr proj then return f.toString
   return "idx"
 
 /-- Generate frame lemmas for a single state transformer. -/
@@ -100,11 +101,9 @@ def generateFrameLemmas (defName : Name) : CommandElabM Unit := do
       let arg := fieldArgs[i]!
 
       -- Get projection of original state
-      let some origProj := mkFieldProj structName fieldName stateParam env
-        | continue
+      let origProj ← mkFieldProj structName fieldName stateParam env
       -- Get projection of new state
-      let some newProj := mkFieldProj structName fieldName appExpr env
-        | continue
+      let newProj ← mkFieldProj structName fieldName appExpr env
 
       -- Classify the field
       let isUnmodified ← isDefEq arg origProj
