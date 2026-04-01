@@ -60,7 +60,7 @@ private theorem chanD_none_of_pendingGrant_none (n : Nat)
       · rcases hgrantBranch with ⟨_, _, _, _, hpending, _, _, _⟩
         rw [hgrant] at hpending
         simp at hpending
-      · rcases hrelBranch with ⟨_, _, hpendingRel, _, _, _⟩
+      · rcases hrelBranch with ⟨_, _, hpendingRel, _, _, _, _⟩
         rw [hrel] at hpendingRel
         simp at hpendingRel
 
@@ -96,7 +96,7 @@ private theorem chanD_none_of_other_requester (n : Nat)
         exfalso
         apply hji
         exact Fin.ext (hreq0.symm.trans hreq)
-      · rcases hrelBranch with ⟨hcurNone, _, _, _, _, _⟩
+      · rcases hrelBranch with ⟨hcurNone, _, _, _, _, _, _⟩
         rw [hcur] at hcurNone
         simp at hcurNone
 

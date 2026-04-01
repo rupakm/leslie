@@ -148,11 +148,8 @@ The proved theorem at this checkpoint is:
 
 - `Messages/Theorem.lean`: `messages_acquire_inv_invariant`
 
-That theorem currently covers the acquire/probe/grant slice fully and includes
-the new release-path step family in the executable model. The release proofs in
-`Messages/StepRelease.lean` are present as explicit placeholders (`sorry`) at
-this checkpoint, so the message-level theorem builds but the release slice is
-not yet fully discharged. The established invariant still covers:
+That theorem now covers the acquire/probe/grant slice together with the
+explicit release path. The established invariant covers:
 
 - local line well-formedness
 - directory/local permission agreement, with explicit allowance for a
@@ -167,5 +164,5 @@ not yet fully discharged. The established invariant still covers:
 - D-channel well-formedness for live grants
 - E-channel well-formedness for returned `GrantAck`s
 
-The next Stage 2 step is to discharge the `StepRelease.lean` placeholders and
-then factor the stronger serialization-specific invariants into their own file.
+The next Stage 2 step is to factor the stronger serialization-specific
+invariants into their own file and then prove message-to-atomic refinement.

@@ -62,6 +62,7 @@ def chanDInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
           s.shared.pendingGrantAck = none ∧
           s.shared.pendingReleaseAck = some i.1 ∧
           (s.locals i).releaseInFlight = true ∧
+          (s.locals i).chanC = none ∧
           (s.locals i).chanE = none ∧
           msg = releaseAckMsg i.1)
 

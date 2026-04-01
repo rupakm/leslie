@@ -24,7 +24,7 @@ private theorem chanD_none_of_pendingGrant_none (n : Nat)
       · rcases hgrantBranch with ⟨_, _, _, _, hpending, _, _, _⟩
         rw [hgrant] at hpending
         simp at hpending
-      · rcases hrelBranch with ⟨_, _, hpendingRel, _, _, _⟩
+      · rcases hrelBranch with ⟨_, _, hpendingRel, _, _, _, _⟩
         rw [hrel] at hpendingRel
         simp at hpendingRel
 
@@ -211,6 +211,7 @@ theorem channelInv_preserved_sendAcquireBlock (n : Nat)
   · intro j
     simpa [sendAcquireBlock_shared hstep, sendAcquireBlock_chanD hstep,
       sendAcquireBlock_pendingSink hstep, sendAcquireBlock_chanE hstep,
+      sendAcquireBlock_chanC hstep,
       sendAcquireBlock_releaseInFlight hstep] using hchanD j
   · intro j
     simpa [sendAcquireBlock_shared hstep, sendAcquireBlock_chanE hstep,
@@ -247,6 +248,7 @@ theorem channelInv_preserved_sendAcquirePerm (n : Nat)
   · intro j
     simpa [sendAcquirePerm_shared hstep, sendAcquirePerm_chanD hstep,
       sendAcquirePerm_pendingSink hstep, sendAcquirePerm_chanE hstep,
+      sendAcquirePerm_chanC hstep,
       sendAcquirePerm_releaseInFlight hstep] using hchanD j
   · intro j
     simpa [sendAcquirePerm_shared hstep, sendAcquirePerm_chanE hstep,

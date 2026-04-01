@@ -35,7 +35,7 @@ private theorem chanD_none_of_phase_ne_grantPendingAck (n : Nat)
         injection hcur0 with htx
         subst htx
         contradiction
-      · rcases hrelBranch with ⟨hcurNone, _, _, _, _, _⟩
+      · rcases hrelBranch with ⟨hcurNone, _, _, _, _, _, _⟩
         rw [hcur] at hcurNone
         simp at hcurNone
 

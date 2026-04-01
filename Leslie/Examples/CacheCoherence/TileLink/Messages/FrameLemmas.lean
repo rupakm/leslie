@@ -377,4 +377,110 @@ open TileLink SymShared
     ((recvGrantAckState s i).locals j).releaseInFlight = (s.locals j).releaseInFlight := by
   by_cases hji : j = i <;> simp [recvGrantAckState, recvGrantAckLocals, setFn, hji]
 
+@[simp] theorem sendReleaseState_chanA {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) (param : PruneReportParam) (withData : Bool) :
+    ((sendReleaseState s i param withData).locals j).chanA = (s.locals j).chanA := by
+  by_cases hji : j = i <;> simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji]
+
+@[simp] theorem sendReleaseState_chanB {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) (param : PruneReportParam) (withData : Bool) :
+    ((sendReleaseState s i param withData).locals j).chanB = (s.locals j).chanB := by
+  by_cases hji : j = i <;> simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji]
+
+@[simp] theorem sendReleaseState_chanD {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) (param : PruneReportParam) (withData : Bool) :
+    ((sendReleaseState s i param withData).locals j).chanD = (s.locals j).chanD := by
+  by_cases hji : j = i <;> simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji]
+
+@[simp] theorem sendReleaseState_chanE {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) (param : PruneReportParam) (withData : Bool) :
+    ((sendReleaseState s i param withData).locals j).chanE = (s.locals j).chanE := by
+  by_cases hji : j = i <;> simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji]
+
+@[simp] theorem sendReleaseState_pendingSource {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) (param : PruneReportParam) (withData : Bool) :
+    ((sendReleaseState s i param withData).locals j).pendingSource = (s.locals j).pendingSource := by
+  by_cases hji : j = i <;> simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji]
+
+@[simp] theorem sendReleaseState_pendingSink {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) (param : PruneReportParam) (withData : Bool) :
+    ((sendReleaseState s i param withData).locals j).pendingSink = (s.locals j).pendingSink := by
+  by_cases hji : j = i <;> simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji]
+
+@[simp] theorem sendReleaseState_releaseInFlight {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) (param : PruneReportParam) (withData : Bool) :
+    ((sendReleaseState s i param withData).locals j).releaseInFlight =
+      if j = i then true else (s.locals j).releaseInFlight := by
+  by_cases hji : j = i <;> simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji]
+
+@[simp] theorem recvReleaseState_line {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) (msg : CMsg) (param : PruneReportParam) :
+    ((recvReleaseState s i msg param).locals j).line = (s.locals j).line := by
+  by_cases hji : j = i <;> simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn, hji]
+
+@[simp] theorem recvReleaseState_chanA {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) (msg : CMsg) (param : PruneReportParam) :
+    ((recvReleaseState s i msg param).locals j).chanA = (s.locals j).chanA := by
+  by_cases hji : j = i <;> simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn, hji]
+
+@[simp] theorem recvReleaseState_chanB {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) (msg : CMsg) (param : PruneReportParam) :
+    ((recvReleaseState s i msg param).locals j).chanB = (s.locals j).chanB := by
+  by_cases hji : j = i <;> simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn, hji]
+
+@[simp] theorem recvReleaseState_chanE {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) (msg : CMsg) (param : PruneReportParam) :
+    ((recvReleaseState s i msg param).locals j).chanE = (s.locals j).chanE := by
+  by_cases hji : j = i <;> simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn, hji]
+
+@[simp] theorem recvReleaseState_pendingSource {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) (msg : CMsg) (param : PruneReportParam) :
+    ((recvReleaseState s i msg param).locals j).pendingSource = (s.locals j).pendingSource := by
+  by_cases hji : j = i <;> simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn, hji]
+
+@[simp] theorem recvReleaseState_pendingSink {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) (msg : CMsg) (param : PruneReportParam) :
+    ((recvReleaseState s i msg param).locals j).pendingSink = (s.locals j).pendingSink := by
+  by_cases hji : j = i <;> simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn, hji]
+
+@[simp] theorem recvReleaseState_releaseInFlight {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) (msg : CMsg) (param : PruneReportParam) :
+    ((recvReleaseState s i msg param).locals j).releaseInFlight = (s.locals j).releaseInFlight := by
+  by_cases hji : j = i <;> simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn, hji]
+
+@[simp] theorem recvReleaseAckState_line {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) :
+    ((recvReleaseAckState s i).locals j).line = (s.locals j).line := by
+  by_cases hji : j = i <;> simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn, hji]
+
+@[simp] theorem recvReleaseAckState_chanA {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) :
+    ((recvReleaseAckState s i).locals j).chanA = (s.locals j).chanA := by
+  by_cases hji : j = i <;> simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn, hji]
+
+@[simp] theorem recvReleaseAckState_chanB {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) :
+    ((recvReleaseAckState s i).locals j).chanB = (s.locals j).chanB := by
+  by_cases hji : j = i <;> simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn, hji]
+
+@[simp] theorem recvReleaseAckState_chanC {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) :
+    ((recvReleaseAckState s i).locals j).chanC = (s.locals j).chanC := by
+  by_cases hji : j = i <;> simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn, hji]
+
+@[simp] theorem recvReleaseAckState_chanE {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) :
+    ((recvReleaseAckState s i).locals j).chanE = (s.locals j).chanE := by
+  by_cases hji : j = i <;> simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn, hji]
+
+@[simp] theorem recvReleaseAckState_pendingSource {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) :
+    ((recvReleaseAckState s i).locals j).pendingSource = (s.locals j).pendingSource := by
+  by_cases hji : j = i <;> simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn, hji]
+
+@[simp] theorem recvReleaseAckState_pendingSink {n : Nat}
+    (s : SymState HomeState NodeState n) (i j : Fin n) :
+    ((recvReleaseAckState s i).locals j).pendingSink = (s.locals j).pendingSink := by
+  by_cases hji : j = i <;> simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn, hji]
+
 end TileLink.Messages

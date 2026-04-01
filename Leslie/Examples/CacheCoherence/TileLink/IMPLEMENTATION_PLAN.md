@@ -292,13 +292,10 @@ The checked-in `Messages/` files now cover the next Stage 2 checkpoint:
   `InitProof.lean`, `StepAcquire.lean`, `StepProbe.lean`, `StepGrant.lean`,
   `StepRelease.lean`, and `Theorem.lean` are all present and build
 - `Messages/Theorem.lean` proves the first message-level invariant theorem for
-  the acquire/probe/grant slice; the release-preservation theorems in
-  `StepRelease.lean` are still placeholder-backed (`sorry`) and need to be
-  discharged to finish Stage 2d
+  the acquire/probe/grant/release slice
 
 What remains for Stage 2 is still substantial:
 
-- discharging the `StepRelease.lean` placeholders
 - stronger serialization and same-block exclusion invariants
 - eventual refinement from the message model back to the atomic model
 

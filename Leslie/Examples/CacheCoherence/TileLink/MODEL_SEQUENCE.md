@@ -13,8 +13,7 @@ The current codebase already covers the early part of this sequence:
 - the atomic model already refines to a sequential one-line memory view
 - the first explicit message-level slice is implemented for acquires plus
   probes, grants, and grant acknowledgments
-- the explicit release path is modeled, but its preservation proofs are still
-  placeholder-backed in `Messages/StepRelease.lean`
+- the explicit release path and its preservation proofs are now in place
 
 Everything after that is the staged path toward a fuller TL-C model.
 
@@ -344,8 +343,8 @@ Current checkpoint note:
 
 - the current message theorem now covers the acquire/probe/grant path through
   explicit D and E handling
-- release traffic is now present in the executable model, but the dedicated
-  release-preservation file still contains explicit proof placeholders
+- release traffic is now present in both the executable model and the proved
+  message-level invariant
 
 ### Stage 2d: Explicit Release and Release Acknowledgment Paths
 
@@ -379,8 +378,8 @@ Current checkpoint:
 - the core and channel invariants mention release messages and
   `pendingReleaseAck`
 - `Messages/Theorem.lean` now routes through `Messages/StepRelease.lean`
-- `Messages/StepRelease.lean` is still placeholder-backed with `sorry`, so the
-  proof boundary is staged but not yet closed
+- `Messages/StepRelease.lean` now proves preservation for the explicit release
+  slice
 
 Why this stage is separate:
 
