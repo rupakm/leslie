@@ -142,11 +142,17 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
       · simp [sendReleaseState, sendReleaseLocals, setFn, hji] at hvalidJ hdirtyJ ⊢
         exact hdata j hvalidJ hdirtyJ
   | .sendReleaseData param =>
-      -- SORRY: SendReleaseData guard has dirty=true. After release, dirty=false but
-      -- data = old dirty data ≠ mem (mem hasn't been updated yet). The invariant is
-      -- genuinely violated until recvRelease processes the writeback. Needs invariant
-      -- restructuring to exclude nodes with releaseInFlight=true.
-      sorry
+      -- After sendReleaseData, node i has releaseInFlight=true → excluded by dataCoherenceInv.
+      -- For j≠i, lines/mem unchanged, releaseInFlight unchanged.
+      rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      intro htxn' j hflight hvalidJ hdirtyJ
+      rw [hs'] at htxn' hflight hvalidJ hdirtyJ ⊢
+      simp only [sendReleaseState] at htxn' hflight hvalidJ hdirtyJ ⊢
+      by_cases hji : j = i
+      · subst j
+        simp [sendReleaseLocals, sendReleaseLocal, setFn] at hflight
+      · simp [sendReleaseLocals, sendReleaseLocal, setFn, hji] at hflight hvalidJ hdirtyJ ⊢
+        exact hdata htxn j hflight hvalidJ hdirtyJ
   | .recvReleaseAtManager =>
       -- Lines unchanged for all nodes (only chanC/chanD changed).
       -- Mem may change (releaseWriteback). Under cleanChanCInv, msg.data = none → mem unchanged.

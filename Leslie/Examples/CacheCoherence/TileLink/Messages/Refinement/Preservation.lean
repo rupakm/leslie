@@ -626,7 +626,7 @@ theorem cleanChanCInv_preserved (n : Nat)
     cleanChanCInv n s' := by
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
-  intro j msg hCj
+  intro htxn' j msg hCj
   match a with
   | .sendAcquireBlock grow source =>
       rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩
@@ -653,18 +653,10 @@ theorem cleanChanCInv_preserved (n : Nat)
         simp [recvAcquireState, recvAcquireLocals, scheduleProbeLocals_chanC] at hCj
         exact hclean j msg hCj
   | .recvProbeAtMaster =>
-      rcases hstep with ⟨tx, bmsg, _, _, _, _, _, _, _, _, hs'⟩
+      -- recvProbe requires currentTxn = some. But htxn' says post currentTxn = none. Contradiction.
+      rcases hstep with ⟨tx, bmsg, hcur, _, _, _, _, _, _, _, hs'⟩
       rcases hs' with ⟨_, hs'⟩
-      rw [hs'] at hCj
-      by_cases hji : j = i
-      · subst j
-        simp [recvProbeState, recvProbeLocals, recvProbeLocal, setFn] at hCj
-        subst hCj
-        -- probeAckMsg data depends on dirty. With dirtyExclusiveInv, node might be dirty.
-        -- This needs fullInv reasoning to show probed node can't be dirty during a probe.
-        sorry
-      · simp [recvProbeState, recvProbeLocals, setFn, hji] at hCj
-        exact hclean j msg hCj
+      rw [hs'] at htxn'; simp [recvProbeState] at htxn'; exact absurd hcur htxn'
   | .recvProbeAckAtManager =>
       rcases hstep with ⟨_, _, _, _, _, _, _, _, _, hs'⟩
       rw [hs'] at hCj

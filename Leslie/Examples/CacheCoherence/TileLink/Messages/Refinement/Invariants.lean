@@ -183,7 +183,7 @@ theorem init_txnPlanInv (n : Nat) :
 
 theorem init_cleanChanCInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → cleanChanCInv n s := by
-  intro s hinit i msg hC
+  intro s hinit _ i msg hC
   rcases hinit with ⟨_, hlocals⟩
   rcases hlocals i with ⟨_, _, _, hCnone, _, _, _, _, _⟩
   rw [hCnone] at hC; cases hC
@@ -204,7 +204,7 @@ theorem init_dirtyExclusiveInv (n : Nat) :
 
 theorem init_dataCoherenceInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → dataCoherenceInv n s := by
-  intro s hinit i hvalid _
+  intro s hinit _ i _ hvalid _
   rcases hinit with ⟨⟨hmem, _, _, _, _, _⟩, hlocals⟩
   rcases hlocals i with ⟨hline, _, _, _, _, _, _, _, _⟩
   rw [hline] at hvalid; simp at hvalid
