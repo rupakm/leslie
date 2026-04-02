@@ -100,11 +100,13 @@ def txnPlanInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
           tx.probesNeeded = snapshotCachedProbeMask n tx ∧
           (tx.preLines tx.requester).perm ≠ .T
 
-/-- When no transaction is active, all C-channel messages carry no data.
-    During transactions, probeAcks can carry dirty data. -/
+/-- When no transaction is active and no release is in flight at node i,
+    C-channel messages at node i carry no data. During transactions, probeAcks
+    can carry dirty data. During release-in-flight, release msgs can carry data. -/
 def cleanChanCInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   s.shared.currentTxn = none →
-    ∀ i : Fin n, ∀ msg : CMsg, (s.locals i).chanC = some msg → msg.data = none
+    ∀ i : Fin n, (s.locals i).releaseInFlight = false →
+      ∀ msg : CMsg, (s.locals i).chanC = some msg → msg.data = none
 
 /-- At most one release in flight when no transaction is active, and no release
     in chanC when pendingReleaseAck is set. -/
