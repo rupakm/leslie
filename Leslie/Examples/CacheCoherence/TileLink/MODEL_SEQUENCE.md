@@ -227,6 +227,8 @@ Status: `done`
 
 Files:
 
+- `Messages/ModelDefs.lean`
+- `Messages/Helpers.lean`
 - `Messages/Model.lean`
 - `Messages/FrameLemmas.lean`
 - `Messages/InvariantCore.lean`
@@ -374,7 +376,8 @@ Theorem target:
 
 Current checkpoint:
 
-- `Messages/Model.lean` includes the release send/receive/ack actions
+- `Messages/Model.lean` (with helpers in `Helpers.lean` and types in
+  `ModelDefs.lean`) includes the release send/receive/ack actions
 - the core and channel invariants mention release messages and
   `pendingReleaseAck`
 - `Messages/Theorem.lean` now routes through `Messages/StepRelease.lean`

@@ -32,6 +32,8 @@ Leslie/Examples/CacheCoherence/TileLink/
     Theorem.lean
     Refinement.lean
   Messages/
+    ModelDefs.lean
+    Helpers.lean
     Model.lean
     FrameLemmas.lean
     InvariantCore.lean
@@ -319,6 +321,8 @@ Stage 2e refinement prep is now started in code:
 
 ### Files
 
+- `Messages/ModelDefs.lean`
+- `Messages/Helpers.lean`
 - `Messages/Model.lean`
 - `Messages/FrameLemmas.lean`
 - `Messages/InvariantCore.lean`
