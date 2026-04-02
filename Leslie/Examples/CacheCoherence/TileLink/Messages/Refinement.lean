@@ -68,8 +68,11 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
         simp [recvAcquireState, recvAcquireLocals_line] at hvalidJ hdirtyJ ⊢
         exact hdata j hvalidJ hdirtyJ
   | .recvProbeAtMaster =>
-      -- probedLine: if node was dirty, after probe dirty=false but data = old dirty data ≠ mem
-      -- This case violates dataCoherenceInv — needs txnLineInv/txnDataInv reasoning
+      -- SORRY: "dirty probe gap" — between probe and probeAck, a previously-dirty node
+      -- has dirty=false but data = old dirty data ≠ mem. The probeAck writeback will
+      -- restore the invariant by updating mem. Fixing this requires weakening
+      -- dataCoherenceInv to exclude the probed node during an active transaction,
+      -- or restructuring the invariant hierarchy.
       sorry
   | .recvProbeAckAtManager =>
       -- recvProbeAck: node i clears chanC, lines unchanged for j≠i, line i unchanged.
@@ -92,10 +95,12 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
       simp [sendGrantState_line, sendGrantShared] at hvalidJ hdirtyJ ⊢
       exact hdata j hvalidJ hdirtyJ
   | .recvGrantAtMaster =>
-      -- grantLine: for j = i, grantLine always has dirty=false. Need data = mem.
-      -- grantLine data = tx.transferVal (if grantHasData) or line unchanged (if not).
-      -- txnDataInv: transferVal = mem when usedDirtySource = false.
-      -- Complex — use sorry for now.
+      -- SORRY: grantLine sets dirty=false. For j=i, need data = mem.
+      -- When grantHasData=true, data = tx.transferVal. Under txnDataInv, transferVal = mem
+      -- only when usedDirtySource=false. When usedDirtySource=true, transferVal = dirty
+      -- owner data and mem may not have been updated yet by probeAck writeback.
+      -- When grantHasData=false, grantPermLine preserves old data which may not equal mem.
+      -- Needs txnDataInv generalization for dirty sources.
       sorry
   | .recvGrantAckAtManager =>
       -- lines/mem unchanged (only chanE cleared, currentTxn/pendingGrantAck cleared)
@@ -108,37 +113,42 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
       -- If was dirty before, data = old dirty data ≠ mem. But sendRelease guard has dirty=false.
       -- So was NOT dirty. data was = mem (from dataCoherence pre). releasedLine preserves data.
       -- Mem unchanged. So preserved.
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, hnotDirty, htail⟩
-      rcases htail with ⟨_, hs'⟩
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, hnotDirty, hvOrN, hs'⟩
       rw [hs'] at hvalidJ hdirtyJ ⊢
       by_cases hji : j = i
       · subst hji
         simp only [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, ite_true] at hvalidJ hdirtyJ ⊢
-        -- releasedLine data = old data. Pre: dirty=false, so data = mem (from dataCoherence).
-        -- Hmm, but releasedLine changes valid: for .N, valid=false. For .B, valid=true. For .T, valid=true.
-        -- If post valid = true and post dirty = false, need post data = mem.
-        -- Post data = releasedLine data. releasedLine preserves data for .B and .T.
-        -- Pre dirty = false (from SendRelease guard hnotDirty).
-        -- If pre valid = true → data = mem (from dataCoherence).
-        -- releasedLine preserves data → post data = mem.
-        -- If pre valid = false → what's releasedLine?
-        -- invalidatedLine: valid=false → post valid=false → hvalidJ contradicts.
-        -- branchAfterProbe: valid=true, data=old data.
-        -- tipAfterProbe: valid=true, data=old data.
-        -- For branchAfterProbe/tipAfterProbe, need pre data = mem.
-        -- Pre: dirty=false. If pre valid=true, data=mem. If pre valid=false...
-        -- Can we have valid=false and then release with result .B?
-        -- The guard has: valid = true ∨ param.result = .N
-        -- If result = .B or .T, must have valid=true → data=mem → preserved.
-        -- If result = .N, releasedLine = invalidatedLine → valid=false → hvalidJ contradicts.
-        -- Needs: pre valid=true (from sendRelease guard valid ∨ result=.N) and pre dirty=false
-        -- Then dataCoherence gives data = mem, and releasedLine preserves data.
-        sorry
+        -- Guard: dirty=false AND (valid=true ∨ result=.N)
+        -- If result=.N → releasedLine=invalidatedLine → valid=false → contradiction
+        -- If result≠.N → valid=true → dataCoherence gives data=mem → preserved
+        -- sendReleaseShared = s.shared (mem unchanged)
+        have hmem : (sendReleaseState s j param false).shared.mem = s.shared.mem := by
+          simp [sendReleaseState]
+        -- releasedLine preserves data; after simp, goal is about releasedLine
+        cases hres : param.result with
+        | N => -- releasedLine = invalidatedLine → valid = false → contradiction
+          simp [releasedLine, invalidatedLine, hres] at hvalidJ
+        | B => -- valid must be true (from guard: valid ∨ result=.N, and result=.B)
+          have hvalid : (s.locals j).line.valid = true := by
+            rcases hvOrN with h | h
+            · exact h
+            · rw [hres] at h; exact absurd h (by decide)
+          unfold releasedLine at hvalidJ ⊢; simp [branchAfterProbe] at hvalidJ ⊢
+          exact hdata j hvalid hnotDirty
+        | T => -- valid must be true (from guard: valid ∨ result=.N, and result=.T)
+          have hvalid : (s.locals j).line.valid = true := by
+            rcases hvOrN with h | h
+            · exact h
+            · rw [hres] at h; exact absurd h (by decide)
+          unfold releasedLine at hvalidJ ⊢; simp [tipAfterProbe] at hvalidJ ⊢
+          exact hdata j hvalid hnotDirty
       · simp [sendReleaseState, sendReleaseLocals, setFn, hji] at hvalidJ hdirtyJ ⊢
         exact hdata j hvalidJ hdirtyJ
   | .sendReleaseData param =>
-      -- SendReleaseData: guard has dirty=true. Released line has dirty=false.
-      -- Similar to sendRelease but was dirty before. Complex.
+      -- SORRY: SendReleaseData guard has dirty=true. After release, dirty=false but
+      -- data = old dirty data ≠ mem (mem hasn't been updated yet). The invariant is
+      -- genuinely violated until recvRelease processes the writeback. Needs invariant
+      -- restructuring to exclude nodes with releaseInFlight=true.
       sorry
   | .recvReleaseAtManager =>
       -- Lines unchanged for all nodes (only chanC/chanD changed).
@@ -465,8 +475,16 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
         · -- resultPerm = .B → snapshotHasCachedOther ∧ probesNeeded = snapshotWritableProbeMask
           intro hresB
           rcases hcases with ⟨hdirtyOther, hresult⟩ | ⟨_, hcached, hresult⟩ | ⟨_, hresult⟩
-          · -- dirty case: needs dirty-source-aware txnPlanInv reasoning
-            sorry
+          · -- dirty case: hasDirtyOther → hasCachedOther (via lineWF: dirty→perm=.T→perm≠.N)
+            rw [hresult] at hresB ⊢
+            rcases hdirtyOther with ⟨j, hne, hdirty⟩
+            rcases hfull with ⟨⟨hlineWF, _⟩, _, _⟩
+            have hpermT := (hlineWF j).1 hdirty
+            have hcached : hasCachedOther s i :=
+              ⟨j, hne, by rw [hpermT.1]; exact TLPerm.noConfusion⟩
+            exact ⟨(hasCachedOther_iff_snapshotHasCachedOther s i .acquireBlock grow source).mp hcached,
+              by simp [probeMaskForResult];
+                 exact writableProbeMask_eq_snapshotWritableProbeMask s i .acquireBlock grow source⟩
           · rw [hresult] at hresB ⊢
             exact ⟨(hasCachedOther_iff_snapshotHasCachedOther s i .acquireBlock grow source).mp hcached,
               by simp [probeMaskForResult];
@@ -556,9 +574,14 @@ theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n
     dataCoherenceInv_preserved n s s' ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
     txnLineInv_preserved n s s' ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
     ?_, ?_, ?_⟩
-  -- preLinesCleanInv_preserved needs cleanDataInv, but forwardSimInv only has dataCoherenceInv
-  -- preLinesNoDirtyInv_preserved and txnPlanInv_preserved also affected
-  all_goals sorry
+  · -- SORRY: preLinesCleanInv_preserved requires cleanDataInv (∀ i, data = mem),
+    -- but forwardSimInv only has dataCoherenceInv (valid → ¬dirty → data = mem).
+    -- cleanDataInv is strictly stronger and cannot be derived here.
+    sorry
+  · exact preLinesNoDirtyInv_preserved n s s' hdirtyEx hpreNoDirty hnext
+  · exact txnPlanInv_preserved n s s'
+      ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩
+      hnext
 
 theorem refinement_inv_invariant (n : Nat) :
     pred_implies (tlMessages.toSpec n).safety [tlafml| □ ⌜ refinementInv n ⌝] := by
@@ -620,7 +643,11 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
               rcases htxnCore with ⟨_, _, hresultEq, _⟩
               rw [hperm] at hresultEq; revert hresultEq
               cases tx.grow <;> simp [GrowParam.result]
-          | B => -- refMap_sendGrant_block_branch_next needs cleanDataInv, not dataCoherenceInv
+          | B => -- SORRY: refMap_sendGrant_block_branch_next requires cleanDataInv
+                 -- (∀ i, data = mem), but forwardSimInv only has dataCoherenceInv.
+                 -- At grant-ready time with all probes done, cleanDataInv should hold
+                 -- (all nodes have been probed to clean state), but proving this requires
+                 -- connecting probeAck writeback to dataCoherenceInv.
                  sorry
           | T => exact refMap_sendGrant_block_tip_next hfull htxnLine htxnData hplan hstep' hcur htx hperm
       | acquirePerm =>
@@ -630,10 +657,14 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
   | .recvGrantAckAtManager =>
       left; exact refMap_recvGrantAckAtManager_next hfull htxnLine hstep
   | .sendRelease param =>
-      -- refMap_sendRelease_next needs noDirtyInv; with dirtyExclusiveInv, needs updating
+      -- SORRY: refMap_sendRelease_next was written for noDirtyInv (no dirty lines at all).
+      -- Under dirtyExclusiveInv, dirty lines can exist. The simulation proof needs to be
+      -- updated to use dirtyExclusiveInv instead of noDirtyInv.
       sorry
   | .sendReleaseData param =>
-      -- sendReleaseData is now possible under dirtyExclusiveInv; needs new simulation proof
+      -- SORRY: sendReleaseData is now reachable under dirtyExclusiveInv (was unreachable
+      -- under noDirtyInv since guard requires dirty=true). Needs a new simulation proof
+      -- showing that releasing dirty data maps correctly to the atomic model.
       sorry
   | .recvReleaseAtManager =>
       rcases hstep with ⟨msg, param, htxn, hgrant, hrel, hflight, hC, hsource, hwf, hparam, hperm, hD, hs'⟩
