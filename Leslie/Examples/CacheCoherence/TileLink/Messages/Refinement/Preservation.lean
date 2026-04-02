@@ -671,6 +671,186 @@ theorem releaseUniqueInv_preserved (n : Nat)
           · subst q; simp [setFn, storeLocal, hCi]
           · simp [setFn, hqi]; exact this
 
+/-- Helper: if all lines are unchanged between s and s', permSwmrInv transfers. -/
+private theorem permSwmrInv_of_same_lines (n : Nat)
+    (s s' : SymState HomeState NodeState n)
+    (hSwmr : permSwmrInv n s)
+    (hlines : ∀ j : Fin n, (s'.locals j).line = (s.locals j).line) :
+    permSwmrInv n s' := by
+  intro p q hpq hpermP
+  rw [hlines p] at hpermP; rw [hlines q]
+  exact hSwmr p q hpq hpermP
+
+/-- probedLine with probeCapOfResult never produces perm .T -/
+private theorem probedLine_probeCapOfResult_perm_ne_T (line : CacheLine) (resultPerm : TLPerm) :
+    (probedLine line (probeCapOfResult resultPerm)).perm ≠ .T := by
+  cases resultPerm <;> simp [probeCapOfResult, probedLine, invalidatedLine, branchAfterProbe]
+
+theorem permSwmrInv_preserved (n : Nat)
+    (s s' : SymState HomeState NodeState n)
+    (hfull : fullInv n s) (hSwmr : permSwmrInv n s)
+    (hnext : (tlMessages.toSpec n).next s s') :
+    permSwmrInv n s' := by
+  simp only [SymSharedSpec.toSpec, tlMessages] at hnext
+  obtain ⟨i, a, hstep⟩ := hnext
+  match a with
+  | .sendAcquireBlock grow source =>
+      exact permSwmrInv_of_same_lines n s s' hSwmr
+        (fun j => sendAcquireBlock_line hstep)
+  | .sendAcquirePerm grow source =>
+      exact permSwmrInv_of_same_lines n s s' hSwmr
+        (fun j => sendAcquirePerm_line hstep)
+  | .recvAcquireAtManager =>
+      rcases hstep with hblk | hperm
+      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, hs'⟩
+        rcases hs' with ⟨_, hs'⟩
+        exact permSwmrInv_of_same_lines n s s' hSwmr
+          (fun j => by rw [hs']; simp [recvAcquireState, recvAcquireLocals_line])
+      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, hs'⟩
+        rcases hs' with ⟨_, hs'⟩
+        exact permSwmrInv_of_same_lines n s s' hSwmr
+          (fun j => by rw [hs']; simp [recvAcquireState, recvAcquireLocals_line])
+  | .recvProbeAtMaster =>
+      -- probedLine with probeCapOfResult never gives perm .T
+      rcases hstep with ⟨tx, msg, _, _, _, _, _, _, _, hparam, _, hs'⟩
+      rw [hs']
+      intro p q hpq hpermP
+      by_cases hpi : p = i
+      · -- p = i (probed node): post perm is probedLine ≠ .T
+        rw [hpi] at hpermP
+        simp only [recvProbeState, recvProbeLocals, recvProbeLocal, setFn, ite_true] at hpermP
+        exact absurd hpermP (by rw [hparam]; exact probedLine_probeCapOfResult_perm_ne_T _ _)
+      · -- p ≠ i: line p unchanged
+        simp [recvProbeState, recvProbeLocals, setFn, hpi] at hpermP
+        by_cases hqi : q = i
+        · -- q = i: needs protocol reasoning (probed node has pre perm .N from SWMR)
+          rw [hqi]
+          simp only [recvProbeState, recvProbeLocals, recvProbeLocal, setFn, ite_true]
+          sorry -- needs txnPlanInv reasoning: probed node i has pre perm .N, shouldn't be probed
+        · -- q ≠ i: line q unchanged
+          simp [recvProbeState, recvProbeLocals, setFn, hqi]
+          exact hSwmr p q hpq hpermP
+  | .recvProbeAckAtManager =>
+      rcases hstep with ⟨tx, msg, _, _, _, _, _, _, _, hs'⟩
+      exact permSwmrInv_of_same_lines n s s' hSwmr (fun j => by
+        rw [hs']
+        by_cases hji : j = i
+        · subst hji; simp [recvProbeAckState, recvProbeAckLocals, recvProbeAckLocal, setFn]
+        · simp [recvProbeAckState, recvProbeAckLocals, setFn, hji])
+  | .sendGrantToRequester =>
+      rcases hstep with ⟨tx, _, _, _, _, _, _, _, _, hs'⟩
+      exact permSwmrInv_of_same_lines n s s' hSwmr
+        (fun j => by rw [hs']; exact sendGrantState_line s i j tx)
+  | .recvGrantAtMaster =>
+      -- grantLine changes perm at node i. Needs protocol reasoning.
+      rcases hstep with ⟨tx, msg, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      intro p q hpq hpermP
+      by_cases hpi : p = i
+      · -- p = i: grantLine gives some perm. If .T, need all others .N.
+        rw [hpi] at hpermP
+        sorry -- needs deep protocol reasoning about grant correctness
+      · -- p ≠ i: line p unchanged
+        simp [recvGrantState, recvGrantLocals, setFn, hpi] at hpermP
+        by_cases hqi : q = i
+        · rw [hqi]
+          simp only [recvGrantState, recvGrantLocals, recvGrantLocal, setFn, ite_true]
+          sorry -- needs protocol reasoning: can't grant while another node has .T
+        · simp [recvGrantState, recvGrantLocals, setFn, hqi]
+          exact hSwmr p q hpq hpermP
+  | .recvGrantAckAtManager =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩
+      exact permSwmrInv_of_same_lines n s s' hSwmr
+        (fun j => by rw [hs']; exact recvGrantAckState_line s i j)
+  | .sendRelease param =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, hlegal, _, htail⟩
+      rcases htail with ⟨_, hs'⟩
+      rw [hs']
+      intro p q hpq hpermP
+      by_cases hpi : p = i
+      · -- p = i: post perm = param.result. If .T → param.source = .T → pre perm = .T.
+        rw [hpi] at hpermP hpq
+        simp only [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, ite_true] at hpermP
+        rw [releasedLine_perm] at hpermP
+        have hpermIT : (s.locals i).line.perm = .T := by
+          rw [PruneReportParam.legalFrom] at hlegal; rw [hlegal]
+          cases param <;> simp [PruneReportParam.result] at hpermP <;>
+            simp [PruneReportParam.source]
+        have hqi : q ≠ i := fun h => hpq (h.symm)
+        simp [sendReleaseState, sendReleaseLocals, setFn, hqi]
+        exact hSwmr i q hqi.symm hpermIT
+      · -- p ≠ i: line p unchanged
+        simp [sendReleaseState, sendReleaseLocals, setFn, hpi] at hpermP
+        by_cases hqi : q = i
+        · rw [hqi]
+          simp only [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, ite_true]
+          rw [releasedLine_perm]
+          have hpermIN : (s.locals i).line.perm = .N := hSwmr p i hpi hpermP
+          rw [PruneReportParam.legalFrom] at hlegal; rw [hpermIN] at hlegal
+          cases param <;> simp [PruneReportParam.source] at hlegal
+          simp [PruneReportParam.result]
+        · simp [sendReleaseState, sendReleaseLocals, setFn, hqi]
+          exact hSwmr p q hpq hpermP
+  | .sendReleaseData param =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, hlegal, _, hs'⟩
+      rw [hs']
+      intro p q hpq hpermP
+      by_cases hpi : p = i
+      · rw [hpi] at hpermP hpq
+        simp only [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, ite_true] at hpermP
+        rw [releasedLine_perm] at hpermP
+        have hpermIT : (s.locals i).line.perm = .T := by
+          rw [PruneReportParam.legalFrom] at hlegal; rw [hlegal]
+          cases param <;> simp [PruneReportParam.result] at hpermP <;>
+            simp [PruneReportParam.source]
+        have hqi : q ≠ i := fun h => hpq (h.symm)
+        simp [sendReleaseState, sendReleaseLocals, setFn, hqi]
+        exact hSwmr i q hqi.symm hpermIT
+      · simp [sendReleaseState, sendReleaseLocals, setFn, hpi] at hpermP
+        by_cases hqi : q = i
+        · rw [hqi]
+          simp only [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, ite_true]
+          rw [releasedLine_perm]
+          have hpermIN : (s.locals i).line.perm = .N := hSwmr p i hpi hpermP
+          rw [PruneReportParam.legalFrom] at hlegal; rw [hpermIN] at hlegal
+          cases param <;> simp [PruneReportParam.source] at hlegal
+          simp [PruneReportParam.result]
+        · simp [sendReleaseState, sendReleaseLocals, setFn, hqi]
+          exact hSwmr p q hpq hpermP
+  | .recvReleaseAtManager =>
+      rcases hstep with ⟨msg, param, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      exact permSwmrInv_of_same_lines n s s' hSwmr (fun j => by
+        rw [hs']
+        by_cases hji : j = i
+        · subst hji; simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn]
+        · simp [recvReleaseState, recvReleaseLocals, setFn, hji])
+  | .recvReleaseAckAtMaster =>
+      rcases hstep with ⟨msg, _, _, _, _, _, _, hs'⟩
+      exact permSwmrInv_of_same_lines n s s' hSwmr (fun j => by
+        rw [hs']
+        by_cases hji : j = i
+        · subst hji; simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn]
+        · simp [recvReleaseAckState, recvReleaseAckLocals, setFn, hji])
+  | .store v =>
+      rcases hstep with ⟨_, _, _, _, hperm, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      intro p q hpq hpermP
+      by_cases hpi : p = i
+      · -- p = i: pre perm i = .T. By SWMR, all q ≠ i have .N. Post: q ≠ i unchanged.
+        rw [hpi] at hpermP hpq
+        have hqi : q ≠ i := fun h => hpq (h.symm)
+        simp [setFn, hqi]
+        exact hSwmr i q hqi.symm hperm
+      · -- p ≠ i: line p unchanged
+        simp [setFn, hpi] at hpermP
+        by_cases hqi : q = i
+        · -- q = i: pre perm p = .T and perm i = .T (guard). SWMR says perm i = .N. Contradiction.
+          rw [hqi]; simp [setFn, storeLocal]
+          have hpermIN := hSwmr p i hpi hpermP
+          rw [hperm] at hpermIN; cases hpermIN
+        · simp [setFn, hqi]
+          exact hSwmr p q hpq hpermP
+
 theorem refinementInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
     (hinv : refinementInv n s) (hnext : (tlMessages.toSpec n).next s s') :
@@ -678,7 +858,7 @@ theorem refinementInv_preserved (n : Nat)
   rcases hinv with ⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩
   exact ⟨fullInv_preserved_with_release n s s' hfull hnext,
     dirtyExclusiveInv_preserved n s s' hfull hdirtyEx hSwmr hnext,
-    sorry, -- permSwmrInv_preserved
+    permSwmrInv_preserved n s s' hfull hSwmr hnext,
     txnDataInv_preserved n s s' hdirtyEx htxnData hcleanRel hnext,
     cleanChanCInv_preserved n s s' hdirtyEx hcleanRel hnext,
     releaseUniqueInv_preserved n s s' hfull hdirtyEx hrelUniq hnext⟩
