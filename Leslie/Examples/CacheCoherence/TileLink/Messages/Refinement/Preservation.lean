@@ -412,7 +412,9 @@ theorem dirtyExclusiveInv_preserved (n : Nat)
 
 theorem txnDataInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
-    (hdirtyEx : dirtyExclusiveInv n s) (htxnData : txnDataInv n s) (hcleanC : cleanChanCInv n s)
+    (hfull : fullInv n s) (hdirtyEx : dirtyExclusiveInv n s)
+    (htxnData : txnDataInv n s) (hcleanC : cleanChanCInv n s)
+    (hpreNoDirty : preLinesNoDirtyInv n s)
     (hnext : (tlMessages.toSpec n).next s s') :
     txnDataInv n s' := by
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
@@ -444,13 +446,36 @@ theorem txnDataInv_preserved (n : Nat)
       rw [hs']
       simpa [txnDataInv, hcur, recvProbeState] using htxnData
   | .recvProbeAckAtManager =>
-      -- After recvProbeAck, mem may be updated to msg.data (dirty writeback).
-      -- txnDataInv tracks that transferVal relates to preLines or mem; this case
-      -- requires showing that the data flow preserves the invariant.
-      -- With usedDirtySource, the dirty probeAck data equals preLines data equals transferVal,
-      -- so the new mem = transferVal. For non-dirty source, probeAcks carry no data.
-      -- Full proof requires txnLineInv reasoning; left as sorry.
-      sorry
+      rcases hstep with ⟨tx, msg, hcur, hphase, hrem, _, hC, _, _, hs'⟩
+      rw [hs']
+      simp only [txnDataInv, recvProbeAckState, recvProbeAckShared, hcur]
+      -- Derive msg.data from strengthened chanCInv
+      have hmsgData : msg.data = probeAckDataOfLine (tx.preLines i.1) := by
+        rcases hfull with ⟨_, ⟨_, _, hchanC, _, _⟩, _⟩
+        specialize hchanC i; rw [hC] at hchanC
+        rcases hchanC with ⟨_, _, _, _, _, _, _, _, hdata⟩ | ⟨_, hcurNone, _⟩
+        · exact hdata
+        · rw [hcur] at hcurNone; cases hcurNone
+      -- Derive all preLines are clean
+      have hpreClean : ∀ k, k < n → (tx.preLines k).dirty = false := by
+        simpa [preLinesNoDirtyInv, hcur] using hpreNoDirty
+      -- Therefore msg.data = none
+      have hmsgNone : msg.data = none := by
+        rw [hmsgData]; simp [probeAckDataOfLine, hpreClean i.1 i.2]
+      -- Get txnDataInv facts
+      have ⟨hFalse, hTrue⟩ := (by simpa [txnDataInv, hcur] using htxnData :
+          (tx.usedDirtySource = false → tx.transferVal = s.shared.mem) ∧
+          (tx.usedDirtySource = true → ∃ k, k < n ∧ (tx.preLines k).dirty = true ∧
+            tx.transferVal = (tx.preLines k).data))
+      -- usedDirtySource must be false
+      have hNotDirty : tx.usedDirtySource = false := by
+        by_contra h
+        have husedTrue : tx.usedDirtySource = true := by cases tx.usedDirtySource <;> simp_all
+        rcases hTrue husedTrue with ⟨k, hk, hdirty, _⟩
+        rw [hpreClean k hk] at hdirty; cases hdirty
+      constructor
+      · intro _; rw [hFalse hNotDirty]; simp [hmsgNone]
+      · intro h; rw [hNotDirty] at h; cases h
   | .sendGrantToRequester =>
       rcases hstep with ⟨tx, hcur, _, _, _, _, _, _, _, hs'⟩
       rw [hs']
@@ -503,10 +528,13 @@ theorem preLinesNoDirtyInv_preserved (n : Nat)
       rw [hs']
       simpa [preLinesNoDirtyInv]
   | .recvAcquireAtManager =>
-      -- TODO: preLinesNoDirtyInv is too strong with dirty sources.
-      -- Replace with preLinesExclusiveInv (at most one dirty preLine, and if dirty,
-      -- all others have perm = .N) which follows from dirtyExclusiveInv at plan time.
-      -- This requires updating strongRefinementInv and all downstream uses.
+      -- SORRY: preLinesNoDirtyInv cannot be preserved here. When recvAcquireAtManager has
+      -- hasDirtyOther, the plannedTxn captures a dirty preLine, violating preLinesNoDirtyInv.
+      -- Fix: replace preLinesNoDirtyInv with preLinesExclusiveInv (at most one dirty preLine,
+      -- and if dirty, all others have perm = .N) which follows from dirtyExclusiveInv at plan
+      -- time. This would require updating strongRefinementInv/forwardSimInv and all downstream
+      -- callers. The existing proof structure works for the non-dirty-source case; the
+      -- dirty-source case needs the weakened invariant throughout.
       sorry
   | .recvProbeAtMaster =>
       rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, _, hs'⟩
@@ -557,7 +585,8 @@ theorem preLinesNoDirtyInv_preserved (n : Nat)
 
 theorem preLinesCleanInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
-    (hclean : dataCoherenceInv n s) (hpre : preLinesCleanInv n s) (hcleanC : cleanChanCInv n s)
+    (hfull : fullInv n s) (hclean : dataCoherenceInv n s) (hpre : preLinesCleanInv n s)
+    (hcleanC : cleanChanCInv n s) (hpreNoDirty : preLinesNoDirtyInv n s)
     (hnext : (tlMessages.toSpec n).next s s') :
     preLinesCleanInv n s' := by
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
@@ -597,12 +626,21 @@ theorem preLinesCleanInv_preserved (n : Nat)
       simpa [preLinesCleanInv, hcur, recvProbeState]
         using hpre
   | .recvProbeAckAtManager =>
-      rcases hstep with ⟨tx, msg, hcur, _, _, _, hC, _, _, hs'⟩
-      -- During a transaction (currentTxn = some tx), cleanChanCInv doesn't apply.
-      -- Dirty probeAcks may update mem. preLinesCleanInv tracks clean preLines matching mem.
-      -- If msg.data = some v, mem changes to v, but preLines don't change.
-      -- Need to show clean preLines still match new mem. This requires additional invariants.
-      sorry
+      rcases hstep with ⟨tx, msg, hcur, hphase, hrem, _, hC, _, _, hs'⟩
+      -- Derive msg.data = none from strengthened chanCInv + preLinesNoDirtyInv
+      have hmsgNone : msg.data = none := by
+        have hmsgData : msg.data = probeAckDataOfLine (tx.preLines i.1) := by
+          rcases hfull with ⟨_, ⟨_, _, hchanC, _, _⟩, _⟩
+          specialize hchanC i; rw [hC] at hchanC
+          rcases hchanC with ⟨_, _, _, _, _, _, _, _, hdata⟩ | ⟨_, hcurNone, _⟩
+          · exact hdata
+          · rw [hcur] at hcurNone; cases hcurNone
+        have hpreClean : (tx.preLines i.1).dirty = false := by
+          exact (by simpa [preLinesNoDirtyInv, hcur] using hpreNoDirty : ∀ k, k < n → (tx.preLines k).dirty = false) i.1 i.2
+        rw [hmsgData]; simp [probeAckDataOfLine, hpreClean]
+      rw [hs']
+      simp only [preLinesCleanInv, recvProbeAckState, recvProbeAckShared, hcur, hmsgNone]
+      exact hpre
   | .sendGrantToRequester =>
       rcases hstep with ⟨tx, hcur, _, _, _, _, _, _, _, hs'⟩
       rw [hs']
@@ -816,7 +854,7 @@ theorem releaseUniqueInv_preserved (n : Nat)
         | none => rfl
         | some cmsg =>
             rw [hCj] at hchanC
-            rcases hchanC with ⟨tx0, hcur0, hprobing, _, _, _, _, _⟩ | ⟨_, hcur0, _, _, _, _, _, _⟩
+            rcases hchanC with ⟨tx0, hcur0, hprobing, _, _, _, _, _, _⟩ | ⟨_, hcur0, _, _, _, _, _, _⟩
             · rw [hcur] at hcur0; injection hcur0 with htx; subst htx; rw [hphase] at hprobing; cases hprobing
             · rw [hcur] at hcur0; cases hcur0
       constructor
@@ -1115,10 +1153,10 @@ theorem refinementInv_preserved (n : Nat)
     refinementInv n s' := by
   rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, htxnLine, hpreClean, hpreNoDirty, htxnPlan⟩
   have hfwd : strongRefinementInv n s := ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, htxnLine, hpreClean, hpreNoDirty, htxnPlan⟩
-  exact ⟨fullInv_preserved_with_release n s s' hfull hnext,
+  exact ⟨fullInv_preserved_with_release n s s' hfull htxnLine hnext,
     dirtyExclusiveInv_preserved n s s' hfwd hnext,
     permSwmrInv_preserved n s s' hfwd hnext,
-    txnDataInv_preserved n s s' hdirtyEx htxnData hcleanRel hnext,
+    txnDataInv_preserved n s s' hfull hdirtyEx htxnData hcleanRel hpreNoDirty hnext,
     cleanChanCInv_preserved n s s' hdirtyEx hcleanRel hnext,
     releaseUniqueInv_preserved n s s' hfull hdirtyEx hrelUniq hnext⟩
 

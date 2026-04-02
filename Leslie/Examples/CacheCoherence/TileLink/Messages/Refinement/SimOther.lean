@@ -21,26 +21,46 @@ theorem refMap_recvProbeAtMaster_eq {n : Nat}
 theorem refMap_recvProbeAckAtManager_eq {n : Nat}
     {s s' : SymState HomeState NodeState n}
     {i : Fin n}
+    (hfull : fullInv n s)
+    (htxnData : txnDataInv n s) (hpreNoDirty : preLinesNoDirtyInv n s)
     (hstep : RecvProbeAckAtManager s s' i) :
     refMap n s' = refMap n s := by
-  rcases hstep with ⟨tx, msg, hcur, hphase, _, _, hC, _, _, hs'⟩
+  rcases hstep with ⟨tx, msg, hcur, hphase, hrem, _, hC, _, _, hs'⟩
   rw [hs']
   have hphase' : probeAckPhase (n := n) (clearProbeIdx tx.probesRemaining i.1) ≠ .grantPendingAck := by
     intro hbad
     unfold probeAckPhase at hbad
     split at hbad <;> cases hbad
+  -- Derive msg.data = probeAckDataOfLine (tx.preLines i.1) from strengthened chanCInv
+  have hmsgData : msg.data = probeAckDataOfLine (tx.preLines i.1) := by
+    rcases hfull with ⟨_, ⟨_, _, hchanC, _, _⟩, _⟩
+    specialize hchanC i
+    rw [hC] at hchanC
+    rcases hchanC with ⟨_, _, _, _, _, _, _, _, hdata⟩ | ⟨_, hcurNone, _⟩
+    · exact hdata
+    · rw [hcur] at hcurNone; cases hcurNone
+  -- Derive all preLines are clean
+  have hpreClean : ∀ k, k < n → (tx.preLines k).dirty = false := by
+    simpa [preLinesNoDirtyInv, hcur] using hpreNoDirty
+  -- Therefore msg.data = none
+  have hmsgNone : msg.data = none := by
+    rw [hmsgData]
+    simp [probeAckDataOfLine, hpreClean i.1 i.2]
+  -- And usedDirtySource = false (since preLinesNoDirtyInv contradicts dirty preLines)
+  have hNotDirty : tx.usedDirtySource = false := by
+    by_contra h
+    push_neg at h
+    have husedTrue : tx.usedDirtySource = true := by cases tx.usedDirtySource <;> simp_all
+    have ⟨hFalseCase, hTrueCase⟩ := (by simpa [txnDataInv, hcur] using htxnData :
+        (tx.usedDirtySource = false → tx.transferVal = s.shared.mem) ∧
+        (tx.usedDirtySource = true → ∃ k, k < n ∧ (tx.preLines k).dirty = true ∧
+          tx.transferVal = (tx.preLines k).data))
+    rcases hTrueCase husedTrue with ⟨k, hk, hdirty, _⟩
+    rw [hpreClean k hk] at hdirty; cases hdirty
   apply SymState.ext
   · change refMapShared n (recvProbeAckState s i tx msg) = refMapShared n s
-    simp [refMapShared, recvProbeAckState, recvProbeAckShared, hcur, hphase, hphase']
-    constructor
-    · -- mem: refMap uses tx.transferVal or s.shared.mem depending on usedDirtySource.
-      -- tx fields unchanged by probeAck (only probesRemaining/phase change).
-      -- If usedDirtySource=true: mem = tx.transferVal (unchanged) ✓
-      -- If usedDirtySource=false: mem = s.shared.mem. After probeAck, concrete mem becomes
-      --   match msg.data with some v => v | none => s.shared.mem.
-      --   Proving msg.data = none requires connecting ¬usedDirtySource to the probed node
-      --   being clean (via preLinesNoDirtyInv + txnLineInv). Needs txnDataInv generalization.
-      sorry
+    simp [refMapShared, recvProbeAckState, recvProbeAckShared, hcur, hphase, hphase',
+      hNotDirty, hmsgNone]
     constructor
     · rw [preTxnDir_tx_update_eq tx
         (updateDirAt s.shared.dir i (s.locals i).line.perm)
@@ -97,7 +117,7 @@ theorem refMap_recvGrantAckAtManager_next {n : Nat}
     | some _ =>
         rw [hC] at hchanC
         rcases hchanC with hprobe | hrel
-        · rcases hprobe with ⟨tx0, hcur0, hprobing, _, _, _, _, _⟩
+        · rcases hprobe with ⟨tx0, hcur0, hprobing, _, _, _, _, _, _⟩
           rw [hcur] at hcur0
           injection hcur0 with htx
           subst htx
@@ -331,18 +351,121 @@ theorem refMap_sendRelease_next {n : Nat}
         simp [sendReleaseLocals, sendReleaseLocal, setFn, releasedLine_eq]
       · simp [sendReleaseLocals, sendReleaseLocal, setFn, hji, refMapLine, htxn]
 
+private theorem findDirtyReleaseVal_none_of_all_chanC_none {n : Nat}
+    (s : SymState HomeState NodeState n)
+    (hallC : ∀ j : Fin n, (s.locals j).chanC = none) :
+    findDirtyReleaseVal n s = none := by
+  unfold findDirtyReleaseVal
+  have hnone : ¬∃ i : Fin n, (s.locals i).releaseInFlight = true ∧
+      ∃ msg : CMsg, (s.locals i).chanC = some msg ∧ msg.data ≠ none := by
+    intro ⟨j, _, msg, hC, _⟩
+    rw [hallC j] at hC; cases hC
+  simp [hnone]
+
+private theorem findDirtyReleaseVal_sendReleaseData {n : Nat}
+    (s : SymState HomeState NodeState n) (i : Fin n) (param : PruneReportParam)
+    (hCi : (s.locals i).chanC = none)
+    (hCother : ∀ j : Fin n, j ≠ i → (s.locals j).chanC = none) :
+    findDirtyReleaseVal n (sendReleaseState s i param true) =
+      some (s.locals i).line.data := by
+  unfold findDirtyReleaseVal
+  have hexists : ∃ j : Fin n, ((sendReleaseState s i param true).locals j).releaseInFlight = true ∧
+      ∃ msg : CMsg, ((sendReleaseState s i param true).locals j).chanC = some msg ∧ msg.data ≠ none := by
+    refine ⟨i, ?_, ?_⟩
+    · simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn]
+    · refine ⟨releaseMsg i.1 param true (s.locals i).line, ?_, ?_⟩
+      · simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn]
+      · simp [releaseMsg, releaseDataPayload]
+  rw [dif_pos hexists]
+  -- The chosen witness must be i (since it's the only node with dirty release)
+  have huniq : Classical.choose hexists = i := by
+    have ⟨_, _, hC, _⟩ := (Classical.choose_spec hexists).2
+    by_contra hne
+    simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hne] at hC
+    exact hC (hCother _ hne)
+  -- Extract msg from the specification
+  have hspec := Classical.choose_spec hexists
+  have hCi' : ((sendReleaseState s i param true).locals i).chanC =
+      some (releaseMsg i.1 param true (s.locals i).line) := by
+    simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn]
+  -- The msg chosen by Classical.choose_spec is in chanC of the chosen node = i
+  rw [huniq] at hspec
+  rcases hspec.2 with ⟨msg, hmsgC, _⟩
+  simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn] at hmsgC
+  rw [hmsgC]
+  simp [releaseMsg, releaseDataPayload]
+
 theorem refMap_sendReleaseData_next {n : Nat}
     {s s' : SymState HomeState NodeState n}
     {i : Fin n} {param : PruneReportParam}
     (hfull : fullInv n s)
     (hstep : SendReleaseData s s' i param) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  -- sendReleaseData maps to atomic releaseData.
-  -- The atomic releaseData changes mem := data, but concrete sendReleaseData does not change
-  -- s.shared.mem (only recvReleaseAtManager does). The refMap would need to account for
-  -- in-flight dirty release data (findDirtyReleaseVal from the plan). This requires extending
-  -- refMapShared.mem for the no-txn case to use findDirtyReleaseVal.
-  sorry
+  rcases hfull with ⟨hcore, hchan, _⟩
+  rcases hcore with ⟨_, hdir, hpending, _⟩
+  rcases hstep with ⟨htxn, hgrant, hrel, hCother, hA, hB, hCi, hD, hE, hps, hpk, hflight,
+    hlegal, hdirty, hs'⟩
+  rw [hs']
+  simp only [SymSharedSpec.toSpec, TileLink.Atomic.tlAtomic]
+  refine ⟨i, .releaseData param, ?_⟩
+  have hpendingGrant : s.shared.pendingGrantAck = none := by
+    simpa [pendingInv, htxn] using hpending
+  have hallC : ∀ j : Fin n, (s.locals j).chanC = none := by
+    intro j
+    by_cases hji : j = i
+    · subst j; exact hCi
+    · exact hCother j hji
+  have hqueuedNone : queuedReleaseIdx n s = none :=
+    queuedReleaseIdx_eq_none_of_all_chanC_none s hallC
+  have hfindNone : findDirtyReleaseVal n s = none :=
+    findDirtyReleaseVal_none_of_all_chanC_none s hallC
+  have hfindPost : findDirtyReleaseVal n (sendReleaseState s i param true) =
+      some (s.locals i).line.data :=
+    findDirtyReleaseVal_sendReleaseData s i param hCi hCother
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
+  · -- pendingGrantMeta = none
+    simp [refMap, refMapShared, htxn]
+  · -- pendingGrantAck = none
+    simp [refMap, refMapShared, htxn, hrel, hqueuedNone, hpendingGrant]
+  · -- pendingReleaseAck = none
+    simp [refMap, refMapShared, htxn, hrel, hqueuedNone]
+  · -- param.legalFrom
+    simp [refMap, refMapLine, htxn]
+    exact hlegal
+  · -- dirty = true
+    simp [refMap, refMapLine, htxn]
+    exact hdirty
+  · -- postcondition: s' = expected state
+    apply SymState.ext
+    · -- shared
+      rw [TileLink.Atomic.HomeState.mk.injEq]
+      refine ⟨?_, ?_, ?_, ?_, ?_⟩
+      · -- mem: refMap(s').mem = (s.locals i).line.data
+        simp [refMap, refMapShared, sendReleaseState, htxn, hfindPost]
+      · -- dir
+        funext k
+        simp only [refMap, refMapShared, sendReleaseState, htxn, hrel, hqueuedNone]
+        by_cases hk : k < n
+        · simp only [TileLink.Atomic.syncDir, hk, dite_true]
+          simp only [sendReleaseLocals, sendReleaseLocal, setFn, refMapLine, htxn, hfindNone]
+          split
+          · simp [releasedLine_eq]
+          · rfl
+        · simp only [TileLink.Atomic.syncDir, hk, dite_false]
+      · -- pendingGrantMeta
+        simp [refMap, refMapShared, sendReleaseState, htxn]
+      · -- pendingGrantAck
+        simp [refMap, refMapShared, sendReleaseState, htxn, hpendingGrant]
+      · -- pendingReleaseAck
+        simp only [refMap, refMapShared, sendReleaseState, htxn, hrel]
+        exact queuedReleaseIdx_sendRelease s i param hCi hflight hCother
+    · -- locals
+      funext j
+      simp only [refMap, refMapLine, sendReleaseState, htxn]
+      by_cases hji : j = i
+      · subst j
+        simp [sendReleaseLocals, sendReleaseLocal, setFn, releasedLine_eq]
+      · simp [sendReleaseLocals, sendReleaseLocal, setFn, hji, refMapLine, htxn]
 
 theorem refMap_recvReleaseAtManager_eq {n : Nat}
     {s s' : SymState HomeState NodeState n}

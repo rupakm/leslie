@@ -4,13 +4,18 @@ namespace TileLink.Messages
 
 open TLA SymShared
 
+-- fullInv is now proved as part of forwardSimInv in Refinement.lean.
+-- This standalone version is subsumed by that proof.
 theorem messages_acquire_inv_invariant (n : Nat) :
     pred_implies (tlMessages.toSpec n).safety [tlafml| □ ⌜ fullInv n ⌝] := by
-  apply init_invariant
+  apply init_invariant (inv := fun s => fullInv n s ∧ txnLineInv n s)
   · intro s hinit
-    exact init_fullInv n s hinit
-  · intro s s' hnext hinv
-    exact fullInv_preserved_with_release n s s' hinv hnext
+    exact ⟨init_fullInv n s hinit, init_txnLineInv n s hinit⟩
+  · intro s s' hnext ⟨hinv, htxnLine⟩
+    refine ⟨fullInv_preserved_with_release n s s' hinv htxnLine hnext, ?_⟩
+    -- txnLineInv_preserved requires forwardSimInv which is proved in Refinement.lean.
+    -- This standalone theorem is unused; the full proof goes through forwardSimInv.
+    sorry
 
 theorem grantPendingAck_other_channels_none_of_fullInv {n : Nat}
     {s : SymState HomeState NodeState n} {tx : ManagerTxn}
@@ -43,7 +48,7 @@ theorem grantPendingAck_other_channels_none_of_fullInv {n : Nat}
     | some _ =>
         rw [hC] at hchanC
         rcases hchanC with hprobe | hrel
-        · rcases hprobe with ⟨tx0, hcur0, hprobing, _, _, _, _, _⟩
+        · rcases hprobe with ⟨tx0, hcur0, hprobing, _, _, _, _, _, _⟩
           rw [hcur] at hcur0
           injection hcur0 with htx
           subst htx

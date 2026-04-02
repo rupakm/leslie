@@ -703,8 +703,14 @@ theorem refMap_recvAcquirePerm_next {n : Nat}
     (hinv : refinementInv n s)
     (hstep : RecvAcquirePermAtManager s s' i grow source) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  -- RecvAcquirePermAtManager does not guarantee ¬hasDirtyOther.
-  -- The non-dirty case works; the dirty-source case needs new proof infrastructure.
+  -- SORRY: RecvAcquirePermAtManager may have hasDirtyOther. The non-dirty case is proved
+  -- by refMap_recvAcquireBlock_branch_next (used for the block case). For the dirty case,
+  -- the concrete plannedTxn uses usedDirtySource=true with transferVal = dirtyOwner.data and
+  -- probesNeeded = cachedProbeMask. The atomic model expects probesNeeded = cachedProbeMask
+  -- with usedDirtySource=true and transferVal = (s.locals j).data for the dirty owner j.
+  -- Needs: (1) identifying the dirty owner j from dirtyOwnerOpt, (2) proving transferVal matches,
+  -- (3) proving cachedProbeMask agrees between concrete and abstract. Under permSwmrInv,
+  -- the dirty node has perm=T so cachedProbeMask includes it, matching the atomic model.
   sorry
 
 theorem refMap_recvAcquireAtManager_next {n : Nat}
@@ -717,7 +723,13 @@ theorem refMap_recvAcquireAtManager_next {n : Nat}
   · -- RecvAcquireBlockAtManager: 3-way disjunction
     have hshape := hblk.2.2.2.2.2.2.2.1
     rcases hshape with ⟨hDirtyOther, hresultB⟩ | ⟨hNoDirty, hcached, hresultB⟩ | ⟨hallInvalid, hresultT⟩
-    · -- Case 1: hasDirtyOther ∧ .B — dirty-source acquire, needs new proof
+    · -- Case 1: hasDirtyOther ∧ .B — dirty-source acquire
+      -- SORRY: The concrete plannedTxn with hasDirtyOther creates usedDirtySource=true,
+      -- transferVal = dirtyOwner.data, probesNeeded = writableProbeMask. The atomic model
+      -- expects singleProbeMask j.1 for the dirty owner j. Under permSwmrInv (at most one T),
+      -- the dirty node is the unique T-perm node, so writableProbeMask = singleProbeMask j.1.
+      -- Proving this equivalence requires connecting dirtyExclusiveInv + permSwmrInv to
+      -- the concrete/atomic probe mask agreement. Left as sorry pending probe mask lemmas.
       sorry
     · -- Case 2: ¬hasDirtyOther ∧ hasCachedOther ∧ .B
       exact refMap_recvAcquireBlock_branch_next hinv hblk hNoDirty ⟨hcached, hresultB⟩

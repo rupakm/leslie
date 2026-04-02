@@ -348,7 +348,8 @@ theorem channelInv_preserved_recvReleaseAckAtMaster (n : Nat)
 
 theorem fullInv_preserved_with_release (n : Nat)
     (s s' : SymState HomeState NodeState n)
-    (hinv : fullInv n s) (hnext : (tlMessages.toSpec n).next s s') :
+    (hinv : fullInv n s) (htxnLine : txnLineInv n s)
+    (hnext : (tlMessages.toSpec n).next s s') :
     fullInv n s' := by
   rcases hinv with ⟨hcore, hchan, _hser⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
@@ -374,7 +375,7 @@ theorem fullInv_preserved_with_release (n : Nat)
         exact ⟨hcore', hchan', serializationInv_of_core_channel n s' hcore' hchan'⟩
   | .recvProbeAtMaster =>
       have hcore' := coreInv_preserved_recvProbeAtMaster n s s' hcore hstep
-      have hchan' := channelInv_preserved_recvProbeAtMaster n s s' hchan hstep
+      have hchan' := channelInv_preserved_recvProbeAtMaster n s s' hchan htxnLine hstep
       exact ⟨hcore', hchan', serializationInv_of_core_channel n s' hcore' hchan'⟩
   | .recvProbeAckAtManager =>
       have hcore' := coreInv_preserved_recvProbeAckAtManager n s s' hcore hstep

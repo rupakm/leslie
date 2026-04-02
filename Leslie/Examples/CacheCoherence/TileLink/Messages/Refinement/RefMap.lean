@@ -41,6 +41,18 @@ noncomputable def queuedReleaseIdx (n : Nat) (s : SymState HomeState NodeState n
   else
     none
 
+/-- Extract data from an in-flight dirty release message, if any.
+    Used by the refinement map to track logical memory when a dirty release
+    has been sent but not yet received by the manager. -/
+noncomputable def findDirtyReleaseVal (n : Nat) (s : SymState HomeState NodeState n) : Option Val :=
+  if h : ∃ i : Fin n, (s.locals i).releaseInFlight = true ∧
+      ∃ msg : CMsg, (s.locals i).chanC = some msg ∧ msg.data ≠ none then
+    let i := Classical.choose h
+    let ⟨_, msg, hmsg, _⟩ := (Classical.choose_spec h).2
+    msg.data
+  else
+    none
+
 /-- Atomic-style directory view during `grantPendingAck`: requester permission
     is visible even if the concrete requester has not yet consumed D. -/
 def grantPendingDir (n : Nat) (tx : ManagerTxn) (dir : Nat → TLPerm) : Nat → TLPerm :=
@@ -71,7 +83,10 @@ noncomputable def refMapShared (n : Nat) (s : SymState HomeState NodeState n) :
     match s.shared.currentTxn with
     | some tx =>
         if tx.usedDirtySource then tx.transferVal else s.shared.mem
-    | none => s.shared.mem
+    | none =>
+        match findDirtyReleaseVal n s with
+        | some v => v
+        | none => s.shared.mem
   { mem := mem
   , dir := dir
   , pendingGrantMeta := s.shared.currentTxn.map absPendingGrantMeta

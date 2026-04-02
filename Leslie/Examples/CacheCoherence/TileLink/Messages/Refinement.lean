@@ -577,7 +577,7 @@ theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n
     dataCoherenceInv_preserved n s s' ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
     txnLineInv_preserved n s s' ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
     ?_, ?_, ?_⟩
-  · exact preLinesCleanInv_preserved n s s' hdata hpreClean hcleanRel hnext
+  · exact preLinesCleanInv_preserved n s s' hfull hdata hpreClean hcleanRel hpreNoDirty hnext
   · exact preLinesNoDirtyInv_preserved n s s' hdirtyEx hpreNoDirty hnext
   · exact txnPlanInv_preserved n s s'
       ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩
@@ -629,7 +629,7 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
   | .recvProbeAtMaster =>
       right; exact (refMap_recvProbeAtMaster_eq hstep).symm
   | .recvProbeAckAtManager =>
-      right; exact (refMap_recvProbeAckAtManager_eq hstep).symm
+      right; exact (refMap_recvProbeAckAtManager_eq hfull htxnData hpreNoDirty hstep).symm
   | .sendGrantToRequester =>
       left
       rcases hstep with ⟨tx, hcur, hreq, hphase, hgrant, hrel, hD, hE, hSink, hs'⟩
@@ -644,10 +644,15 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
               rw [hperm] at hresultEq; revert hresultEq
               cases tx.grow <;> simp [GrowParam.result]
           | B => -- SORRY: refMap_sendGrant_block_branch_next requires cleanDataInv
-                 -- (∀ i, data = mem), but forwardSimInv only has dataCoherenceInv.
-                 -- At grant-ready time with all probes done, cleanDataInv should hold
-                 -- (all nodes have been probed to clean state), but proving this requires
-                 -- connecting probeAck writeback to dataCoherenceInv.
+                 -- (∀ i, data = mem), which is stronger than the available dataCoherenceInv.
+                 -- At grant-ready time with all probes done and preLinesNoDirtyInv, the
+                 -- argument is: (1) all preLines are clean, so usedDirtySource=false and
+                 -- mem is unchanged since plan time, (2) preLinesCleanInv gives valid clean
+                 -- preLines data = mem, (3) probedLine preserves data. But cleanDataInv also
+                 -- covers INVALID nodes, whose data = preLines data may not equal mem if the
+                 -- node was invalid at plan time with stale data. Closing this requires either
+                 -- strengthening the init/store invariant to track all node data = mem, or
+                 -- weakening the atomic model's finishGrant postcondition for invalid nodes.
                  sorry
           | T => exact refMap_sendGrant_block_tip_next hfull htxnLine htxnData hplan hstep' hcur htx hperm
       | acquirePerm =>

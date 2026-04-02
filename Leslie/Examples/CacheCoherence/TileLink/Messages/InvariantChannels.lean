@@ -35,7 +35,8 @@ def chanCInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
           (s.locals i).chanA = none ∧
           (s.locals i).chanB = none ∧
           msg.source = i.1 ∧
-          probeAckMsgWellFormed msg) ∨
+          probeAckMsgWellFormed msg ∧
+          msg.data = probeAckDataOfLine (tx.preLines i.1)) ∨
         (∃ param,
           s.shared.currentTxn = none ∧
           (s.locals i).releaseInFlight = true ∧

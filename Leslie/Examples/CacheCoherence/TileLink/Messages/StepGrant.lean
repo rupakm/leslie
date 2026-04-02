@@ -36,7 +36,7 @@ private theorem chanC_none_of_phase_ne_probing (n : Nat)
   | some _ =>
       rw [hC] at hchanC
       rcases hchanC with hprobe | hrel
-      · rcases hprobe with ⟨tx0, hcur0, hprobing, _, _, _, _, _⟩
+      · rcases hprobe with ⟨tx0, hcur0, hprobing, _, _, _, _, _, _⟩
         rw [hcur] at hcur0
         injection hcur0 with htx
         subst htx

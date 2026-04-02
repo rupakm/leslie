@@ -80,10 +80,20 @@ theorem coreInv_preserved_recvProbeAtMaster (n : Nat)
 
 theorem channelInv_preserved_recvProbeAtMaster (n : Nat)
     (s s' : SymState HomeState NodeState n) (hinv : channelInv n s)
+    (htxnLine : txnLineInv n s)
     {i : Fin n} (hstep : RecvProbeAtMaster s s' i) :
     channelInv n s' := by
   rcases hinv with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
   rcases hstep with ⟨tx, msg, hcur, hphase, hremain, hA, hB, hsrc, hop, hparam, ⟨hCnone, rfl⟩⟩
+  -- Derive (s.locals i).line = tx.preLines i.1 from txnLineInv
+  have hlineEq : (s.locals i).line = tx.preLines i.1 := by
+    have htl : (s.locals i).line = txnSnapshotLine tx (s.locals i) i := by
+      rw [txnLineInv, hcur] at htxnLine; exact htxnLine i
+    simp only [txnSnapshotLine, hphase, false_and, ite_false] at htl
+    simp only [probeSnapshotLine] at htl
+    split at htl
+    · simp only [hremain, hCnone, and_self, ite_true] at htl; exact htl
+    · exact htl
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · intro j
     by_cases hji : j = i
@@ -110,8 +120,9 @@ theorem channelInv_preserved_recvProbeAtMaster (n : Nat)
       rw [hCi]
       left
       refine ⟨tx, ?_⟩
-      refine ⟨hcur, hphase, hremain, hAi, hBi, ?_, probeAckMsg_wf i (s.locals i).line⟩
+      refine ⟨hcur, hphase, hremain, hAi, hBi, ?_, probeAckMsg_wf i (s.locals i).line, ?_⟩
       · simp [probeAckMsg]
+      · simp [probeAckMsg, hlineEq]
     · simpa [recvProbeState, recvProbeLocals, recvProbeLocal, setFn, hji] using hchanC j
   · intro j
     have hnoneOld := chanD_none_of_phase_ne_grantPendingAck n s hchanD hcur (by simp [hphase])
@@ -221,7 +232,7 @@ theorem channelInv_preserved_recvProbeAckAtManager (n : Nat)
         specialize hchanC i
         rw [hC] at hchanC
         rcases hchanC with hprobe | hrel
-        · rcases hprobe with ⟨_, _, _, _, _, hBnone, _, _⟩
+        · rcases hprobe with ⟨_, _, _, _, _, hBnone, _, _, _⟩
           exact hBnone
         · rcases hrel with ⟨_, _, _, _, hBnone, _, _, _⟩
           exact hBnone
@@ -262,7 +273,7 @@ theorem channelInv_preserved_recvProbeAckAtManager (n : Nat)
           have hchanCj := hchanC j
           rw [hCj] at hchanCj
           rcases hchanCj with hprobe | hrel
-          · rcases hprobe with ⟨tx0, hcur0, hphase0, hrem0, hA0, hBnone, hsrc0, hwf0⟩
+          · rcases hprobe with ⟨tx0, hcur0, hphase0, hrem0, hA0, hBnone, hsrc0, hwf0, hdata0⟩
             rw [hcur] at hcur0
             injection hcur0 with htx
             subst htx
@@ -280,7 +291,7 @@ theorem channelInv_preserved_recvProbeAckAtManager (n : Nat)
             rw [hCj']
             left
             refine ⟨tx', ?_⟩
-            refine ⟨?_, hphase', hrem', ?_, ?_, hsrc0, hwf0⟩
+            refine ⟨?_, hphase', hrem', ?_, ?_, hsrc0, hwf0, hdata0⟩
             · simp [recvProbeAckState, recvProbeAckShared, tx']
             · simpa [recvProbeAckState, recvProbeAckLocals, setFn, hji] using hA0
             · simpa [recvProbeAckState, recvProbeAckLocals, setFn, hji] using hBnone

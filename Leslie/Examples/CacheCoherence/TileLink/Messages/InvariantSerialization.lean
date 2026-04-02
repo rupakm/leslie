@@ -104,7 +104,7 @@ theorem serializationInv_of_core_channel (n : Nat)
         specialize hchanC i
         rw [hC] at hchanC
         rcases hchanC with hprobe | hrel
-        · rcases hprobe with ⟨tx, hcur, _, _, _, _, _, hwf⟩
+        · rcases hprobe with ⟨tx, hcur, _, _, _, _, _, hwf, _⟩
           have hopcode : msg.opcode = .probeAck ∨ msg.opcode = .probeAckData := by
             cases hwf with
             | inl hprobeAck =>

@@ -33,29 +33,6 @@ def txnDataInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
       (tx.usedDirtySource = true → ∃ k, k < n ∧ (tx.preLines k).dirty = true ∧
         tx.transferVal = (tx.preLines k).data)
 
-def probeSnapshotLine (tx : ManagerTxn) (node : NodeState) (i : Fin n) : CacheLine :=
-  if tx.probesNeeded i.1 then
-    if tx.probesRemaining i.1 = true ∧ node.chanC = none then
-      tx.preLines i.1
-    else
-      probedLine (tx.preLines i.1) (probeCapOfResult tx.resultPerm)
-  else
-    tx.preLines i.1
-
-def txnSnapshotLine (tx : ManagerTxn) (node : NodeState) (i : Fin n) : CacheLine :=
-  if tx.phase = .grantPendingAck ∧ tx.requester = i.1 then
-    if node.chanE = none then
-      tx.preLines i.1
-    else
-      grantLine (tx.preLines i.1) tx
-  else
-    probeSnapshotLine tx node i
-
-def txnLineInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
-  match s.shared.currentTxn with
-  | none => True
-  | some tx => ∀ i : Fin n, (s.locals i).line = txnSnapshotLine tx (s.locals i) i
-
 def preLinesCleanInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   match s.shared.currentTxn with
   | none => True
@@ -205,12 +182,6 @@ theorem init_txnDataInv (n : Nat) :
   intro s hinit
   rcases hinit with ⟨⟨_, _, htxn, _, _, _⟩, _⟩
   simp [txnDataInv, htxn]
-
-theorem init_txnLineInv (n : Nat) :
-    ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → txnLineInv n s := by
-  intro s hinit
-  rcases hinit with ⟨⟨_, _, htxn, _, _, _⟩, _⟩
-  simp [txnLineInv, htxn]
 
 theorem init_preLinesCleanInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → preLinesCleanInv n s := by
