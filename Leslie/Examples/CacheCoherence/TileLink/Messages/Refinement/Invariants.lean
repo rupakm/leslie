@@ -106,8 +106,14 @@ def releaseUniqueInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
     (s.shared.pendingReleaseAck ≠ none → ∀ j : Fin n, (s.locals j).chanC = none) ∧
     (∀ i j : Fin n, i ≠ j → (s.locals i).chanC ≠ none → (s.locals j).chanC = none)
 
+/-- Single-writer / multiple-reader: at most one .T permission; if .T exists, all
+    others have .N. This is the message-level analogue of the atomic model's `swmr`. -/
+def permSwmrInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
+  ∀ i j : Fin n, i ≠ j → (s.locals i).line.perm = .T → (s.locals j).line.perm = .N
+
 def refinementInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
-  fullInv n s ∧ dirtyExclusiveInv n s ∧ txnDataInv n s ∧ cleanChanCInv n s ∧ releaseUniqueInv n s
+  fullInv n s ∧ dirtyExclusiveInv n s ∧ permSwmrInv n s ∧ txnDataInv n s ∧
+  cleanChanCInv n s ∧ releaseUniqueInv n s
 
 def strongRefinementInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   refinementInv n s ∧ txnLineInv n s ∧ preLinesCleanInv n s ∧ preLinesNoDirtyInv n s ∧ txnPlanInv n s
@@ -196,11 +202,18 @@ theorem init_dataCoherenceInv (n : Nat) :
   rcases hlocals i with ⟨hline, _, _, _, _, _, _, _, _⟩
   rw [hline] at hvalid; simp at hvalid
 
+theorem init_permSwmrInv (n : Nat) :
+    ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → permSwmrInv n s := by
+  intro s hinit i j _ hperm
+  rcases hinit with ⟨_, hlocals⟩
+  rcases hlocals i with ⟨hline, _, _, _, _, _, _, _, _⟩
+  rw [hline] at hperm; cases hperm
+
 theorem init_refinementInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → refinementInv n s := by
   intro s hinit
-  exact ⟨init_fullInv n s hinit, init_dirtyExclusiveInv n s hinit, init_txnDataInv n s hinit,
-    init_cleanChanCInv n s hinit, init_releaseUniqueInv n s hinit⟩
+  exact ⟨init_fullInv n s hinit, init_dirtyExclusiveInv n s hinit, init_permSwmrInv n s hinit,
+    init_txnDataInv n s hinit, init_cleanChanCInv n s hinit, init_releaseUniqueInv n s hinit⟩
 
 theorem init_strongRefinementInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → strongRefinementInv n s := by

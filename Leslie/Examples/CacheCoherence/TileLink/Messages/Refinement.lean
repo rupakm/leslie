@@ -44,7 +44,7 @@ theorem init_forwardSimInv (n : Nat) :
 theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     dataCoherenceInv n s' := by
-  rcases hinv with ⟨⟨hfull, hdirtyEx, htxnData, hcleanC, _⟩, hdata, _, _, _, _⟩
+  rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanC, _⟩, hdata, _, _, _, _⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   intro j hvalidJ hdirtyJ
@@ -559,10 +559,10 @@ theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     forwardSimInv n s' := by
   rcases hinv with ⟨hrefInv, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩
-  rcases hrefInv with ⟨hfull, hdirtyEx, htxnData, hcleanRel, hrelUniq⟩
-  refine ⟨refinementInv_preserved n s s' ⟨hfull, hdirtyEx, htxnData, hcleanRel, hrelUniq⟩ hnext,
-    dataCoherenceInv_preserved n s s' ⟨⟨hfull, hdirtyEx, htxnData, hcleanRel, hrelUniq⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
-    txnLineInv_preserved n s s' ⟨⟨hfull, hdirtyEx, htxnData, hcleanRel, hrelUniq⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
+  rcases hrefInv with ⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩
+  refine ⟨refinementInv_preserved n s s' ⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩ hnext,
+    dataCoherenceInv_preserved n s s' ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
+    txnLineInv_preserved n s s' ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
     ?_, ?_, ?_⟩
   -- preLinesCleanInv_preserved needs cleanDataInv, but forwardSimInv only has dataCoherenceInv
   -- preLinesNoDirtyInv_preserved and txnPlanInv_preserved also affected
@@ -592,7 +592,7 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') ∨
     refMap n s = refMap n s' := by
-  rcases hinv with ⟨⟨hfull, hnoDirty, htxnData, hcleanRel, hrelUniq⟩, hclean, htxnLine, _, hpreNoDirty, hplan⟩
+  rcases hinv with ⟨⟨hfull, hnoDirty, hSwmr, htxnData, hcleanRel, hrelUniq⟩, hclean, htxnLine, _, hpreNoDirty, hplan⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   match a with
@@ -601,7 +601,7 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
   | .sendAcquirePerm grow source =>
       right; exact (refMap_sendAcquirePerm_eq hstep).symm
   | .recvAcquireAtManager =>
-      left; exact refMap_recvAcquireAtManager_next ⟨hfull, hnoDirty, htxnData, hcleanRel, hrelUniq⟩ hstep
+      left; exact refMap_recvAcquireAtManager_next ⟨hfull, hnoDirty, hSwmr, htxnData, hcleanRel, hrelUniq⟩ hstep
   | .recvProbeAtMaster =>
       right; exact (refMap_recvProbeAtMaster_eq hstep).symm
   | .recvProbeAckAtManager =>

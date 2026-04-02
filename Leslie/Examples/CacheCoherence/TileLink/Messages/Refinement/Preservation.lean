@@ -31,7 +31,7 @@ private theorem dirtyExclusiveInv_of_same_lines (n : Nat)
 
 theorem dirtyExclusiveInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
-    (hfull : fullInv n s) (hdirtyEx : dirtyExclusiveInv n s)
+    (hfull : fullInv n s) (hdirtyEx : dirtyExclusiveInv n s) (hSwmr : permSwmrInv n s)
     (hnext : (tlMessages.toSpec n).next s s') :
     dirtyExclusiveInv n s' := by
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
@@ -119,9 +119,14 @@ theorem dirtyExclusiveInv_preserved (n : Nat)
         by_cases hqi : q = i
         · subst hqi
           simp only [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, ite_true]
-          -- hdirtyEx gives perm i = .N in pre. Release with perm .N shouldn't happen
-          -- (no legal downgrade from .N), but proving this needs fullInv reasoning.
-          sorry
+          -- hdirtyEx gives perm i = .N from dirty p. releasedLine.perm = param.result.
+          -- From guard: param.legalFrom (perm i). Since perm i = .N, param.source = .N.
+          -- All PruneReportParam with source .N: only NtoN. result = .N.
+          have hpermN : (s.locals i).line.perm = .N := hdirtyEx p i (Ne.symm hpq) hdirtyP
+          rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, hlegal, _, _, _⟩
+          rw [hpermN] at hlegal
+          cases param <;> simp [PruneReportParam.legalFrom, PruneReportParam.source] at hlegal
+          simp [releasedLine, invalidatedLine]
         · simp [sendReleaseState, sendReleaseLocals, setFn, hqi]
           exact hdirtyEx p q hpq hdirtyP
   | .sendReleaseData param =>
@@ -168,9 +173,10 @@ theorem dirtyExclusiveInv_preserved (n : Nat)
       intro p q hpq hdirtyP
       by_cases hpi : p = i
       · subst hpi
-        -- p = i, dirty i = true in post. Need perm q = .N in post for q ≠ i.
-        -- Need SWMR: perm i = .T → ∀ j≠i, perm j = .N (requires fullInv reasoning)
-        sorry
+        -- p = i, perm i = .T (store guard). By SWMR: perm q = .N for q ≠ i.
+        -- Post-state: q ≠ i so line unchanged via setFn.
+        simp [setFn, Ne.symm hpq]
+        exact hSwmr i q hpq hperm
       · -- p ≠ i: dirty p unchanged. q = i → store guard perm i = .T but
         -- dirtyExclusiveInv says perm i = .N, contradiction.
         simp [setFn, hpi] at hdirtyP
@@ -669,9 +675,10 @@ theorem refinementInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
     (hinv : refinementInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     refinementInv n s' := by
-  rcases hinv with ⟨hfull, hdirtyEx, htxnData, hcleanRel, hrelUniq⟩
+  rcases hinv with ⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩
   exact ⟨fullInv_preserved_with_release n s s' hfull hnext,
-    dirtyExclusiveInv_preserved n s s' hfull hdirtyEx hnext,
+    dirtyExclusiveInv_preserved n s s' hfull hdirtyEx hSwmr hnext,
+    sorry, -- permSwmrInv_preserved
     txnDataInv_preserved n s s' hdirtyEx htxnData hcleanRel hnext,
     cleanChanCInv_preserved n s s' hdirtyEx hcleanRel hnext,
     releaseUniqueInv_preserved n s s' hfull hdirtyEx hrelUniq hnext⟩
