@@ -573,23 +573,24 @@ theorem preLinesCleanInv_preserved (n : Nat)
       simpa [preLinesCleanInv]
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨grow, source, htxn, _, _, _, _, _, _, _, hrest⟩
-        rcases hrest with ⟨_, hs'⟩
-        rw [hs']
-        intro k hk hvalid hdirty
-        -- preLines k = (s.locals k).line (from plannedTxn). currentTxn = none (guard).
-        -- Node k: valid, ¬dirty. From dataCoherenceInv (guarded by currentTxn = none):
-        -- need releaseInFlight = false too. Use sorry if we can't derive it.
-        have hvalidK : (s.locals ⟨k, hk⟩).line.valid = true := by simpa [plannedTxn, hk] using hvalid
-        have hdirtyK : (s.locals ⟨k, hk⟩).line.dirty = false := by simpa [plannedTxn, hk] using hdirty
-        sorry
-      · rcases hperm with ⟨grow, source, htxn, _, _, _, _, _, _, hrest⟩
+      · rcases hblk with ⟨grow, source, htxn, _, _, hnoFlight, _, _, _, _, _, hrest⟩
         rcases hrest with ⟨_, hs'⟩
         rw [hs']
         intro k hk hvalid hdirty
         have hvalidK : (s.locals ⟨k, hk⟩).line.valid = true := by simpa [plannedTxn, hk] using hvalid
         have hdirtyK : (s.locals ⟨k, hk⟩).line.dirty = false := by simpa [plannedTxn, hk] using hdirty
-        sorry
+        have hflightK : (s.locals ⟨k, hk⟩).releaseInFlight = false := hnoFlight ⟨k, hk⟩
+        have hdata := hclean htxn ⟨k, hk⟩ hflightK hvalidK hdirtyK
+        simpa [plannedTxn, hk] using hdata
+      · rcases hperm with ⟨grow, source, htxn, _, _, hnoFlight, _, _, _, _, hrest⟩
+        rcases hrest with ⟨_, hs'⟩
+        rw [hs']
+        intro k hk hvalid hdirty
+        have hvalidK : (s.locals ⟨k, hk⟩).line.valid = true := by simpa [plannedTxn, hk] using hvalid
+        have hdirtyK : (s.locals ⟨k, hk⟩).line.dirty = false := by simpa [plannedTxn, hk] using hdirty
+        have hflightK : (s.locals ⟨k, hk⟩).releaseInFlight = false := hnoFlight ⟨k, hk⟩
+        have hdata := hclean htxn ⟨k, hk⟩ hflightK hvalidK hdirtyK
+        simpa [plannedTxn, hk] using hdata
   | .recvProbeAtMaster =>
       rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, _, hs'⟩
       rw [hs']
@@ -721,9 +722,15 @@ theorem cleanChanCInv_preserved (n : Nat)
       · simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji] at hCj
         exact hclean j msg hCj
   | .sendReleaseData param =>
-      -- SendReleaseData: release message carries data, violating cleanChanCInv
-      -- This needs protocol reasoning to show it doesn't happen under refinementInv
-      sorry
+      rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at htxn' hflightJ hCj ⊢
+      simp only [sendReleaseState] at htxn' hflightJ hCj ⊢
+      by_cases hji : j = i
+      · subst j
+        -- Node i has releaseInFlight = true after sendReleaseData, contradicting hflightJ
+        simp [sendReleaseLocals, sendReleaseLocal, setFn] at hflightJ
+      · simp [sendReleaseLocals, sendReleaseLocal, setFn, hji] at hflightJ hCj ⊢
+        exact hclean htxn j hflightJ msg hCj
   | .recvReleaseAtManager =>
       rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
       rw [hs'] at hCj

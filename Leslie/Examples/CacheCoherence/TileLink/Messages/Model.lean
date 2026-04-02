@@ -58,6 +58,7 @@ def RecvAcquireBlockAtManager {n : Nat}
   s.shared.pendingGrantAck = none ∧
   s.shared.pendingReleaseAck = none ∧
   (∀ j : Fin n, (s.locals j).chanC = none) ∧
+  (∀ j : Fin n, (s.locals j).releaseInFlight = false) ∧
   (s.locals i).chanA = some (mkAcquireBlockMsg grow source) ∧
   (s.locals i).line.perm = .N ∧
   grow.legalFrom (s.locals i).line.perm ∧
@@ -74,6 +75,7 @@ def RecvAcquirePermAtManager {n : Nat}
   s.shared.pendingGrantAck = none ∧
   s.shared.pendingReleaseAck = none ∧
   (∀ j : Fin n, (s.locals j).chanC = none) ∧
+  (∀ j : Fin n, (s.locals j).releaseInFlight = false) ∧
   (s.locals i).chanA = some (mkAcquirePermMsg grow source) ∧
   grow.legalFrom (s.locals i).line.perm ∧
   grow.result = .T ∧
