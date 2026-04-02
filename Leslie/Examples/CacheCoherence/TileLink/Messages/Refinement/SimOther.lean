@@ -21,9 +21,11 @@ theorem refMap_recvProbeAtMaster_eq {n : Nat}
 theorem refMap_recvProbeAckAtManager_eq {n : Nat}
     {s s' : SymState HomeState NodeState n}
     {i : Fin n}
+    (hcleanC : cleanChanCInv n s)
     (hstep : RecvProbeAckAtManager s s' i) :
     refMap n s' = refMap n s := by
-  rcases hstep with ⟨tx, msg, hcur, hphase, _, _, _, _, _, hs'⟩
+  rcases hstep with ⟨tx, msg, hcur, hphase, _, _, hC, _, _, hs'⟩
+  have hmsgNone : msg.data = none := hcleanC i msg hC
   rw [hs']
   have hphase' : probeAckPhase (n := n) (clearProbeIdx tx.probesRemaining i.1) ≠ .grantPendingAck := by
     intro hbad
@@ -31,7 +33,16 @@ theorem refMap_recvProbeAckAtManager_eq {n : Nat}
     split at hbad <;> cases hbad
   apply SymState.ext
   · change refMapShared n (recvProbeAckState s i tx msg) = refMapShared n s
-    sorry -- TODO: needs msg.data writeback reasoning for mem field
+    simp [refMapShared, recvProbeAckState, recvProbeAckShared, hcur, hphase, hphase', hmsgNone]
+    constructor
+    · rw [preTxnDir_tx_update_eq tx
+        (updateDirAt s.shared.dir i (s.locals i).line.perm)
+        (probeAckPhase (n := n) (clearProbeIdx tx.probesRemaining i.1))
+        (clearProbeIdx tx.probesRemaining i.1)]
+      rw [preTxnDir_updateDirAt_eq (n := n) tx s.shared.dir i (s.locals i).line.perm]
+    · exact absPendingGrantMeta_tx_update_eq tx
+        (probeAckPhase (n := n) (clearProbeIdx tx.probesRemaining i.1))
+        (clearProbeIdx tx.probesRemaining i.1) (by simpa [hphase]) hphase'
   · funext j
     simp [refMap, refMapLine, recvProbeAckState, recvProbeAckShared, hcur, hphase, hphase']
 
@@ -325,7 +336,7 @@ theorem refMap_sendReleaseData_absurd {n : Nat}
 theorem refMap_recvReleaseAtManager_eq {n : Nat}
     {s s' : SymState HomeState NodeState n}
     {i : Fin n}
-    (hfull : fullInv n s) (hcleanRel : cleanReleaseInv n s)
+    (hfull : fullInv n s) (hcleanRel : cleanChanCInv n s)
     (hCother : ∀ j : Fin n, j ≠ i → (s.locals j).chanC = none)
     (hstep : RecvReleaseAtManager s s' i) :
     refMap n s' = refMap n s := by
@@ -333,7 +344,7 @@ theorem refMap_recvReleaseAtManager_eq {n : Nat}
   rcases hcore with ⟨_, _, _, _⟩
   rcases hchan with ⟨_, _, hchanC, _, _⟩
   rcases hstep with ⟨msg, param, htxn, hgrant, hrel, hflight, hC, hsource, hwf, hparam, hperm, hD, hs'⟩
-  have hmsgData : msg.data = none := hcleanRel i msg hC hwf
+  have hmsgData : msg.data = none := hcleanRel i msg hC
   have hqueuedPre : queuedReleaseIdx n s = some i.1 := by
     unfold queuedReleaseIdx
     have hexists : ∃ j : Fin n, (s.locals j).releaseInFlight = true ∧ (s.locals j).chanC ≠ none :=

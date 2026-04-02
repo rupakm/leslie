@@ -409,8 +409,52 @@ theorem fullInv_preserved_with_release (n : Nat)
       have hchan' := channelInv_preserved_recvReleaseAckAtMaster n s s' hchan hstep
       exact ⟨hcore', hchan', serializationInv_of_core_channel n s' hcore' hchan'⟩
   | .store v =>
-      -- Store only changes one local line (to dirtyTipLine v). Shared state unchanged.
-      -- Channels unchanged. All invariant components are preserved.
-      sorry
+      rcases hstep with ⟨hcur, hgrant, hrel, hperm, hA, hB, hC, hD, hE, hSrc, hFlight, hs'⟩
+      subst hs'
+      rcases hcore with ⟨hlineWF, hdir, hpending, htxn⟩
+      rcases hchan with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
+      have hcore' : coreInv n { shared := s.shared, locals := setFn s.locals i (storeLocal (s.locals i) v) } := by
+        refine ⟨?_, ?_, ?_, ?_⟩
+        · -- lineWFInv
+          intro j
+          by_cases hji : j = i
+          · subst j; simp [setFn, storeLocal, CacheLine.WellFormed]
+          · simpa [setFn, hji] using hlineWF j
+        · -- dirInv
+          intro j hCnone
+          by_cases hji : j = i
+          · subst j
+            simp [setFn, storeLocal] at hCnone ⊢
+            rw [hdir i hC, hperm]
+          · have hCnone_old : (s.locals j).chanC = none := by
+              simpa [setFn, hji] using hCnone
+            simpa [setFn, hji] using hdir j hCnone_old
+        · -- pendingInv
+          simpa [pendingInv, hcur, hgrant, hrel] using hpending
+        · -- txnCoreInv
+          simpa [txnCoreInv, hcur] using htxn
+      have hchan' : channelInv n { shared := s.shared, locals := setFn s.locals i (storeLocal (s.locals i) v) } := by
+        refine ⟨?_, ?_, ?_, ?_, ?_⟩
+        · intro j
+          by_cases hji : j = i
+          · subst j; simp [setFn, storeLocal, hA]
+          · simpa [setFn, hji] using hchanA j
+        · intro j
+          by_cases hji : j = i
+          · subst j; simp [setFn, storeLocal, hB]
+          · simpa [setFn, hji] using hchanB j
+        · intro j
+          by_cases hji : j = i
+          · subst j; simp [setFn, storeLocal, hC]
+          · simpa [setFn, hji] using hchanC j
+        · intro j
+          by_cases hji : j = i
+          · subst j; simp [setFn, storeLocal, hD]
+          · simpa [setFn, hji] using hchanD j
+        · intro j
+          by_cases hji : j = i
+          · subst j; simp [setFn, storeLocal, hE]
+          · simpa [setFn, hji] using hchanE j
+      exact ⟨hcore', hchan', serializationInv_of_core_channel _ _ hcore' hchan'⟩
 
 end TileLink.Messages

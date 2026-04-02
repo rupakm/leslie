@@ -86,9 +86,9 @@ def txnPlanInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
           tx.probesNeeded = snapshotCachedProbeMask n tx ∧
           (tx.preLines tx.requester).perm ≠ .T
 
-def cleanReleaseInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
-  ∀ i : Fin n, ∀ msg : CMsg, (s.locals i).chanC = some msg →
-    releaseMsgWellFormed msg → msg.data = none
+/-- Under noDirtyInv, all C-channel messages carry no data (both probeAck and release). -/
+def cleanChanCInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
+  ∀ i : Fin n, ∀ msg : CMsg, (s.locals i).chanC = some msg → msg.data = none
 
 /-- At most one release in flight when no transaction is active, and no release
     in chanC when pendingReleaseAck is set. -/
@@ -98,7 +98,7 @@ def releaseUniqueInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
     (∀ i j : Fin n, i ≠ j → (s.locals i).chanC ≠ none → (s.locals j).chanC = none)
 
 def refinementInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
-  fullInv n s ∧ noDirtyInv n s ∧ txnDataInv n s ∧ cleanReleaseInv n s ∧ releaseUniqueInv n s
+  fullInv n s ∧ noDirtyInv n s ∧ txnDataInv n s ∧ cleanChanCInv n s ∧ releaseUniqueInv n s
 
 def strongRefinementInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   refinementInv n s ∧ txnLineInv n s ∧ preLinesCleanInv n s ∧ preLinesNoDirtyInv n s ∧ txnPlanInv n s
@@ -159,8 +159,8 @@ theorem init_txnPlanInv (n : Nat) :
   rcases hinit with ⟨⟨_, _, htxn, _, _, _⟩, _⟩
   simp [txnPlanInv, htxn]
 
-theorem init_cleanReleaseInv (n : Nat) :
-    ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → cleanReleaseInv n s := by
+theorem init_cleanChanCInv (n : Nat) :
+    ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → cleanChanCInv n s := by
   intro s hinit i msg hC
   rcases hinit with ⟨_, hlocals⟩
   rcases hlocals i with ⟨_, _, _, hCnone, _, _, _, _, _⟩
@@ -177,7 +177,7 @@ theorem init_refinementInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → refinementInv n s := by
   intro s hinit
   exact ⟨init_fullInv n s hinit, init_noDirtyInv n s hinit, init_txnDataInv n s hinit,
-    init_cleanReleaseInv n s hinit, init_releaseUniqueInv n s hinit⟩
+    init_cleanChanCInv n s hinit, init_releaseUniqueInv n s hinit⟩
 
 theorem init_strongRefinementInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → strongRefinementInv n s := by

@@ -88,10 +88,16 @@ theorem cleanDataInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
             ite_false]
         exact hclean j
   | .recvProbeAckAtManager =>
-      rcases hstep with ⟨tx, msg, _, _, _, _, _, _, _, hs'⟩
+      rcases hstep with ⟨tx, msg, _, _, _, _, hC, _, _, hs'⟩
+      have hmsgNone : msg.data = none := hcleanRel i msg hC
       intro j
       rw [hs']
-      sorry -- TODO: cleanDataInv with msg.data writeback
+      by_cases hji : j = i
+      · subst j
+        simpa [recvProbeAckState, recvProbeAckLocals, recvProbeAckLocal, recvProbeAckShared,
+          hmsgNone, setFn] using hclean i
+      · simpa [recvProbeAckState, recvProbeAckLocals, recvProbeAckLocal, recvProbeAckShared,
+          hmsgNone, setFn, hji] using hclean j
   | .sendGrantToRequester =>
       rcases hstep with ⟨tx, _, _, _, _, _, _, _, _, hs'⟩
       intro j
@@ -160,7 +166,7 @@ theorem cleanDataInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
       rcases hstep with ⟨msg, param, _, _, _, _, hC, _, hwf, _, _, _, hs'⟩
       intro j
       rw [hs']
-      have hmsgClean : msg.data = none := hcleanRel i msg hC hwf
+      have hmsgClean : msg.data = none := hcleanRel i msg hC
       rw [show ((recvReleaseState s i msg param).locals j).line = (s.locals j).line from
         recvReleaseState_line s i j msg param]
       rw [show (recvReleaseState s i msg param).shared.mem = s.shared.mem from by
@@ -388,7 +394,10 @@ theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
       rcases hstep with ⟨msg, hcur, _, _, _, _, _, hs'⟩
       rw [hs']
       simp [txnLineInv, hcur, recvReleaseAckState, recvReleaseAckShared]
-  | .store v => sorry
+  | .store v =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp [txnLineInv, hcur]
 
 private theorem writableProbeMask_eq_snapshotWritableProbeMask {n : Nat}
     (s : SymState HomeState NodeState n) (i : Fin n) (kind : ReqKind)
@@ -539,7 +548,10 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
       rcases hstep with ⟨msg, hcur, _, _, _, _, _, hs'⟩
       rw [hs']
       simp [txnPlanInv, hcur, recvReleaseAckState, recvReleaseAckShared]
-  | .store v => sorry
+  | .store v =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp [txnPlanInv, hcur]
 
 theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
@@ -549,7 +561,7 @@ theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n
   exact ⟨refinementInv_preserved n s s' ⟨hfull, hnoDirty, htxnData, hcleanRel, hrelUniq⟩ hnext,
     cleanDataInv_preserved n s s' ⟨⟨hfull, hnoDirty, htxnData, hcleanRel, hrelUniq⟩, hclean, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
     txnLineInv_preserved n s s' ⟨⟨hfull, hnoDirty, htxnData, hcleanRel, hrelUniq⟩, hclean, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
-    preLinesCleanInv_preserved n s s' hclean hpreClean hnext,
+    preLinesCleanInv_preserved n s s' hclean hpreClean hcleanRel hnext,
     preLinesNoDirtyInv_preserved n s s' hnoDirty hpreNoDirty hnext,
     txnPlanInv_preserved n s s' ⟨⟨hfull, hnoDirty, htxnData, hcleanRel, hrelUniq⟩, hclean, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext⟩
 
@@ -590,7 +602,7 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
   | .recvProbeAtMaster =>
       right; exact (refMap_recvProbeAtMaster_eq hstep).symm
   | .recvProbeAckAtManager =>
-      right; exact (refMap_recvProbeAckAtManager_eq hstep).symm
+      right; exact (refMap_recvProbeAckAtManager_eq hcleanRel hstep).symm
   | .sendGrantToRequester =>
       left
       rcases hstep with ⟨tx, hcur, hreq, hphase, hgrant, hrel, hD, hE, hSink, hs'⟩
