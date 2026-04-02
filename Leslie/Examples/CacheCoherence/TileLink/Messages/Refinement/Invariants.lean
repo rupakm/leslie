@@ -22,7 +22,7 @@ def dirtyExclusiveInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
 def dataCoherenceInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   s.shared.currentTxn = none →
     ∀ i : Fin n, (s.locals i).releaseInFlight = false →
-      (s.locals i).line.valid = true → (s.locals i).line.dirty = false →
+      (s.locals i).line.dirty = false →
         (s.locals i).line.data = s.shared.mem
 
 def txnDataInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
@@ -31,12 +31,14 @@ def txnDataInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   | some tx =>
       (tx.usedDirtySource = false → tx.transferVal = s.shared.mem) ∧
       (tx.usedDirtySource = true → ∃ k, k < n ∧ (tx.preLines k).dirty = true ∧
-        tx.transferVal = (tx.preLines k).data)
+        tx.transferVal = (tx.preLines k).data) ∧
+      ((tx.phase = .grantReady ∨ tx.phase = .grantPendingAck) →
+        tx.transferVal = s.shared.mem)
 
 def preLinesCleanInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   match s.shared.currentTxn with
   | none => True
-  | some tx => ∀ k : Nat, k < n → (tx.preLines k).valid = true →
+  | some tx => ∀ k : Nat, k < n →
       (tx.preLines k).dirty = false → (tx.preLines k).data = s.shared.mem
 
 def preLinesNoDirtyInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=

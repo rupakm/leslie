@@ -643,17 +643,45 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
               rcases htxnCore with ⟨_, _, hresultEq, _⟩
               rw [hperm] at hresultEq; revert hresultEq
               cases tx.grow <;> simp [GrowParam.result]
-          | B => -- SORRY: refMap_sendGrant_block_branch_next requires cleanDataInv
-                 -- (∀ i, data = mem), which is stronger than the available dataCoherenceInv.
-                 -- At grant-ready time with all probes done and preLinesNoDirtyInv, the
-                 -- argument is: (1) all preLines are clean, so usedDirtySource=false and
-                 -- mem is unchanged since plan time, (2) preLinesCleanInv gives valid clean
-                 -- preLines data = mem, (3) probedLine preserves data. But cleanDataInv also
-                 -- covers INVALID nodes, whose data = preLines data may not equal mem if the
-                 -- node was invalid at plan time with stale data. Closing this requires either
-                 -- strengthening the init/store invariant to track all node data = mem, or
-                 -- weakening the atomic model's finishGrant postcondition for invalid nodes.
-                 sorry
+          | B => -- Derive cleanDataInv at grantReady from txnDataInv + preLinesCleanInv + txnLineInv.
+                 have hcleanData : cleanDataInv n s := by
+                   -- txnDataInv phase conjunct: grantReady → transferVal = mem
+                   have hTransMem := (txnDataInv_currentTxn htxnData hcur).2.2 (Or.inl hphase)
+                   -- preLinesCleanInv: clean preLines data = mem
+                   have hpreC := by simpa [preLinesCleanInv, hcur] using hpreClean
+                   -- preLinesNoDirtyInv (exclusive): dirty preLines k → others perm .N
+                   have hpreND := by simpa [preLinesNoDirtyInv, hcur] using hpreNoDirty
+                   -- txnLineInv at grantReady
+                   have htxnL := by simpa [txnLineInv, hcur] using htxnLine
+                   -- grantReady → all probesRemaining = false
+                   intro j
+                   have hlineJ := htxnL j
+                   have hallFalse := txnCoreInv_grantReady_allFalse hfull hcur hphase j
+                   -- Reduce txnSnapshotLine at grantReady
+                   simp only [txnSnapshotLine, show tx.phase = .grantPendingAck ↔ False from by
+                     simp [hphase], false_and, ite_false] at hlineJ
+                   -- Reduce probeSnapshotLine with remaining = false
+                   unfold probeSnapshotLine at hlineJ
+                   by_cases hprobe : tx.probesNeeded j.1
+                   · simp only [hprobe, ite_true, hallFalse, false_and, ite_false] at hlineJ
+                     -- data = probedLine(preLines, cap).data = preLines.data
+                     have hpdata : (probedLine (tx.preLines j.1) (probeCapOfResult tx.resultPerm)).data =
+                         (tx.preLines j.1).data := by
+                       cases probeCapOfResult tx.resultPerm <;>
+                         simp [probedLine, invalidatedLine, branchAfterProbe, tipAfterProbe]
+                     rw [hlineJ, hpdata]
+                     by_cases hdirty : (tx.preLines j.1).dirty
+                     · -- dirty preLine: transferVal = preLines data, transferVal = mem → data = mem
+                       have ⟨k, hk, hkdirty, htv⟩ := (txnDataInv_currentTxn htxnData hcur).2.1 hdirty
+                       rw [← hTransMem, htv]
+                     · exact hpreC j.1 j.2 (by simp at hdirty; exact hdirty)
+                   · simp only [hprobe, ite_false] at hlineJ
+                     rw [hlineJ]
+                     by_cases hdirty : (tx.preLines j.1).dirty
+                     · have ⟨k, hk, hkdirty, htv⟩ := (txnDataInv_currentTxn htxnData hcur).2.1 hdirty
+                       rw [← hTransMem, htv]
+                     · exact hpreC j.1 j.2 (by simp at hdirty; exact hdirty)
+                 exact refMap_sendGrant_block_branch_next hfull hcleanData htxnLine hpreNoDirty htxnData hplan hstep' hcur htx hperm
           | T => exact refMap_sendGrant_block_tip_next hfull htxnLine htxnData hplan hstep' hcur htx hperm
       | acquirePerm =>
           exact refMap_sendGrant_acquirePerm_next hfull hpreNoDirty htxnLine htxnData hplan hstep' hcur htx

@@ -158,7 +158,7 @@ theorem coreInv_preserved_recvAcquirePerm (n : Nat)
     (hstep : RecvAcquirePermAtManager s s' i grow source) :
     coreInv n s' := by
   rcases hinv with ⟨hlineWF, hdir, _, _⟩
-  rcases hstep with ⟨_, _, _, _, _, _, hresT, _, _, ⟨_, rfl⟩⟩
+  rcases hstep with ⟨_, _, _, _, _, _, _, hresT, _, rfl⟩
   refine ⟨?_, ?_, ?_, ?_⟩
   · intro j
     simpa [recvAcquireState, recvAcquireLocals_line] using hlineWF j

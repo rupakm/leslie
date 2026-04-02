@@ -89,11 +89,16 @@ theorem channelInv_preserved_recvProbeAtMaster (n : Nat)
   have hlineEq : (s.locals i).line = tx.preLines i.1 := by
     have htl : (s.locals i).line = txnSnapshotLine tx (s.locals i) i := by
       rw [txnLineInv, hcur] at htxnLine; exact htxnLine i
-    simp only [txnSnapshotLine, hphase, false_and, ite_false] at htl
-    simp only [probeSnapshotLine] at htl
+    unfold txnSnapshotLine at htl
+    have hnotGP : ¬(tx.phase = .grantPendingAck ∧ tx.requester = i.1) := by
+      intro ⟨h, _⟩; rw [hphase] at h; cases h
+    rw [if_neg hnotGP] at htl
+    unfold probeSnapshotLine at htl
     split at htl
-    · simp only [hremain, hCnone, and_self, ite_true] at htl; exact htl
-    · exact htl
+    · -- probesNeeded: inner if with probesRemaining ∧ chanC = none
+      rw [if_pos ⟨hremain, hCnone⟩] at htl; exact htl
+    · -- not probesNeeded: preLines directly
+      exact htl
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · intro j
     by_cases hji : j = i
