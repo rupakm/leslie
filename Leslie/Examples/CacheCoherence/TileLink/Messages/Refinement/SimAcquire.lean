@@ -599,6 +599,126 @@ theorem absPendingGrantMeta_planned_acquirePerm_eq' {n : Nat}
   rw [atomic_cachedProbeMask_refMap_eq s i htxn]
   simp [absGrantKind]
 
+/-! ### Dirty-source acquire helpers -/
+
+/-- Under dirtyExclusiveInv + lineWFInv, the dirty owner has perm = .T. -/
+private theorem dirty_owner_perm_T {n : Nat}
+    {s : SymState HomeState NodeState n} {i j : Fin n}
+    (hlineWF : lineWFInv n s)
+    (hji : j ≠ i)
+    (hdirty : (s.locals j).line.dirty = true) :
+    (s.locals j).line.perm = .T :=
+  ((hlineWF j).1 hdirty).1
+
+/-- Under permSwmrInv + lineWFInv, if j is dirty then writableProbeMask s i = singleProbeMask j.1.
+    Since j is the unique .T node, only j.1 appears in the writable mask. -/
+private theorem writableProbeMask_eq_singleProbeMask_of_dirty {n : Nat}
+    {s : SymState HomeState NodeState n} {i j : Fin n}
+    (hlineWF : lineWFInv n s)
+    (hSwmr : permSwmrInv n s)
+    (hji : j ≠ i)
+    (hdirty : (s.locals j).line.dirty = true) :
+    writableProbeMask s i = TileLink.Atomic.singleProbeMask j.1 := by
+  have hpermT := dirty_owner_perm_T hlineWF hji hdirty
+  funext k
+  by_cases hk : k < n
+  · let p : Fin n := ⟨k, hk⟩
+    by_cases hpi : p = i
+    · -- k = i: writableProbeMask excludes requester; singleProbeMask j.1 at i = (i.1 = j.1)
+      -- Since j ≠ i, i.1 ≠ j.1
+      have hne : k ≠ j.1 := by intro h; exact hji (Fin.ext (hpi ▸ h))
+      simp [writableProbeMask, TileLink.Atomic.singleProbeMask, hk, hpi, hne]
+    · by_cases hpj : p = j
+      · -- k = j: writableProbeMask includes j (perm = .T, j ≠ i); singleProbeMask j = true
+        subst p
+        simp [writableProbeMask, TileLink.Atomic.singleProbeMask, hk, hpi, hpermT]
+      · -- k ≠ i, k ≠ j: perm k = .N (from permSwmrInv + perm j = .T)
+        have hpermN : (s.locals p).line.perm = .N := hSwmr j p (Ne.symm hpj) hpermT
+        have hne : k ≠ j.1 := by intro h; exact hpj (Fin.ext h)
+        simp [writableProbeMask, TileLink.Atomic.singleProbeMask, hk, hpi, hpermN, hne]
+  · simp [writableProbeMask, TileLink.Atomic.singleProbeMask, hk]
+    intro h; exact absurd (h ▸ j.2) (not_lt.mpr (Nat.le_of_not_lt hk))
+
+/-- Under dirtyExclusiveInv, any dirty owner found by Classical.choose is unique —
+    its line data and index match the concrete hasDirtyOther witness. -/
+private theorem dirtyOwner_unique {n : Nat}
+    {s : SymState HomeState NodeState n} {i j : Fin n}
+    (hdirtyEx : dirtyExclusiveInv n s)
+    (hlineWF : lineWFInv n s)
+    (hji : j ≠ i)
+    (hdirty : (s.locals j).line.dirty = true) :
+    ∀ k : Fin n, k ≠ i → (s.locals k).line.dirty = true → k = j := by
+  intro k _hki hdirtyk
+  by_contra hkj
+  have := hdirtyEx j k hkj hdirty
+  have hpermK := ((hlineWF k).1 hdirtyk).1
+  rw [this] at hpermK; cases hpermK
+
+/-- The dirty block dispatch: concrete hasDirtyOther acquire maps to atomic dirty disjunct. -/
+theorem refMap_recvAcquireBlock_dirty_next {n : Nat}
+    {s s' : SymState HomeState NodeState n}
+    {i : Fin n} {grow : GrowParam} {source : SourceId}
+    (hinv : refinementInv n s)
+    (hstep : RecvAcquireBlockAtManager s s' i grow source)
+    (hDirtyOther : hasDirtyOther s i)
+    (hresultB : grow.result = .B) :
+    (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
+  rcases hinv with ⟨⟨⟨hlineWF, _, _, _⟩, _, _⟩, hdirtyEx, hSwmr, _, _, _⟩
+  rcases hstep with ⟨htxn, hgrant, hrel, hallC, _, hpermN, _, _, _, hs'⟩
+  -- Extract dirty owner j from hasDirtyOther
+  rcases hDirtyOther with ⟨j, hji, hdirtyj⟩
+  have hpermTj := dirty_owner_perm_T hlineWF hji hdirtyj
+  -- The dirty owner found by dirtyOwnerOpt must also be j (uniqueness)
+  have hex : ∃ j : Fin n, j ≠ i ∧ (s.locals j).line.dirty = true := ⟨j, hji, hdirtyj⟩
+  have hchoose_spec := Classical.choose_spec hex
+  have hchoose := Classical.choose hex
+  have hchoose_eq_j : hchoose = j :=
+    dirtyOwner_unique hdirtyEx hlineWF hji hdirtyj hchoose hchoose_spec.1 hchoose_spec.2
+  -- Compute planned values
+  have hUsedDirty : plannedUsedDirtySource s i = true := by
+    simp [plannedUsedDirtySource, dirtyOwnerOpt, hex]
+  have hTransfer : plannedTransferVal s i = (s.locals j).line.data := by
+    simp [plannedTransferVal, dirtyOwnerOpt, hex]
+    exact congrArg (fun k => (s.locals k).line.data) hchoose_eq_j
+  have hMask : writableProbeMask s i = TileLink.Atomic.singleProbeMask j.1 :=
+    writableProbeMask_eq_singleProbeMask_of_dirty hlineWF hSwmr hji hdirtyj
+  -- Build atomic step
+  rw [hs']
+  simp only [SymSharedSpec.toSpec, TileLink.Atomic.tlAtomic]
+  refine ⟨i, .acquireBlock, ?_⟩
+  constructor
+  · simp [refMap, refMapShared, htxn, hrel, queuedReleaseIdx_eq_none_of_all_chanC_none s hallC]
+  constructor
+  · simp [refMap, refMapShared, htxn, hrel, queuedReleaseIdx_eq_none_of_all_chanC_none s hallC, hgrant]
+  constructor
+  · simp [refMap, refMapShared, htxn, hrel, queuedReleaseIdx_eq_none_of_all_chanC_none s hallC]
+  constructor
+  · simpa [refMap, refMapLine, htxn] using hpermN
+  · left
+    refine ⟨j, ?_, ?_, ?_⟩
+    · intro h; exact hji h
+    · simpa [refMap, refMapLine, htxn] using hdirtyj
+    · -- Show s' state matches atomic dirty disjunct
+      apply SymState.ext
+      · -- shared state
+        simp [refMap, refMapShared, recvAcquireState, recvAcquireShared, plannedTxn, htxn, hrel,
+          hUsedDirty, hTransfer, hMask, hresultB, probeMaskForResult]
+        constructor
+        · -- mem
+          rfl
+        constructor
+        · -- dir: preTxnDir = syncDir (since preLines are current lines)
+          simp [preTxnDir, TileLink.Atomic.syncDir]
+          funext k
+          by_cases hk : k < n
+          · simp [hk, plannedTxn]
+          · simp [hk, plannedTxn, queuedReleaseIdx_eq_none_of_all_chanC_none s hallC]
+        · -- pendingGrantMeta
+          simp [absPendingGrantMeta, absGrantKind, hresultB, hUsedDirty, hTransfer, hMask,
+            plannedTxn, probeMaskForResult]
+      · -- locals unchanged
+        simpa [refMap] using refMap_recvAcquireState_locals_eq s i .acquireBlock grow source htxn
+
 theorem refMap_recvAcquireBlock_branch_next {n : Nat}
     {s s' : SymState HomeState NodeState n}
     {i : Fin n} {grow : GrowParam} {source : SourceId}
@@ -703,15 +823,79 @@ theorem refMap_recvAcquirePerm_next {n : Nat}
     (hinv : refinementInv n s)
     (hstep : RecvAcquirePermAtManager s s' i grow source) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  -- SORRY: RecvAcquirePermAtManager may have hasDirtyOther. The non-dirty case is proved
-  -- by refMap_recvAcquireBlock_branch_next (used for the block case). For the dirty case,
-  -- the concrete plannedTxn uses usedDirtySource=true with transferVal = dirtyOwner.data and
-  -- probesNeeded = cachedProbeMask. The atomic model expects probesNeeded = cachedProbeMask
-  -- with usedDirtySource=true and transferVal = (s.locals j).data for the dirty owner j.
-  -- Needs: (1) identifying the dirty owner j from dirtyOwnerOpt, (2) proving transferVal matches,
-  -- (3) proving cachedProbeMask agrees between concrete and abstract. Under permSwmrInv,
-  -- the dirty node has perm=T so cachedProbeMask includes it, matching the atomic model.
-  sorry
+  rcases hinv with ⟨⟨⟨hlineWF, _, _, _⟩, _, _⟩, hdirtyEx, hSwmr, _, _, _⟩
+  rcases hstep with ⟨htxn, hgrant, hrel, hallC, _, _, hlegal, hresultT, _, hs'⟩
+  rw [hs']
+  simp only [SymSharedSpec.toSpec, TileLink.Atomic.tlAtomic]
+  refine ⟨i, .acquirePerm, ?_⟩
+  constructor
+  · simp [refMap, refMapShared, htxn, hrel, queuedReleaseIdx_eq_none_of_all_chanC_none s hallC]
+  constructor
+  · simp [refMap, refMapShared, htxn, hrel, queuedReleaseIdx_eq_none_of_all_chanC_none s hallC, hgrant]
+  constructor
+  · simp [refMap, refMapShared, htxn, hrel, queuedReleaseIdx_eq_none_of_all_chanC_none s hallC]
+  constructor
+  · -- requester perm ≠ .T
+    exact acquirePerm_requester_not_T s i grow hlegal htxn hresultT
+  · -- Case split on hasDirtyOther
+    by_cases hDirty : hasDirtyOther s i
+    · -- Dirty case: ∃ j dirty, use atomic dirty disjunct
+      left
+      rcases hDirty with ⟨j, hji, hdirtyj⟩
+      have hex : ∃ j : Fin n, j ≠ i ∧ (s.locals j).line.dirty = true := ⟨j, hji, hdirtyj⟩
+      have hchoose_spec := Classical.choose_spec hex
+      have hchoose := Classical.choose hex
+      have hchoose_eq_j : hchoose = j :=
+        dirtyOwner_unique hdirtyEx hlineWF hji hdirtyj hchoose hchoose_spec.1 hchoose_spec.2
+      have hUsedDirty : plannedUsedDirtySource s i = true := by
+        simp [plannedUsedDirtySource, dirtyOwnerOpt, hex]
+      have hTransfer : plannedTransferVal s i = (s.locals j).line.data := by
+        simp [plannedTransferVal, dirtyOwnerOpt, hex]
+        exact congrArg (fun k => (s.locals k).line.data) hchoose_eq_j
+      refine ⟨j, ?_, ?_, ?_⟩
+      · intro h; exact hji h
+      · simpa [refMap, refMapLine, htxn] using hdirtyj
+      · apply SymState.ext
+        · simp [refMap, refMapShared, recvAcquireState, recvAcquireShared, plannedTxn, htxn, hrel,
+            hUsedDirty, hTransfer, hresultT, probeMaskForResult]
+          constructor
+          · rfl
+          constructor
+          · simp [preTxnDir, TileLink.Atomic.syncDir]
+            funext k
+            by_cases hk : k < n
+            · simp [hk, plannedTxn]
+            · simp [hk, plannedTxn, queuedReleaseIdx_eq_none_of_all_chanC_none s hallC]
+          · simp [absPendingGrantMeta, absGrantKind, hresultT, hUsedDirty, hTransfer,
+              plannedTxn, probeMaskForResult]
+            rw [atomic_cachedProbeMask_refMap_eq s i htxn]
+        · simpa [refMap] using refMap_recvAcquireState_locals_eq s i .acquirePerm grow source htxn
+    · -- Non-dirty case
+      right
+      refine ⟨atomic_not_hasDirtyOther_of_not_hasDirtyOther hDirty htxn, ?_⟩
+      apply SymState.ext
+      · calc
+          refMapShared n (recvAcquireState s i .acquirePerm grow source)
+              = { (refMap n s).shared with
+                    pendingGrantMeta := some (absPendingGrantMeta (plannedTxn s i .acquirePerm grow source))
+                  , pendingGrantAck := none
+                  , pendingReleaseAck := none } := by
+                    simpa [refMap] using
+                      refMapShared_recvAcquireState_eq_absPending' s i .acquirePerm grow source
+                        hDirty htxn hrel hallC
+          _ = { (refMap n s).shared with
+                  pendingGrantMeta := some {
+                    requester := i.1
+                    kind := .perm
+                    requesterPerm := .T
+                    usedDirtySource := false
+                    transferVal := s.shared.mem
+                    probesNeeded := TileLink.Atomic.cachedProbeMask (refMap n s) i
+                    probesRemaining := TileLink.Atomic.cachedProbeMask (refMap n s) i }
+                , pendingGrantAck := none
+                , pendingReleaseAck := none } := by
+                  rw [absPendingGrantMeta_planned_acquirePerm_eq' s i grow source hDirty htxn hresultT]
+      · simpa [refMap] using refMap_recvAcquireState_locals_eq s i .acquirePerm grow source htxn
 
 theorem refMap_recvAcquireAtManager_next {n : Nat}
     {s s' : SymState HomeState NodeState n}
@@ -724,13 +908,7 @@ theorem refMap_recvAcquireAtManager_next {n : Nat}
     have hshape := hblk.2.2.2.2.2.2.2.1
     rcases hshape with ⟨hDirtyOther, hresultB⟩ | ⟨hNoDirty, hcached, hresultB⟩ | ⟨hallInvalid, hresultT⟩
     · -- Case 1: hasDirtyOther ∧ .B — dirty-source acquire
-      -- SORRY: The concrete plannedTxn with hasDirtyOther creates usedDirtySource=true,
-      -- transferVal = dirtyOwner.data, probesNeeded = writableProbeMask. The atomic model
-      -- expects singleProbeMask j.1 for the dirty owner j. Under permSwmrInv (at most one T),
-      -- the dirty node is the unique T-perm node, so writableProbeMask = singleProbeMask j.1.
-      -- Proving this equivalence requires connecting dirtyExclusiveInv + permSwmrInv to
-      -- the concrete/atomic probe mask agreement. Left as sorry pending probe mask lemmas.
-      sorry
+      exact refMap_recvAcquireBlock_dirty_next hinv hblk hDirtyOther hresultB
     · -- Case 2: ¬hasDirtyOther ∧ hasCachedOther ∧ .B
       exact refMap_recvAcquireBlock_branch_next hinv hblk hNoDirty ⟨hcached, hresultB⟩
     · -- Case 3: allOthersInvalid ∧ .T

@@ -530,45 +530,26 @@ theorem preLinesNoDirtyInv_preserved (n : Nat)
       simpa [preLinesNoDirtyInv]
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
-      · -- Block acquire: preLines = snapshot of current lines
-        rcases hblk with ⟨grow, source, _, _, _, _, _, hnoFlight, hpermN, _, _, hshape, _, hs'⟩
+      · -- Block acquire: preLines = snapshot of current lines → dirtyExclusiveInv
+        rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
         rcases hs' with ⟨_, hs'⟩
         rw [hs']
-        intro k hk
-        simp [preLinesNoDirtyInv, recvAcquireState, recvAcquireShared, plannedTxn, hk]
-        -- Need: (s.locals ⟨k, hk⟩).line.dirty = false
-        -- Case split on the shape disjunction:
-        rcases hshape with ⟨hdirtyOther, _⟩ | ⟨hNoDirty, _, _⟩ | ⟨hallInvalid, _⟩
-        · -- Dirty source: hasDirtyOther → preLinesNoDirtyInv violated (dirty preLine exists)
-          sorry
-        · -- Non-dirty, cached: ¬hasDirtyOther → no j ≠ i with dirty = true
-          -- For k ≠ i: ¬hasDirtyOther gives dirty k = false (since k ≠ i)
-          -- For k = i: perm = .N → dirty = false (from lineWF: WellFormed → perm=.N → dirty=false)
-          rcases hfull with ⟨⟨hlineWF, _, _, _⟩, _, _⟩
-          by_cases hki : (⟨k, hk⟩ : Fin n) = i
-          · -- k = i (requester): perm = .N → dirty = false
-            rw [show (s.locals ⟨k, hk⟩) = s.locals i from by rw [hki]]
-            exact ((hlineWF i).2.2 hpermN).2
-          · -- k ≠ i: ¬hasDirtyOther means no j ≠ i with dirty = true
-            by_contra hdirty
-            push_neg at hdirty
-            exact hNoDirty ⟨⟨k, hk⟩, hki, hdirty⟩
-        · -- All others invalid: all j ≠ i have perm .N → dirty = false (lineWF)
-          rcases hfull with ⟨⟨hlineWF, _, _, _⟩, _, _⟩
-          by_cases hki : (⟨k, hk⟩ : Fin n) = i
-          · rw [show (s.locals ⟨k, hk⟩) = s.locals i from by rw [hki]]
-            exact ((hlineWF i).2.2 hpermN).2
-          · have hpermNk := hallInvalid ⟨k, hk⟩ hki
-            exact ((hlineWF ⟨k, hk⟩).2.2 hpermNk).2
-      · -- Perm acquire
-        rcases hperm with ⟨grow, source, _, _, _, _, _, hnoFlight, _, _, _, _, hs'⟩
+        simp only [preLinesNoDirtyInv, recvAcquireState, recvAcquireShared, plannedTxn]
+        intro k1 k2 hk1 hk2 hne hdirty
+        simp [hk1] at hdirty
+        have hperm := hdirtyEx ⟨k1, hk1⟩ ⟨k2, hk2⟩ (by intro h; exact hne (Fin.ext_iff.mp h)) hdirty
+        simp [hk2]
+        exact hperm
+      · -- Perm acquire: preLines = snapshot of current lines → dirtyExclusiveInv
+        rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, _, _, hs'⟩
         rcases hs' with ⟨_, hs'⟩
         rw [hs']
-        intro k hk
-        simp [preLinesNoDirtyInv, recvAcquireState, recvAcquireShared, plannedTxn, hk]
-        -- acquirePerm: requester has perm ≠ .T (from grow.legalFrom).
-        -- If no dirty other: all lines clean. If dirty other exists: needs sorry.
-        sorry
+        simp only [preLinesNoDirtyInv, recvAcquireState, recvAcquireShared, plannedTxn]
+        intro k1 k2 hk1 hk2 hne hdirty
+        simp [hk1] at hdirty
+        have hperm := hdirtyEx ⟨k1, hk1⟩ ⟨k2, hk2⟩ (by intro h; exact hne (Fin.ext_iff.mp h)) hdirty
+        simp [hk2]
+        exact hperm
   | .recvProbeAtMaster =>
       rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, _, hs'⟩
       rw [hs']

@@ -42,7 +42,8 @@ def preLinesCleanInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
 def preLinesNoDirtyInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   match s.shared.currentTxn with
   | none => True
-  | some tx => ∀ k : Nat, k < n → (tx.preLines k).dirty = false
+  | some tx => ∀ k1 k2 : Nat, k1 < n → k2 < n → k1 ≠ k2 →
+      (tx.preLines k1).dirty = true → (tx.preLines k2).perm = .N
 
 def snapshotHasCachedOther (n : Nat) (tx : ManagerTxn) : Prop :=
   ∃ j : Fin n, j.1 ≠ tx.requester ∧ (tx.preLines j.1).perm ≠ .N
