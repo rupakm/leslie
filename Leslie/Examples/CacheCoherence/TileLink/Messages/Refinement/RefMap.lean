@@ -182,7 +182,9 @@ theorem grantPendingDir_updateDirAt_eq {n : Nat} (tx : ManagerTxn)
 theorem txnDataInv_currentTxn {n : Nat}
     {s : SymState HomeState NodeState n} {tx : ManagerTxn}
     (htxnData : txnDataInv n s) (hcur : s.shared.currentTxn = some tx) :
-    tx.usedDirtySource = false ∧ tx.transferVal = s.shared.mem := by
+    (tx.usedDirtySource = false → tx.transferVal = s.shared.mem) ∧
+    (tx.usedDirtySource = true → ∃ k, k < n ∧ (tx.preLines k).dirty = true ∧
+      tx.transferVal = (tx.preLines k).data) := by
   simpa [txnDataInv, hcur] using htxnData
 
 theorem txnCoreInv_grantReady_allFalse {n : Nat}

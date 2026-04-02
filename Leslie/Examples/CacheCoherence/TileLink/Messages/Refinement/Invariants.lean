@@ -28,7 +28,10 @@ def dataCoherenceInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
 def txnDataInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   match s.shared.currentTxn with
   | none => True
-  | some tx => tx.usedDirtySource = false ∧ tx.transferVal = s.shared.mem
+  | some tx =>
+      (tx.usedDirtySource = false → tx.transferVal = s.shared.mem) ∧
+      (tx.usedDirtySource = true → ∃ k, k < n ∧ (tx.preLines k).dirty = true ∧
+        tx.transferVal = (tx.preLines k).data)
 
 def probeSnapshotLine (tx : ManagerTxn) (node : NodeState) (i : Fin n) : CacheLine :=
   if tx.probesNeeded i.1 then
@@ -154,6 +157,24 @@ theorem plannedTxn_clean {n : Nat}
     contradiction
   simp [hnone]
 
+/-- The planned transaction satisfies the generalized txnDataInv. -/
+theorem plannedTxn_txnDataInv {n : Nat}
+    (s : SymState HomeState NodeState n) (i : Fin n) (kind : ReqKind)
+    (grow : GrowParam) (source : SourceId) :
+    let tx := plannedTxn s i kind grow source
+    (tx.usedDirtySource = false → tx.transferVal = s.shared.mem) ∧
+    (tx.usedDirtySource = true → ∃ k, k < n ∧ (tx.preLines k).dirty = true ∧
+      tx.transferVal = (tx.preLines k).data) := by
+  unfold plannedTxn plannedUsedDirtySource plannedTransferVal dirtyOwnerOpt
+  by_cases hex : ∃ j : Fin n, j ≠ i ∧ (s.locals j).line.dirty = true
+  · simp only [hex, dite_true]
+    constructor
+    · intro h; simp at h
+    · intro _
+      have hj := Classical.choose_spec hex
+      exact ⟨(Classical.choose hex).1, (Classical.choose hex).2, by simp [dif_pos (Classical.choose hex).2]; exact hj.2, by simp [dif_pos (Classical.choose hex).2]⟩
+  · simp [hex]
+
 /-- When there is no dirty other node, the planned transaction uses no dirty source
     and the transfer value equals memory. Weaker than `plannedTxn_clean` (uses `¬hasDirtyOther`
     instead of `noDirtyInv`). -/
@@ -165,23 +186,19 @@ theorem plannedTxn_clean_of_not_hasDirtyOther {n : Nat}
   have hnone : ¬∃ j : Fin n, j ≠ i ∧ (s.locals j).line.dirty = true := hnd
   simp [hnone]
 
-/-- `allOthersInvalid` implies `¬hasDirtyOther` since dirty lines have perm ≠ .N. -/
+/-- `allOthersInvalid` implies `¬hasDirtyOther` since well-formed lines with perm = .N
+    cannot be dirty (WellFormed: perm = .N → dirty = false). -/
 theorem not_hasDirtyOther_of_allOthersInvalid {n : Nat}
     {s : SymState HomeState NodeState n} {i : Fin n}
-    (hinv : dirtyExclusiveInv n s)
+    (hwf : lineWFInv n s)
     (hallInvalid : allOthersInvalid s i) :
     ¬hasDirtyOther s i := by
   intro ⟨j, hji, hdirty⟩
   have hpermN := hallInvalid j hji
-  -- dirtyExclusiveInv says: if j is dirty, all others (including i) have perm .N
-  -- But actually we just need: dirty → perm ≠ .N. We can derive from dirtyExclusiveInv or
-  -- from the fact that dirty lines must have some valid permission.
-  -- Actually, allOthersInvalid says j.perm = .N. We need dirty → perm ≠ .N.
-  -- This follows from dirtyExclusiveInv: it says dirty at j → all k≠j have perm .N.
-  -- But we need j's own perm. Let's use the fact that dirty lines have perm .T or .B.
-  -- Actually, the invariant we need is that dirty → perm ≠ .N.
-  -- This should follow from a well-formedness invariant. Let's check if fullInv gives us this.
-  sorry
+  have ⟨_, _, hN⟩ := hwf j
+  have ⟨_, hdirtyF⟩ := hN hpermN
+  rw [hdirtyF] at hdirty
+  contradiction
 
 theorem init_txnDataInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → txnDataInv n s := by

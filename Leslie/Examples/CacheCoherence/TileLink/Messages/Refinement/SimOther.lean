@@ -35,9 +35,11 @@ theorem refMap_recvProbeAckAtManager_eq {n : Nat}
     constructor
     · -- mem: refMap uses tx.transferVal or s.shared.mem depending on usedDirtySource.
       -- tx fields unchanged by probeAck (only probesRemaining/phase change).
-      -- If usedDirtySource: mem = tx.transferVal (unchanged) ✓
-      -- If ¬usedDirtySource: mem = s.shared.mem. After probeAck, new mem = match msg.data.
-      --   Without dirty source, probed nodes were clean, so msg.data = none, mem unchanged.
+      -- If usedDirtySource=true: mem = tx.transferVal (unchanged) ✓
+      -- If usedDirtySource=false: mem = s.shared.mem. After probeAck, concrete mem becomes
+      --   match msg.data with some v => v | none => s.shared.mem.
+      --   Proving msg.data = none requires connecting ¬usedDirtySource to the probed node
+      --   being clean (via preLinesNoDirtyInv + txnLineInv). Needs txnDataInv generalization.
       sorry
     constructor
     · rw [preTxnDir_tx_update_eq tx
@@ -335,7 +337,11 @@ theorem refMap_sendReleaseData_next {n : Nat}
     (hfull : fullInv n s)
     (hstep : SendReleaseData s s' i param) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  -- sendReleaseData maps to atomic releaseData
+  -- sendReleaseData maps to atomic releaseData.
+  -- The atomic releaseData changes mem := data, but concrete sendReleaseData does not change
+  -- s.shared.mem (only recvReleaseAtManager does). The refMap would need to account for
+  -- in-flight dirty release data (findDirtyReleaseVal from the plan). This requires extending
+  -- refMapShared.mem for the no-txn case to use findDirtyReleaseVal.
   sorry
 
 theorem refMap_recvReleaseAtManager_eq {n : Nat}
