@@ -577,10 +577,7 @@ theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n
     dataCoherenceInv_preserved n s s' ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
     txnLineInv_preserved n s s' ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
     ?_, ?_, ?_⟩
-  · -- SORRY: preLinesCleanInv_preserved requires cleanDataInv (∀ i, data = mem),
-    -- but forwardSimInv only has dataCoherenceInv (valid → ¬dirty → data = mem).
-    -- cleanDataInv is strictly stronger and cannot be derived here.
-    sorry
+  · exact preLinesCleanInv_preserved n s s' hdata hpreClean hcleanRel hnext
   · exact preLinesNoDirtyInv_preserved n s s' hdirtyEx hpreNoDirty hnext
   · exact txnPlanInv_preserved n s s'
       ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩

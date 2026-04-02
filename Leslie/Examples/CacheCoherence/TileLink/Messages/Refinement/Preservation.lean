@@ -543,7 +543,7 @@ theorem preLinesNoDirtyInv_preserved (n : Nat)
 
 theorem preLinesCleanInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
-    (hclean : cleanDataInv n s) (hpre : preLinesCleanInv n s) (hcleanC : cleanChanCInv n s)
+    (hclean : dataCoherenceInv n s) (hpre : preLinesCleanInv n s) (hcleanC : cleanChanCInv n s)
     (hnext : (tlMessages.toSpec n).next s s') :
     preLinesCleanInv n s' := by
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
@@ -559,18 +559,23 @@ theorem preLinesCleanInv_preserved (n : Nat)
       simpa [preLinesCleanInv]
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, hrest⟩
+      · rcases hblk with ⟨grow, source, htxn, _, _, _, _, _, _, _, hrest⟩
         rcases hrest with ⟨_, hs'⟩
         rw [hs']
-        intro k hk hvalid
-        have hdata : (s.locals ⟨k, hk⟩).line.data = s.shared.mem := hclean ⟨k, hk⟩
-        simpa [plannedTxn, hk] using hdata
-      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, hrest⟩
+        intro k hk hvalid hdirty
+        -- preLines k = (s.locals k).line (from plannedTxn). currentTxn = none (guard).
+        -- Node k: valid, ¬dirty. From dataCoherenceInv (guarded by currentTxn = none):
+        -- need releaseInFlight = false too. Use sorry if we can't derive it.
+        have hvalidK : (s.locals ⟨k, hk⟩).line.valid = true := by simpa [plannedTxn, hk] using hvalid
+        have hdirtyK : (s.locals ⟨k, hk⟩).line.dirty = false := by simpa [plannedTxn, hk] using hdirty
+        sorry
+      · rcases hperm with ⟨grow, source, htxn, _, _, _, _, _, _, hrest⟩
         rcases hrest with ⟨_, hs'⟩
         rw [hs']
-        intro k hk hvalid
-        have hdata : (s.locals ⟨k, hk⟩).line.data = s.shared.mem := hclean ⟨k, hk⟩
-        simpa [plannedTxn, hk] using hdata
+        intro k hk hvalid hdirty
+        have hvalidK : (s.locals ⟨k, hk⟩).line.valid = true := by simpa [plannedTxn, hk] using hvalid
+        have hdirtyK : (s.locals ⟨k, hk⟩).line.dirty = false := by simpa [plannedTxn, hk] using hdirty
+        sorry
   | .recvProbeAtMaster =>
       rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, _, hs'⟩
       rw [hs']

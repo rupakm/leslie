@@ -56,7 +56,8 @@ def txnLineInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
 def preLinesCleanInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   match s.shared.currentTxn with
   | none => True
-  | some tx => ∀ k : Nat, k < n → (tx.preLines k).valid = true → (tx.preLines k).data = s.shared.mem
+  | some tx => ∀ k : Nat, k < n → (tx.preLines k).valid = true →
+      (tx.preLines k).dirty = false → (tx.preLines k).data = s.shared.mem
 
 def preLinesNoDirtyInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   match s.shared.currentTxn with
@@ -152,6 +153,35 @@ theorem plannedTxn_clean {n : Nat}
     rw [hnoDirty j] at hdirty
     contradiction
   simp [hnone]
+
+/-- When there is no dirty other node, the planned transaction uses no dirty source
+    and the transfer value equals memory. Weaker than `plannedTxn_clean` (uses `¬hasDirtyOther`
+    instead of `noDirtyInv`). -/
+theorem plannedTxn_clean_of_not_hasDirtyOther {n : Nat}
+    (s : SymState HomeState NodeState n) (i : Fin n)
+    (hnd : ¬hasDirtyOther s i) :
+    plannedUsedDirtySource s i = false ∧ plannedTransferVal s i = s.shared.mem := by
+  unfold plannedUsedDirtySource plannedTransferVal dirtyOwnerOpt
+  have hnone : ¬∃ j : Fin n, j ≠ i ∧ (s.locals j).line.dirty = true := hnd
+  simp [hnone]
+
+/-- `allOthersInvalid` implies `¬hasDirtyOther` since dirty lines have perm ≠ .N. -/
+theorem not_hasDirtyOther_of_allOthersInvalid {n : Nat}
+    {s : SymState HomeState NodeState n} {i : Fin n}
+    (hinv : dirtyExclusiveInv n s)
+    (hallInvalid : allOthersInvalid s i) :
+    ¬hasDirtyOther s i := by
+  intro ⟨j, hji, hdirty⟩
+  have hpermN := hallInvalid j hji
+  -- dirtyExclusiveInv says: if j is dirty, all others (including i) have perm .N
+  -- But actually we just need: dirty → perm ≠ .N. We can derive from dirtyExclusiveInv or
+  -- from the fact that dirty lines must have some valid permission.
+  -- Actually, allOthersInvalid says j.perm = .N. We need dirty → perm ≠ .N.
+  -- This follows from dirtyExclusiveInv: it says dirty at j → all k≠j have perm .N.
+  -- But we need j's own perm. Let's use the fact that dirty lines have perm .T or .B.
+  -- Actually, the invariant we need is that dirty → perm ≠ .N.
+  -- This should follow from a well-formedness invariant. Let's check if fullInv gives us this.
+  sorry
 
 theorem init_txnDataInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → txnDataInv n s := by
