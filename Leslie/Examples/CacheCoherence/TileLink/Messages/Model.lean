@@ -222,6 +222,7 @@ def Store {n : Nat}
   s.shared.currentTxn = none ∧
   s.shared.pendingGrantAck = none ∧
   s.shared.pendingReleaseAck = none ∧
+  (∀ j : Fin n, (s.locals j).chanC = none) ∧
   (s.locals i).line.perm = .T ∧
   (s.locals i).chanA = none ∧
   (s.locals i).chanB = none ∧

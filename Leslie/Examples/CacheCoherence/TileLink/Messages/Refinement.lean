@@ -470,9 +470,10 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
         refine ⟨i.is_lt, trivial, ?_, ?_⟩
         · -- resultPerm = .B → snapshotHasCachedOther ∧ probesNeeded = snapshotWritableProbeMask
           intro hresB
-          rcases hcases with ⟨_, hresult⟩ | ⟨_, hcached, hresult⟩ | ⟨_, hresult⟩
-          · rw [hresult] at hresB ⊢
-            sorry
+          rcases hcases with ⟨hdirtyOther, hresult⟩ | ⟨_, hcached, hresult⟩ | ⟨_, hresult⟩
+          · -- dirty case: contradicts noDirtyInv
+            rcases hdirtyOther with ⟨j, _, hdirtyj⟩
+            rw [hnoDirty j] at hdirtyj; cases hdirtyj
           · rw [hresult] at hresB ⊢
             exact ⟨(hasCachedOther_iff_snapshotHasCachedOther s i .acquireBlock grow source).mp hcached,
               by simp [probeMaskForResult];
@@ -644,7 +645,57 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
       have hCnone : ∀ j : Fin n, (s.locals j).chanC = none :=
         chanC_none_of_releaseAck_pending hrelUniq htxn hrel
       left; exact refMap_recvReleaseAckAtMaster_next hfull hCnone hstep'
-  | .store v => sorry
+  | .store v =>
+      rcases hstep with ⟨hcur, hgrant, hrel, hallC, hperm, hA, hB, hCi, hD, hE, hSrc, hFlight, hs'⟩
+      rw [hs']
+      left
+      simp only [SymSharedSpec.toSpec, TileLink.Atomic.tlAtomic]
+      refine ⟨i, .store v, ?_⟩
+      have hqueuedNone : queuedReleaseIdx n s = none :=
+        queuedReleaseIdx_eq_none_of_all_chanC_none s hallC
+      let s'store : SymState HomeState NodeState n :=
+        { shared := s.shared, locals := setFn s.locals i (storeLocal (s.locals i) v) }
+      have hqueuedPost : queuedReleaseIdx n s'store = none := by
+        apply queuedReleaseIdx_eq_none_of_all_chanC_none
+        intro j
+        show (s'store.locals j).chanC = none
+        by_cases hji : j = i
+        · subst j; simp [s'store, setFn, storeLocal, hCi]
+        · simp [s'store, setFn, hji]; exact hallC j
+      refine ⟨?_, ?_, ?_, ?_, ?_⟩
+      · -- pendingGrantMeta = none
+        simp [refMap, refMapShared, hcur]
+      · -- pendingGrantAck = none
+        simp [refMap, refMapShared, hcur, hrel, hqueuedNone, hgrant]
+      · -- pendingReleaseAck = none
+        simp [refMap, refMapShared, hcur, hrel, hqueuedNone]
+      · -- perm = .T
+        simpa [refMap, refMapLine, hcur] using hperm
+      · -- postcondition
+        apply SymState.ext
+        · -- shared: refMapShared unchanged (store preserves perm = .T so syncDir same)
+          show refMapShared n s'store = (refMap n s).shared
+          simp only [refMapShared, hcur, refMap, hrel, s'store]
+          rw [TileLink.Atomic.HomeState.mk.injEq]
+          refine ⟨rfl, ?_, rfl, ?_, ?_⟩
+          · -- dir: syncDir unchanged because perm .T → .T at i, others unchanged
+            funext k
+            by_cases hk : k < n
+            · simp only [TileLink.Atomic.syncDir, hk, dite_true]
+              by_cases hki : (⟨k, hk⟩ : Fin n) = i
+              · subst hki; simp [setFn, storeLocal, hperm]
+              · simp [setFn, hki]
+            · simp [TileLink.Atomic.syncDir, hk]
+          · -- pendingGrantAck
+            simp [hgrant, hqueuedNone, hqueuedPost]
+          · -- pendingReleaseAck: queuedReleaseIdx unchanged
+            rw [hqueuedNone]; exact hqueuedPost
+        · -- locals: refMapLine at each index
+          funext j
+          simp only [refMap, refMapLine, hcur, setFn]
+          by_cases hji : j = i
+          · subst j; simp [storeLocal, TileLink.Atomic.dirtyTipLine]
+          · simp [hji]
 
 /-! ### Main Forward-Simulation Theorem -/
 

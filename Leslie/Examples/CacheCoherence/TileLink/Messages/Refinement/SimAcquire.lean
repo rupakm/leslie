@@ -653,8 +653,11 @@ theorem refMap_recvAcquireAtManager_next {n : Nat}
   · have hshape : (hasCachedOther s i ∧ grow.result = .B) ∨
         (allOthersInvalid s i ∧ grow.result = .T) := by
         rcases hblk with ⟨_, _, _, _, _, _, _, hshape, _, _⟩
-        rcases hshape with ⟨_, hresult⟩ | ⟨_, hcached, hresult⟩ | ⟨hallInv, hresult⟩
-        · left; sorry
+        rcases hshape with ⟨hdirtyOther, hresult⟩ | ⟨_, hcached, hresult⟩ | ⟨hallInv, hresult⟩
+        · -- dirty case: contradicts noDirtyInv (from refinementInv)
+          rcases hinv with ⟨_, hnoDirty, _, _, _⟩
+          rcases hdirtyOther with ⟨j, _, hdirtyj⟩
+          rw [hnoDirty j] at hdirtyj; cases hdirtyj
         · exact Or.inl ⟨hcached, hresult⟩
         · exact Or.inr ⟨hallInv, hresult⟩
     rcases hshape with hbranch | htip

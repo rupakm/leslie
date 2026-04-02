@@ -140,8 +140,7 @@ theorem txnDataInv_preserved (n : Nat)
       rcases hstep with ⟨tx, msg, hcur, _, _, _, hC, _, _, hs'⟩
       have hmsgNone : msg.data = none := hcleanC i msg hC
       rw [hs']
-      simp [txnDataInv, hcur, recvProbeAckState, recvProbeAckShared, hmsgNone]
-      exact htxnData
+      simpa [txnDataInv, recvProbeAckState, recvProbeAckShared, hmsgNone, hcur] using htxnData
   | .sendGrantToRequester =>
       rcases hstep with ⟨tx, hcur, _, _, _, _, _, _, _, hs'⟩
       rw [hs']

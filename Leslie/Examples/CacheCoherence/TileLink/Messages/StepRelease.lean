@@ -409,7 +409,7 @@ theorem fullInv_preserved_with_release (n : Nat)
       have hchan' := channelInv_preserved_recvReleaseAckAtMaster n s s' hchan hstep
       exact ⟨hcore', hchan', serializationInv_of_core_channel n s' hcore' hchan'⟩
   | .store v =>
-      rcases hstep with ⟨hcur, hgrant, hrel, hperm, hA, hB, hC, hD, hE, hSrc, hFlight, hs'⟩
+      rcases hstep with ⟨hcur, hgrant, hrel, _, hperm, hA, hB, hC, hD, hE, hSrc, hFlight, hs'⟩
       subst hs'
       rcases hcore with ⟨hlineWF, hdir, hpending, htxn⟩
       rcases hchan with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
