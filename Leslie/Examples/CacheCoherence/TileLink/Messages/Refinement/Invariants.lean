@@ -15,10 +15,15 @@ def cleanDataInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
 def dirtyExclusiveInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   ∀ i j : Fin n, i ≠ j → (s.locals i).line.dirty = true → (s.locals j).line.perm = .N
 
-/-- Clean valid lines agree with home memory. Dirty lines can have any data. -/
+/-- Clean valid lines agree with home memory when no transaction is active
+    and the node doesn't have a release in flight.
+    During transactions, data coherence is tracked by txnDataInv + txnLineInv.
+    During release-in-flight, the data may differ from mem until writeback. -/
 def dataCoherenceInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
-  ∀ i : Fin n, (s.locals i).line.valid = true → (s.locals i).line.dirty = false →
-    (s.locals i).line.data = s.shared.mem
+  s.shared.currentTxn = none →
+    ∀ i : Fin n, (s.locals i).releaseInFlight = false →
+      (s.locals i).line.valid = true → (s.locals i).line.dirty = false →
+        (s.locals i).line.data = s.shared.mem
 
 def txnDataInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   match s.shared.currentTxn with
@@ -95,9 +100,11 @@ def txnPlanInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
           tx.probesNeeded = snapshotCachedProbeMask n tx ∧
           (tx.preLines tx.requester).perm ≠ .T
 
-/-- Under noDirtyInv, all C-channel messages carry no data (both probeAck and release). -/
+/-- When no transaction is active, all C-channel messages carry no data.
+    During transactions, probeAcks can carry dirty data. -/
 def cleanChanCInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
-  ∀ i : Fin n, ∀ msg : CMsg, (s.locals i).chanC = some msg → msg.data = none
+  s.shared.currentTxn = none →
+    ∀ i : Fin n, ∀ msg : CMsg, (s.locals i).chanC = some msg → msg.data = none
 
 /-- At most one release in flight when no transaction is active, and no release
     in chanC when pendingReleaseAck is set. -/

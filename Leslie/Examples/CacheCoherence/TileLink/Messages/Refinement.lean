@@ -68,12 +68,11 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
         simp [recvAcquireState, recvAcquireLocals_line] at hvalidJ hdirtyJ ⊢
         exact hdata j hvalidJ hdirtyJ
   | .recvProbeAtMaster =>
-      -- SORRY: "dirty probe gap" — between probe and probeAck, a previously-dirty node
-      -- has dirty=false but data = old dirty data ≠ mem. The probeAck writeback will
-      -- restore the invariant by updating mem. Fixing this requires weakening
-      -- dataCoherenceInv to exclude the probed node during an active transaction,
-      -- or restructuring the invariant hierarchy.
-      sorry
+      -- recvProbe requires currentTxn = some tx. Post-state also has currentTxn = some.
+      -- dataCoherenceInv has guard currentTxn = none, so it's vacuously true.
+      rcases hstep with ⟨tx, _, hcur, _, _, _, _, _, _, _, _, hs'⟩
+      intro htxn'
+      rw [hs'] at htxn'; simp [recvProbeState] at htxn'; exact absurd hcur htxn'
   | .recvProbeAckAtManager =>
       -- recvProbeAck: node i clears chanC, lines unchanged for j≠i, line i unchanged.
       -- mem may change (if msg.data = some v). Under cleanChanCInv, msg.data = none → mem unchanged.
@@ -95,13 +94,11 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
       simp [sendGrantState_line, sendGrantShared] at hvalidJ hdirtyJ ⊢
       exact hdata j hvalidJ hdirtyJ
   | .recvGrantAtMaster =>
-      -- SORRY: grantLine sets dirty=false. For j=i, need data = mem.
-      -- When grantHasData=true, data = tx.transferVal. Under txnDataInv, transferVal = mem
-      -- only when usedDirtySource=false. When usedDirtySource=true, transferVal = dirty
-      -- owner data and mem may not have been updated yet by probeAck writeback.
-      -- When grantHasData=false, grantPermLine preserves old data which may not equal mem.
-      -- Needs txnDataInv generalization for dirty sources.
-      sorry
+      -- recvGrant requires currentTxn = some tx. Post-state has currentTxn = some.
+      -- dataCoherenceInv has guard currentTxn = none, so it's vacuously true.
+      rcases hstep with ⟨tx, _, hcur, _, _, _, _, _, _, _, _, hs'⟩
+      intro htxn'
+      rw [hs'] at htxn'; simp [recvGrantState, recvGrantShared] at htxn'; exact absurd hcur htxn'
   | .recvGrantAckAtManager =>
       -- lines/mem unchanged (only chanE cleared, currentTxn/pendingGrantAck cleared)
       rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩
