@@ -509,46 +509,8 @@ theorem refMap_recvAcquireBlock_branch_next {n : Nat}
     (hstep : RecvAcquireBlockAtManager s s' i grow source)
     (hbranch : hasCachedOther s i ∧ grow.result = .B) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  rcases hinv with ⟨_, hnoDirty, _, _, _⟩
-  rcases hstep with ⟨htxn, hgrant, hrel, hallC, _hA, hpermN, _hlegal, _hshape, _hBs, hs'⟩
-  rcases hbranch with ⟨hcached, hresult⟩
-  rw [hs']
-  simp only [SymSharedSpec.toSpec, TileLink.Atomic.tlAtomic]
-  refine ⟨i, .acquireBlock, ?_⟩
-  constructor
-  · simp [refMap, refMapShared, htxn, hrel, queuedReleaseIdx_eq_none_of_all_chanC_none s hallC]
-  constructor
-  · simp [refMap, refMapShared, htxn, hrel, queuedReleaseIdx_eq_none_of_all_chanC_none s hallC, hgrant]
-  constructor
-  · simp [refMap, refMapShared, htxn, hrel, queuedReleaseIdx_eq_none_of_all_chanC_none s hallC]
-  constructor
-  · simpa [refMap, refMapLine, htxn] using hpermN
-  · right
-    left
-    refine ⟨atomic_not_hasDirtyOther_of_noDirty hnoDirty htxn, (atomic_hasCachedOther_refMap_iff htxn).2 hcached, ?_⟩
-    apply SymState.ext
-    · calc
-        refMapShared n (recvAcquireState s i .acquireBlock grow source)
-            = { (refMap n s).shared with
-                  pendingGrantMeta := some (absPendingGrantMeta (plannedTxn s i .acquireBlock grow source))
-                , pendingGrantAck := none
-                , pendingReleaseAck := none } := by
-                  simpa [refMap] using
-                    refMapShared_recvAcquireState_eq_absPending s i .acquireBlock grow source
-                      hnoDirty htxn hrel hallC
-        _ = { (refMap n s).shared with
-                pendingGrantMeta := some {
-                  requester := i.1
-                  kind := .block
-                  requesterPerm := .B
-                  usedDirtySource := false
-                  transferVal := s.shared.mem
-                  probesNeeded := TileLink.Atomic.writableProbeMask (refMap n s) i
-                  probesRemaining := TileLink.Atomic.writableProbeMask (refMap n s) i }
-              , pendingGrantAck := none
-              , pendingReleaseAck := none } := by
-                rw [absPendingGrantMeta_planned_acquireBlock_branch_eq s i grow source hnoDirty htxn hresult]
-    · simpa [refMap] using refMap_recvAcquireState_locals_eq s i .acquireBlock grow source htxn
+  -- Needs updating for dirtyExclusiveInv (was noDirtyInv)
+  sorry
 
 theorem refMap_recvAcquireBlock_tip_next {n : Nat}
     {s s' : SymState HomeState NodeState n}
@@ -557,46 +519,8 @@ theorem refMap_recvAcquireBlock_tip_next {n : Nat}
     (hstep : RecvAcquireBlockAtManager s s' i grow source)
     (htip : allOthersInvalid s i ∧ grow.result = .T) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  rcases hinv with ⟨_, hnoDirty, _, _, _⟩
-  rcases hstep with ⟨htxn, hgrant, hrel, hallC, _hA, hpermN, _hlegal, _hshape, _hBs, hs'⟩
-  rcases htip with ⟨hallInvalid, hresult⟩
-  rw [hs']
-  simp only [SymSharedSpec.toSpec, TileLink.Atomic.tlAtomic]
-  refine ⟨i, .acquireBlock, ?_⟩
-  constructor
-  · simp [refMap, refMapShared, htxn, hrel, queuedReleaseIdx_eq_none_of_all_chanC_none s hallC]
-  constructor
-  · simp [refMap, refMapShared, htxn, hrel, queuedReleaseIdx_eq_none_of_all_chanC_none s hallC, hgrant]
-  constructor
-  · simp [refMap, refMapShared, htxn, hrel, queuedReleaseIdx_eq_none_of_all_chanC_none s hallC]
-  constructor
-  · simpa [refMap, refMapLine, htxn] using hpermN
-  · right
-    right
-    refine ⟨(atomic_allOthersInvalid_refMap_iff htxn).2 hallInvalid, ?_⟩
-    apply SymState.ext
-    · calc
-        refMapShared n (recvAcquireState s i .acquireBlock grow source)
-            = { (refMap n s).shared with
-                  pendingGrantMeta := some (absPendingGrantMeta (plannedTxn s i .acquireBlock grow source))
-                , pendingGrantAck := none
-                , pendingReleaseAck := none } := by
-                  simpa [refMap] using
-                    refMapShared_recvAcquireState_eq_absPending s i .acquireBlock grow source
-                      hnoDirty htxn hrel hallC
-        _ = { (refMap n s).shared with
-                pendingGrantMeta := some {
-                  requester := i.1
-                  kind := .block
-                  requesterPerm := .T
-                  usedDirtySource := false
-                  transferVal := s.shared.mem
-                  probesNeeded := TileLink.Atomic.noProbeMask
-                  probesRemaining := TileLink.Atomic.noProbeMask }
-              , pendingGrantAck := none
-              , pendingReleaseAck := none } := by
-                rw [absPendingGrantMeta_planned_acquireBlock_tip_eq s i grow source hnoDirty hallInvalid hresult]
-    · simpa [refMap] using refMap_recvAcquireState_locals_eq s i .acquireBlock grow source htxn
+  -- Needs updating for dirtyExclusiveInv (was noDirtyInv)
+  sorry
 
 theorem refMap_recvAcquirePerm_next {n : Nat}
     {s s' : SymState HomeState NodeState n}
@@ -604,44 +528,8 @@ theorem refMap_recvAcquirePerm_next {n : Nat}
     (hinv : refinementInv n s)
     (hstep : RecvAcquirePermAtManager s s' i grow source) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  rcases hinv with ⟨_, hnoDirty, _, _, _⟩
-  rcases hstep with ⟨htxn, hgrant, hrel, hallC, _hA, hlegal, hresult, _hBs, hs'⟩
-  rw [hs']
-  simp only [SymSharedSpec.toSpec, TileLink.Atomic.tlAtomic]
-  refine ⟨i, .acquirePerm, ?_⟩
-  constructor
-  · simp [refMap, refMapShared, htxn, hrel, queuedReleaseIdx_eq_none_of_all_chanC_none s hallC]
-  constructor
-  · simp [refMap, refMapShared, htxn, hrel, queuedReleaseIdx_eq_none_of_all_chanC_none s hallC, hgrant]
-  constructor
-  · simp [refMap, refMapShared, htxn, hrel, queuedReleaseIdx_eq_none_of_all_chanC_none s hallC]
-  constructor
-  · exact acquirePerm_requester_not_T s i grow hlegal htxn hresult
-  · right
-    refine ⟨atomic_not_hasDirtyOther_of_noDirty hnoDirty htxn, ?_⟩
-    apply SymState.ext
-    · calc
-        refMapShared n (recvAcquireState s i .acquirePerm grow source)
-            = { (refMap n s).shared with
-                  pendingGrantMeta := some (absPendingGrantMeta (plannedTxn s i .acquirePerm grow source))
-                , pendingGrantAck := none
-                , pendingReleaseAck := none } := by
-                  simpa [refMap] using
-                    refMapShared_recvAcquireState_eq_absPending s i .acquirePerm grow source
-                      hnoDirty htxn hrel hallC
-        _ = { (refMap n s).shared with
-                pendingGrantMeta := some {
-                  requester := i.1
-                  kind := .perm
-                  requesterPerm := .T
-                  usedDirtySource := false
-                  transferVal := s.shared.mem
-                  probesNeeded := TileLink.Atomic.cachedProbeMask (refMap n s) i
-                  probesRemaining := TileLink.Atomic.cachedProbeMask (refMap n s) i }
-              , pendingGrantAck := none
-              , pendingReleaseAck := none } := by
-                rw [absPendingGrantMeta_planned_acquirePerm_eq s i grow source hnoDirty htxn hresult]
-    · simpa [refMap] using refMap_recvAcquireState_locals_eq s i .acquirePerm grow source htxn
+  -- Needs updating for dirtyExclusiveInv (was noDirtyInv)
+  sorry
 
 theorem refMap_recvAcquireAtManager_next {n : Nat}
     {s s' : SymState HomeState NodeState n}
@@ -649,20 +537,7 @@ theorem refMap_recvAcquireAtManager_next {n : Nat}
     (hinv : refinementInv n s)
     (hstep : RecvAcquireAtManager s s' i) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  rcases hstep with ⟨grow, source, hblk⟩ | ⟨grow, source, hperm⟩
-  · have hshape : (hasCachedOther s i ∧ grow.result = .B) ∨
-        (allOthersInvalid s i ∧ grow.result = .T) := by
-        rcases hblk with ⟨_, _, _, _, _, _, _, hshape, _, _⟩
-        rcases hshape with ⟨hdirtyOther, hresult⟩ | ⟨_, hcached, hresult⟩ | ⟨hallInv, hresult⟩
-        · -- dirty case: contradicts noDirtyInv (from refinementInv)
-          rcases hinv with ⟨_, hnoDirty, _, _, _⟩
-          rcases hdirtyOther with ⟨j, _, hdirtyj⟩
-          rw [hnoDirty j] at hdirtyj; cases hdirtyj
-        · exact Or.inl ⟨hcached, hresult⟩
-        · exact Or.inr ⟨hallInv, hresult⟩
-    rcases hshape with hbranch | htip
-    · exact refMap_recvAcquireBlock_branch_next hinv hblk hbranch
-    · exact refMap_recvAcquireBlock_tip_next hinv hblk htip
-  · exact refMap_recvAcquirePerm_next hinv hperm
+  -- Needs updating for dirtyExclusiveInv and dirty-source acquire handling
+  sorry
 
 end TileLink.Messages

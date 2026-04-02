@@ -44,7 +44,144 @@ theorem init_forwardSimInv (n : Nat) :
 theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     dataCoherenceInv n s' := by
-  sorry
+  rcases hinv with ⟨⟨hfull, hdirtyEx, htxnData, hcleanC, _⟩, hdata, _, _, _, _⟩
+  simp only [SymSharedSpec.toSpec, tlMessages] at hnext
+  obtain ⟨i, a, hstep⟩ := hnext
+  intro j hvalidJ hdirtyJ
+  match a with
+  | .sendAcquireBlock grow source =>
+      -- lines/mem unchanged
+      have hline := sendAcquireBlock_line (j := j) hstep
+      rw [hline] at hvalidJ hdirtyJ
+      have hmem : s'.shared.mem = s.shared.mem := by
+        rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩; rw [hs']
+      rw [hline, hmem]; exact hdata j hvalidJ hdirtyJ
+  | .sendAcquirePerm grow source =>
+      have hline := sendAcquirePerm_line (j := j) hstep
+      rw [hline] at hvalidJ hdirtyJ
+      have hmem : s'.shared.mem = s.shared.mem := by
+        rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩; rw [hs']
+      rw [hline, hmem]; exact hdata j hvalidJ hdirtyJ
+  | .recvAcquireAtManager =>
+      -- lines/mem unchanged
+      rcases hstep with hblk | hperm
+      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, hs'⟩
+        rcases hs' with ⟨_, hs'⟩
+        rw [hs'] at hvalidJ hdirtyJ ⊢
+        simp [recvAcquireState, recvAcquireLocals_line] at hvalidJ hdirtyJ ⊢
+        exact hdata j hvalidJ hdirtyJ
+      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, hs'⟩
+        rcases hs' with ⟨_, hs'⟩
+        rw [hs'] at hvalidJ hdirtyJ ⊢
+        simp [recvAcquireState, recvAcquireLocals_line] at hvalidJ hdirtyJ ⊢
+        exact hdata j hvalidJ hdirtyJ
+  | .recvProbeAtMaster =>
+      -- probedLine: if node was dirty, after probe dirty=false but data = old dirty data ≠ mem
+      -- This case violates dataCoherenceInv — needs txnLineInv/txnDataInv reasoning
+      sorry
+  | .recvProbeAckAtManager =>
+      -- recvProbeAck: node i clears chanC, lines unchanged for j≠i, line i unchanged.
+      -- mem may change (if msg.data = some v). Under cleanChanCInv, msg.data = none → mem unchanged.
+      rcases hstep with ⟨tx, msg, hcur, _, _, _, hC, _, _, hs'⟩
+      have hmsgNone : msg.data = none := hcleanC i msg hC
+      rw [hs'] at hvalidJ hdirtyJ ⊢
+      by_cases hji : j = i
+      · subst hji
+        simp [recvProbeAckState, recvProbeAckLocals, recvProbeAckLocal, setFn] at hvalidJ hdirtyJ ⊢
+        simp [recvProbeAckShared, hmsgNone]
+        exact hdata j hvalidJ hdirtyJ
+      · simp [recvProbeAckState, recvProbeAckLocals, setFn, hji] at hvalidJ hdirtyJ ⊢
+        simp [recvProbeAckShared, hmsgNone]
+        exact hdata j hvalidJ hdirtyJ
+  | .sendGrantToRequester =>
+      -- lines/mem unchanged
+      rcases hstep with ⟨tx, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at hvalidJ hdirtyJ ⊢
+      simp [sendGrantState_line, sendGrantShared] at hvalidJ hdirtyJ ⊢
+      exact hdata j hvalidJ hdirtyJ
+  | .recvGrantAtMaster =>
+      -- grantLine: for j = i, grantLine always has dirty=false. Need data = mem.
+      -- grantLine data = tx.transferVal (if grantHasData) or line unchanged (if not).
+      -- txnDataInv: transferVal = mem when usedDirtySource = false.
+      -- Complex — use sorry for now.
+      sorry
+  | .recvGrantAckAtManager =>
+      -- lines/mem unchanged (only chanE cleared, currentTxn/pendingGrantAck cleared)
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at hvalidJ hdirtyJ ⊢
+      simp [recvGrantAckState_line, recvGrantAckShared] at hvalidJ hdirtyJ ⊢
+      exact hdata j hvalidJ hdirtyJ
+  | .sendRelease param =>
+      -- releasedLine for j=i: dirty=false always. Need data = mem.
+      -- If was dirty before, data = old dirty data ≠ mem. But sendRelease guard has dirty=false.
+      -- So was NOT dirty. data was = mem (from dataCoherence pre). releasedLine preserves data.
+      -- Mem unchanged. So preserved.
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, hnotDirty, htail⟩
+      rcases htail with ⟨_, hs'⟩
+      rw [hs'] at hvalidJ hdirtyJ ⊢
+      by_cases hji : j = i
+      · subst hji
+        simp only [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, ite_true] at hvalidJ hdirtyJ ⊢
+        -- releasedLine data = old data. Pre: dirty=false, so data = mem (from dataCoherence).
+        -- Hmm, but releasedLine changes valid: for .N, valid=false. For .B, valid=true. For .T, valid=true.
+        -- If post valid = true and post dirty = false, need post data = mem.
+        -- Post data = releasedLine data. releasedLine preserves data for .B and .T.
+        -- Pre dirty = false (from SendRelease guard hnotDirty).
+        -- If pre valid = true → data = mem (from dataCoherence).
+        -- releasedLine preserves data → post data = mem.
+        -- If pre valid = false → what's releasedLine?
+        -- invalidatedLine: valid=false → post valid=false → hvalidJ contradicts.
+        -- branchAfterProbe: valid=true, data=old data.
+        -- tipAfterProbe: valid=true, data=old data.
+        -- For branchAfterProbe/tipAfterProbe, need pre data = mem.
+        -- Pre: dirty=false. If pre valid=true, data=mem. If pre valid=false...
+        -- Can we have valid=false and then release with result .B?
+        -- The guard has: valid = true ∨ param.result = .N
+        -- If result = .B or .T, must have valid=true → data=mem → preserved.
+        -- If result = .N, releasedLine = invalidatedLine → valid=false → hvalidJ contradicts.
+        -- Needs: pre valid=true (from sendRelease guard valid ∨ result=.N) and pre dirty=false
+        -- Then dataCoherence gives data = mem, and releasedLine preserves data.
+        sorry
+      · simp [sendReleaseState, sendReleaseLocals, setFn, hji] at hvalidJ hdirtyJ ⊢
+        exact hdata j hvalidJ hdirtyJ
+  | .sendReleaseData param =>
+      -- SendReleaseData: guard has dirty=true. Released line has dirty=false.
+      -- Similar to sendRelease but was dirty before. Complex.
+      sorry
+  | .recvReleaseAtManager =>
+      -- Lines unchanged for all nodes (only chanC/chanD changed).
+      -- Mem may change (releaseWriteback). Under cleanChanCInv, msg.data = none → mem unchanged.
+      rcases hstep with ⟨msg, param, _, _, _, _, hC, _, _, _, _, _, hs'⟩
+      have hmsgNone := hcleanC i msg hC
+      rw [hs'] at hvalidJ hdirtyJ ⊢
+      by_cases hji : j = i
+      · subst hji
+        simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn] at hvalidJ hdirtyJ ⊢
+        simp [recvReleaseShared, releaseWriteback, hmsgNone]
+        exact hdata j hvalidJ hdirtyJ
+      · simp [recvReleaseState, recvReleaseLocals, setFn, hji] at hvalidJ hdirtyJ ⊢
+        simp [recvReleaseShared, releaseWriteback, hmsgNone]
+        exact hdata j hvalidJ hdirtyJ
+  | .recvReleaseAckAtMaster =>
+      -- lines/mem unchanged
+      rcases hstep with ⟨msg, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at hvalidJ hdirtyJ ⊢
+      by_cases hji : j = i
+      · subst hji
+        simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn,
+              recvReleaseAckShared] at hvalidJ hdirtyJ ⊢
+        exact hdata j hvalidJ hdirtyJ
+      · simp [recvReleaseAckState, recvReleaseAckLocals, setFn, hji,
+              recvReleaseAckShared] at hvalidJ hdirtyJ ⊢
+        exact hdata j hvalidJ hdirtyJ
+  | .store v =>
+      -- Store: node i gets dirty=true, others unchanged. Mem unchanged.
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at hvalidJ hdirtyJ ⊢
+      by_cases hji : j = i
+      · subst hji; simp [setFn, storeLocal] at hdirtyJ
+      · simp [setFn, hji] at hvalidJ hdirtyJ ⊢
+        exact hdata j hvalidJ hdirtyJ
 
 theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
@@ -247,8 +384,10 @@ theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
       rw [hs']
       simp [txnLineInv, hcur, sendReleaseState]
   | .sendReleaseData param =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, hdirty, _⟩
-      exfalso; rw [hnoDirty i] at hdirty; contradiction
+      -- currentTxn = none → txnLineInv trivially True
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp [txnLineInv, hcur, sendReleaseState]
   | .recvReleaseAtManager =>
       rcases hstep with ⟨msg, param, hcur, _, _, _, _, _, _, _, _, _, hs'⟩
       rw [hs']
@@ -258,7 +397,7 @@ theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
       rw [hs']
       simp [txnLineInv, hcur, recvReleaseAckState, recvReleaseAckShared]
   | .store v =>
-      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
       rw [hs']
       simp [txnLineInv, hcur]
 
@@ -334,9 +473,8 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
         · -- resultPerm = .B → snapshotHasCachedOther ∧ probesNeeded = snapshotWritableProbeMask
           intro hresB
           rcases hcases with ⟨hdirtyOther, hresult⟩ | ⟨_, hcached, hresult⟩ | ⟨_, hresult⟩
-          · -- dirty case: contradicts noDirtyInv
-            rcases hdirtyOther with ⟨j, _, hdirtyj⟩
-            rw [hnoDirty j] at hdirtyj; cases hdirtyj
+          · -- dirty case: needs dirty-source-aware txnPlanInv reasoning
+            sorry
           · rw [hresult] at hresB ⊢
             exact ⟨(hasCachedOther_iff_snapshotHasCachedOther s i .acquireBlock grow source).mp hcached,
               by simp [probeMaskForResult];
@@ -400,10 +538,10 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
       rw [hs']
       simp [txnPlanInv, hcur, sendReleaseState]
   | .sendReleaseData param =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, hdirty, _⟩
-      exfalso
-      rw [hnoDirty i] at hdirty
-      contradiction
+      -- currentTxn = none → txnPlanInv trivially True
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp [txnPlanInv, hcur, sendReleaseState]
   | .recvReleaseAtManager =>
       rcases hstep with ⟨msg, param, hcur, _, _, _, _, _, _, _, _, _, hs'⟩
       rw [hs']
@@ -413,21 +551,22 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
       rw [hs']
       simp [txnPlanInv, hcur, recvReleaseAckState, recvReleaseAckShared]
   | .store v =>
-      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
       rw [hs']
       simp [txnPlanInv, hcur]
 
 theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     forwardSimInv n s' := by
-  rcases hinv with ⟨hrefInv, hclean, htxnLine, hpreClean, hpreNoDirty, hplan⟩
-  rcases hrefInv with ⟨hfull, hnoDirty, htxnData, hcleanRel, hrelUniq⟩
-  exact ⟨refinementInv_preserved n s s' ⟨hfull, hnoDirty, htxnData, hcleanRel, hrelUniq⟩ hnext,
-    dataCoherenceInv_preserved n s s' ⟨⟨hfull, hnoDirty, htxnData, hcleanRel, hrelUniq⟩, hclean, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
-    txnLineInv_preserved n s s' ⟨⟨hfull, hnoDirty, htxnData, hcleanRel, hrelUniq⟩, hclean, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
-    preLinesCleanInv_preserved n s s' hclean hpreClean hcleanRel hnext,
-    preLinesNoDirtyInv_preserved n s s' hnoDirty hpreNoDirty hnext,
-    txnPlanInv_preserved n s s' ⟨⟨hfull, hnoDirty, htxnData, hcleanRel, hrelUniq⟩, hclean, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext⟩
+  rcases hinv with ⟨hrefInv, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩
+  rcases hrefInv with ⟨hfull, hdirtyEx, htxnData, hcleanRel, hrelUniq⟩
+  refine ⟨refinementInv_preserved n s s' ⟨hfull, hdirtyEx, htxnData, hcleanRel, hrelUniq⟩ hnext,
+    dataCoherenceInv_preserved n s s' ⟨⟨hfull, hdirtyEx, htxnData, hcleanRel, hrelUniq⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
+    txnLineInv_preserved n s s' ⟨⟨hfull, hdirtyEx, htxnData, hcleanRel, hrelUniq⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
+    ?_, ?_, ?_⟩
+  -- preLinesCleanInv_preserved needs cleanDataInv, but forwardSimInv only has dataCoherenceInv
+  -- preLinesNoDirtyInv_preserved and txnPlanInv_preserved also affected
+  all_goals sorry
 
 /-! ### Forward-Simulation Dispatch
 
@@ -480,7 +619,8 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
               rcases htxnCore with ⟨_, _, hresultEq, _⟩
               rw [hperm] at hresultEq; revert hresultEq
               cases tx.grow <;> simp [GrowParam.result]
-          | B => exact refMap_sendGrant_block_branch_next hfull hclean htxnLine hpreNoDirty htxnData hplan hstep' hcur htx hperm
+          | B => -- refMap_sendGrant_block_branch_next needs cleanDataInv, not dataCoherenceInv
+                 sorry
           | T => exact refMap_sendGrant_block_tip_next hfull htxnLine htxnData hplan hstep' hcur htx hperm
       | acquirePerm =>
           exact refMap_sendGrant_acquirePerm_next hfull hpreNoDirty htxnLine htxnData hplan hstep' hcur htx
@@ -489,9 +629,11 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
   | .recvGrantAckAtManager =>
       left; exact refMap_recvGrantAckAtManager_next hfull htxnLine hstep
   | .sendRelease param =>
-      left; exact refMap_sendRelease_next hnoDirty hfull hstep
+      -- refMap_sendRelease_next needs noDirtyInv; with dirtyExclusiveInv, needs updating
+      sorry
   | .sendReleaseData param =>
-      exact (refMap_sendReleaseData_absurd hnoDirty hstep).elim
+      -- sendReleaseData is now possible under dirtyExclusiveInv; needs new simulation proof
+      sorry
   | .recvReleaseAtManager =>
       rcases hstep with ⟨msg, param, htxn, hgrant, hrel, hflight, hC, hsource, hwf, hparam, hperm, hD, hs'⟩
       have hstep' : RecvReleaseAtManager s s' i := ⟨msg, param, htxn, hgrant, hrel, hflight, hC, hsource, hwf, hparam, hperm, hD, hs'⟩
