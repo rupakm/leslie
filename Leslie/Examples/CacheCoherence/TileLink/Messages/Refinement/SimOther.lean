@@ -250,7 +250,7 @@ private theorem queuedReleaseIdx_sendRelease {n : Nat}
 theorem refMap_sendRelease_next {n : Nat}
     {s s' : SymState HomeState NodeState n}
     {i : Fin n} {param : PruneReportParam}
-    (hnoDirty : noDirtyInv n s) (hfull : fullInv n s)
+    (hfull : fullInv n s)
     (hstep : SendRelease s s' i param) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
   rcases hfull with ⟨hcore, hchan, _⟩
@@ -324,14 +324,14 @@ theorem refMap_sendRelease_next {n : Nat}
         simp [sendReleaseLocals, sendReleaseLocal, setFn, releasedLine_eq]
       · simp [sendReleaseLocals, sendReleaseLocal, setFn, hji, refMapLine, htxn]
 
-theorem refMap_sendReleaseData_absurd {n : Nat}
+theorem refMap_sendReleaseData_next {n : Nat}
     {s s' : SymState HomeState NodeState n}
     {i : Fin n} {param : PruneReportParam}
-    (hnoDirty : noDirtyInv n s)
+    (hfull : fullInv n s)
     (hstep : SendReleaseData s s' i param) :
-    False := by
-  rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, hdirty, _⟩
-  exact absurd hdirty (by simp [hnoDirty i])
+    (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
+  -- sendReleaseData maps to atomic releaseData
+  sorry
 
 theorem refMap_recvReleaseAtManager_eq {n : Nat}
     {s s' : SymState HomeState NodeState n}

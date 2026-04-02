@@ -660,15 +660,9 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
   | .recvGrantAckAtManager =>
       left; exact refMap_recvGrantAckAtManager_next hfull htxnLine hstep
   | .sendRelease param =>
-      -- SORRY: refMap_sendRelease_next was written for noDirtyInv (no dirty lines at all).
-      -- Under dirtyExclusiveInv, dirty lines can exist. The simulation proof needs to be
-      -- updated to use dirtyExclusiveInv instead of noDirtyInv.
-      sorry
+      left; exact refMap_sendRelease_next hfull hstep
   | .sendReleaseData param =>
-      -- SORRY: sendReleaseData is now reachable under dirtyExclusiveInv (was unreachable
-      -- under noDirtyInv since guard requires dirty=true). Needs a new simulation proof
-      -- showing that releasing dirty data maps correctly to the atomic model.
-      sorry
+      left; exact refMap_sendReleaseData_next hfull hstep
   | .recvReleaseAtManager =>
       rcases hstep with ⟨msg, param, htxn, hgrant, hrel, hflight, hC, hsource, hwf, hparam, hperm, hD, hs'⟩
       have hstep' : RecvReleaseAtManager s s' i := ⟨msg, param, htxn, hgrant, hrel, hflight, hC, hsource, hwf, hparam, hperm, hD, hs'⟩

@@ -185,7 +185,7 @@ theorem init_txnPlanInv (n : Nat) :
 
 theorem init_cleanChanCInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → cleanChanCInv n s := by
-  intro s hinit _ i msg hC
+  intro s hinit _ i _ msg hC
   rcases hinit with ⟨_, hlocals⟩
   rcases hlocals i with ⟨_, _, _, hCnone, _, _, _, _, _⟩
   rw [hCnone] at hC; cases hC
