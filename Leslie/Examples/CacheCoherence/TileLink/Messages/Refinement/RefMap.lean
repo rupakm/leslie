@@ -67,7 +67,12 @@ noncomputable def refMapShared (n : Nat) (s : SymState HomeState NodeState n) :
         match s.shared.currentTxn with
         | some _ => none
         | none => queuedReleaseIdx n s
-  { mem := s.shared.mem
+  let mem :=
+    match s.shared.currentTxn with
+    | some tx =>
+        if tx.usedDirtySource then tx.transferVal else s.shared.mem
+    | none => s.shared.mem
+  { mem := mem
   , dir := dir
   , pendingGrantMeta := s.shared.currentTxn.map absPendingGrantMeta
   , pendingGrantAck := s.shared.pendingGrantAck

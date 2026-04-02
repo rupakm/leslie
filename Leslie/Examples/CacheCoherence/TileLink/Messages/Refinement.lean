@@ -632,7 +632,7 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
   | .recvProbeAtMaster =>
       right; exact (refMap_recvProbeAtMaster_eq hstep).symm
   | .recvProbeAckAtManager =>
-      right; exact (refMap_recvProbeAckAtManager_eq hcleanRel hstep).symm
+      right; exact (refMap_recvProbeAckAtManager_eq hstep).symm
   | .sendGrantToRequester =>
       left
       rcases hstep with ⟨tx, hcur, hreq, hphase, hgrant, hrel, hD, hE, hSink, hs'⟩

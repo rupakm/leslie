@@ -626,7 +626,7 @@ theorem cleanChanCInv_preserved (n : Nat)
     cleanChanCInv n s' := by
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
-  intro htxn' j msg hCj
+  intro htxn' j hflightJ msg hCj
   match a with
   | .sendAcquireBlock grow source =>
       rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩

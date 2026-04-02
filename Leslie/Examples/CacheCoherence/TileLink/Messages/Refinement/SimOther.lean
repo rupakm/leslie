@@ -21,11 +21,9 @@ theorem refMap_recvProbeAtMaster_eq {n : Nat}
 theorem refMap_recvProbeAckAtManager_eq {n : Nat}
     {s s' : SymState HomeState NodeState n}
     {i : Fin n}
-    (hcleanC : cleanChanCInv n s)
     (hstep : RecvProbeAckAtManager s s' i) :
     refMap n s' = refMap n s := by
   rcases hstep with ⟨tx, msg, hcur, hphase, _, _, hC, _, _, hs'⟩
-  have hmsgNone : msg.data = none := hcleanC i msg hC
   rw [hs']
   have hphase' : probeAckPhase (n := n) (clearProbeIdx tx.probesRemaining i.1) ≠ .grantPendingAck := by
     intro hbad
@@ -33,7 +31,14 @@ theorem refMap_recvProbeAckAtManager_eq {n : Nat}
     split at hbad <;> cases hbad
   apply SymState.ext
   · change refMapShared n (recvProbeAckState s i tx msg) = refMapShared n s
-    simp [refMapShared, recvProbeAckState, recvProbeAckShared, hcur, hphase, hphase', hmsgNone]
+    simp [refMapShared, recvProbeAckState, recvProbeAckShared, hcur, hphase, hphase']
+    constructor
+    · -- mem: refMap uses tx.transferVal or s.shared.mem depending on usedDirtySource.
+      -- tx fields unchanged by probeAck (only probesRemaining/phase change).
+      -- If usedDirtySource: mem = tx.transferVal (unchanged) ✓
+      -- If ¬usedDirtySource: mem = s.shared.mem. After probeAck, new mem = match msg.data.
+      --   Without dirty source, probed nodes were clean, so msg.data = none, mem unchanged.
+      sorry
     constructor
     · rw [preTxnDir_tx_update_eq tx
         (updateDirAt s.shared.dir i (s.locals i).line.perm)
