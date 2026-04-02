@@ -4,14 +4,6 @@ namespace TileLink.Messages
 
 open TLA TileLink SymShared Classical
 
-theorem refinement_inv_invariant (n : Nat) :
-    pred_implies (tlMessages.toSpec n).safety [tlafml| □ ⌜ refinementInv n ⌝] := by
-  apply init_invariant
-  · intro s hinit
-    exact init_refinementInv n s hinit
-  · intro s s' hnext hinv
-    exact refinementInv_preserved n s s' hinv hnext
-
 /-! ### Forward-Simulation Invariant
 
     The forward-simulation theorem requires a stronger invariant than `refinementInv`
@@ -560,13 +552,22 @@ theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n
     forwardSimInv n s' := by
   rcases hinv with ⟨hrefInv, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩
   rcases hrefInv with ⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩
-  refine ⟨refinementInv_preserved n s s' ⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩ hnext,
+  refine ⟨refinementInv_preserved n s s' ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
     dataCoherenceInv_preserved n s s' ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
     txnLineInv_preserved n s s' ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
     ?_, ?_, ?_⟩
   -- preLinesCleanInv_preserved needs cleanDataInv, but forwardSimInv only has dataCoherenceInv
   -- preLinesNoDirtyInv_preserved and txnPlanInv_preserved also affected
   all_goals sorry
+
+theorem refinement_inv_invariant (n : Nat) :
+    pred_implies (tlMessages.toSpec n).safety [tlafml| □ ⌜ refinementInv n ⌝] := by
+  have h : pred_implies (tlMessages.toSpec n).safety [tlafml| □ ⌜ forwardSimInv n ⌝] := by
+    apply init_invariant
+    · intro s hinit; exact init_forwardSimInv n s hinit
+    · intro s s' hnext hinv; exact forwardSimInv_preserved n s s' hinv hnext
+  intro σ hsafe k
+  exact (h σ hsafe k).1
 
 /-! ### Forward-Simulation Dispatch
 

@@ -18,6 +18,227 @@ private theorem grantLine_dirty (line : CacheLine) (tx : ManagerTxn) :
   unfold grantLine
   cases tx.grantHasData <;> cases tx.resultPerm <;> simp [invalidatedLine]
 
+/-- probedLine with probeCapOfResult never produces perm .T -/
+private theorem probedLine_probeCapOfResult_perm_ne_T (line : CacheLine) (resultPerm : TLPerm) :
+    (probedLine line (probeCapOfResult resultPerm)).perm ≠ .T := by
+  cases resultPerm <;> simp [probeCapOfResult, probedLine, invalidatedLine, branchAfterProbe]
+
+/-- probeSnapshotLine never produces dirty = true when preLinesNoDirty holds. -/
+private theorem probeSnapshotLine_not_dirty {n : Nat}
+    (tx : ManagerTxn) (node : NodeState) (p : Fin n)
+    (hpreNoDirty : ∀ k : Nat, k < n → (tx.preLines k).dirty = false) :
+    (probeSnapshotLine tx node p).dirty = false := by
+  unfold probeSnapshotLine
+  split
+  · split
+    · exact hpreNoDirty p.1 p.2
+    · exact probedLine_dirty _ _
+  · exact hpreNoDirty p.1 p.2
+
+/-- During a transaction, no non-requester node can have dirty = true (given txnLineInv
+    and preLinesNoDirtyInv). -/
+private theorem absurd_dirty_nonrequester {n : Nat}
+    (s : SymState HomeState NodeState n) (tx : ManagerTxn) (p : Fin n)
+    (htxn : s.shared.currentTxn = some tx)
+    (hphase : tx.phase = .probing ∨ tx.phase = .grantReady ∨ tx.phase = .grantPendingAck)
+    (htxnCore : txnCoreInv n s)
+    (htxnLine : txnLineInv n s)
+    (hpreNoDirty : preLinesNoDirtyInv n s)
+    (hp_ne : p.1 ≠ tx.requester)
+    (hdirty : (s.locals p).line.dirty = true) : False := by
+  rw [txnLineInv, htxn] at htxnLine
+  have hline := htxnLine p
+  rw [preLinesNoDirtyInv, htxn] at hpreNoDirty
+  -- p is not the requester, so txnSnapshotLine goes to probeSnapshotLine
+  have hsnap : txnSnapshotLine tx (s.locals p) p = probeSnapshotLine tx (s.locals p) p := by
+    unfold txnSnapshotLine
+    split
+    · next h => exact absurd h.2.symm hp_ne
+    · rfl
+  rw [hsnap] at hline
+  have hclean := probeSnapshotLine_not_dirty tx (s.locals p) p (fun k hk => hpreNoDirty k hk)
+  rw [← hline] at hclean
+  exact absurd hdirty (by rw [hclean]; simp)
+
+/-- During probing, if probesRemaining i = true and chanC = none and the node has
+    perm = .N, derive False from the txn invariants. The probe mask always requires
+    perm ≠ .N (cachedMask) or perm = .T (writableMask) for probed nodes. -/
+private theorem absurd_probed_permN {n : Nat}
+    (s : SymState HomeState NodeState n) (tx : ManagerTxn) (i : Fin n)
+    (htxn : s.shared.currentTxn = some tx)
+    (hphase : tx.phase = .probing)
+    (htxnCore : txnCoreInv n s)
+    (htxnLine : txnLineInv n s)
+    (htxnPlan : txnPlanInv n s)
+    (hprobesRem : tx.probesRemaining i.1 = true)
+    (hchanC : (s.locals i).chanC = none)
+    (hpermN : (s.locals i).line.perm = .N) : False := by
+  simp only [txnCoreInv, htxn] at htxnCore
+  have hreq := htxnCore.1
+  have hprobesNeeded : tx.probesNeeded i.1 = true := htxnCore.2.2.2.2.2.1 i.1 hprobesRem
+  simp only [txnLineInv, htxn] at htxnLine
+  have hline := htxnLine i
+  -- i is not the requester (probesNeeded requester = false)
+  have hi_ne : i.1 ≠ tx.requester := by
+    intro h; rw [h] at hprobesNeeded
+    have := htxnCore.2.2.2.2.1
+    rw [this] at hprobesNeeded; simp at hprobesNeeded
+  -- txnSnapshotLine for non-requester during probing = probeSnapshotLine
+  have hsnap : txnSnapshotLine tx (s.locals i) i = probeSnapshotLine tx (s.locals i) i := by
+    unfold txnSnapshotLine
+    split
+    · next h => exact absurd h.2.symm hi_ne
+    · rfl
+  rw [hsnap] at hline
+  -- probeSnapshotLine with probesNeeded = true, probesRemaining = true, chanC = none = preLines
+  have hpre : probeSnapshotLine tx (s.locals i) i = tx.preLines i.1 := by
+    unfold probeSnapshotLine
+    simp [hprobesNeeded, hprobesRem, hchanC]
+  rw [hpre] at hline
+  -- So (s.locals i).line = tx.preLines i, hence preLines perm = .N
+  have hPrePermN : (tx.preLines i.1).perm = .N := by rw [← hline]; exact hpermN
+  -- From txnPlanInv, probesNeeded i = true implies preLines i perm ≠ .N
+  simp only [txnPlanInv, htxn] at htxnPlan
+  have ⟨_, _, hkind⟩ := htxnPlan
+  match hk : tx.kind with
+  | .acquireBlock =>
+    rw [hk] at hkind
+    cases hres : tx.resultPerm with
+    | N =>
+      -- resultPerm = grow.result which is .B or .T, never .N
+      have hResEq : tx.resultPerm = tx.grow.result := htxnCore.2.2.1
+      rw [hres] at hResEq
+      exact absurd hResEq (by cases tx.grow <;> simp [GrowParam.result])
+    | B =>
+      have ⟨_, hmask⟩ := hkind.1 hres
+      rw [hmask] at hprobesNeeded
+      simp [snapshotWritableProbeMask, i.2, hi_ne] at hprobesNeeded
+      -- hprobesNeeded says (tx.preLines i).perm = .T, but we know it's .N
+      exact absurd hprobesNeeded (by rw [hPrePermN]; decide)
+    | T =>
+      have ⟨_, hmask⟩ := hkind.2 hres
+      rw [hmask] at hprobesNeeded
+      simp [TileLink.Atomic.noProbeMask] at hprobesNeeded
+  | .acquirePerm =>
+    rw [hk] at hkind
+    have ⟨_, hmask, _⟩ := hkind
+    rw [hmask] at hprobesNeeded
+    simp [snapshotCachedProbeMask, i.2, hi_ne] at hprobesNeeded
+    -- hprobesNeeded : (tx.preLines i).perm ≠ .N
+    exact hprobesNeeded hPrePermN
+
+/-- During grantPendingAck, no non-requester node has perm = .T. -/
+private theorem absurd_permT_during_grant {n : Nat}
+    (s : SymState HomeState NodeState n) (tx : ManagerTxn) (p : Fin n)
+    (htxn : s.shared.currentTxn = some tx)
+    (hphase : tx.phase = .grantPendingAck)
+    (htxnCore : txnCoreInv n s)
+    (htxnLine : txnLineInv n s)
+    (htxnPlan : txnPlanInv n s)
+    (hpreNoDirty : preLinesNoDirtyInv n s)
+    (hp_ne : p.1 ≠ tx.requester)
+    (hpermT : (s.locals p).line.perm = .T) : False := by
+  simp only [txnCoreInv, htxn] at htxnCore
+  simp only [txnLineInv, htxn] at htxnLine
+  simp only [txnPlanInv, htxn] at htxnPlan
+  simp only [preLinesNoDirtyInv, htxn] at hpreNoDirty
+  have hline := htxnLine p
+  -- p is not requester, so txnSnapshotLine = probeSnapshotLine
+  have hsnap : txnSnapshotLine tx (s.locals p) p = probeSnapshotLine tx (s.locals p) p := by
+    unfold txnSnapshotLine
+    split
+    · next h => exact absurd h.2.symm hp_ne
+    · rfl
+  rw [hsnap] at hline
+  -- During grantPendingAck, probesRemaining = false for all nodes
+  have hRemFalse : tx.probesRemaining p.1 = false := by
+    have hAllDone := htxnCore.2.2.2.2.2.2.2 hphase p
+    exact hAllDone
+  -- Case split on probesNeeded
+  by_cases hNeeded : tx.probesNeeded p.1 = true
+  · -- probesNeeded = true, probesRemaining = false → probeSnapshotLine = probedLine
+    have hprobedLine : (s.locals p).line =
+        probedLine (tx.preLines p.1) (probeCapOfResult tx.resultPerm) := by
+      rw [hline]; unfold probeSnapshotLine
+      simp [hNeeded, hRemFalse]
+    rw [hprobedLine] at hpermT
+    exact absurd hpermT (probedLine_probeCapOfResult_perm_ne_T _ _)
+  · -- probesNeeded = false → probeSnapshotLine = preLines
+    simp at hNeeded
+    have hPreLines : (s.locals p).line = tx.preLines p.1 := by
+      rw [hline]; unfold probeSnapshotLine; simp [hNeeded]
+    -- (s.locals p).line = tx.preLines p, so preLines perm = .T
+    have hPrePermT : (tx.preLines p.1).perm = .T := by rw [← hPreLines]; exact hpermT
+    -- But txnPlanInv says this is impossible for non-requester with probesNeeded = false
+    have ⟨_, _, hkind⟩ := htxnPlan
+    match hk : tx.kind with
+    | .acquireBlock =>
+      rw [hk] at hkind
+      cases hres : tx.resultPerm with
+      | N =>
+        have hResEq : tx.resultPerm = tx.grow.result := htxnCore.2.2.1
+        rw [hres] at hResEq
+        exact absurd hResEq (by cases tx.grow <;> simp [GrowParam.result])
+      | B =>
+        have ⟨_, hmask⟩ := hkind.1 hres
+        rw [hmask] at hNeeded
+        simp [snapshotWritableProbeMask, p.2, hp_ne] at hNeeded
+        exact hNeeded hPrePermT
+      | T =>
+        have ⟨hallN, _⟩ := hkind.2 hres
+        exact absurd (hallN p hp_ne) (by rw [hPrePermT]; simp)
+    | .acquirePerm =>
+      rw [hk] at hkind
+      have ⟨_, hmask, _⟩ := hkind
+      rw [hmask] at hNeeded
+      simp [snapshotCachedProbeMask, p.2, hp_ne] at hNeeded
+      rw [hPrePermT] at hNeeded; exact absurd hNeeded (by decide)
+
+/-- During grantPendingAck with resultPerm = .T, all non-requester nodes have perm = .N. -/
+private theorem all_others_permN_during_grant {n : Nat}
+    (s : SymState HomeState NodeState n) (tx : ManagerTxn) (q : Fin n)
+    (htxn : s.shared.currentTxn = some tx)
+    (hphase : tx.phase = .grantPendingAck)
+    (htxnCore : txnCoreInv n s)
+    (htxnLine : txnLineInv n s)
+    (htxnPlan : txnPlanInv n s)
+    (hq_ne : q.1 ≠ tx.requester)
+    (hresT : tx.resultPerm = .T) :
+    (s.locals q).line.perm = .N := by
+  simp only [txnCoreInv, htxn] at htxnCore
+  simp only [txnLineInv, htxn] at htxnLine
+  simp only [txnPlanInv, htxn] at htxnPlan
+  have hline := htxnLine q
+  have hsnap : txnSnapshotLine tx (s.locals q) q = probeSnapshotLine tx (s.locals q) q := by
+    unfold txnSnapshotLine
+    split
+    · next h => exact absurd h.2.symm hq_ne
+    · rfl
+  rw [hsnap] at hline
+  have hRemFalse : tx.probesRemaining q.1 = false :=
+    htxnCore.2.2.2.2.2.2.2 hphase q
+  have ⟨_, _, hkind⟩ := htxnPlan
+  by_cases hNeeded : tx.probesNeeded q.1 = true
+  · -- probed node: probedLine with probeCapOfResult .T = .toN = invalidatedLine → perm .N
+    have hEq : (s.locals q).line =
+        probedLine (tx.preLines q.1) (probeCapOfResult tx.resultPerm) := by
+      rw [hline]; unfold probeSnapshotLine; simp [hNeeded, hRemFalse]
+    rw [hEq, hresT]; simp [probeCapOfResult, probedLine, invalidatedLine]
+  · -- not probed: probeSnapshotLine = preLines
+    simp at hNeeded
+    have hEq : (s.locals q).line = tx.preLines q.1 := by
+      rw [hline]; unfold probeSnapshotLine; simp [hNeeded]
+    rw [hEq]
+    match hk : tx.kind with
+    | .acquireBlock =>
+      rw [hk] at hkind
+      exact (hkind.2 hresT).1 q hq_ne
+    | .acquirePerm =>
+      rw [hk] at hkind
+      have ⟨_, hmask, _⟩ := hkind
+      rw [hmask] at hNeeded
+      simp [snapshotCachedProbeMask, q.2, hq_ne] at hNeeded
+      exact hNeeded
 
 /-- Helper: if all lines are unchanged between s and s', dirtyExclusiveInv transfers. -/
 private theorem dirtyExclusiveInv_of_same_lines (n : Nat)
@@ -31,9 +252,10 @@ private theorem dirtyExclusiveInv_of_same_lines (n : Nat)
 
 theorem dirtyExclusiveInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
-    (hfull : fullInv n s) (hdirtyEx : dirtyExclusiveInv n s) (hSwmr : permSwmrInv n s)
+    (hinv : strongRefinementInv n s)
     (hnext : (tlMessages.toSpec n).next s s') :
     dirtyExclusiveInv n s' := by
+  rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, _, _, _⟩, htxnLine, _, hpreNoDirty, htxnPlan⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   match a with
@@ -56,7 +278,7 @@ theorem dirtyExclusiveInv_preserved (n : Nat)
           (fun j => by rw [hs']; simp [recvAcquireState, recvAcquireLocals_line])
   | .recvProbeAtMaster =>
       -- probedLine always sets dirty=false
-      rcases hstep with ⟨tx, msg, _, _, _, _, _, _, _, _, _, hs'⟩
+      rcases hstep with ⟨tx, msg, htxn, hphase, hprobesRem, _, _, _, _, _, hchanC, hs'⟩
       intro p q hpq hdirtyP
       rw [hs'] at hdirtyP ⊢
       by_cases hpi : p = i
@@ -65,11 +287,12 @@ theorem dirtyExclusiveInv_preserved (n : Nat)
         rw [probedLine_dirty] at hdirtyP; cases hdirtyP
       · simp [recvProbeState, recvProbeLocals, setFn, hpi] at hdirtyP
         by_cases hqi : q = i
-        · subst hqi
-          simp only [recvProbeState, recvProbeLocals, recvProbeLocal, setFn, ite_true]
-          -- hdirtyEx gives perm i = .N in pre. probedLine of a .N perm line
-          -- needs protocol reasoning (probes only sent to cached nodes).
-          sorry
+        · -- q = i. dirty p → perm q = .N (from dirtyExclusiveInv). But probing a .N-perm node
+          -- contradicts txnPlanInv (probe masks exclude .N-perm nodes).
+          rw [hqi]
+          have hpermN : (s.locals i).line.perm = .N := hdirtyEx p i (by rw [← hqi]; exact hpq) hdirtyP
+          exact (absurd_probed_permN s tx i htxn hphase
+            (hfull.1.2.2.2) htxnLine htxnPlan hprobesRem hchanC hpermN).elim
         · simp [recvProbeState, recvProbeLocals, setFn, hqi]
           exact hdirtyEx p q hpq hdirtyP
   | .recvProbeAckAtManager =>
@@ -87,7 +310,7 @@ theorem dirtyExclusiveInv_preserved (n : Nat)
         (fun j => by rw [hs']; exact sendGrantState_line s i j tx)
   | .recvGrantAtMaster =>
       -- grantLine always sets dirty=false
-      rcases hstep with ⟨tx, msg, _, _, _, _, _, _, _, _, _, hs'⟩
+      rcases hstep with ⟨tx, msg, htxn, hreq, hphase, _, _, _, _, _, _, hs'⟩
       rw [hs']
       intro p q hpq hdirtyP
       by_cases hpi : p = i
@@ -96,9 +319,13 @@ theorem dirtyExclusiveInv_preserved (n : Nat)
         rw [grantLine_dirty] at hdirtyP; cases hdirtyP
       · simp [recvGrantState, recvGrantLocals, setFn, hpi] at hdirtyP
         by_cases hqi : q = i
-        · subst hqi
-          -- dirty p → perm i = .N in pre. grantLine of a .N-perm line needs fullInv reasoning.
-          sorry
+        · -- dirty p (p ≠ i) during grantPendingAck: contradicts txn invariants
+          -- (non-requester nodes can't be dirty during a transaction)
+          have hp_ne : p.1 ≠ tx.requester := by
+            intro h; rw [hreq] at h; exact hpi (Fin.ext h)
+          exact (absurd_dirty_nonrequester s tx p htxn
+            (Or.inr (Or.inr hphase)) (hfull.1.2.2.2) htxnLine hpreNoDirty
+            hp_ne hdirtyP).elim
         · simp [recvGrantState, recvGrantLocals, setFn, hqi]
           exact hdirtyEx p q hpq hdirtyP
   | .recvGrantAckAtManager =>
@@ -107,7 +334,7 @@ theorem dirtyExclusiveInv_preserved (n : Nat)
         (fun j => by rw [hs']; exact recvGrantAckState_line s i j)
   | .sendRelease param =>
       -- releasedLine always sets dirty=false
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, htail⟩
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, hlegal, _, htail⟩
       rcases htail with ⟨_, hs'⟩
       rw [hs']
       intro p q hpq hdirtyP
@@ -117,16 +344,13 @@ theorem dirtyExclusiveInv_preserved (n : Nat)
         rw [releasedLine_dirty] at hdirtyP; cases hdirtyP
       · simp [sendReleaseState, sendReleaseLocals, setFn, hpi] at hdirtyP
         by_cases hqi : q = i
-        · subst hqi
+        · rw [hqi]
           simp only [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, ite_true]
-          -- hdirtyEx gives perm i = .N from dirty p. releasedLine.perm = param.result.
-          -- From guard: param.legalFrom (perm i). Since perm i = .N, param.source = .N.
-          -- All PruneReportParam with source .N: only NtoN. result = .N.
-          have hpermN : (s.locals i).line.perm = .N := hdirtyEx p i (Ne.symm hpq) hdirtyP
-          rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, hlegal, _, _, _⟩
+          have hpermN : (s.locals i).line.perm = .N := hdirtyEx p i (by rw [← hqi]; exact hpq) hdirtyP
           rw [hpermN] at hlegal
-          cases param <;> simp [PruneReportParam.legalFrom, PruneReportParam.source] at hlegal
-          simp [releasedLine, invalidatedLine]
+          cases param <;>
+            simp [PruneReportParam.legalFrom, PruneReportParam.source] at hlegal <;>
+            simp [releasedLine, invalidatedLine, PruneReportParam.result]
         · simp [sendReleaseState, sendReleaseLocals, setFn, hqi]
           exact hdirtyEx p q hpq hdirtyP
   | .sendReleaseData param =>
@@ -172,11 +396,10 @@ theorem dirtyExclusiveInv_preserved (n : Nat)
       rw [hs']
       intro p q hpq hdirtyP
       by_cases hpi : p = i
-      · subst hpi
-        -- p = i, perm i = .T (store guard). By SWMR: perm q = .N for q ≠ i.
-        -- Post-state: q ≠ i so line unchanged via setFn.
-        simp [setFn, Ne.symm hpq]
-        exact hSwmr i q hpq hperm
+      · -- p = i, perm i = .T (store guard). By SWMR: perm q = .N for q ≠ i.
+        have hqi : q ≠ i := by intro h; exact hpq (by rw [hpi, h])
+        simp [setFn, hqi]
+        exact hSwmr i q hqi.symm hperm
       · -- p ≠ i: dirty p unchanged. q = i → store guard perm i = .T but
         -- dirtyExclusiveInv says perm i = .N, contradiction.
         simp [setFn, hpi] at hdirtyP
@@ -681,16 +904,12 @@ private theorem permSwmrInv_of_same_lines (n : Nat)
   rw [hlines p] at hpermP; rw [hlines q]
   exact hSwmr p q hpq hpermP
 
-/-- probedLine with probeCapOfResult never produces perm .T -/
-private theorem probedLine_probeCapOfResult_perm_ne_T (line : CacheLine) (resultPerm : TLPerm) :
-    (probedLine line (probeCapOfResult resultPerm)).perm ≠ .T := by
-  cases resultPerm <;> simp [probeCapOfResult, probedLine, invalidatedLine, branchAfterProbe]
-
 theorem permSwmrInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
-    (hfull : fullInv n s) (hSwmr : permSwmrInv n s)
+    (hinv : strongRefinementInv n s)
     (hnext : (tlMessages.toSpec n).next s s') :
     permSwmrInv n s' := by
+  rcases hinv with ⟨⟨hfull, _, hSwmr, _, _, _⟩, htxnLine, _, hpreNoDirty, htxnPlan⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   match a with
@@ -712,7 +931,7 @@ theorem permSwmrInv_preserved (n : Nat)
           (fun j => by rw [hs']; simp [recvAcquireState, recvAcquireLocals_line])
   | .recvProbeAtMaster =>
       -- probedLine with probeCapOfResult never gives perm .T
-      rcases hstep with ⟨tx, msg, _, _, _, _, _, _, _, hparam, _, hs'⟩
+      rcases hstep with ⟨tx, msg, htxn, hphase, hprobesRem, _, _, _, _, hparam, hchanC, hs'⟩
       rw [hs']
       intro p q hpq hpermP
       by_cases hpi : p = i
@@ -723,10 +942,11 @@ theorem permSwmrInv_preserved (n : Nat)
       · -- p ≠ i: line p unchanged
         simp [recvProbeState, recvProbeLocals, setFn, hpi] at hpermP
         by_cases hqi : q = i
-        · -- q = i: needs protocol reasoning (probed node has pre perm .N from SWMR)
-          rw [hqi]
-          simp only [recvProbeState, recvProbeLocals, recvProbeLocal, setFn, ite_true]
-          sorry -- needs txnPlanInv reasoning: probed node i has pre perm .N, shouldn't be probed
+        · -- perm p = .T → perm i = .N (SWMR). But probing a .N-perm node
+          -- contradicts txnPlanInv.
+          have hpermN : (s.locals i).line.perm = .N := hSwmr p i hpi hpermP
+          exact (absurd_probed_permN s tx i htxn hphase
+            (hfull.1.2.2.2) htxnLine htxnPlan hprobesRem hchanC hpermN).elim
         · -- q ≠ i: line q unchanged
           simp [recvProbeState, recvProbeLocals, setFn, hqi]
           exact hSwmr p q hpq hpermP
@@ -743,19 +963,38 @@ theorem permSwmrInv_preserved (n : Nat)
         (fun j => by rw [hs']; exact sendGrantState_line s i j tx)
   | .recvGrantAtMaster =>
       -- grantLine changes perm at node i. Needs protocol reasoning.
-      rcases hstep with ⟨tx, msg, _, _, _, _, _, _, _, _, _, hs'⟩
+      rcases hstep with ⟨tx, msg, htxn, hreq, hphase, _, _, _, _, _, _, hs'⟩
       rw [hs']
       intro p q hpq hpermP
       by_cases hpi : p = i
-      · -- p = i: grantLine gives some perm. If .T, need all others .N.
-        rw [hpi] at hpermP
-        sorry -- needs deep protocol reasoning about grant correctness
-      · -- p ≠ i: line p unchanged
+      · -- p = i (requester): grantLine gives .T → need all others .N
+        rw [hpi] at hpermP hpq
+        simp only [recvGrantState, recvGrantLocals, recvGrantLocal, setFn, ite_true] at hpermP
+        -- grantLine gives .T only when resultPerm = .T
+        have hresT : tx.resultPerm = .T := by
+          unfold grantLine at hpermP
+          cases hdata : tx.grantHasData <;> simp [hdata] at hpermP
+          · -- grantHasData = false → resultPerm = .T (from txnCoreInv)
+            have htxnCore := hfull.1.2.2.2
+            simp only [txnCoreInv, htxn] at htxnCore
+            exact htxnCore.2.2.2.1 hdata
+          · -- grantHasData = true → depends on resultPerm
+            cases hres : tx.resultPerm <;> simp_all [invalidatedLine]
+        have hqi : q ≠ i := fun h => hpq (h.symm)
+        simp [recvGrantState, recvGrantLocals, setFn, hqi]
+        have hq_ne : q.1 ≠ tx.requester := by
+          intro h; rw [hreq] at h; exact hqi (Fin.ext h)
+        exact all_others_permN_during_grant s tx q htxn hphase
+          (hfull.1.2.2.2) htxnLine htxnPlan hq_ne hresT
+      · -- p ≠ i: line p unchanged, perm p = .T
         simp [recvGrantState, recvGrantLocals, setFn, hpi] at hpermP
         by_cases hqi : q = i
-        · rw [hqi]
-          simp only [recvGrantState, recvGrantLocals, recvGrantLocal, setFn, ite_true]
-          sorry -- needs protocol reasoning: can't grant while another node has .T
+        · -- p has perm .T during grantPendingAck: contradicts txn invariants
+          have hp_ne : p.1 ≠ tx.requester := by
+            intro h; rw [hreq] at h; exact hpi (Fin.ext h)
+          exact (absurd_permT_during_grant s tx p htxn hphase
+            (hfull.1.2.2.2) htxnLine htxnPlan hpreNoDirty
+            hp_ne hpermP).elim
         · simp [recvGrantState, recvGrantLocals, setFn, hqi]
           exact hSwmr p q hpq hpermP
   | .recvGrantAckAtManager =>
@@ -853,12 +1092,13 @@ theorem permSwmrInv_preserved (n : Nat)
 
 theorem refinementInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
-    (hinv : refinementInv n s) (hnext : (tlMessages.toSpec n).next s s') :
+    (hinv : strongRefinementInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     refinementInv n s' := by
-  rcases hinv with ⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩
+  rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, htxnLine, hpreClean, hpreNoDirty, htxnPlan⟩
+  have hfwd : strongRefinementInv n s := ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, htxnLine, hpreClean, hpreNoDirty, htxnPlan⟩
   exact ⟨fullInv_preserved_with_release n s s' hfull hnext,
-    dirtyExclusiveInv_preserved n s s' hfull hdirtyEx hSwmr hnext,
-    permSwmrInv_preserved n s s' hfull hSwmr hnext,
+    dirtyExclusiveInv_preserved n s s' hfwd hnext,
+    permSwmrInv_preserved n s s' hfwd hnext,
     txnDataInv_preserved n s s' hdirtyEx htxnData hcleanRel hnext,
     cleanChanCInv_preserved n s s' hdirtyEx hcleanRel hnext,
     releaseUniqueInv_preserved n s s' hfull hdirtyEx hrelUniq hnext⟩
