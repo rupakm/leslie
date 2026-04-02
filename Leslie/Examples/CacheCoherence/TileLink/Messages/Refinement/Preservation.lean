@@ -4,104 +4,15 @@ namespace TileLink.Messages
 
 open TLA TileLink SymShared Classical
 
-theorem noDirtyInv_preserved (n : Nat)
+theorem dirtyExclusiveInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
-    (hnoDirty : noDirtyInv n s) (hnext : (tlMessages.toSpec n).next s s') :
-    noDirtyInv n s' := by
-  simp only [SymSharedSpec.toSpec, tlMessages] at hnext
-  obtain ⟨i, a, hstep⟩ := hnext
-  match a with
-  | .sendAcquireBlock grow source =>
-      intro j
-      rw [sendAcquireBlock_line hstep]
-      exact hnoDirty j
-  | .sendAcquirePerm grow source =>
-      intro j
-      rw [sendAcquirePerm_line hstep]
-      exact hnoDirty j
-  | .recvAcquireAtManager =>
-      rcases hstep with hblk | hperm
-      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, hs'⟩
-        rcases hs' with ⟨_, hs'⟩
-        intro j
-        rw [hs']
-        simpa [recvAcquireState, recvAcquireLocals_line] using hnoDirty j
-      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, hs'⟩
-        rcases hs' with ⟨_, hs'⟩
-        intro j
-        rw [hs']
-        simpa [recvAcquireState, recvAcquireLocals_line] using hnoDirty j
-  | .recvProbeAtMaster =>
-      rcases hstep with ⟨tx, msg, _, _, _, _, _, _, _, _, hs'⟩
-      rcases hs' with ⟨_, hs'⟩
-      intro j
-      rw [hs']
-      by_cases hji : j = i
-      · subst j
-        cases hparam : msg.param <;>
-          simp [recvProbeState, recvProbeLocals, recvProbeLocal, setFn, probedLine,
-            hparam, invalidatedLine, branchAfterProbe, tipAfterProbe]
-      · simpa [recvProbeState, recvProbeLocals, setFn, hji] using hnoDirty j
-  | .recvProbeAckAtManager =>
-      rcases hstep with ⟨tx, msg, _, _, _, _, _, _, _, hs'⟩
-      intro j
-      rw [hs']
-      by_cases hji : j = i
-      · subst j
-        simpa [recvProbeAckState, recvProbeAckLocals, setFn]
-          using hnoDirty i
-      · simpa [recvProbeAckState, recvProbeAckLocals, setFn, hji]
-          using hnoDirty j
-  | .sendGrantToRequester =>
-      rcases hstep with ⟨tx, _, _, _, _, _, _, _, _, hs'⟩
-      intro j
-      rw [hs']
-      by_cases hji : j = i
-      · subst j
-        simpa [sendGrantState, sendGrantLocals, setFn] using hnoDirty i
-      · simpa [sendGrantState, sendGrantLocals, setFn, hji] using hnoDirty j
-  | .recvGrantAtMaster =>
-      rcases hstep with ⟨tx, msg, _, _, _, _, _, _, _, _, _, hs'⟩
-      intro j
-      rw [hs']
-      by_cases hji : j = i
-      · subst j
-        by_cases hdata : tx.grantHasData
-        · cases hperm : tx.resultPerm <;> simp [recvGrantState, recvGrantLocals, recvGrantLocal, setFn, grantLine, hdata, hperm, invalidatedLine, branchAfterProbe, tipAfterProbe]
-        · simp [recvGrantState, recvGrantLocals, recvGrantLocal, setFn, grantLine, hdata]
-      · simpa [recvGrantState, recvGrantLocals, setFn, hji] using hnoDirty j
-  | .recvGrantAckAtManager =>
-      rcases hstep with ⟨tx, msg, _, _, _, _, _, _, _, _, hs'⟩
-      intro j
-      rw [hs']
-      simpa [recvGrantAckState_line] using hnoDirty j
-  | .sendRelease param =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, htail⟩
-      rcases htail with ⟨_, hs'⟩
-      intro j
-      rw [hs']
-      by_cases hji : j = i
-      · subst j
-        cases hres : param.result <;> simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, releasedLine, hres, invalidatedLine, branchAfterProbe, tipAfterProbe]
-      · simpa [sendReleaseState, sendReleaseLocals, setFn, hji] using hnoDirty j
-  | .sendReleaseData param =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, hdirty, _hs'⟩
-      exfalso
-      rw [hnoDirty i] at hdirty
-      contradiction
-  | .recvReleaseAtManager =>
-      rcases hstep with ⟨msg, param, _, _, _, _, _, _, _, _, _, _, hs'⟩
-      intro j
-      rw [hs']
-      simpa [recvReleaseState_line] using hnoDirty j
-  | .recvReleaseAckAtMaster =>
-      rcases hstep with ⟨msg, _, _, _, _, _, _, hs'⟩
-      intro j
-      rw [hs']
-      simpa [recvReleaseAckState_line] using hnoDirty j
-  | .store v =>
-      -- Store sets dirty = true on node i, violating noDirtyInv
-      sorry
+    (hfull : fullInv n s) (hdirtyEx : dirtyExclusiveInv n s)
+    (hnext : (tlMessages.toSpec n).next s s') :
+    dirtyExclusiveInv n s' := by
+  -- dirtyExclusiveInv: ∀ p q, p ≠ q → dirty p → perm q = .N
+  -- Most actions preserve this because they either don't create dirty lines
+  -- or only create dirty at a node that already has .T (exclusive).
+  sorry
 
 theorem txnDataInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
@@ -601,11 +512,11 @@ theorem refinementInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
     (hinv : refinementInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     refinementInv n s' := by
-  rcases hinv with ⟨hfull, hnoDirty, htxnData, hcleanRel, hrelUniq⟩
+  rcases hinv with ⟨hfull, hdirtyEx, htxnData, hcleanRel, hrelUniq⟩
   exact ⟨fullInv_preserved_with_release n s s' hfull hnext,
-    noDirtyInv_preserved n s s' hnoDirty hnext,
-    txnDataInv_preserved n s s' hnoDirty htxnData hcleanRel hnext,
-    cleanChanCInv_preserved n s s' hnoDirty hcleanRel hnext,
-    releaseUniqueInv_preserved n s s' hfull hnoDirty hrelUniq hnext⟩
+    dirtyExclusiveInv_preserved n s s' hfull hdirtyEx hnext,
+    txnDataInv_preserved n s s' hdirtyEx htxnData hcleanRel hnext,
+    cleanChanCInv_preserved n s s' hdirtyEx hcleanRel hnext,
+    releaseUniqueInv_preserved n s s' hfull hdirtyEx hrelUniq hnext⟩
 
 end TileLink.Messages

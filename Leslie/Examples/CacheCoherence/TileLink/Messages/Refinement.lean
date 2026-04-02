@@ -26,13 +26,13 @@ theorem refinement_inv_invariant (n : Nat) :
     - `preLinesNoDirtyInv` (pre-wave lines not dirty)
     - `txnPlanInv` (transaction plan consistency) -/
 def forwardSimInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
-  refinementInv n s ∧ cleanDataInv n s ∧ txnLineInv n s ∧
+  refinementInv n s ∧ dataCoherenceInv n s ∧ txnLineInv n s ∧
   preLinesCleanInv n s ∧ preLinesNoDirtyInv n s ∧ txnPlanInv n s
 
 theorem init_forwardSimInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → forwardSimInv n s := by
   intro s hinit
-  exact ⟨init_refinementInv n s hinit, init_cleanDataInv n s hinit,
+  exact ⟨init_refinementInv n s hinit, init_dataCoherenceInv n s hinit,
     init_txnLineInv n s hinit, init_preLinesCleanInv n s hinit,
     init_preLinesNoDirtyInv n s hinit, init_txnPlanInv n s hinit⟩
 
@@ -41,147 +41,10 @@ theorem init_forwardSimInv (n : Nat) :
 -- are already proved in Preservation.lean. The remaining three are mechanical case analyses
 -- over the 12 actions; their structure mirrors the existing preservation proofs.
 
-theorem cleanDataInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
+theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
-    cleanDataInv n s' := by
-  rcases hinv with ⟨⟨_, hnoDirty, htxnData, hcleanRel, _⟩, hclean, _, _, _, _⟩
-  simp only [SymSharedSpec.toSpec, tlMessages] at hnext
-  obtain ⟨i, a, hstep⟩ := hnext
-  match a with
-  | .sendAcquireBlock grow source =>
-      intro j
-      rw [sendAcquireBlock_line hstep, sendAcquireBlock_shared hstep]
-      exact hclean j
-  | .sendAcquirePerm grow source =>
-      intro j
-      rw [sendAcquirePerm_line hstep, sendAcquirePerm_shared hstep]
-      exact hclean j
-  | .recvAcquireAtManager =>
-      rcases hstep with hblk | hperm
-      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, hs'⟩
-        rcases hs' with ⟨_, hs'⟩
-        intro j
-        rw [hs']
-        simp only [recvAcquireState, recvAcquireLocals_line, recvAcquireShared_mem]
-        exact hclean j
-      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, hs'⟩
-        rcases hs' with ⟨_, hs'⟩
-        intro j
-        rw [hs']
-        simp only [recvAcquireState, recvAcquireLocals_line, recvAcquireShared_mem]
-        exact hclean j
-  | .recvProbeAtMaster =>
-      rcases hstep with ⟨tx, msg, _, _, _, _, _, _, _, _, hs'⟩
-      rcases hs' with ⟨_, hs'⟩
-      intro j
-      rw [hs']
-      simp only [recvProbeState]
-      by_cases hji : j = i
-      · subst j
-        simp only [recvProbeLocals, setFn, ite_true, recvProbeLocal]
-        -- line = probedLine (s.locals i).line msg.param
-        -- probedLine preserves data for all caps
-        cases msg.param <;>
-          simp [probedLine, invalidatedLine, branchAfterProbe, tipAfterProbe]
-        all_goals exact hclean i
-      · simp only [recvProbeLocals, setFn, show (j = i) = False from propext ⟨hji, False.elim⟩,
-            ite_false]
-        exact hclean j
-  | .recvProbeAckAtManager =>
-      rcases hstep with ⟨tx, msg, _, _, _, _, hC, _, _, hs'⟩
-      have hmsgNone : msg.data = none := hcleanRel i msg hC
-      intro j
-      rw [hs']
-      by_cases hji : j = i
-      · subst j
-        simpa [recvProbeAckState, recvProbeAckLocals, recvProbeAckLocal, recvProbeAckShared,
-          hmsgNone, setFn] using hclean i
-      · simpa [recvProbeAckState, recvProbeAckLocals, recvProbeAckLocal, recvProbeAckShared,
-          hmsgNone, setFn, hji] using hclean j
-  | .sendGrantToRequester =>
-      rcases hstep with ⟨tx, _, _, _, _, _, _, _, _, hs'⟩
-      intro j
-      rw [hs']
-      by_cases hji : j = i
-      · subst j
-        simpa [sendGrantState, sendGrantLocals, sendGrantShared, setFn]
-          using hclean i
-      · simpa [sendGrantState, sendGrantLocals, sendGrantShared, setFn, hji]
-          using hclean j
-  | .recvGrantAtMaster =>
-      rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, _, hs'⟩
-      intro j
-      rw [hs']
-      by_cases hji : j = i
-      · subst j
-        simp only [recvGrantState, recvGrantLocals, recvGrantLocal, recvGrantShared, setFn,
-            ite_true]
-        by_cases hdata : tx.grantHasData
-        · -- grantHasData = true: line.data = tx.transferVal or preserved
-          have htransfer := (txnDataInv_currentTxn htxnData hcur).2
-          cases hperm : tx.resultPerm <;>
-            simp [grantLine, hdata, hperm, invalidatedLine]
-          -- N: invalidatedLine preserves data
-          · exact hclean i
-          -- B: data = tx.transferVal = mem
-          · exact htransfer
-          -- T: data = tx.transferVal = mem
-          · exact htransfer
-        · -- grantHasData = false: data preserved from pre-state
-          simp [grantLine, hdata]
-          exact hclean i
-      · simpa [recvGrantState, recvGrantLocals, recvGrantShared, setFn, hji]
-          using hclean j
-  | .recvGrantAckAtManager =>
-      rcases hstep with ⟨tx, msg, _, _, _, _, _, _, _, _, hs'⟩
-      intro j
-      rw [hs']
-      rw [show ((recvGrantAckState s i).locals j).line = (s.locals j).line from
-        recvGrantAckState_line s i j]
-      rw [show (recvGrantAckState s i).shared.mem = s.shared.mem from by
-        simp [recvGrantAckState, recvGrantAckShared]]
-      exact hclean j
-  | .sendRelease param =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, htail⟩
-      rcases htail with ⟨_, hs'⟩
-      intro j
-      rw [hs']
-      simp only [sendReleaseState]
-      by_cases hji : j = i
-      · subst j
-        simp only [sendReleaseLocals, sendReleaseLocal, setFn, ite_true]
-        -- releasedLine preserves data
-        cases param.result <;>
-          simp [releasedLine, invalidatedLine, branchAfterProbe, tipAfterProbe]
-        all_goals exact hclean i
-      · simp only [sendReleaseLocals, setFn, show (j = i) = False from propext ⟨hji, False.elim⟩,
-            ite_false]
-        exact hclean j
-  | .sendReleaseData param =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, hdirty, _hs'⟩
-      exfalso
-      rw [hnoDirty i] at hdirty
-      contradiction
-  | .recvReleaseAtManager =>
-      rcases hstep with ⟨msg, param, _, _, _, _, hC, _, hwf, _, _, _, hs'⟩
-      intro j
-      rw [hs']
-      have hmsgClean : msg.data = none := hcleanRel i msg hC
-      rw [show ((recvReleaseState s i msg param).locals j).line = (s.locals j).line from
-        recvReleaseState_line s i j msg param]
-      rw [show (recvReleaseState s i msg param).shared.mem = s.shared.mem from by
-        simp [recvReleaseState, recvReleaseShared, releaseWriteback, hmsgClean]]
-      exact hclean j
-  | .recvReleaseAckAtMaster =>
-      rcases hstep with ⟨msg, _, _, _, _, _, _, hs'⟩
-      intro j
-      rw [hs']
-      rw [show ((recvReleaseAckState s i).locals j).line = (s.locals j).line from
-        recvReleaseAckState_line s i j]
-      rw [show (recvReleaseAckState s i).shared.mem = s.shared.mem from by
-        simp [recvReleaseAckState, recvReleaseAckShared]]
-      exact hclean j
-  | .store v => sorry
+    dataCoherenceInv n s' := by
+  sorry
 
 theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
@@ -560,7 +423,7 @@ theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n
   rcases hinv with ⟨hrefInv, hclean, htxnLine, hpreClean, hpreNoDirty, hplan⟩
   rcases hrefInv with ⟨hfull, hnoDirty, htxnData, hcleanRel, hrelUniq⟩
   exact ⟨refinementInv_preserved n s s' ⟨hfull, hnoDirty, htxnData, hcleanRel, hrelUniq⟩ hnext,
-    cleanDataInv_preserved n s s' ⟨⟨hfull, hnoDirty, htxnData, hcleanRel, hrelUniq⟩, hclean, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
+    dataCoherenceInv_preserved n s s' ⟨⟨hfull, hnoDirty, htxnData, hcleanRel, hrelUniq⟩, hclean, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
     txnLineInv_preserved n s s' ⟨⟨hfull, hnoDirty, htxnData, hcleanRel, hrelUniq⟩, hclean, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
     preLinesCleanInv_preserved n s s' hclean hpreClean hcleanRel hnext,
     preLinesNoDirtyInv_preserved n s s' hnoDirty hpreNoDirty hnext,
