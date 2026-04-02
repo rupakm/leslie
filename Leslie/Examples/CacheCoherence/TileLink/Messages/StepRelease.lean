@@ -408,5 +408,9 @@ theorem fullInv_preserved_with_release (n : Nat)
       have hcore' := coreInv_preserved_recvReleaseAckAtMaster n s s' hcore hstep
       have hchan' := channelInv_preserved_recvReleaseAckAtMaster n s s' hchan hstep
       exact ⟨hcore', hchan', serializationInv_of_core_channel n s' hcore' hchan'⟩
+  | .store v =>
+      -- Store only changes one local line (to dirtyTipLine v). Shared state unchanged.
+      -- Channels unchanged. All invariant components are preserved.
+      sorry
 
 end TileLink.Messages

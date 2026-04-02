@@ -61,8 +61,8 @@ def RecvAcquireBlockAtManager {n : Nat}
   (s.locals i).chanA = some (mkAcquireBlockMsg grow source) ∧
   (s.locals i).line.perm = .N ∧
   grow.legalFrom (s.locals i).line.perm ∧
-  ¬hasDirtyOther s i ∧
-  ((hasCachedOther s i ∧ grow.result = .B) ∨
+  ((hasDirtyOther s i ∧ grow.result = .B) ∨
+   (¬hasDirtyOther s i ∧ hasCachedOther s i ∧ grow.result = .B) ∨
    (allOthersInvalid s i ∧ grow.result = .T)) ∧
   allTargetBsEmpty s (probeMaskForResult s i grow.result) ∧
   s' = recvAcquireState s i .acquireBlock grow source
@@ -77,7 +77,6 @@ def RecvAcquirePermAtManager {n : Nat}
   (s.locals i).chanA = some (mkAcquirePermMsg grow source) ∧
   grow.legalFrom (s.locals i).line.perm ∧
   grow.result = .T ∧
-  ¬hasDirtyOther s i ∧
   allTargetBsEmpty s (probeMaskForResult s i grow.result) ∧
   s' = recvAcquireState s i .acquirePerm grow source
 
@@ -110,7 +109,7 @@ def RecvProbeAckAtManager {n : Nat}
     (s.locals i).chanC = some msg ∧
     msg.source = i.1 ∧
     probeAckMsgWellFormed msg ∧
-    s' = recvProbeAckState s i tx
+    s' = recvProbeAckState s i tx msg
 
 def SendGrantToRequester {n : Nat}
     (s s' : SymState HomeState NodeState n) (i : Fin n) : Prop :=
@@ -217,6 +216,23 @@ def RecvReleaseAckAtMaster {n : Nat}
     msg = releaseAckMsg i.1 ∧
     s' = recvReleaseAckState s i
 
+def Store {n : Nat}
+    (s s' : SymState HomeState NodeState n)
+    (i : Fin n) (v : Val) : Prop :=
+  s.shared.currentTxn = none ∧
+  s.shared.pendingGrantAck = none ∧
+  s.shared.pendingReleaseAck = none ∧
+  (s.locals i).line.perm = .T ∧
+  (s.locals i).chanA = none ∧
+  (s.locals i).chanB = none ∧
+  (s.locals i).chanC = none ∧
+  (s.locals i).chanD = none ∧
+  (s.locals i).chanE = none ∧
+  (s.locals i).pendingSource = none ∧
+  (s.locals i).releaseInFlight = false ∧
+  s' = { shared := s.shared
+       , locals := setFn s.locals i (storeLocal (s.locals i) v) }
+
 noncomputable def tlMessages : SymSharedSpec where
   Shared := HomeState
   Local := NodeState
@@ -252,5 +268,6 @@ noncomputable def tlMessages : SymSharedSpec where
     | .sendReleaseData param => SendReleaseData s s' i param
     | .recvReleaseAtManager => RecvReleaseAtManager s s' i
     | .recvReleaseAckAtMaster => RecvReleaseAckAtMaster s s' i
+    | .store v => Store s s' i v
 
 end TileLink.Messages

@@ -114,6 +114,7 @@ inductive Act where
   | sendReleaseData (param : PruneReportParam)
   | recvReleaseAtManager
   | recvReleaseAckAtMaster
+  | store (v : Val)
   deriving DecidableEq
 
 end TileLink.Messages

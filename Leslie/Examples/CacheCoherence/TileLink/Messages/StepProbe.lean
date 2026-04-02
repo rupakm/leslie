@@ -149,11 +149,11 @@ theorem coreInv_preserved_recvProbeAckAtManager (n : Nat)
   · intro j
     by_cases hji : j = i
     · subst j
-      have hline : ((recvProbeAckState s i tx).locals i).line = (s.locals i).line := by
+      have hline : ((recvProbeAckState s i tx msg).locals i).line = (s.locals i).line := by
         simp [recvProbeAckState, recvProbeAckLocals, setFn]
       rw [hline]
       exact hlineWF i
-    · have hline : ((recvProbeAckState s i tx).locals j).line = (s.locals j).line := by
+    · have hline : ((recvProbeAckState s i tx msg).locals j).line = (s.locals j).line := by
         simp [recvProbeAckState, recvProbeAckLocals, setFn, hji]
       rw [hline]
       exact hlineWF j
@@ -245,7 +245,7 @@ theorem channelInv_preserved_recvProbeAckAtManager (n : Nat)
             simp [tx', clearProbeIdx, hvalne, hrem0]
           have hphase' : tx'.phase = .probing := by
             exact probeAckPhase_of_true hrem'
-          have hBj' : ((recvProbeAckState s i tx).locals j).chanB = some bmsg := by
+          have hBj' : ((recvProbeAckState s i tx msg).locals j).chanB = some bmsg := by
             simp [recvProbeAckState, recvProbeAckLocals, setFn, hji, hBj]
           rw [hBj']
           refine ⟨tx', ?_⟩
@@ -275,7 +275,7 @@ theorem channelInv_preserved_recvProbeAckAtManager (n : Nat)
               simp [tx', clearProbeIdx, hvalne, hrem0]
             have hphase' : tx'.phase = .probing := by
               exact probeAckPhase_of_true hrem'
-            have hCj' : ((recvProbeAckState s i tx).locals j).chanC = some cmsg := by
+            have hCj' : ((recvProbeAckState s i tx msg).locals j).chanC = some cmsg := by
               simp [recvProbeAckState, recvProbeAckLocals, setFn, hji, hCj]
             rw [hCj']
             left
@@ -288,7 +288,7 @@ theorem channelInv_preserved_recvProbeAckAtManager (n : Nat)
             rw [hcur] at hcurNone
             simp at hcurNone
   · intro j
-    have hnone : ((recvProbeAckState s i tx).locals j).chanD = none := by
+    have hnone : ((recvProbeAckState s i tx msg).locals j).chanD = none := by
       by_cases hji : j = i
       · subst j
         simp [recvProbeAckState, recvProbeAckLocals, hDnoneOld i]
@@ -296,7 +296,7 @@ theorem channelInv_preserved_recvProbeAckAtManager (n : Nat)
     rw [hnone]
     trivial
   · intro j
-    have hnone : ((recvProbeAckState s i tx).locals j).chanE = none := by
+    have hnone : ((recvProbeAckState s i tx msg).locals j).chanE = none := by
       by_cases hji : j = i
       · subst j
         simp [recvProbeAckState, recvProbeAckLocals, hEnoneOld i]

@@ -58,13 +58,13 @@ theorem cleanDataInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
       exact hclean j
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, _, hs'⟩
+      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, hs'⟩
         rcases hs' with ⟨_, hs'⟩
         intro j
         rw [hs']
         simp only [recvAcquireState, recvAcquireLocals_line, recvAcquireShared_mem]
         exact hclean j
-      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, hs'⟩
+      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, hs'⟩
         rcases hs' with ⟨_, hs'⟩
         intro j
         rw [hs']
@@ -91,12 +91,7 @@ theorem cleanDataInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
       rcases hstep with ⟨tx, msg, _, _, _, _, _, _, _, hs'⟩
       intro j
       rw [hs']
-      by_cases hji : j = i
-      · subst j
-        simpa [recvProbeAckState, recvProbeAckLocals, recvProbeAckShared, setFn]
-          using hclean i
-      · simpa [recvProbeAckState, recvProbeAckLocals, recvProbeAckShared, setFn, hji]
-          using hclean j
+      sorry -- TODO: cleanDataInv with msg.data writeback
   | .sendGrantToRequester =>
       rcases hstep with ⟨tx, _, _, _, _, _, _, _, _, hs'⟩
       intro j
@@ -180,6 +175,7 @@ theorem cleanDataInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
       rw [show (recvReleaseAckState s i).shared.mem = s.shared.mem from by
         simp [recvReleaseAckState, recvReleaseAckShared]]
       exact hclean j
+  | .store v => sorry
 
 theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
@@ -220,7 +216,7 @@ theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
             exact hpre
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨grow, source, htxnNone, _, _, hCnone, _, _, _, _, _, hrest⟩
+      · rcases hblk with ⟨grow, source, htxnNone, _, _, hCnone, _, _, _, _, hrest⟩
         rcases hrest with ⟨_, hs'⟩
         rw [hs']
         simp only [txnLineInv, recvAcquireState, recvAcquireShared, recvAcquireLocals_line]
@@ -233,7 +229,7 @@ theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
         · have hmaskF : probeMaskForResult s i grow.result j.1 = false := by
             cases h : probeMaskForResult s i grow.result j.1 <;> simp_all
           simp [hmaskF, hlt]
-      · rcases hperm with ⟨grow, source, htxnNone, _, _, hCnone, _, _, _, _, hrest⟩
+      · rcases hperm with ⟨grow, source, htxnNone, _, _, hCnone, _, _, _, hrest⟩
         rcases hrest with ⟨_, hs'⟩
         rw [hs']
         simp only [txnLineInv, recvAcquireState, recvAcquireShared, recvAcquireLocals_line]
@@ -392,6 +388,7 @@ theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
       rcases hstep with ⟨msg, hcur, _, _, _, _, _, hs'⟩
       rw [hs']
       simp [txnLineInv, hcur, recvReleaseAckState, recvReleaseAckShared]
+  | .store v => sorry
 
 private theorem writableProbeMask_eq_snapshotWritableProbeMask {n : Nat}
     (s : SymState HomeState NodeState n) (i : Fin n) (kind : ReqKind)
@@ -457,14 +454,16 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
       · -- RecvAcquireBlockAtManager
-        rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, hndirty, hcases, hrest⟩
+        rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, hcases, hrest⟩
         rcases hrest with ⟨_, hs'⟩
         rw [hs']
         simp only [txnPlanInv, recvAcquireState, recvAcquireShared, plannedTxn]
         refine ⟨i.is_lt, trivial, ?_, ?_⟩
         · -- resultPerm = .B → snapshotHasCachedOther ∧ probesNeeded = snapshotWritableProbeMask
           intro hresB
-          rcases hcases with ⟨hcached, hresult⟩ | ⟨_, hresult⟩
+          rcases hcases with ⟨_, hresult⟩ | ⟨_, hcached, hresult⟩ | ⟨_, hresult⟩
+          · rw [hresult] at hresB ⊢
+            sorry
           · rw [hresult] at hresB ⊢
             exact ⟨(hasCachedOther_iff_snapshotHasCachedOther s i .acquireBlock grow source).mp hcached,
               by simp [probeMaskForResult];
@@ -472,7 +471,8 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
           · rw [hresult] at hresB; cases hresB
         · -- resultPerm = .T → snapshotAllOthersInvalid ∧ probesNeeded = noProbeMask
           intro hresT
-          rcases hcases with ⟨_, hresult⟩ | ⟨hallInv, hresult⟩
+          rcases hcases with ⟨_, hresult⟩ | ⟨_, _, hresult⟩ | ⟨hallInv, hresult⟩
+          · rw [hresult] at hresT; cases hresT
           · rw [hresult] at hresT; cases hresT
           · rw [hresult] at hresT ⊢
             constructor
@@ -482,7 +482,7 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
               rfl
       · -- RecvAcquirePermAtManager
         rcases hperm with ⟨grow, source, _, _, _, _, _, hgrowLegal, hresT, hrest⟩
-        rcases hrest with ⟨hndirty, _, hs'⟩
+        rcases hrest with ⟨_, hs'⟩
         rw [hs']
         simp only [txnPlanInv, recvAcquireState, recvAcquireShared, plannedTxn]
         refine ⟨i.is_lt, trivial, hresT, ?_, ?_⟩
@@ -539,6 +539,7 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
       rcases hstep with ⟨msg, hcur, _, _, _, _, _, hs'⟩
       rw [hs']
       simp [txnPlanInv, hcur, recvReleaseAckState, recvReleaseAckShared]
+  | .store v => sorry
 
 theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
@@ -631,6 +632,7 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
       have hCnone : ∀ j : Fin n, (s.locals j).chanC = none :=
         chanC_none_of_releaseAck_pending hrelUniq htxn hrel
       left; exact refMap_recvReleaseAckAtMaster_next hfull hCnone hstep'
+  | .store v => sorry
 
 /-! ### Main Forward-Simulation Theorem -/
 

@@ -30,17 +30,8 @@ theorem refMap_recvProbeAckAtManager_eq {n : Nat}
     unfold probeAckPhase at hbad
     split at hbad <;> cases hbad
   apply SymState.ext
-  · change refMapShared n (recvProbeAckState s i tx) = refMapShared n s
-    simp [refMapShared, recvProbeAckState, recvProbeAckShared, hcur, hphase, hphase']
-    constructor
-    · rw [preTxnDir_tx_update_eq tx
-        (updateDirAt s.shared.dir i (s.locals i).line.perm)
-        (probeAckPhase (n := n) (clearProbeIdx tx.probesRemaining i.1))
-        (clearProbeIdx tx.probesRemaining i.1)]
-      rw [preTxnDir_updateDirAt_eq (n := n) tx s.shared.dir i (s.locals i).line.perm]
-    · exact absPendingGrantMeta_tx_update_eq tx
-        (probeAckPhase (n := n) (clearProbeIdx tx.probesRemaining i.1))
-        (clearProbeIdx tx.probesRemaining i.1) (by simpa [hphase]) hphase'
+  · change refMapShared n (recvProbeAckState s i tx msg) = refMapShared n s
+    sorry -- TODO: needs msg.data writeback reasoning for mem field
   · funext j
     simp [refMap, refMapLine, recvProbeAckState, recvProbeAckShared, hcur, hphase, hphase']
 

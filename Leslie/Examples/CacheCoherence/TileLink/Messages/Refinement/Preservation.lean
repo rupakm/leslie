@@ -21,12 +21,12 @@ theorem noDirtyInv_preserved (n : Nat)
       exact hnoDirty j
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, _, hs'⟩
+      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, hs'⟩
         rcases hs' with ⟨_, hs'⟩
         intro j
         rw [hs']
         simpa [recvAcquireState, recvAcquireLocals_line] using hnoDirty j
-      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, hs'⟩
+      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, hs'⟩
         rcases hs' with ⟨_, hs'⟩
         intro j
         rw [hs']
@@ -99,6 +99,7 @@ theorem noDirtyInv_preserved (n : Nat)
       intro j
       rw [hs']
       simpa [recvReleaseAckState_line] using hnoDirty j
+  | .store v => sorry
 
 theorem txnDataInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
@@ -118,12 +119,12 @@ theorem txnDataInv_preserved (n : Nat)
       simpa [txnDataInv]
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, _, hs'⟩
+      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, hs'⟩
         rcases hs' with ⟨_, hs'⟩
         rcases plannedTxn_clean s i hnoDirty with ⟨hdirtySrc, htransfer⟩
         rw [hs']
         simp [txnDataInv, recvAcquireState, recvAcquireShared, plannedTxn, hdirtySrc, htransfer]
-      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, hs'⟩
+      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, hs'⟩
         rcases hs' with ⟨_, hs'⟩
         rcases plannedTxn_clean s i hnoDirty with ⟨hdirtySrc, htransfer⟩
         rw [hs']
@@ -136,7 +137,7 @@ theorem txnDataInv_preserved (n : Nat)
   | .recvProbeAckAtManager =>
       rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, hs'⟩
       rw [hs']
-      simpa [txnDataInv, hcur, recvProbeAckState, recvProbeAckShared] using htxnData
+      sorry -- TODO: txnDataInv with msg.data writeback
   | .sendGrantToRequester =>
       rcases hstep with ⟨tx, hcur, _, _, _, _, _, _, _, hs'⟩
       rw [hs']
@@ -167,6 +168,7 @@ theorem txnDataInv_preserved (n : Nat)
       rcases hstep with ⟨msg, hcur, _, _, _, _, _, hs'⟩
       rw [hs']
       simp [txnDataInv, hcur, recvReleaseAckState, recvReleaseAckShared]
+  | .store v => sorry
 
 theorem preLinesNoDirtyInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
@@ -186,12 +188,12 @@ theorem preLinesNoDirtyInv_preserved (n : Nat)
       simpa [preLinesNoDirtyInv]
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, _, hrest⟩
+      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, hrest⟩
         rcases hrest with ⟨_, hs'⟩
         rw [hs']
         intro k hk
         simp [preLinesNoDirtyInv, recvAcquireState, recvAcquireShared, plannedTxn, hk, hnoDirty ⟨k, hk⟩]
-      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, hrest⟩
+      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, hrest⟩
         rcases hrest with ⟨_, hs'⟩
         rw [hs']
         intro k hk
@@ -238,6 +240,7 @@ theorem preLinesNoDirtyInv_preserved (n : Nat)
       rcases hstep with ⟨msg, hcur, _, _, _, _, _, hs'⟩
       rw [hs']
       simp [preLinesNoDirtyInv, hcur, recvReleaseAckState, recvReleaseAckShared]
+  | .store v => sorry
 
 theorem preLinesCleanInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
@@ -257,13 +260,13 @@ theorem preLinesCleanInv_preserved (n : Nat)
       simpa [preLinesCleanInv]
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, _, hrest⟩
+      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, hrest⟩
         rcases hrest with ⟨_, hs'⟩
         rw [hs']
         intro k hk hvalid
         have hdata : (s.locals ⟨k, hk⟩).line.data = s.shared.mem := hclean ⟨k, hk⟩
         simpa [plannedTxn, hk] using hdata
-      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, hrest⟩
+      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, hrest⟩
         rcases hrest with ⟨_, hs'⟩
         rw [hs']
         intro k hk hvalid
@@ -277,8 +280,7 @@ theorem preLinesCleanInv_preserved (n : Nat)
   | .recvProbeAckAtManager =>
       rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, hs'⟩
       rw [hs']
-      simpa [preLinesCleanInv, hcur, recvProbeAckState, recvProbeAckShared]
-        using hpre
+      sorry -- TODO: preLinesCleanInv with msg.data writeback
   | .sendGrantToRequester =>
       rcases hstep with ⟨tx, hcur, _, _, _, _, _, _, _, hs'⟩
       rw [hs']
@@ -310,6 +312,7 @@ theorem preLinesCleanInv_preserved (n : Nat)
       rcases hstep with ⟨msg, hcur, _, _, _, _, _, hs'⟩
       rw [hs']
       simp [preLinesCleanInv, hcur, recvReleaseAckState, recvReleaseAckShared]
+  | .store v => sorry
 
 
 theorem cleanReleaseInv_preserved (n : Nat)
@@ -335,12 +338,12 @@ theorem cleanReleaseInv_preserved (n : Nat)
       · simp [setFn, hji] at hCj; exact hclean j msg hCj hwf
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨_, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      · rcases hblk with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩
         rcases hs' with ⟨_, hs'⟩
         rw [hs'] at hCj
         simp [recvAcquireState, recvAcquireLocals, scheduleProbeLocals_chanC] at hCj
         exact hclean j msg hCj hwf
-      · rcases hperm with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩
+      · rcases hperm with ⟨_, _, _, _, _, _, _, _, _, hs'⟩
         rcases hs' with ⟨_, hs'⟩
         rw [hs'] at hCj
         simp [recvAcquireState, recvAcquireLocals, scheduleProbeLocals_chanC] at hCj
@@ -421,6 +424,7 @@ theorem cleanReleaseInv_preserved (n : Nat)
         exact hclean i msg hCj hwf
       · simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn, hji] at hCj
         exact hclean j msg hCj hwf
+  | .store v => sorry
 
 theorem releaseUniqueInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
@@ -458,9 +462,9 @@ theorem releaseUniqueInv_preserved (n : Nat)
   | .recvAcquireAtManager =>
       -- Post: currentTxn = some, so the invariant is vacuously true
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨_, _, _, _, _, _, _, _, _, _, _, ⟨_, hs'⟩⟩
+      · rcases hblk with ⟨_, _, _, _, _, _, _, _, _, _, ⟨_, hs'⟩⟩
         rw [hs'] at htxn'; simp [recvAcquireState, recvAcquireShared] at htxn'
-      · rcases hperm with ⟨_, _, _, _, _, _, _, _, _, _, ⟨_, hs'⟩⟩
+      · rcases hperm with ⟨_, _, _, _, _, _, _, _, _, ⟨_, hs'⟩⟩
         rw [hs'] at htxn'; simp [recvAcquireState, recvAcquireShared] at htxn'
   | .recvProbeAtMaster =>
       -- currentTxn stays some (guard requires some)
@@ -559,6 +563,7 @@ theorem releaseUniqueInv_preserved (n : Nat)
           exact absurd (hAllCNone i) hp
         · simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn, hpi] at hp
           exact absurd (hAllCNone p) hp
+  | .store v => sorry
 
 theorem refinementInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)

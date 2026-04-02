@@ -510,7 +510,7 @@ theorem refMap_recvAcquireBlock_branch_next {n : Nat}
     (hbranch : hasCachedOther s i ∧ grow.result = .B) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
   rcases hinv with ⟨_, hnoDirty, _, _, _⟩
-  rcases hstep with ⟨htxn, hgrant, hrel, hallC, _hA, hpermN, _hlegal, _hnoDirtyOther, _hshape, _hBs, hs'⟩
+  rcases hstep with ⟨htxn, hgrant, hrel, hallC, _hA, hpermN, _hlegal, _hshape, _hBs, hs'⟩
   rcases hbranch with ⟨hcached, hresult⟩
   rw [hs']
   simp only [SymSharedSpec.toSpec, TileLink.Atomic.tlAtomic]
@@ -558,7 +558,7 @@ theorem refMap_recvAcquireBlock_tip_next {n : Nat}
     (htip : allOthersInvalid s i ∧ grow.result = .T) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
   rcases hinv with ⟨_, hnoDirty, _, _, _⟩
-  rcases hstep with ⟨htxn, hgrant, hrel, hallC, _hA, hpermN, _hlegal, _hnoDirtyOther, _hshape, _hBs, hs'⟩
+  rcases hstep with ⟨htxn, hgrant, hrel, hallC, _hA, hpermN, _hlegal, _hshape, _hBs, hs'⟩
   rcases htip with ⟨hallInvalid, hresult⟩
   rw [hs']
   simp only [SymSharedSpec.toSpec, TileLink.Atomic.tlAtomic]
@@ -605,7 +605,7 @@ theorem refMap_recvAcquirePerm_next {n : Nat}
     (hstep : RecvAcquirePermAtManager s s' i grow source) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
   rcases hinv with ⟨_, hnoDirty, _, _, _⟩
-  rcases hstep with ⟨htxn, hgrant, hrel, hallC, _hA, hlegal, hresult, _hnoDirtyOther, _hBs, hs'⟩
+  rcases hstep with ⟨htxn, hgrant, hrel, hallC, _hA, hlegal, hresult, _hBs, hs'⟩
   rw [hs']
   simp only [SymSharedSpec.toSpec, TileLink.Atomic.tlAtomic]
   refine ⟨i, .acquirePerm, ?_⟩
@@ -652,8 +652,11 @@ theorem refMap_recvAcquireAtManager_next {n : Nat}
   rcases hstep with ⟨grow, source, hblk⟩ | ⟨grow, source, hperm⟩
   · have hshape : (hasCachedOther s i ∧ grow.result = .B) ∨
         (allOthersInvalid s i ∧ grow.result = .T) := by
-        rcases hblk with ⟨_, _, _, _, _, _, _, _, hshape, _, _⟩
-        exact hshape
+        rcases hblk with ⟨_, _, _, _, _, _, _, hshape, _, _⟩
+        rcases hshape with ⟨_, hresult⟩ | ⟨_, hcached, hresult⟩ | ⟨hallInv, hresult⟩
+        · left; sorry
+        · exact Or.inl ⟨hcached, hresult⟩
+        · exact Or.inr ⟨hallInv, hresult⟩
     rcases hshape with hbranch | htip
     · exact refMap_recvAcquireBlock_branch_next hinv hblk hbranch
     · exact refMap_recvAcquireBlock_tip_next hinv hblk htip
