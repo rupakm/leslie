@@ -1,4 +1,5 @@
 import Leslie.Examples.CacheCoherence.TileLink.Messages.Refinement.Invariants
+import Leslie.Gadgets.ActionCases
 
 namespace TileLink.Messages
 
@@ -417,8 +418,7 @@ theorem txnDataInv_preserved (n : Nat)
     (hpreNoDirty : preLinesNoDirtyInv n s)
     (hnext : (tlMessages.toSpec n).next s s') :
     txnDataInv n s' := by
-  simp only [SymSharedSpec.toSpec, tlMessages] at hnext
-  obtain ⟨i, a, hstep⟩ := hnext
+  action_cases hnext with tlMessages
   match a with
   | .sendAcquireBlock grow source =>
       rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩

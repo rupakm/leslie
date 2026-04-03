@@ -239,10 +239,10 @@ theorem init_dirtyExclusiveInv (n : Nat) :
 
 theorem init_dataCoherenceInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → dataCoherenceInv n s := by
-  intro s hinit _ i _ hvalid _
+  intro s hinit _ i _ hdirty
   rcases hinit with ⟨⟨hmem, _, _, _, _, _⟩, hlocals⟩
   rcases hlocals i with ⟨hline, _, _, _, _, _, _, _, _⟩
-  rw [hline] at hvalid; simp at hvalid
+  simp [hline, hmem]
 
 theorem init_permSwmrInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → permSwmrInv n s := by
