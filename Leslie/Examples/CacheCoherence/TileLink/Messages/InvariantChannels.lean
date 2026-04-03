@@ -10,7 +10,8 @@ def chanAInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
     | some msg =>
         (s.locals i).pendingSource = some msg.source ∧
         ((msg.opcode = .acquireBlock ∧ msg.param.legalFrom (s.locals i).line.perm) ∨
-         (msg.opcode = .acquirePerm ∧ msg.param.legalFrom (s.locals i).line.perm ∧ msg.param.result = .T))
+         (msg.opcode = .acquirePerm ∧ msg.param.legalFrom (s.locals i).line.perm ∧ msg.param.result = .T) ∨
+         (msg.opcode = .get ∨ msg.opcode = .putFullData))
 
 def chanBInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   ∀ i : Fin n, match (s.locals i).chanB with
@@ -65,7 +66,8 @@ def chanDInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
           (s.locals i).releaseInFlight = true ∧
           (s.locals i).chanC = none ∧
           (s.locals i).chanE = none ∧
-          msg = releaseAckMsg i.1)
+          msg = releaseAckMsg i.1) ∨
+        (msg.opcode = .accessAck ∨ msg.opcode = .accessAckData)
 
 def chanEInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   ∀ i : Fin n, match (s.locals i).chanE with

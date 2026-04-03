@@ -461,21 +461,137 @@ theorem fullInv_preserved_with_release (n : Nat)
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact ⟨hcore, hchan, serializationInv_of_core_channel _ _ hcore hchan⟩
   | .uncachedGet source =>
-      -- chanAInv/chanDInv need extension for access messages (Get/Put opcodes);
-      -- currently they only cover acquire/grant/releaseAck opcodes.
-      sorry
+      rcases hstep with ⟨hcur, hgrant, hrel, hA, hB, hC, hD, hE, hSrc, hFlight, rfl⟩
+      rcases hcore with ⟨hlineWF, hdir, hpending, htxn⟩
+      rcases hchan with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
+      have hcore' : coreInv n s' := by
+        refine ⟨?_, ?_, ?_, ?_⟩
+        · intro j; by_cases hji : j = i
+          · subst j; simpa [setFn] using hlineWF i
+          · simpa [setFn, hji] using hlineWF j
+        · intro j hCnone; by_cases hji : j = i
+          · subst j; simp [setFn] at hCnone ⊢; exact hdir i hC
+          · simpa [setFn, hji] using hdir j (by simpa [setFn, hji] using hCnone)
+        · simpa [pendingInv, hcur, hgrant, hrel] using hpending
+        · simpa [txnCoreInv, hcur] using htxn
+      have hchan' : channelInv n s' := by
+        refine ⟨?_, ?_, ?_, ?_, ?_⟩
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn, mkGetMsg]
+          · simpa [setFn, hji] using hchanA j
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn, hB]
+          · simpa [setFn, hji] using hchanB j
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn, hC]
+          · simpa [setFn, hji] using hchanC j
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn, hD]
+          · simpa [setFn, hji] using hchanD j
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn, hE]
+          · simpa [setFn, hji] using hchanE j
+      exact ⟨hcore', hchan', serializationInv_of_core_channel _ _ hcore' hchan'⟩
   | .uncachedPut source v =>
-      -- chanAInv/chanDInv need extension for access messages (Get/Put opcodes);
-      -- currently they only cover acquire/grant/releaseAck opcodes.
-      sorry
+      rcases hstep with ⟨hcur, hgrant, hrel, _hallN, hA, hB, hC, hD, hE, hSrc, hFlight, rfl⟩
+      rcases hcore with ⟨hlineWF, hdir, hpending, htxn⟩
+      rcases hchan with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
+      have hcore' : coreInv n s' := by
+        refine ⟨?_, ?_, ?_, ?_⟩
+        · intro j; by_cases hji : j = i
+          · subst j; simpa [setFn] using hlineWF i
+          · simpa [setFn, hji] using hlineWF j
+        · intro j hCnone; by_cases hji : j = i
+          · subst j; simp [setFn] at hCnone ⊢; exact hdir i hC
+          · simpa [setFn, hji] using hdir j (by simpa [setFn, hji] using hCnone)
+        · simpa [pendingInv, hcur, hgrant, hrel] using hpending
+        · simpa [txnCoreInv, hcur] using htxn
+      have hchan' : channelInv n s' := by
+        refine ⟨?_, ?_, ?_, ?_, ?_⟩
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn, mkPutMsg]
+          · simpa [setFn, hji] using hchanA j
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn, hB]
+          · simpa [setFn, hji] using hchanB j
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn, hC]
+          · simpa [setFn, hji] using hchanC j
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn, hD]
+          · simpa [setFn, hji] using hchanD j
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn, hE]
+          · simpa [setFn, hji] using hchanE j
+      exact ⟨hcore', hchan', serializationInv_of_core_channel _ _ hcore' hchan'⟩
   | .recvUncachedAtManager =>
-      -- chanDInv needs extension for accessAck/accessAckData opcodes;
-      -- currently only covers grant and releaseAck message forms.
-      sorry
+      rcases hstep with ⟨hcur, hgrant, hrel, ⟨msg, hA, hmsgOp, rfl⟩⟩
+      rcases hcore with ⟨hlineWF, hdir, hpending, htxn⟩
+      rcases hchan with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
+      have hcore' : coreInv n s' := by
+        refine ⟨?_, ?_, ?_, ?_⟩
+        · intro j; by_cases hji : j = i
+          · subst j; simpa [setFn] using hlineWF i
+          · simpa [setFn, hji] using hlineWF j
+        · intro j hCnone; by_cases hji : j = i
+          · subst j; simp [setFn] at hCnone ⊢; exact hdir i hCnone
+          · simpa [setFn, hji] using hdir j (by simpa [setFn, hji] using hCnone)
+        · simpa [pendingInv, hcur, hgrant, hrel] using hpending
+        · simpa [txnCoreInv, hcur] using htxn
+      have hchan' : channelInv n s' := by
+        refine ⟨?_, ?_, ?_, ?_, ?_⟩
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn]
+          · simpa [setFn, hji] using hchanA j
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn]; specialize hchanB i; simp [*] at hchanB; exact hchanB
+          · simpa [setFn, hji] using hchanB j
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn]; specialize hchanC i; simp [*] at hchanC; exact hchanC
+          · simpa [setFn, hji] using hchanC j
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn]
+            rcases hmsgOp with h | h <;> simp [h]
+          · simpa [setFn, hji] using hchanD j
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn]; specialize hchanE i; simp [*] at hchanE; exact hchanE
+          · simpa [setFn, hji] using hchanE j
+      exact ⟨hcore', hchan', serializationInv_of_core_channel _ _ hcore' hchan'⟩
   | .recvAccessAckAtMaster =>
-      -- chanAInv/chanDInv need extension for access messages;
-      -- after clearing chanD (accessAck), remaining channels are fine but
-      -- the full proof depends on the extended channel invariants.
-      sorry
+      rcases hstep with ⟨msg, hD, hmsgOp, rfl⟩
+      rcases hcore with ⟨hlineWF, hdir, hpending, htxn⟩
+      rcases hchan with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
+      have hcore' : coreInv n s' := by
+        refine ⟨?_, ?_, ?_, ?_⟩
+        · intro j; by_cases hji : j = i
+          · subst j; simpa [setFn] using hlineWF i
+          · simpa [setFn, hji] using hlineWF j
+        · intro j hCnone; by_cases hji : j = i
+          · subst j; simp [setFn] at hCnone ⊢; exact hdir i hCnone
+          · simpa [setFn, hji] using hdir j (by simpa [setFn, hji] using hCnone)
+        · simp [pendingInv]; exact hpending
+        · simp [txnCoreInv]; exact htxn
+      have hchan' : channelInv n s' := by
+        refine ⟨?_, ?_, ?_, ?_, ?_⟩
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn]
+            specialize hchanA i
+            rcases h : (s.locals i).chanA with _ | amsg
+            · simp [h] at hchanA; exact hchanA
+            · simp [h] at hchanA ⊢; exact hchanA
+          · simpa [setFn, hji] using hchanA j
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn]; specialize hchanB i; simp [*] at hchanB; exact hchanB
+          · simpa [setFn, hji] using hchanB j
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn]; specialize hchanC i; simp [*] at hchanC; exact hchanC
+          · simpa [setFn, hji] using hchanC j
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn]
+          · simpa [setFn, hji] using hchanD j
+        · intro j; by_cases hji : j = i
+          · subst j; simp [setFn]; specialize hchanE i; simp [*] at hchanE; exact hchanE
+          · simpa [setFn, hji] using hchanE j
+      exact ⟨hcore', hchan', serializationInv_of_core_channel _ _ hcore' hchan'⟩
 
 end TileLink.Messages
