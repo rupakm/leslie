@@ -116,6 +116,10 @@ inductive Act where
   | recvReleaseAckAtMaster
   | store (v : Val)
   | read
+  | uncachedGet (source : SourceId)
+  | uncachedPut (source : SourceId) (v : Val)
+  | recvUncachedAtManager
+  | recvAccessAckAtMaster
   deriving DecidableEq
 
 end TileLink.Messages

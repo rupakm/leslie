@@ -196,6 +196,10 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hdata j hvalidJ hdirtyJ
+  | .uncachedGet source => sorry
+  | .uncachedPut source v => sorry
+  | .recvUncachedAtManager => sorry
+  | .recvAccessAckAtMaster => sorry
 
 theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
@@ -417,6 +421,10 @@ theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact htxnLine
+  | .uncachedGet source => sorry
+  | .uncachedPut source v => sorry
+  | .recvUncachedAtManager => sorry
+  | .recvAccessAckAtMaster => sorry
 
 private theorem writableProbeMask_eq_snapshotWritableProbeMask {n : Nat}
     (s : SymState HomeState NodeState n) (i : Fin n) (kind : ReqKind)
@@ -582,6 +590,10 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hplan
+  | .uncachedGet source => sorry
+  | .uncachedPut source v => sorry
+  | .recvUncachedAtManager => sorry
+  | .recvAccessAckAtMaster => sorry
 
 theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
@@ -779,6 +791,18 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
       right
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       rfl
+  | .uncachedGet source =>
+      -- stuttering: refMap doesn't depend on chanA/pendingSource
+      sorry
+  | .uncachedPut source v =>
+      -- uncachedPut changes mem; needs atomic model extension
+      sorry
+  | .recvUncachedAtManager =>
+      -- stuttering: refMap doesn't depend on chanA/chanD (access msgs)
+      sorry
+  | .recvAccessAckAtMaster =>
+      -- stuttering: refMap doesn't depend on chanD/pendingSource
+      sorry
 
 /-! ### Main Forward-Simulation Theorem -/
 

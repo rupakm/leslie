@@ -413,6 +413,10 @@ theorem dirtyExclusiveInv_preserved (n : Nat)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hdirtyEx
+  | .uncachedGet source => sorry
+  | .uncachedPut source v => sorry
+  | .recvUncachedAtManager => sorry
+  | .recvAccessAckAtMaster => sorry
 
 theorem txnDataInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
@@ -516,6 +520,10 @@ theorem txnDataInv_preserved (n : Nat)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact htxnData
+  | .uncachedGet source => sorry
+  | .uncachedPut source v => sorry
+  | .recvUncachedAtManager => sorry
+  | .recvAccessAckAtMaster => sorry
 
 theorem preLinesNoDirtyInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
@@ -605,6 +613,10 @@ theorem preLinesNoDirtyInv_preserved (n : Nat)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hpre
+  | .uncachedGet source => sorry
+  | .uncachedPut source v => sorry
+  | .recvUncachedAtManager => sorry
+  | .recvAccessAckAtMaster => sorry
 
 theorem preLinesCleanInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
@@ -702,6 +714,10 @@ theorem preLinesCleanInv_preserved (n : Nat)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hpre
+  | .uncachedGet source => sorry
+  | .uncachedPut source v => sorry
+  | .recvUncachedAtManager => sorry
+  | .recvAccessAckAtMaster => sorry
 
 
 theorem cleanChanCInv_preserved (n : Nat)
@@ -819,6 +835,10 @@ theorem cleanChanCInv_preserved (n : Nat)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hclean htxn' j hflightJ msg hCj
+  | .uncachedGet source => sorry
+  | .uncachedPut source v => sorry
+  | .recvUncachedAtManager => sorry
+  | .recvAccessAckAtMaster => sorry
 
 theorem releaseUniqueInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
@@ -982,6 +1002,10 @@ theorem releaseUniqueInv_preserved (n : Nat)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hrelUniq htxn'
+  | .uncachedGet source => sorry
+  | .uncachedPut source v => sorry
+  | .recvUncachedAtManager => sorry
+  | .recvAccessAckAtMaster => sorry
 
 /-- Helper: if all lines are unchanged between s and s', permSwmrInv transfers. -/
 private theorem permSwmrInv_of_same_lines (n : Nat)
@@ -1181,6 +1205,10 @@ theorem permSwmrInv_preserved (n : Nat)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hSwmr
+  | .uncachedGet source => sorry
+  | .uncachedPut source v => sorry
+  | .recvUncachedAtManager => sorry
+  | .recvAccessAckAtMaster => sorry
 
 private theorem pruneReport_source_N_result_N (param : PruneReportParam)
     (h : param.source = .N) : param.result = .N := by
@@ -1369,6 +1397,10 @@ theorem dirtyReleaseExclusiveInv_preserved (n : Nat)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hdirtyRelEx
+  | .uncachedGet source => sorry
+  | .uncachedPut source v => sorry
+  | .recvUncachedAtManager => sorry
+  | .recvAccessAckAtMaster => sorry
 
 theorem refinementInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)

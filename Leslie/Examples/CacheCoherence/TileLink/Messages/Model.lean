@@ -247,6 +247,76 @@ def Read {n : Nat}
   (s.locals i).releaseInFlight = false ∧
   s' = s
 
+def mkGetMsg (source : SourceId) : AMsg :=
+  { opcode := .get, param := .NtoB, source := source }
+
+def mkPutMsg (source : SourceId) : AMsg :=
+  { opcode := .putFullData, param := .NtoB, source := source }
+
+def UncachedGet {n : Nat}
+    (s s' : SymState HomeState NodeState n)
+    (i : Fin n) (source : SourceId) : Prop :=
+  s.shared.currentTxn = none ∧
+  s.shared.pendingGrantAck = none ∧
+  s.shared.pendingReleaseAck = none ∧
+  (s.locals i).chanA = none ∧
+  (s.locals i).chanB = none ∧
+  (s.locals i).chanC = none ∧
+  (s.locals i).chanD = none ∧
+  (s.locals i).chanE = none ∧
+  (s.locals i).pendingSource = none ∧
+  (s.locals i).releaseInFlight = false ∧
+  s' = { shared := s.shared
+       , locals := setFn s.locals i
+           { (s.locals i) with
+               chanA := some (mkGetMsg source)
+               pendingSource := some source } }
+
+def UncachedPut {n : Nat}
+    (s s' : SymState HomeState NodeState n)
+    (i : Fin n) (source : SourceId) (v : Val) : Prop :=
+  s.shared.currentTxn = none ∧
+  s.shared.pendingGrantAck = none ∧
+  s.shared.pendingReleaseAck = none ∧
+  (∀ j : Fin n, (s.locals j).line.perm = .N) ∧
+  (s.locals i).chanA = none ∧
+  (s.locals i).chanB = none ∧
+  (s.locals i).chanC = none ∧
+  (s.locals i).chanD = none ∧
+  (s.locals i).chanE = none ∧
+  (s.locals i).pendingSource = none ∧
+  (s.locals i).releaseInFlight = false ∧
+  s' = { shared := { s.shared with mem := v }
+       , locals := setFn s.locals i
+           { (s.locals i) with
+               chanA := some (mkPutMsg source)
+               pendingSource := some source } }
+
+def RecvUncachedAtManager {n : Nat}
+    (s s' : SymState HomeState NodeState n) (i : Fin n) : Prop :=
+  s.shared.currentTxn = none ∧
+  s.shared.pendingGrantAck = none ∧
+  s.shared.pendingReleaseAck = none ∧
+  ∃ msg : AMsg, (s.locals i).chanA = some msg ∧
+    (msg.opcode = .get ∨ msg.opcode = .putFullData) ∧
+    s' = { shared := s.shared
+         , locals := setFn s.locals i
+             { (s.locals i) with
+                 chanA := none
+                 chanD := some { opcode := if msg.opcode = .get then .accessAckData else .accessAck
+                               , sink := 0, source := msg.source
+                               , data := if msg.opcode = .get then some s.shared.mem else none } } }
+
+def RecvAccessAckAtMaster {n : Nat}
+    (s s' : SymState HomeState NodeState n) (i : Fin n) : Prop :=
+  ∃ msg : DMsg, (s.locals i).chanD = some msg ∧
+    (msg.opcode = .accessAck ∨ msg.opcode = .accessAckData) ∧
+    s' = { shared := s.shared
+         , locals := setFn s.locals i
+             { (s.locals i) with
+                 chanD := none
+                 pendingSource := none } }
+
 noncomputable def tlMessages : SymSharedSpec where
   Shared := HomeState
   Local := NodeState
@@ -284,5 +354,9 @@ noncomputable def tlMessages : SymSharedSpec where
     | .recvReleaseAckAtMaster => RecvReleaseAckAtMaster s s' i
     | .store v => Store s s' i v
     | .read => Read s s' i
+    | .uncachedGet source => UncachedGet s s' i source
+    | .uncachedPut source v => UncachedPut s s' i source v
+    | .recvUncachedAtManager => RecvUncachedAtManager s s' i
+    | .recvAccessAckAtMaster => RecvAccessAckAtMaster s s' i
 
 end TileLink.Messages

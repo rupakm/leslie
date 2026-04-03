@@ -460,5 +460,9 @@ theorem fullInv_preserved_with_release (n : Nat)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact ⟨hcore, hchan, serializationInv_of_core_channel _ _ hcore hchan⟩
+  | .uncachedGet source => sorry
+  | .uncachedPut source v => sorry
+  | .recvUncachedAtManager => sorry
+  | .recvAccessAckAtMaster => sorry
 
 end TileLink.Messages

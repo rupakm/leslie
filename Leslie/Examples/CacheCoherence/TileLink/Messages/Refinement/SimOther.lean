@@ -579,4 +579,32 @@ theorem refMap_read_eq {n : Nat}
     refMap n s' = refMap n s := by
   rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
 
+theorem refMap_uncachedGet_eq {n : Nat}
+    {s s' : SymState HomeState NodeState n}
+    {i : Fin n} {source : SourceId}
+    (hstep : UncachedGet s s' i source) :
+    refMap n s' = refMap n s := by
+  sorry
+
+theorem refMap_uncachedPut_eq {n : Nat}
+    {s s' : SymState HomeState NodeState n}
+    {i : Fin n} {source : SourceId} {v : Val}
+    (hstep : UncachedPut s s' i source v) :
+    refMap n s' = refMap n s := by
+  sorry
+
+theorem refMap_recvUncachedAtManager_eq {n : Nat}
+    {s s' : SymState HomeState NodeState n}
+    {i : Fin n}
+    (hstep : RecvUncachedAtManager s s' i) :
+    refMap n s' = refMap n s := by
+  sorry
+
+theorem refMap_recvAccessAckAtMaster_eq {n : Nat}
+    {s s' : SymState HomeState NodeState n}
+    {i : Fin n}
+    (hstep : RecvAccessAckAtMaster s s' i) :
+    refMap n s' = refMap n s := by
+  sorry
+
 end TileLink.Messages
