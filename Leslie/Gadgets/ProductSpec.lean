@@ -7,8 +7,9 @@ import Leslie.Refinement
 
     Each action operates on exactly one component; all others are unchanged.
 
-    Key theorem: `product_refines_component` — if the base spec refines
-    an abstract spec, then each component of the product also refines it.
+    Key theorems:
+    - `product_invariant_lift`: base invariants lift to each component
+    - `product_refines_component`: base refinement lifts to each component
 -/
 
 open TLA
@@ -45,17 +46,46 @@ theorem product_invariant_lift (base : Spec σ) (m : Nat) (k : Fin m)
     · rw [hframe k hkk']
       exact hP
 
+/-- The projection of a product execution to component k satisfies
+    the base spec's safety_stutter. -/
+theorem product_project_stutter (base : Spec σ) (m : Nat) (k : Fin m) :
+    refines_via (· k) (product base m).safety base.safety_stutter := by
+  intro e ⟨hinit, hnext⟩
+  refine ⟨hinit k, ?_⟩
+  intro t
+  simp only [action_pred, exec.drop, exec.map]
+  have ht := hnext t
+  simp only [action_pred, exec.drop] at ht
+  rcases ht with ⟨k', hstep, hframe⟩
+  by_cases hkk' : k = k'
+  · subst hkk'; exact Or.inl hstep
+  · exact Or.inr (hframe k hkk').symm
+
 /-- If the base spec refines an abstract spec via `f`, then each component
-    of the product refines the abstract spec via `f ∘ (· k)`. -/
+    of the product refines the abstract spec via `f ∘ (· k)`.
+
+    The proof constructs the abstract execution directly: each product step
+    either advances the target component (mapped through `f` via `href`) or
+    leaves it unchanged (stuttering). -/
 theorem product_refines_component (base : Spec σ) (m : Nat)
     {τ : Type} (abstract : Spec τ) (f : σ → τ)
-    (href : refines_via f base.safety abstract.safety_stutter)
+    (hinit_ref : ∀ s, base.init s → abstract.init (f s))
+    (hstep_ref : ∀ s s', base.next s s' →
+      abstract.next (f s) (f s') ∨ f s = f s')
     (k : Fin m) :
     refines_via (fun s => f (s k))
       (product base m).safety abstract.safety_stutter := by
-  -- The product projects to the base spec (with stuttering).
-  -- The base spec refines abstract (with stuttering).
-  -- Composing these gives the result.
-  sorry
+  intro e ⟨hinit, hnext⟩
+  refine ⟨hinit_ref (e 0 k) (hinit k), ?_⟩
+  intro t
+  simp only [action_pred, exec.drop, exec.map]
+  have ht := hnext t
+  simp only [action_pred, exec.drop] at ht
+  rcases ht with ⟨k', hstep, hframe⟩
+  by_cases hkk' : k = k'
+  · subst hkk'
+    exact hstep_ref _ _ hstep
+  · right
+    exact congrArg f (hframe k hkk').symm
 
 end ProductSpec

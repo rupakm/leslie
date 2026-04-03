@@ -25,7 +25,11 @@ def tlMultiLine (numAddrs n : Nat) : Spec (Fin numAddrs → SymState HomeState N
 theorem multi_line_refinementInv (numAddrs n : Nat) (addr : Fin numAddrs) :
     pred_implies (tlMultiLine numAddrs n).safety
       [tlafml| □ ⌜ fun s => refinementInv n (s addr) ⌝] := by
-  sorry -- Needs fullInv → refinementInv lift + product_invariant_lift
+  apply product_invariant_lift
+  · intro s hinit
+    exact init_refinementInv n s hinit
+  · intro s s' hrefInv hnext
+    exact refinementInv_preserved n s s' hrefInv hnext
 
 /-- Per-address read coherence: a readable node at any address returns
     the logical value for that address. -/
