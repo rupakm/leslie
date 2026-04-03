@@ -27,6 +27,7 @@ private theorem chanD_none_of_pendingGrant_none (n : Nat)
       · rcases hrelBranch with ⟨_, _, hpendingRel, _, _, _, _⟩
         rw [hrel] at hpendingRel
         simp at hpendingRel
+      · rcases haccBranch with hacc | hacc <;> simp [hacc] at hD
 
 private theorem chanE_none_of_pendingGrant_none (n : Nat)
     (s : SymState HomeState NodeState n) (hchanE : chanEInv n s)
