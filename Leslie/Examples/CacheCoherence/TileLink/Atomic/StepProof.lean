@@ -171,6 +171,10 @@ private theorem swmr_preserved (n : Nat)
   | .releaseAck =>
       rcases hstep with ⟨_, rfl⟩
       exact hswmr p q hpq hpT
+  | .uncachedWrite v =>
+      rcases hstep with ⟨_, _, hallN, rfl⟩
+      have hpN : (s.locals p).perm = .N := hallN p
+      rw [hpN] at hpT; cases hpT
 
 private theorem pendingInv_preserved (n : Nat)
     (s s' : SymState HomeState CacheLine n)
@@ -274,6 +278,11 @@ private theorem pendingInv_preserved (n : Nat)
         exact hgrant p hp
       · intro p hp
         simp at hp
+  | .uncachedWrite v =>
+      rcases hstep with ⟨_, hgrantNone, _, rfl⟩
+      refine ⟨?_, ?_, Or.inl (by simpa using hgrantNone)⟩
+      · intro p hp; simp [hgrantNone] at hp
+      · intro p hp; exact hrel p hp
 
 private theorem dirInv_preserved (n : Nat)
     (s s' : SymState HomeState CacheLine n)
@@ -320,6 +329,9 @@ private theorem dirInv_preserved (n : Nat)
       simp [syncDir_apply_fin]
   | .releaseAck =>
       rcases hstep with ⟨_, rfl⟩
+      exact hdir p
+  | .uncachedWrite v =>
+      rcases hstep with ⟨_, _, _, rfl⟩
       exact hdir p
 
 private theorem lineWF_preserved (n : Nat)
@@ -389,6 +401,9 @@ private theorem lineWF_preserved (n : Nat)
       · simpa [setFn, hpi] using hwf p
   | .releaseAck =>
       rcases hstep with ⟨_, rfl⟩
+      exact hwf p
+  | .uncachedWrite v =>
+      rcases hstep with ⟨_, _, _, rfl⟩
       exact hwf p
 
 private theorem cleanDataInv_preserved (n : Nat)
@@ -515,6 +530,11 @@ private theorem cleanDataInv_preserved (n : Nat)
   | .releaseAck =>
       rcases hstep with ⟨_, rfl⟩
       exact hcleanData p hpvalid hpclean
+  | .uncachedWrite v =>
+      rcases hstep with ⟨_, _, hallN, rfl⟩
+      have hpN : (s.locals p).perm = .N := hallN p
+      have hpvalidFalse : (s.locals p).valid = false := (hwf p).2.2 hpN |>.1
+      rw [hpvalidFalse] at hpvalid; cases hpvalid
 
 private theorem grantMetaInv_preserved (n : Nat)
     (s s' : SymState HomeState CacheLine n)
@@ -630,6 +650,9 @@ private theorem grantMetaInv_preserved (n : Nat)
             rw [hrelSome] at hrelNone
             simp at hrelNone
           exact False.elim this
+  | .uncachedWrite v =>
+      rcases hstep with ⟨hmetaNone, _, _, rfl⟩
+      simpa [grantMetaInv, hmetaNone] using hmetaInv
 
 def atomicInv (n : Nat) (s : SymState HomeState CacheLine n) : Prop :=
   swmr n s ∧ pendingInv n s ∧ grantMetaInv n s ∧ dirInv n s ∧ lineWF n s ∧ cleanDataInv n s

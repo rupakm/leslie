@@ -413,10 +413,22 @@ theorem dirtyExclusiveInv_preserved (n : Nat)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hdirtyEx
-  | .uncachedGet source => sorry
-  | .uncachedPut source v => sorry
-  | .recvUncachedAtManager => sorry
-  | .recvAccessAckAtMaster => sorry
+  | .uncachedGet source =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, rfl⟩
+      exact dirtyExclusiveInv_of_same_lines n s _ hdirtyEx
+        (fun j => by simp [setFn]; split <;> simp_all)
+  | .uncachedPut source v =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      exact dirtyExclusiveInv_of_same_lines n s _ hdirtyEx
+        (fun j => by simp [setFn]; split <;> simp_all)
+  | .recvUncachedAtManager =>
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
+      exact dirtyExclusiveInv_of_same_lines n s _ hdirtyEx
+        (fun j => by simp [setFn]; split <;> simp_all)
+  | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨_, _, _, rfl⟩
+      exact dirtyExclusiveInv_of_same_lines n s _ hdirtyEx
+        (fun j => by simp [setFn]; split <;> simp_all)
 
 theorem txnDataInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
@@ -520,10 +532,18 @@ theorem txnDataInv_preserved (n : Nat)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact htxnData
-  | .uncachedGet source => sorry
-  | .uncachedPut source v => sorry
-  | .recvUncachedAtManager => sorry
-  | .recvAccessAckAtMaster => sorry
+  | .uncachedGet source =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, rfl⟩
+      simp [txnDataInv, hcur]
+  | .uncachedPut source v =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      simp [txnDataInv, hcur]
+  | .recvUncachedAtManager =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, rfl⟩
+      simp [txnDataInv, hcur]
+  | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨_, _, _, rfl⟩
+      exact htxnData
 
 theorem preLinesNoDirtyInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
@@ -613,10 +633,18 @@ theorem preLinesNoDirtyInv_preserved (n : Nat)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hpre
-  | .uncachedGet source => sorry
-  | .uncachedPut source v => sorry
-  | .recvUncachedAtManager => sorry
-  | .recvAccessAckAtMaster => sorry
+  | .uncachedGet source =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, rfl⟩
+      simp [preLinesNoDirtyInv, hcur]
+  | .uncachedPut source v =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      simp [preLinesNoDirtyInv, hcur]
+  | .recvUncachedAtManager =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, rfl⟩
+      simp [preLinesNoDirtyInv, hcur]
+  | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨_, _, _, rfl⟩
+      exact hpre
 
 theorem preLinesCleanInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
@@ -714,10 +742,18 @@ theorem preLinesCleanInv_preserved (n : Nat)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hpre
-  | .uncachedGet source => sorry
-  | .uncachedPut source v => sorry
-  | .recvUncachedAtManager => sorry
-  | .recvAccessAckAtMaster => sorry
+  | .uncachedGet source =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, rfl⟩
+      simp [preLinesCleanInv, hcur]
+  | .uncachedPut source v =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      simp [preLinesCleanInv, hcur]
+  | .recvUncachedAtManager =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, rfl⟩
+      simp [preLinesCleanInv, hcur]
+  | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨_, _, _, rfl⟩
+      exact hpre
 
 
 theorem cleanChanCInv_preserved (n : Nat)
@@ -812,33 +848,49 @@ theorem cleanChanCInv_preserved (n : Nat)
       · simp [sendReleaseLocals, sendReleaseLocal, setFn, hji] at hflightJ hCj ⊢
         exact hclean htxn j hflightJ msg hCj
   | .recvReleaseAtManager =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
-      rw [hs'] at hCj
+      rcases hstep with ⟨_, _, htxn_s, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at hCj hflightJ
       by_cases hji : j = i
       · subst j; simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn] at hCj
-      · simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn, hji] at hCj
-        exact hclean j msg hCj
+      · simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn, hji] at hCj hflightJ
+        exact hclean htxn_s j hflightJ msg hCj
   | .recvReleaseAckAtMaster =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩
-      rw [hs'] at hCj
+      rcases hstep with ⟨_, htxn_s, _, _, _, _, _, hs'⟩
+      rw [hs'] at hCj hflightJ
       by_cases hji : j = i
-      · subst j; simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn] at hCj
-        exact hclean i msg hCj
-      · simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn, hji] at hCj
-        exact hclean j msg hCj
+      · subst j; simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn] at hCj hflightJ
+        exact hclean htxn_s i hflightJ msg hCj
+      · simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn, hji] at hCj hflightJ
+        exact hclean htxn_s j hflightJ msg hCj
   | .store v =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, hCi, _, _, _, _, hs'⟩
-      rw [hs'] at hCj
+      rcases hstep with ⟨htxn_s, _, _, _, _, _, _, hCi, _, _, _, _, hs'⟩
+      rw [hs'] at hCj hflightJ
       by_cases hji : j = i
       · subst j; simp [setFn] at hCj; rw [hCi] at hCj; simp at hCj
-      · simp [setFn, hji] at hCj; exact hclean j msg hCj
+      · simp [setFn, hji] at hCj hflightJ; exact hclean htxn_s j hflightJ msg hCj
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hclean htxn' j hflightJ msg hCj
-  | .uncachedGet source => sorry
-  | .uncachedPut source v => sorry
-  | .recvUncachedAtManager => sorry
-  | .recvAccessAckAtMaster => sorry
+  | .uncachedGet source =>
+      rcases hstep with ⟨htxn_s, _, _, _, _, _, _, _, _, _, rfl⟩
+      by_cases hji : j = i
+      · subst j; simp [setFn] at hCj hflightJ; exact hclean htxn_s i hflightJ msg hCj
+      · simp [setFn, hji] at hCj hflightJ; exact hclean htxn_s j hflightJ msg hCj
+  | .uncachedPut source v =>
+      rcases hstep with ⟨htxn_s, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      by_cases hji : j = i
+      · subst j; simp [setFn] at hCj hflightJ; exact hclean htxn_s i hflightJ msg hCj
+      · simp [setFn, hji] at hCj hflightJ; exact hclean htxn_s j hflightJ msg hCj
+  | .recvUncachedAtManager =>
+      rcases hstep with ⟨htxn_s, _, _, _, _, _, rfl⟩
+      by_cases hji : j = i
+      · subst j; simp [setFn] at hCj hflightJ; exact hclean htxn_s i hflightJ msg hCj
+      · simp [setFn, hji] at hCj hflightJ; exact hclean htxn_s j hflightJ msg hCj
+  | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨_, _, _, rfl⟩
+      by_cases hji : j = i
+      · subst j; simp [setFn] at hCj hflightJ; exact hclean htxn' i hflightJ msg hCj
+      · simp [setFn, hji] at hCj hflightJ; exact hclean htxn' j hflightJ msg hCj
 
 theorem releaseUniqueInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
@@ -876,9 +928,9 @@ theorem releaseUniqueInv_preserved (n : Nat)
   | .recvAcquireAtManager =>
       -- Post: currentTxn = some, so the invariant is vacuously true
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨_, _, _, _, _, _, _, _, _, _, ⟨_, hs'⟩⟩
+      · rcases hblk with ⟨_, _, _, _, _, _, _, _, _, _, _, hs'⟩
         rw [hs'] at htxn'; simp [recvAcquireState, recvAcquireShared] at htxn'
-      · rcases hperm with ⟨_, _, _, _, _, _, _, _, _, ⟨_, hs'⟩⟩
+      · rcases hperm with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩
         rw [hs'] at htxn'; simp [recvAcquireState, recvAcquireShared] at htxn'
   | .recvProbeAtMaster =>
       -- currentTxn stays some (guard requires some)
@@ -1002,10 +1054,54 @@ theorem releaseUniqueInv_preserved (n : Nat)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hrelUniq htxn'
-  | .uncachedGet source => sorry
-  | .uncachedPut source v => sorry
-  | .recvUncachedAtManager => sorry
-  | .recvAccessAckAtMaster => sorry
+  | .uncachedGet source =>
+      rcases hstep with ⟨htxn_s, _, _, _, _, _, _, _, _, _, rfl⟩
+      have hpre := hrelUniq htxn_s
+      constructor
+      · intro hrel j
+        have := hpre.1 hrel j
+        by_cases hji : j = i <;> simp_all [setFn]
+      · intro p q hpq hp
+        have hp' : (s.locals p).chanC ≠ none := by
+          by_cases hpi : p = i <;> simp_all [setFn]
+        have := hpre.2 p q hpq hp'
+        by_cases hqi : q = i <;> simp_all [setFn]
+  | .uncachedPut source v =>
+      rcases hstep with ⟨htxn_s, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      have hpre := hrelUniq htxn_s
+      constructor
+      · intro hrel j
+        have := hpre.1 (by simpa using hrel) j
+        by_cases hji : j = i <;> simp_all [setFn]
+      · intro p q hpq hp
+        have hp' : (s.locals p).chanC ≠ none := by
+          by_cases hpi : p = i <;> simp_all [setFn]
+        have := hpre.2 p q hpq hp'
+        by_cases hqi : q = i <;> simp_all [setFn]
+  | .recvUncachedAtManager =>
+      rcases hstep with ⟨htxn_s, _, _, _, _, _, rfl⟩
+      have hpre := hrelUniq htxn_s
+      constructor
+      · intro hrel j
+        have := hpre.1 hrel j
+        by_cases hji : j = i <;> simp_all [setFn]
+      · intro p q hpq hp
+        have hp' : (s.locals p).chanC ≠ none := by
+          by_cases hpi : p = i <;> simp_all [setFn]
+        have := hpre.2 p q hpq hp'
+        by_cases hqi : q = i <;> simp_all [setFn]
+  | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨_, _, _, rfl⟩
+      have hpre := hrelUniq htxn'
+      constructor
+      · intro hrel j
+        have := hpre.1 hrel j
+        by_cases hji : j = i <;> simp_all [setFn]
+      · intro p q hpq hp
+        have hp' : (s.locals p).chanC ≠ none := by
+          by_cases hpi : p = i <;> simp_all [setFn]
+        have := hpre.2 p q hpq hp'
+        by_cases hqi : q = i <;> simp_all [setFn]
 
 /-- Helper: if all lines are unchanged between s and s', permSwmrInv transfers. -/
 private theorem permSwmrInv_of_same_lines (n : Nat)
@@ -1034,12 +1130,10 @@ theorem permSwmrInv_preserved (n : Nat)
         (fun j => sendAcquirePerm_line hstep)
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, hs'⟩
-        rcases hs' with ⟨_, hs'⟩
+      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, _, hs'⟩
         exact permSwmrInv_of_same_lines n s s' hSwmr
           (fun j => by rw [hs']; simp [recvAcquireState, recvAcquireLocals_line])
-      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, hs'⟩
-        rcases hs' with ⟨_, hs'⟩
+      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, hs'⟩
         exact permSwmrInv_of_same_lines n s s' hSwmr
           (fun j => by rw [hs']; simp [recvAcquireState, recvAcquireLocals_line])
   | .recvProbeAtMaster =>
@@ -1205,10 +1299,22 @@ theorem permSwmrInv_preserved (n : Nat)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hSwmr
-  | .uncachedGet source => sorry
-  | .uncachedPut source v => sorry
-  | .recvUncachedAtManager => sorry
-  | .recvAccessAckAtMaster => sorry
+  | .uncachedGet source =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, rfl⟩
+      exact permSwmrInv_of_same_lines n s _ hSwmr
+        (fun j => by simp [setFn]; split <;> simp_all)
+  | .uncachedPut source v =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      exact permSwmrInv_of_same_lines n s _ hSwmr
+        (fun j => by simp [setFn]; split <;> simp_all)
+  | .recvUncachedAtManager =>
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
+      exact permSwmrInv_of_same_lines n s _ hSwmr
+        (fun j => by simp [setFn]; split <;> simp_all)
+  | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨_, _, _, rfl⟩
+      exact permSwmrInv_of_same_lines n s _ hSwmr
+        (fun j => by simp [setFn]; split <;> simp_all)
 
 private theorem pruneReport_source_N_result_N (param : PruneReportParam)
     (h : param.source = .N) : param.result = .N := by
@@ -1397,10 +1503,50 @@ theorem dirtyReleaseExclusiveInv_preserved (n : Nat)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hdirtyRelEx
-  | .uncachedGet source => sorry
-  | .uncachedPut source v => sorry
-  | .recvUncachedAtManager => sorry
-  | .recvAccessAckAtMaster => sorry
+  | .uncachedGet source =>
+      rcases hstep with ⟨htxn_s, _, _, _, _, _, _, _, _, _, rfl⟩
+      intro _ k hrel ⟨cmsg, hCk, hdata⟩ j hji
+      have hrel' : (s.locals k).releaseInFlight = true := by
+        by_cases hki : k = i <;> simp_all [setFn]
+      have ⟨cmsg', hC', hdata'⟩ : ∃ msg : CMsg, (s.locals k).chanC = some msg ∧ msg.data ≠ none := by
+        by_cases hki : k = i <;> simp_all [setFn]
+      have := hdirtyRelEx htxn_s k hrel' ⟨cmsg', hC', hdata'⟩ j hji
+      by_cases hji' : j = i
+      · subst j; simp [setFn]; exact this
+      · simp [setFn, hji']; exact this
+  | .uncachedPut source v =>
+      rcases hstep with ⟨htxn_s, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      intro _ k hrel ⟨cmsg, hCk, hdata⟩ j hji
+      have hrel' : (s.locals k).releaseInFlight = true := by
+        by_cases hki : k = i <;> simp_all [setFn]
+      have ⟨cmsg', hC', hdata'⟩ : ∃ msg : CMsg, (s.locals k).chanC = some msg ∧ msg.data ≠ none := by
+        by_cases hki : k = i <;> simp_all [setFn]
+      have := hdirtyRelEx htxn_s k hrel' ⟨cmsg', hC', hdata'⟩ j hji
+      by_cases hji' : j = i
+      · subst j; simp [setFn]; exact this
+      · simp [setFn, hji']; exact this
+  | .recvUncachedAtManager =>
+      rcases hstep with ⟨htxn_s, _, _, _, _, _, rfl⟩
+      intro _ k hrel ⟨cmsg, hCk, hdata⟩ j hji
+      have hrel' : (s.locals k).releaseInFlight = true := by
+        by_cases hki : k = i <;> simp_all [setFn]
+      have ⟨cmsg', hC', hdata'⟩ : ∃ msg : CMsg, (s.locals k).chanC = some msg ∧ msg.data ≠ none := by
+        by_cases hki : k = i <;> simp_all [setFn]
+      have := hdirtyRelEx htxn_s k hrel' ⟨cmsg', hC', hdata'⟩ j hji
+      by_cases hji' : j = i
+      · subst j; simp [setFn]; exact this
+      · simp [setFn, hji']; exact this
+  | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨_, _, _, rfl⟩
+      intro htxn' k hrel ⟨cmsg, hCk, hdata⟩ j hji
+      have hrel' : (s.locals k).releaseInFlight = true := by
+        by_cases hki : k = i <;> simp_all [setFn]
+      have ⟨cmsg', hC', hdata'⟩ : ∃ msg : CMsg, (s.locals k).chanC = some msg ∧ msg.data ≠ none := by
+        by_cases hki : k = i <;> simp_all [setFn]
+      have := hdirtyRelEx htxn' k hrel' ⟨cmsg', hC', hdata'⟩ j hji
+      by_cases hji' : j = i
+      · subst j; simp [setFn]; exact this
+      · simp [setFn, hji']; exact this
 
 theorem refinementInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)

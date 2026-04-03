@@ -82,6 +82,7 @@ inductive Act where
   | release (param : PruneReportParam)
   | releaseData (param : PruneReportParam)
   | releaseAck
+  | uncachedWrite (v : Val)
   deriving DecidableEq
 
 def invalidateLine (line : CacheLine) : CacheLine :=
@@ -483,6 +484,12 @@ def tlAtomic : SymSharedSpec where
     | .releaseAck =>
         s.shared.pendingReleaseAck = some i.1 ∧
         s' = { shared := { s.shared with pendingReleaseAck := none }
+             , locals := s.locals }
+    | .uncachedWrite v =>
+        s.shared.pendingGrantMeta = none ∧
+        s.shared.pendingGrantAck = none ∧
+        (∀ j : Fin n, (s.locals j).perm = .N) ∧
+        s' = { shared := { s.shared with mem := v }
              , locals := s.locals }
 
 end TileLink.Atomic

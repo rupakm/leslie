@@ -584,27 +584,167 @@ theorem refMap_uncachedGet_eq {n : Nat}
     {i : Fin n} {source : SourceId}
     (hstep : UncachedGet s s' i source) :
     refMap n s' = refMap n s := by
-  sorry
+  rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, rfl⟩
+  have hline : ∀ j : Fin n, (setFn s.locals i { (s.locals i) with chanA := some (mkGetMsg source), pendingSource := some source } j).line = (s.locals j).line := by
+    intro j; simp [setFn]; split <;> simp_all
+  have hflight : ∀ j : Fin n, (setFn s.locals i { (s.locals i) with chanA := some (mkGetMsg source), pendingSource := some source } j).releaseInFlight = (s.locals j).releaseInFlight := by
+    intro j; simp [setFn]; split <;> simp_all
+  have hC : ∀ j : Fin n, (setFn s.locals i { (s.locals i) with chanA := some (mkGetMsg source), pendingSource := some source } j).chanC = (s.locals j).chanC := by
+    intro j; simp [setFn]; split <;> simp_all
+  apply SymState.ext
+  · show refMapShared n _ = refMapShared n s
+    simp only [refMapShared, htxn]
+    congr 1
+    · -- mem: dirty owner line unchanged
+      have hdirty_iff : (∃ j : Fin n, (setFn s.locals i _ j).line.dirty = true) ↔
+                        (∃ j : Fin n, (s.locals j).line.dirty = true) := by
+        constructor <;> rintro ⟨j, hd⟩ <;> exact ⟨j, by rw [hline j] at hd ⊢ <;> exact hd⟩
+      simp only [hdirty_iff]
+      split
+      · next h => rw [hline]
+      · congr 1; simp [findDirtyReleaseVal, hflight, hC]
+    · exact syncDir_lines_eq s.shared.dir _ s.locals hline
+    · rfl
+    · rfl
+    · rw [queuedReleaseIdx_eq_of_chanC_releaseEq hC hflight]
+  · funext j; simp only [refMap, refMapLine, htxn]; exact hline j
 
-theorem refMap_uncachedPut_eq {n : Nat}
+theorem refMap_uncachedPut_next {n : Nat}
     {s s' : SymState HomeState NodeState n}
     {i : Fin n} {source : SourceId} {v : Val}
+    (hfull : fullInv n s)
     (hstep : UncachedPut s s' i source v) :
-    refMap n s' = refMap n s := by
-  sorry
+    (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
+  rcases hstep with ⟨htxn, hgrant, hrel, hallN, _, _, _, _, _, _, _, rfl⟩
+  simp only [SymSharedSpec.toSpec, TileLink.Atomic.tlAtomic]
+  refine ⟨i, .uncachedWrite v, ?_⟩
+  have hline : ∀ j : Fin n, (setFn s.locals i { (s.locals i) with chanA := some (mkPutMsg source), pendingSource := some source } j).line = (s.locals j).line := by
+    intro j; simp [setFn]; split <;> simp_all
+  have hflight : ∀ j : Fin n, (setFn s.locals i { (s.locals i) with chanA := some (mkPutMsg source), pendingSource := some source } j).releaseInFlight = (s.locals j).releaseInFlight := by
+    intro j; simp [setFn]; split <;> simp_all
+  have hC : ∀ j : Fin n, (setFn s.locals i { (s.locals i) with chanA := some (mkPutMsg source), pendingSource := some source } j).chanC = (s.locals j).chanC := by
+    intro j; simp [setFn]; split <;> simp_all
+  have hpermN : ∀ j : Fin n, (s.locals j).line.perm = .N := hallN
+  -- No dirty owner since all perms .N
+  have hlineWF : lineWF n s := by
+    rcases hfull with ⟨⟨_, _, _, _⟩, _, _⟩; assumption
+  have hnoDirty : ¬∃ j : Fin n, (s.locals j).line.dirty = true := by
+    intro ⟨j, hd⟩
+    have := (hlineWF j).1 hd |>.1
+    rw [hpermN j] at this; cases this
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · -- pendingGrantMeta = none
+    simp [refMap, refMapShared, htxn]
+  · -- pendingGrantAck = none
+    simp only [refMap, refMapShared, htxn, hrel]
+    exact hgrant
+  · -- all perms .N in refMap
+    intro j
+    simp [refMap, refMapLine, htxn, hpermN j]
+  · -- postcondition: refMap n s' = { shared := { (refMap n s).shared with mem := v }, locals := (refMap n s).locals }
+    apply SymState.ext
+    · -- shared
+      show refMapShared n _ = _
+      simp only [refMapShared, htxn]
+      -- After put: shared.mem = v, currentTxn = none
+      -- Before put: no dirty owner, so refMap.mem = findDirtyReleaseVal or s.shared.mem
+      -- After put: no dirty owner (lines unchanged), refMap.mem = findDirtyReleaseVal or v
+      -- Need to show the whole shared record matches
+      have hnoDirty' : ¬∃ j : Fin n, (setFn s.locals i _ j).line.dirty = true := by
+        intro ⟨j, hd⟩; rw [hline j] at hd; exact hnoDirty ⟨j, hd⟩
+      simp only [hnoDirty, hnoDirty', dite_false]
+      congr 1
+      · -- mem: findDirtyReleaseVal for s' vs s
+        congr 1; simp [findDirtyReleaseVal, hflight, hC]
+      · -- dir: syncDir unchanged
+        exact syncDir_lines_eq s.shared.dir _ s.locals hline
+      · rfl
+      · -- pendingReleaseAck
+        simp only [hrel]
+        exact queuedReleaseIdx_eq_of_chanC_releaseEq hC hflight
+    · funext j; simp only [refMap, refMapLine, htxn]; exact hline j
 
 theorem refMap_recvUncachedAtManager_eq {n : Nat}
     {s s' : SymState HomeState NodeState n}
     {i : Fin n}
     (hstep : RecvUncachedAtManager s s' i) :
     refMap n s' = refMap n s := by
-  sorry
+  rcases hstep with ⟨htxn, _, _, msg, hA, _, rfl⟩
+  have hline : ∀ j : Fin n, (setFn s.locals i { (s.locals i) with chanA := none, chanD := some _ } j).line = (s.locals j).line := by
+    intro j; simp [setFn]; split <;> simp_all
+  have hflight : ∀ j : Fin n, (setFn s.locals i { (s.locals i) with chanA := none, chanD := some _ } j).releaseInFlight = (s.locals j).releaseInFlight := by
+    intro j; simp [setFn]; split <;> simp_all
+  have hC : ∀ j : Fin n, (setFn s.locals i { (s.locals i) with chanA := none, chanD := some _ } j).chanC = (s.locals j).chanC := by
+    intro j; simp [setFn]; split <;> simp_all
+  apply SymState.ext
+  · show refMapShared n _ = refMapShared n s
+    simp only [refMapShared, htxn]
+    congr 1
+    · -- mem
+      have hdirty_iff : (∃ j : Fin n, (setFn s.locals i _ j).line.dirty = true) ↔
+                        (∃ j : Fin n, (s.locals j).line.dirty = true) := by
+        constructor <;> rintro ⟨j, hd⟩ <;> exact ⟨j, by rw [hline j] at hd ⊢ <;> exact hd⟩
+      simp only [hdirty_iff]
+      split
+      · next h => rw [hline]
+      · congr 1; simp [findDirtyReleaseVal, hflight, hC]
+    · exact syncDir_lines_eq s.shared.dir _ s.locals hline
+    · rfl
+    · rfl
+    · rw [queuedReleaseIdx_eq_of_chanC_releaseEq hC hflight]
+  · funext j; simp only [refMap, refMapLine, htxn]; exact hline j
 
 theorem refMap_recvAccessAckAtMaster_eq {n : Nat}
     {s s' : SymState HomeState NodeState n}
     {i : Fin n}
     (hstep : RecvAccessAckAtMaster s s' i) :
     refMap n s' = refMap n s := by
-  sorry
+  rcases hstep with ⟨msg, hD, _, rfl⟩
+  have hline : ∀ j : Fin n, (setFn s.locals i { (s.locals i) with chanD := none, pendingSource := none } j).line = (s.locals j).line := by
+    intro j; simp [setFn]; split <;> simp_all
+  have hflight : ∀ j : Fin n, (setFn s.locals i { (s.locals i) with chanD := none, pendingSource := none } j).releaseInFlight = (s.locals j).releaseInFlight := by
+    intro j; simp [setFn]; split <;> simp_all
+  have hC : ∀ j : Fin n, (setFn s.locals i { (s.locals i) with chanD := none, pendingSource := none } j).chanC = (s.locals j).chanC := by
+    intro j; simp [setFn]; split <;> simp_all
+  apply SymState.ext
+  · show refMapShared n _ = refMapShared n s
+    -- shared state is s.shared (unchanged)
+    simp only [refMapShared]
+    congr 1
+    · -- mem
+      cases htxn : s.shared.currentTxn with
+      | some tx =>
+        simp [htxn]
+      | none =>
+        simp only [htxn]
+        have hdirty_iff : (∃ j : Fin n, (setFn s.locals i _ j).line.dirty = true) ↔
+                          (∃ j : Fin n, (s.locals j).line.dirty = true) := by
+          constructor <;> rintro ⟨j, hd⟩ <;> exact ⟨j, by rw [hline j] at hd ⊢ <;> exact hd⟩
+        simp only [hdirty_iff]
+        split
+        · next h => rw [hline]
+        · congr 1; simp [findDirtyReleaseVal, hflight, hC]
+    · -- dir
+      cases htxn : s.shared.currentTxn with
+      | some tx => simp [htxn]
+      | none => simp only [htxn]; exact syncDir_lines_eq s.shared.dir _ s.locals hline
+    · rfl
+    · rfl
+    · -- pendingReleaseAck
+      cases s.shared.pendingReleaseAck with
+      | some => rfl
+      | none =>
+        cases s.shared.currentTxn with
+        | some => rfl
+        | none => exact queuedReleaseIdx_eq_of_chanC_releaseEq hC hflight
+  · funext j
+    simp only [refMap, refMapLine]
+    cases htxn : s.shared.currentTxn with
+    | some tx =>
+      simp [htxn]
+      split
+      · split <;> simp_all [setFn]; split <;> simp_all
+      · exact hline j
+    | none => simp only [htxn]; exact hline j
 
 end TileLink.Messages

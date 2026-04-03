@@ -460,9 +460,22 @@ theorem fullInv_preserved_with_release (n : Nat)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact ⟨hcore, hchan, serializationInv_of_core_channel _ _ hcore hchan⟩
-  | .uncachedGet source => sorry
-  | .uncachedPut source v => sorry
-  | .recvUncachedAtManager => sorry
-  | .recvAccessAckAtMaster => sorry
+  | .uncachedGet source =>
+      -- chanAInv/chanDInv need extension for access messages (Get/Put opcodes);
+      -- currently they only cover acquire/grant/releaseAck opcodes.
+      sorry
+  | .uncachedPut source v =>
+      -- chanAInv/chanDInv need extension for access messages (Get/Put opcodes);
+      -- currently they only cover acquire/grant/releaseAck opcodes.
+      sorry
+  | .recvUncachedAtManager =>
+      -- chanDInv needs extension for accessAck/accessAckData opcodes;
+      -- currently only covers grant and releaseAck message forms.
+      sorry
+  | .recvAccessAckAtMaster =>
+      -- chanAInv/chanDInv need extension for access messages;
+      -- after clearing chanD (accessAck), remaining channels are fine but
+      -- the full proof depends on the extended channel invariants.
+      sorry
 
 end TileLink.Messages

@@ -196,10 +196,38 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hdata j hvalidJ hdirtyJ
-  | .uncachedGet source => sorry
-  | .uncachedPut source v => sorry
-  | .recvUncachedAtManager => sorry
-  | .recvAccessAckAtMaster => sorry
+  | .uncachedGet source =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at hvalidJ hdirtyJ ⊢
+      by_cases hji : j = i
+      · subst hji; simp [setFn] at hvalidJ hdirtyJ ⊢
+        exact hdata j hvalidJ hdirtyJ
+      · simp [setFn, hji] at hvalidJ hdirtyJ ⊢
+        exact hdata j hvalidJ hdirtyJ
+  | .uncachedPut source v =>
+      rcases hstep with ⟨_, _, _, hallN, _, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at hvalidJ hdirtyJ ⊢
+      by_cases hji : j = i
+      · subst hji; simp [setFn] at hvalidJ hdirtyJ ⊢
+        exact hdata j hvalidJ hdirtyJ
+      · simp [setFn, hji] at hvalidJ hdirtyJ ⊢
+        exact hdata j hvalidJ hdirtyJ
+  | .recvUncachedAtManager =>
+      rcases hstep with ⟨_, _, _, msg, _, _, hs'⟩
+      rw [hs'] at hvalidJ hdirtyJ ⊢
+      by_cases hji : j = i
+      · subst hji; simp [setFn] at hvalidJ hdirtyJ ⊢
+        exact hdata j hvalidJ hdirtyJ
+      · simp [setFn, hji] at hvalidJ hdirtyJ ⊢
+        exact hdata j hvalidJ hdirtyJ
+  | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨msg, _, _, hs'⟩
+      rw [hs'] at hvalidJ hdirtyJ ⊢
+      by_cases hji : j = i
+      · subst hji; simp [setFn] at hvalidJ hdirtyJ ⊢
+        exact hdata j hvalidJ hdirtyJ
+      · simp [setFn, hji] at hvalidJ hdirtyJ ⊢
+        exact hdata j hvalidJ hdirtyJ
 
 theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
@@ -421,10 +449,32 @@ theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact htxnLine
-  | .uncachedGet source => sorry
-  | .uncachedPut source v => sorry
-  | .recvUncachedAtManager => sorry
-  | .recvAccessAckAtMaster => sorry
+  | .uncachedGet source =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp [txnLineInv, hcur]
+  | .uncachedPut source v =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp [txnLineInv, hcur]
+  | .recvUncachedAtManager =>
+      rcases hstep with ⟨hcur, _, _, msg, _, _, hs'⟩
+      rw [hs']
+      simp [txnLineInv, hcur]
+  | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨msg, _, _, hs'⟩
+      rw [hs']
+      -- currentTxn unchanged (shared unchanged), so match on pre-state currentTxn
+      simp only [txnLineInv]
+      match hcur : s.shared.currentTxn with
+      | none => trivial
+      | some tx =>
+          rw [txnLineInv, hcur] at htxnLine
+          intro j
+          have hpre := htxnLine j
+          by_cases hji : j = i
+          · subst j; simp [setFn] at hpre ⊢; exact hpre
+          · simp [setFn, hji] at hpre ⊢; exact hpre
 
 private theorem writableProbeMask_eq_snapshotWritableProbeMask {n : Nat}
     (s : SymState HomeState NodeState n) (i : Fin n) (kind : ReqKind)
@@ -590,10 +640,27 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hplan
-  | .uncachedGet source => sorry
-  | .uncachedPut source v => sorry
-  | .recvUncachedAtManager => sorry
-  | .recvAccessAckAtMaster => sorry
+  | .uncachedGet source =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp [txnPlanInv, hcur]
+  | .uncachedPut source v =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp [txnPlanInv, hcur]
+  | .recvUncachedAtManager =>
+      rcases hstep with ⟨hcur, _, _, msg, _, _, hs'⟩
+      rw [hs']
+      simp [txnPlanInv, hcur]
+  | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨msg, _, _, hs'⟩
+      rw [hs']
+      simp only [txnPlanInv]
+      match hcur : s.shared.currentTxn with
+      | none => trivial
+      | some tx =>
+          rw [txnPlanInv, hcur] at hplan
+          exact hplan
 
 theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
@@ -792,17 +859,13 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       rfl
   | .uncachedGet source =>
-      -- stuttering: refMap doesn't depend on chanA/pendingSource
-      sorry
+      right; exact (refMap_uncachedGet_eq hstep).symm
   | .uncachedPut source v =>
-      -- uncachedPut changes mem; needs atomic model extension
-      sorry
+      left; exact refMap_uncachedPut_next hfull hstep
   | .recvUncachedAtManager =>
-      -- stuttering: refMap doesn't depend on chanA/chanD (access msgs)
-      sorry
+      right; exact (refMap_recvUncachedAtManager_eq hstep).symm
   | .recvAccessAckAtMaster =>
-      -- stuttering: refMap doesn't depend on chanD/pendingSource
-      sorry
+      right; exact (refMap_recvAccessAckAtMaster_eq hstep).symm
 
 /-! ### Main Forward-Simulation Theorem -/
 
