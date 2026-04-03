@@ -17,9 +17,15 @@ open TLA TileLink SymShared Classical
     - `preLinesCleanInv` (pre-wave lines are clean)
     - `preLinesNoDirtyInv` (pre-wave lines not dirty)
     - `txnPlanInv` (transaction plan consistency) -/
-def forwardSimInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
-  refinementInv n s ∧ dataCoherenceInv n s ∧ txnLineInv n s ∧
-  preLinesCleanInv n s ∧ preLinesNoDirtyInv n s ∧ txnPlanInv n s
+structure ForwardSimInv (n : Nat) (s : SymState HomeState NodeState n) : Prop where
+  ref : RefinementInv n s
+  dataCoh : dataCoherenceInv n s
+  txnLine : txnLineInv n s
+  preClean : preLinesCleanInv n s
+  preNoDirty : preLinesNoDirtyInv n s
+  plan : txnPlanInv n s
+
+abbrev forwardSimInv := @ForwardSimInv
 
 theorem init_forwardSimInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → forwardSimInv n s := by

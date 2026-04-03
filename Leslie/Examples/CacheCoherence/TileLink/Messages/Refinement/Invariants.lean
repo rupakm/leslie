@@ -104,12 +104,24 @@ def releaseUniqueInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
 def permSwmrInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   ∀ i j : Fin n, i ≠ j → (s.locals i).line.perm = .T → (s.locals j).line.perm = .N
 
-def refinementInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
-  fullInv n s ∧ dirtyExclusiveInv n s ∧ permSwmrInv n s ∧ txnDataInv n s ∧
-  cleanChanCInv n s ∧ releaseUniqueInv n s
+structure RefinementInv (n : Nat) (s : SymState HomeState NodeState n) : Prop where
+  full : fullInv n s
+  dirtyEx : dirtyExclusiveInv n s
+  swmr : permSwmrInv n s
+  txnData : txnDataInv n s
+  cleanC : cleanChanCInv n s
+  relUniq : releaseUniqueInv n s
 
-def strongRefinementInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
-  refinementInv n s ∧ txnLineInv n s ∧ preLinesCleanInv n s ∧ preLinesNoDirtyInv n s ∧ txnPlanInv n s
+abbrev refinementInv := @RefinementInv
+
+structure StrongRefinementInv (n : Nat) (s : SymState HomeState NodeState n) : Prop where
+  ref : RefinementInv n s
+  txnLine : txnLineInv n s
+  preClean : preLinesCleanInv n s
+  preNoDirty : preLinesNoDirtyInv n s
+  plan : txnPlanInv n s
+
+abbrev strongRefinementInv := @StrongRefinementInv
 
 theorem init_noDirtyInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → noDirtyInv n s := by
