@@ -577,6 +577,6 @@ theorem refMap_read_eq {n : Nat}
     {i : Fin n}
     (hstep : Read s s' i) :
     refMap n s' = refMap n s := by
-  rcases hstep with ⟨_, _, _, _, _, rfl⟩
+  rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
 
 end TileLink.Messages

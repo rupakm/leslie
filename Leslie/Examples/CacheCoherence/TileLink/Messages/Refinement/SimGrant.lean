@@ -59,7 +59,7 @@ theorem write_grant_nonrequester_invalid_of_strongRefinementInv {n : Nat}
     (hphase : tx.phase = .grantReady ∨ tx.phase = .grantPendingAck)
     (hperm : tx.resultPerm = .T) :
     ∀ j : Fin n, j.1 ≠ tx.requester → (s.locals j).line.perm = .N := by
-  rcases hinv with ⟨⟨hfull, _, _⟩, htxnLine, _, _, hplan⟩
+  rcases hinv with ⟨⟨hfull, _, _, _, _, _, _⟩, htxnLine, _, _, hplan⟩
   intro j hreqj
   cases hkind : tx.kind with
   | acquireBlock =>

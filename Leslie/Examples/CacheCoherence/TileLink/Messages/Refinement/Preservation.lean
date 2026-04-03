@@ -256,7 +256,7 @@ theorem dirtyExclusiveInv_preserved (n : Nat)
     (hinv : strongRefinementInv n s)
     (hnext : (tlMessages.toSpec n).next s s') :
     dirtyExclusiveInv n s' := by
-  rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, _, _, _⟩, htxnLine, _, hpreNoDirty, htxnPlan⟩
+  rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, _, _, _, _⟩, htxnLine, _, hpreNoDirty, htxnPlan⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   match a with
@@ -411,7 +411,7 @@ theorem dirtyExclusiveInv_preserved (n : Nat)
         · simp [setFn, hqi]
           exact hdirtyEx p q hpq hdirtyP
   | .read =>
-      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hdirtyEx
 
 theorem txnDataInv_preserved (n : Nat)
@@ -514,7 +514,7 @@ theorem txnDataInv_preserved (n : Nat)
       rw [hs']
       simp [txnDataInv, hcur]
   | .read =>
-      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact htxnData
 
 theorem preLinesNoDirtyInv_preserved (n : Nat)
@@ -603,7 +603,7 @@ theorem preLinesNoDirtyInv_preserved (n : Nat)
       rw [hs']
       simp [preLinesNoDirtyInv, hcur]
   | .read =>
-      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hpre
 
 theorem preLinesCleanInv_preserved (n : Nat)
@@ -700,7 +700,7 @@ theorem preLinesCleanInv_preserved (n : Nat)
       rw [hs']
       simp [preLinesCleanInv, hcur]
   | .read =>
-      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hpre
 
 
@@ -817,7 +817,7 @@ theorem cleanChanCInv_preserved (n : Nat)
       · subst j; simp [setFn] at hCj; rw [hCi] at hCj; simp at hCj
       · simp [setFn, hji] at hCj; exact hclean j msg hCj
   | .read =>
-      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hclean htxn' j hflightJ msg hCj
 
 theorem releaseUniqueInv_preserved (n : Nat)
@@ -980,7 +980,7 @@ theorem releaseUniqueInv_preserved (n : Nat)
           · subst q; simp [setFn, storeLocal, hCi]
           · simp [setFn, hqi]; exact this
   | .read =>
-      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hrelUniq htxn'
 
 /-- Helper: if all lines are unchanged between s and s', permSwmrInv transfers. -/
@@ -998,7 +998,7 @@ theorem permSwmrInv_preserved (n : Nat)
     (hinv : strongRefinementInv n s)
     (hnext : (tlMessages.toSpec n).next s s') :
     permSwmrInv n s' := by
-  rcases hinv with ⟨⟨hfull, _, hSwmr, _, _, _⟩, htxnLine, _, hpreNoDirty, htxnPlan⟩
+  rcases hinv with ⟨⟨hfull, _, hSwmr, _, _, _, _⟩, htxnLine, _, hpreNoDirty, htxnPlan⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   match a with
@@ -1179,20 +1179,209 @@ theorem permSwmrInv_preserved (n : Nat)
         · simp [setFn, hqi]
           exact hSwmr p q hpq hpermP
   | .read =>
-      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hSwmr
+
+private theorem pruneReport_source_N_result_N (param : PruneReportParam)
+    (h : param.source = .N) : param.result = .N := by
+  cases param <;> simp_all [PruneReportParam.source, PruneReportParam.result]
+
+theorem dirtyReleaseExclusiveInv_preserved (n : Nat)
+    (s s' : SymState HomeState NodeState n)
+    (hfull : fullInv n s) (hdirtyEx : dirtyExclusiveInv n s)
+    (hSwmr : permSwmrInv n s)
+    (hdirtyRelEx : dirtyReleaseExclusiveInv n s)
+    (hnext : (tlMessages.toSpec n).next s s') :
+    dirtyReleaseExclusiveInv n s' := by
+  simp only [SymSharedSpec.toSpec, tlMessages] at hnext
+  obtain ⟨i, a, hstep⟩ := hnext
+  match a with
+  | .sendAcquireBlock grow source =>
+      rcases hstep with ⟨_, _, _, _, hrelI, _, _, hs'⟩
+      rw [hs']
+      intro htxn' k hrel ⟨msg, hC, hdata⟩ j hji
+      by_cases hki : k = i
+      · subst k; simp [setFn] at hrel; rw [hrelI] at hrel; cases hrel
+      · have hrel' : (s.locals k).releaseInFlight = true := by
+          simp [setFn, hki] at hrel; exact hrel
+        have ⟨msg', hC', hdata'⟩ : ∃ msg, (s.locals k).chanC = some msg ∧ msg.data ≠ none := by
+          simp [setFn, hki] at hC; exact ⟨msg, hC, hdata⟩
+        have := hdirtyRelEx htxn' k hrel' ⟨msg', hC', hdata'⟩ j hji
+        by_cases hji' : j = i
+        · subst j; simp [setFn]; exact this
+        · simp [setFn, hji']; exact this
+  | .sendAcquirePerm grow source =>
+      rcases hstep with ⟨_, _, _, _, hrelI, _, _, hs'⟩
+      rw [hs']
+      intro htxn' k hrel ⟨msg, hC, hdata⟩ j hji
+      by_cases hki : k = i
+      · subst k; simp [setFn] at hrel; rw [hrelI] at hrel; cases hrel
+      · have hrel' : (s.locals k).releaseInFlight = true := by
+          simp [setFn, hki] at hrel; exact hrel
+        have ⟨msg', hC', hdata'⟩ : ∃ msg, (s.locals k).chanC = some msg ∧ msg.data ≠ none := by
+          simp [setFn, hki] at hC; exact ⟨msg, hC, hdata⟩
+        have := hdirtyRelEx htxn' k hrel' ⟨msg', hC', hdata'⟩ j hji
+        by_cases hji' : j = i
+        · subst j; simp [setFn]; exact this
+        · simp [setFn, hji']; exact this
+  | .recvAcquireAtManager =>
+      -- Post: currentTxn = some → guard fails → vacuous
+      intro htxn'
+      rcases hstep with ⟨_, _, hblk⟩ | ⟨_, _, hperm⟩
+      · have hs' := hblk.2.2.2.2.2.2.2.2.2.2
+        rw [hs'] at htxn'; simp [recvAcquireState, recvAcquireShared] at htxn'
+      · have hs' := hperm.2.2.2.2.2.2.2.2.2
+        rw [hs'] at htxn'; simp [recvAcquireState, recvAcquireShared] at htxn'
+  | .recvProbeAtMaster =>
+      -- currentTxn stays some → vacuous
+      intro htxn'
+      rcases hstep with ⟨tx, msg, hcur, hstep'⟩
+      have hs' := hstep'.2.2.2.2.2.2.2.2
+      rw [hs'] at htxn'; simp [recvProbeState] at htxn'; rw [htxn'] at hcur; cases hcur
+  | .recvProbeAckAtManager =>
+      -- currentTxn stays some → vacuous
+      intro htxn'
+      rcases hstep with ⟨tx, msg, hcur, hstep'⟩
+      have hs' := hstep'.2.2.2.2.2.2
+      rw [hs'] at htxn'; simp [recvProbeAckState, recvProbeAckShared] at htxn'
+  | .sendGrantToRequester =>
+      -- currentTxn stays some → vacuous
+      intro htxn'
+      rcases hstep with ⟨tx, hcur, hstep'⟩
+      have hs' := hstep'.2.2.2.2.2.2.2
+      rw [hs'] at htxn'; simp [sendGrantState, sendGrantShared] at htxn'
+  | .recvGrantAtMaster =>
+      -- currentTxn stays some → vacuous
+      intro htxn'
+      rcases hstep with ⟨tx, msg, hcur, hstep'⟩
+      have hs' := hstep'.2.2.2.2.2.2.2.2
+      rw [hs'] at htxn'; simp [recvGrantState, recvGrantShared] at htxn'; rw [htxn'] at hcur; cases hcur
+  | .recvGrantAckAtManager =>
+      -- Post: currentTxn = none. During grantPendingAck all chanC were none (from chanCInv).
+      rcases hstep with ⟨tx, msg, hcur, _, hphase, _, _, _, _, _, hs'⟩
+      rw [hs']
+      rcases hfull with ⟨_, ⟨_, _, hchanC, _, _⟩, _⟩
+      intro _ k hrel ⟨cmsg, hC, hdata⟩ j hji
+      have hAllCNone : ∀ j : Fin n, (s.locals j).chanC = none := by
+        intro j; specialize hchanC j
+        cases hCj : (s.locals j).chanC with
+        | none => rfl
+        | some cm =>
+            rw [hCj] at hchanC
+            rcases hchanC with ⟨tx0, hcur0, hprobing, _, _, _, _, _, _⟩ | ⟨_, hcur0, _, _, _, _, _, _⟩
+            · rw [hcur] at hcur0; injection hcur0 with htx; subst htx; rw [hphase] at hprobing; cases hprobing
+            · rw [hcur] at hcur0; cases hcur0
+      by_cases hki : k = i
+      · subst k
+        have := hAllCNone i
+        simp [recvGrantAckState, recvGrantAckLocals, recvGrantAckLocal, setFn] at hC
+        exact absurd this (by rw [hC]; simp)
+      · have := hAllCNone k
+        simp [recvGrantAckState, recvGrantAckLocals, recvGrantAckLocal, setFn, hki] at hC
+        exact absurd this (by rw [hC]; simp)
+  | .sendRelease param =>
+      -- Clean release: msg.data = none → data ≠ none condition fails for sender.
+      rcases hstep with ⟨htxn, _, _, hCother, _, _, hCi, _, _, _, _, hflight, hlegal, hdirty, _, hs'⟩
+      rw [hs']
+      intro htxn' k hrel ⟨cmsg, hC, hdata⟩ j hji
+      by_cases hki : k = i
+      · subst k
+        simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn] at hC
+        rcases hC with rfl
+        -- releaseMsg with withData=false has data = none
+        simp [releaseMsg, releaseDataPayload] at hdata
+      · simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hki] at hrel hC
+        have ⟨cmsg', hC', hdata'⟩ : ∃ msg, (s.locals k).chanC = some msg ∧ msg.data ≠ none :=
+          ⟨cmsg, hC, hdata⟩
+        have hpre := hdirtyRelEx htxn k hrel ⟨cmsg', hC', hdata'⟩
+        by_cases hji' : j = i
+        · subst j
+          have hpermI := hpre i (Ne.symm hki)
+          simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, releasedLine_perm]
+          rw [PruneReportParam.legalFrom] at hlegal
+          rw [hpermI] at hlegal
+          exact pruneReport_source_N_result_N param hlegal.symm
+        · simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji']
+          exact hpre j hji
+  | .sendReleaseData param =>
+      -- The key case: new dirty release.
+      rcases hstep with ⟨htxn, _, _, hCother, _, _, hCi, _, _, _, _, hflight, _, hdirty, hs'⟩
+      rw [hs']
+      intro htxn' k hrel ⟨cmsg, hC, hdata⟩ j hji
+      by_cases hki : k = i
+      · subst k
+        -- Sender: dirty=true, so by dirtyExclusiveInv all others have .N
+        have hne : i ≠ j := Ne.symm hji
+        simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji] at hC ⊢
+        exact hdirtyEx i j hne hdirty
+      · -- Other node k ≠ i: chanC was none by hCother, contradiction
+        simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hki] at hC
+        exact absurd (hCother k hki) (by rw [hC]; simp)
+  | .recvReleaseAtManager =>
+      -- Node i's chanC cleared → condition fails for i. Others: chanC unchanged → use pre-state.
+      rcases hstep with ⟨msg, param', htxn, _, _, hflight, hC, _, _, _, _, _, hs'⟩
+      rw [hs']
+      intro htxn' k hrel ⟨cmsg, hCk, hdata⟩ j hji
+      simp [recvReleaseState, recvReleaseShared] at htxn'
+      by_cases hki : k = i
+      · subst k
+        simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn] at hCk
+      · simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn, hki] at hrel hCk
+        have ⟨cmsg', hC', hdata'⟩ : ∃ msg, (s.locals k).chanC = some msg ∧ msg.data ≠ none :=
+          ⟨cmsg, hCk, hdata⟩
+        have hpre := hdirtyRelEx htxn k hrel ⟨cmsg', hC', hdata'⟩
+        by_cases hji' : j = i
+        · subst j; simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn]
+          exact hpre i (Ne.symm hki)
+        · simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn, hji']
+          exact hpre j hji
+  | .recvReleaseAckAtMaster =>
+      -- Node i's releaseInFlight cleared → condition fails for i.
+      rcases hstep with ⟨msg, htxn, _, _, hflight, _, _, hs'⟩
+      rw [hs']
+      intro htxn' k hrel ⟨cmsg, hCk, hdata⟩ j hji
+      simp [recvReleaseAckState, recvReleaseAckShared] at htxn'
+      by_cases hki : k = i
+      · subst k
+        simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn] at hrel
+      · simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn, hki] at hrel hCk
+        have ⟨cmsg', hC', hdata'⟩ : ∃ msg, (s.locals k).chanC = some msg ∧ msg.data ≠ none :=
+          ⟨cmsg, hCk, hdata⟩
+        have hpre := hdirtyRelEx htxn k hrel ⟨cmsg', hC', hdata'⟩
+        by_cases hji' : j = i
+        · subst j; simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn]
+          exact hpre i (Ne.symm hki)
+        · simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn, hji']
+          exact hpre j hji
+  | .store v =>
+      -- Store requires all chanC = none (guard). Contradiction with chanC = some.
+      rcases hstep with ⟨hcur, _, _, hCallNone, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      intro htxn' k hrel ⟨cmsg, hCk, hdata⟩ j hji
+      by_cases hki : k = i
+      · subst k
+        have := hCallNone i
+        simp [setFn, storeLocal] at hCk
+        exact absurd this (by rw [hCk]; simp)
+      · have := hCallNone k
+        simp [setFn, hki] at hCk
+        exact absurd this (by rw [hCk]; simp)
+  | .read =>
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
+      exact hdirtyRelEx
 
 theorem refinementInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
     (hinv : strongRefinementInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     refinementInv n s' := by
-  rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, htxnLine, hpreClean, hpreNoDirty, htxnPlan⟩
-  have hfwd : strongRefinementInv n s := ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq⟩, htxnLine, hpreClean, hpreNoDirty, htxnPlan⟩
+  rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, htxnLine, hpreClean, hpreNoDirty, htxnPlan⟩
+  have hfwd : strongRefinementInv n s := ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, htxnLine, hpreClean, hpreNoDirty, htxnPlan⟩
   exact ⟨fullInv_preserved_with_release n s s' hfull htxnLine hnext,
     dirtyExclusiveInv_preserved n s s' hfwd hnext,
     permSwmrInv_preserved n s s' hfwd hnext,
     txnDataInv_preserved n s s' hfull hdirtyEx htxnData hcleanRel hpreNoDirty hnext,
     cleanChanCInv_preserved n s s' hdirtyEx hcleanRel hnext,
-    releaseUniqueInv_preserved n s s' hfull hdirtyEx hrelUniq hnext⟩
+    releaseUniqueInv_preserved n s s' hfull hdirtyEx hrelUniq hnext,
+    dirtyReleaseExclusiveInv_preserved n s s' hfull hdirtyEx hSwmr hdirtyRelEx hnext⟩
 
 end TileLink.Messages

@@ -458,7 +458,7 @@ theorem fullInv_preserved_with_release (n : Nat)
           · simpa [setFn, hji] using hchanE j
       exact ⟨hcore', hchan', serializationInv_of_core_channel _ _ hcore' hchan'⟩
   | .read =>
-      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact ⟨hcore, hchan, serializationInv_of_core_channel _ _ hcore hchan⟩
 
 end TileLink.Messages

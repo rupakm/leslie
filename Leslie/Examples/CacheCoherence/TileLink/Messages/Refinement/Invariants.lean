@@ -104,6 +104,17 @@ def releaseUniqueInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
 def permSwmrInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   ∀ i j : Fin n, i ≠ j → (s.locals i).line.perm = .T → (s.locals j).line.perm = .N
 
+/-- When a dirty release is in flight (a node has releaseInFlight with chanC carrying data)
+    and no transaction is active, all OTHER nodes have perm = .N.
+    This captures the fact that at sendReleaseData time, the sender was the unique dirty owner
+    (.T permission), so all others had .N. Since no transaction occurs between then and now,
+    their permissions remain .N. -/
+def dirtyReleaseExclusiveInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
+  s.shared.currentTxn = none →
+    ∀ i : Fin n, (s.locals i).releaseInFlight = true →
+      (∃ msg : CMsg, (s.locals i).chanC = some msg ∧ msg.data ≠ none) →
+        ∀ j : Fin n, j ≠ i → (s.locals j).line.perm = .N
+
 structure RefinementInv (n : Nat) (s : SymState HomeState NodeState n) : Prop where
   full : fullInv n s
   dirtyEx : dirtyExclusiveInv n s
@@ -111,6 +122,7 @@ structure RefinementInv (n : Nat) (s : SymState HomeState NodeState n) : Prop wh
   txnData : txnDataInv n s
   cleanC : cleanChanCInv n s
   relUniq : releaseUniqueInv n s
+  dirtyRelEx : dirtyReleaseExclusiveInv n s
 
 abbrev refinementInv := @RefinementInv
 
@@ -251,11 +263,20 @@ theorem init_permSwmrInv (n : Nat) :
   rcases hlocals i with ⟨hline, _, _, _, _, _, _, _, _⟩
   rw [hline] at hperm; cases hperm
 
+theorem init_dirtyReleaseExclusiveInv (n : Nat) :
+    ∀ s : SymState HomeState NodeState n,
+      (tlMessages.toSpec n).init s → dirtyReleaseExclusiveInv n s := by
+  intro s hinit _ i hrel _
+  rcases hinit with ⟨_, hlocals⟩
+  rcases hlocals i with ⟨_, _, _, _, _, _, _, _, hflight⟩
+  rw [hflight] at hrel; cases hrel
+
 theorem init_refinementInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → refinementInv n s := by
   intro s hinit
   exact ⟨init_fullInv n s hinit, init_dirtyExclusiveInv n s hinit, init_permSwmrInv n s hinit,
-    init_txnDataInv n s hinit, init_cleanChanCInv n s hinit, init_releaseUniqueInv n s hinit⟩
+    init_txnDataInv n s hinit, init_cleanChanCInv n s hinit, init_releaseUniqueInv n s hinit,
+    init_dirtyReleaseExclusiveInv n s hinit⟩
 
 theorem init_strongRefinementInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → strongRefinementInv n s := by

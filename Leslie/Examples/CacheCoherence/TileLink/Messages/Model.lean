@@ -244,6 +244,7 @@ def Read {n : Nat}
   s.shared.pendingReleaseAck = none ∧
   (s.locals i).line.perm.allowsRead ∧
   (s.locals i).line.valid = true ∧
+  (s.locals i).releaseInFlight = false ∧
   s' = s
 
 noncomputable def tlMessages : SymSharedSpec where

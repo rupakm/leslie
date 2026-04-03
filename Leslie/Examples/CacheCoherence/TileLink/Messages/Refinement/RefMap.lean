@@ -84,9 +84,13 @@ noncomputable def refMapShared (n : Nat) (s : SymState HomeState NodeState n) :
     | some tx =>
         if tx.usedDirtySource then tx.transferVal else s.shared.mem
     | none =>
-        match findDirtyReleaseVal n s with
-        | some v => v
-        | none => s.shared.mem
+        -- Check for dirty owner (not releasing): its data is the logical value
+        if h : ∃ j : Fin n, (s.locals j).line.dirty = true then
+          (s.locals (Classical.choose h)).line.data
+        else
+          match findDirtyReleaseVal n s with
+          | some v => v
+          | none => s.shared.mem
   { mem := mem
   , dir := dir
   , pendingGrantMeta := s.shared.currentTxn.map absPendingGrantMeta

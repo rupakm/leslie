@@ -663,7 +663,7 @@ theorem refMap_recvAcquireBlock_dirty_next {n : Nat}
     (hDirtyOther : hasDirtyOther s i)
     (hresultB : grow.result = .B) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  rcases hinv with ⟨⟨⟨hlineWF, _, _, _⟩, _, _⟩, hdirtyEx, hSwmr, _, _, _⟩
+  rcases hinv with ⟨⟨⟨hlineWF, _, _, _⟩, _, _⟩, hdirtyEx, hSwmr, _, _, _, _⟩
   rcases hstep with ⟨htxn, hgrant, hrel, hallC, _, hpermN, _, _, _, hs'⟩
   -- Extract dirty owner j from hasDirtyOther
   rcases hDirtyOther with ⟨j, hji, hdirtyj⟩
@@ -775,7 +775,7 @@ theorem refMap_recvAcquireBlock_tip_next {n : Nat}
     (hstep : RecvAcquireBlockAtManager s s' i grow source)
     (htip : allOthersInvalid s i ∧ grow.result = .T) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  rcases hinv with ⟨⟨⟨hwf, _, _, _⟩, _, _⟩, _, _, _, _, _⟩
+  rcases hinv with ⟨⟨⟨hwf, _, _, _⟩, _, _⟩, _, _, _, _, _, _⟩
   rcases hstep with ⟨htxn, hgrant, hrel, hallC, _hA, hpermN, _hlegal, _, _hBs, hs'⟩
   rcases htip with ⟨hallInvalid, hresult⟩
   have hNoDirty : ¬hasDirtyOther s i := not_hasDirtyOther_of_allOthersInvalid hwf hallInvalid
@@ -823,7 +823,7 @@ theorem refMap_recvAcquirePerm_next {n : Nat}
     (hinv : refinementInv n s)
     (hstep : RecvAcquirePermAtManager s s' i grow source) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  rcases hinv with ⟨⟨⟨hlineWF, _, _, _⟩, _, _⟩, hdirtyEx, hSwmr, _, _, _⟩
+  rcases hinv with ⟨⟨⟨hlineWF, _, _, _⟩, _, _⟩, hdirtyEx, hSwmr, _, _, _, _⟩
   rcases hstep with ⟨htxn, hgrant, hrel, hallC, _, _, hlegal, hresultT, _, hs'⟩
   rw [hs']
   simp only [SymSharedSpec.toSpec, TileLink.Atomic.tlAtomic]
