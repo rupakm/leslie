@@ -572,4 +572,11 @@ theorem refMap_recvReleaseAckAtMaster_next {n : Nat}
         recvReleaseAckLocals, recvReleaseAckLocal, setFn]
       split <;> simp_all
 
+theorem refMap_read_eq {n : Nat}
+    {s s' : SymState HomeState NodeState n}
+    {i : Fin n}
+    (hstep : Read s s' i) :
+    refMap n s' = refMap n s := by
+  rcases hstep with ⟨_, _, _, _, _, rfl⟩
+
 end TileLink.Messages

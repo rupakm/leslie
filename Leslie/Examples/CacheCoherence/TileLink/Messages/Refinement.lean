@@ -193,6 +193,9 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
       · subst hji; simp [setFn, storeLocal] at hdirtyJ
       · simp [setFn, hji] at hvalidJ hdirtyJ ⊢
         exact hdata j hvalidJ hdirtyJ
+  | .read =>
+      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      exact hdata j hvalidJ hdirtyJ
 
 theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
@@ -411,6 +414,9 @@ theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
       rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
       rw [hs']
       simp [txnLineInv, hcur]
+  | .read =>
+      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      exact htxnLine
 
 private theorem writableProbeMask_eq_snapshotWritableProbeMask {n : Nat}
     (s : SymState HomeState NodeState n) (i : Fin n) (kind : ReqKind)
@@ -573,6 +579,9 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
       rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
       rw [hs']
       simp [txnPlanInv, hcur]
+  | .read =>
+      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      exact hplan
 
 theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
@@ -766,6 +775,10 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
           by_cases hji : j = i
           · subst j; simp [storeLocal, TileLink.Atomic.dirtyTipLine]
           · simp [hji]
+  | .read =>
+      right
+      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      rfl
 
 /-! ### Main Forward-Simulation Theorem -/
 

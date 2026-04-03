@@ -410,6 +410,9 @@ theorem dirtyExclusiveInv_preserved (n : Nat)
           rw [hperm] at hpermIN; cases hpermIN
         · simp [setFn, hqi]
           exact hdirtyEx p q hpq hdirtyP
+  | .read =>
+      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      exact hdirtyEx
 
 theorem txnDataInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
@@ -510,6 +513,9 @@ theorem txnDataInv_preserved (n : Nat)
       rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
       rw [hs']
       simp [txnDataInv, hcur]
+  | .read =>
+      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      exact htxnData
 
 theorem preLinesNoDirtyInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
@@ -596,6 +602,9 @@ theorem preLinesNoDirtyInv_preserved (n : Nat)
       rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
       rw [hs']
       simp [preLinesNoDirtyInv, hcur]
+  | .read =>
+      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      exact hpre
 
 theorem preLinesCleanInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
@@ -690,6 +699,9 @@ theorem preLinesCleanInv_preserved (n : Nat)
       rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
       rw [hs']
       simp [preLinesCleanInv, hcur]
+  | .read =>
+      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      exact hpre
 
 
 theorem cleanChanCInv_preserved (n : Nat)
@@ -804,6 +816,9 @@ theorem cleanChanCInv_preserved (n : Nat)
       by_cases hji : j = i
       · subst j; simp [setFn] at hCj; rw [hCi] at hCj; simp at hCj
       · simp [setFn, hji] at hCj; exact hclean j msg hCj
+  | .read =>
+      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      exact hclean htxn' j hflightJ msg hCj
 
 theorem releaseUniqueInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
@@ -964,6 +979,9 @@ theorem releaseUniqueInv_preserved (n : Nat)
           by_cases hqi : q = i
           · subst q; simp [setFn, storeLocal, hCi]
           · simp [setFn, hqi]; exact this
+  | .read =>
+      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      exact hrelUniq htxn'
 
 /-- Helper: if all lines are unchanged between s and s', permSwmrInv transfers. -/
 private theorem permSwmrInv_of_same_lines (n : Nat)
@@ -1160,6 +1178,9 @@ theorem permSwmrInv_preserved (n : Nat)
           rw [hperm] at hpermIN; cases hpermIN
         · simp [setFn, hqi]
           exact hSwmr p q hpq hpermP
+  | .read =>
+      rcases hstep with ⟨_, _, _, _, _, rfl⟩
+      exact hSwmr
 
 theorem refinementInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)

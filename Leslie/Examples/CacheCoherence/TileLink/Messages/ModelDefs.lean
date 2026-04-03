@@ -115,6 +115,7 @@ inductive Act where
   | recvReleaseAtManager
   | recvReleaseAckAtMaster
   | store (v : Val)
+  | read
   deriving DecidableEq
 
 end TileLink.Messages

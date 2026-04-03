@@ -236,6 +236,16 @@ def Store {n : Nat}
   s' = { shared := s.shared
        , locals := setFn s.locals i (storeLocal (s.locals i) v) }
 
+def Read {n : Nat}
+    (s s' : SymState HomeState NodeState n)
+    (i : Fin n) : Prop :=
+  s.shared.currentTxn = none ∧
+  s.shared.pendingGrantAck = none ∧
+  s.shared.pendingReleaseAck = none ∧
+  (s.locals i).line.perm.allowsRead ∧
+  (s.locals i).line.valid = true ∧
+  s' = s
+
 noncomputable def tlMessages : SymSharedSpec where
   Shared := HomeState
   Local := NodeState
@@ -272,5 +282,6 @@ noncomputable def tlMessages : SymSharedSpec where
     | .recvReleaseAtManager => RecvReleaseAtManager s s' i
     | .recvReleaseAckAtMaster => RecvReleaseAckAtMaster s s' i
     | .store v => Store s s' i v
+    | .read => Read s s' i
 
 end TileLink.Messages
