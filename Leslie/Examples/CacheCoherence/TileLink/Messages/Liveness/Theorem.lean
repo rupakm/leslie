@@ -1,4 +1,5 @@
 import Leslie.Examples.CacheCoherence.TileLink.Messages.Liveness.Steps
+import Leslie.Examples.CacheCoherence.TileLink.Messages.StepRelease
 
 /-! ## Liveness Composition: Acquire Eventually Completes
 
@@ -146,7 +147,8 @@ private def livenessInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   accessAckNotRequesterInv n s ∧
   grantWaveActiveInv n s ∧
   pendingSinkInv n s ∧
-  requesterChanAInv n s
+  requesterChanAInv n s ∧
+  txnLineInv n s
 
 private theorem init_livenessInv (n : Nat) :
     ∀ s, (tlMessagesFair n).init s → livenessInv n s := by
@@ -159,21 +161,271 @@ private theorem init_livenessInv (n : Nat) :
     init_accessAckNotRequesterInv n s hinit',
     init_grantWaveActiveInv n s hinit',
     init_pendingSinkInv n s hinit',
-    init_requesterChanAInv n s hinit'⟩
+    init_requesterChanAInv n s hinit',
+    init_txnLineInv n s hinit'⟩
+
+/-- `txnLineInv` is preserved under protocol steps, given only `fullInv` and `txnLineInv`.
+    This is a lite version of `txnLineInv_preserved` from Refinement.lean which takes
+    `forwardSimInv` but only uses the `fullInv` and `txnLineInv` components. -/
+private theorem txnLineInv_preserved_lite (n : Nat) (s s' : SymState HomeState NodeState n)
+    (hfull : fullInv n s) (htxnLine : txnLineInv n s)
+    (hnext : (tlMessages.toSpec n).next s s') :
+    txnLineInv n s' := by
+  simp only [SymSharedSpec.toSpec, tlMessages] at hnext
+  obtain ⟨i, a, hstep⟩ := hnext
+  match a with
+  | .sendAcquireBlock grow source =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp only [txnLineInv]
+      match hcur : s.shared.currentTxn with
+      | none => trivial
+      | some tx =>
+          rw [txnLineInv, hcur] at htxnLine
+          intro j
+          have hpre := htxnLine j
+          by_cases hji : j = i
+          · subst j; simp only [setFn, ite_true] at hpre ⊢
+            simp only [txnSnapshotLine, probeSnapshotLine] at hpre ⊢; exact hpre
+          · simp only [setFn, show (j = i) = False from propext ⟨hji, False.elim⟩, ite_false] at hpre ⊢
+            exact hpre
+  | .sendAcquirePerm grow source =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp only [txnLineInv]
+      match hcur : s.shared.currentTxn with
+      | none => trivial
+      | some tx =>
+          rw [txnLineInv, hcur] at htxnLine
+          intro j
+          have hpre := htxnLine j
+          by_cases hji : j = i
+          · subst j; simp only [setFn, ite_true] at hpre ⊢
+            simp only [txnSnapshotLine, probeSnapshotLine] at hpre ⊢; exact hpre
+          · simp only [setFn, show (j = i) = False from propext ⟨hji, False.elim⟩, ite_false] at hpre ⊢
+            exact hpre
+  | .recvAcquireAtManager =>
+      rcases hstep with hblk | hperm
+      · rcases hblk with ⟨grow, source, htxnNone, _, _, hCnone, _, _, _, _, _, _, hs'⟩
+        rw [hs']
+        simp only [txnLineInv, recvAcquireState, recvAcquireShared, recvAcquireLocals_line]
+        intro j
+        unfold txnSnapshotLine probeSnapshotLine plannedTxn
+        have hCj := hCnone j
+        have hlt := j.2
+        by_cases hmask : probeMaskForResult s i grow.result j.1 = true
+        · simp [hmask, hCj, hlt]
+        · have hmaskF : probeMaskForResult s i grow.result j.1 = false := by
+            cases h : probeMaskForResult s i grow.result j.1 <;> simp_all
+          simp [hmaskF, hlt]
+      · rcases hperm with ⟨grow, source, htxnNone, _, _, hCnone, _, _, _, _, _, hs'⟩
+        rw [hs']
+        simp only [txnLineInv, recvAcquireState, recvAcquireShared, recvAcquireLocals_line]
+        intro j
+        unfold txnSnapshotLine probeSnapshotLine plannedTxn
+        have hCj := hCnone j
+        have hlt := j.2
+        by_cases hmask : probeMaskForResult s i grow.result j.1 = true
+        · simp [hmask, hCj, hlt]
+        · have hmaskF : probeMaskForResult s i grow.result j.1 = false := by
+            cases h : probeMaskForResult s i grow.result j.1 <;> simp_all
+          simp [hmaskF, hlt]
+  | .recvProbeAtMaster =>
+      rcases hstep with ⟨tx, msg, hcur, hphase, hrem, _hA, _hB, _hsrc, _hop, hparam, hCnone, hs'⟩
+      rw [hs']
+      rw [txnLineInv, hcur] at htxnLine
+      simp only [txnLineInv, recvProbeState, hcur]
+      intro j
+      by_cases hji : j = i
+      · subst j
+        simp only [recvProbeLocals, recvProbeLocal, setFn, ite_true]
+        have hpre_i := htxnLine i
+        have hnotGPA : ¬(tx.phase = .grantPendingAck ∧ tx.requester = i.1) := by
+          intro ⟨h, _⟩; rw [hphase] at h; cases h
+        simp only [txnSnapshotLine, hnotGPA, ite_false] at hpre_i ⊢
+        rcases hfull with ⟨⟨_, _, _, htxnCore⟩, _, _⟩
+        rcases (by simpa [txnCoreInv, hcur] using htxnCore :
+            tx.requester < n ∧ _ ∧ _ ∧ _ ∧
+            tx.probesNeeded tx.requester = false ∧
+            (∀ k : Nat, tx.probesRemaining k = true → tx.probesNeeded k = true) ∧ _ ∧ _)
+          with ⟨_, _, _, _, _, hsubset, _, _⟩
+        have hneeded : tx.probesNeeded i.1 = true := hsubset i.1 hrem
+        simp only [probeSnapshotLine, hneeded, ite_true, hrem, hCnone, and_self] at hpre_i
+        simp only [probeSnapshotLine, hneeded, ite_true, hrem]
+        simp only [show (some (probeAckMsg i (s.locals i).line) = none) = False from by simp, and_false, ite_false]
+        rw [hpre_i, hparam]
+      · simp only [recvProbeLocals, setFn, show (j = i) = False from propext ⟨hji, False.elim⟩, ite_false]
+        exact htxnLine j
+  | .recvProbeAckAtManager =>
+      rcases hstep with ⟨tx, msg, hcur, hphase, hrem, _hA, hC, _hsrc, _hwf, hs'⟩
+      rw [hs']
+      rw [txnLineInv, hcur] at htxnLine
+      simp only [txnLineInv, recvProbeAckState, recvProbeAckShared, hcur]
+      intro j
+      by_cases hji : j = i
+      · subst j
+        simp only [recvProbeAckLocals, recvProbeAckLocal, setFn, ite_true]
+        have hpre_i := htxnLine i
+        have hnotGPA : ¬(tx.phase = .grantPendingAck ∧ tx.requester = i.1) := by
+          intro ⟨h, _⟩; rw [hphase] at h; cases h
+        simp only [txnSnapshotLine, hnotGPA, ite_false] at hpre_i ⊢
+        rcases hfull with ⟨⟨_, _, _, htxnCore⟩, _, _⟩
+        rcases (by simpa [txnCoreInv, hcur] using htxnCore :
+            tx.requester < n ∧ _ ∧ _ ∧ _ ∧
+            tx.probesNeeded tx.requester = false ∧
+            (∀ k : Nat, tx.probesRemaining k = true → tx.probesNeeded k = true) ∧ _ ∧ _)
+          with ⟨_, _, _, _, _, hsubset, _, _⟩
+        have hneeded : tx.probesNeeded i.1 = true := hsubset i.1 hrem
+        have hnotGPA' : ¬((probeAckPhase (n := n) (clearProbeIdx tx.probesRemaining i.1)) = .grantPendingAck ∧
+            tx.requester = i.1) := by
+          intro ⟨h, _⟩; simp [probeAckPhase] at h; split at h <;> cases h
+        simp only [hnotGPA', ite_false]
+        simp only [probeSnapshotLine, hneeded, ite_true] at hpre_i ⊢
+        simp only [hC, hrem, show (some msg = none) = False from by simp, and_false, ite_false] at hpre_i
+        simp only [clearProbeIdx, show i.1 = i.1 from rfl, ite_true, show (false = true) = False from by simp,
+          false_and, ite_false]
+        exact hpre_i
+      · simp only [recvProbeAckLocals, setFn, show (j = i) = False from propext ⟨hji, False.elim⟩, ite_false]
+        have hpre_j := htxnLine j
+        have hnotGPA : ¬(tx.phase = .grantPendingAck ∧ tx.requester = j.1) := by
+          intro ⟨h, _⟩; rw [hphase] at h; cases h
+        have hnotGPA' : ¬((probeAckPhase (n := n) (clearProbeIdx tx.probesRemaining i.1)) = .grantPendingAck ∧
+            tx.requester = j.1) := by
+          intro ⟨h, _⟩; simp [probeAckPhase] at h; split at h <;> cases h
+        simp only [txnSnapshotLine, hnotGPA, hnotGPA', ite_false] at hpre_j ⊢
+        simp only [probeSnapshotLine] at hpre_j ⊢
+        have hne : i.1 ≠ j.1 := by intro h; exact hji (Fin.ext_iff.mpr h.symm)
+        simp only [clearProbeIdx, show (j.1 = i.1) = False from propext ⟨fun h => hne h.symm, False.elim⟩, ite_false]
+        exact hpre_j
+  | .sendGrantToRequester =>
+      rcases hstep with ⟨tx, hcur, hreq, hphase, _, _, _hD, hE, _hSink, hs'⟩
+      rw [hs']
+      rw [txnLineInv, hcur] at htxnLine
+      simp only [txnLineInv, sendGrantState, sendGrantShared, hcur]
+      intro j
+      have hpre_j := htxnLine j
+      by_cases hji : j = i
+      · subst j
+        simp only [sendGrantLocals, setFn, ite_true, sendGrantLocal]
+        simp only [txnSnapshotLine, show TxnPhase.grantPendingAck = TxnPhase.grantPendingAck from rfl,
+          true_and, hreq, ite_true, hE]
+        have hnotGPA : ¬(tx.phase = .grantPendingAck ∧ tx.requester = i.1) := by
+          intro ⟨h, _⟩; rw [hphase] at h; cases h
+        simp only [txnSnapshotLine, hnotGPA, ite_false] at hpre_j
+        rcases hfull with ⟨⟨_, _, _, htxnCore⟩, _, _⟩
+        rcases (by simpa [txnCoreInv, hcur] using htxnCore :
+            tx.requester < n ∧ _ ∧ _ ∧ _ ∧
+            tx.probesNeeded tx.requester = false ∧ _ ∧ _ ∧ _)
+          with ⟨_, _, _, _, hnoProbeReq, _, _, _⟩
+        rw [hreq] at hnoProbeReq
+        simp only [probeSnapshotLine, hnoProbeReq, ite_false] at hpre_j
+        exact hpre_j
+      · simp only [sendGrantLocals, setFn, show (j = i) = False from propext ⟨hji, False.elim⟩, ite_false]
+        have hreq_ne : ¬(tx.requester = j.1) := by
+          intro h; apply hji; exact Fin.ext_iff.mpr (by rw [← hreq]; exact h.symm)
+        -- Post txn has phase = grantPendingAck, but requester ≠ j → probeSnapshotLine
+        simp only [txnSnapshotLine]
+        simp only [show TxnPhase.grantPendingAck = TxnPhase.grantPendingAck from rfl, true_and,
+          hreq_ne, ite_false]
+        -- Pre: phase = grantReady → also probeSnapshotLine (with original tx)
+        have hnotGPA : ¬(tx.phase = .grantPendingAck ∧ tx.requester = j.1) := by
+          intro ⟨h, _⟩; rw [hphase] at h; cases h
+        simp only [txnSnapshotLine, hnotGPA, ite_false] at hpre_j
+        -- probeSnapshotLine doesn't use phase, so both are equal
+        simp only [probeSnapshotLine] at hpre_j ⊢
+        exact hpre_j
+  | .recvGrantAtMaster =>
+      rcases hstep with ⟨tx, msg, hcur, hreq, hphase, _, _hA, _hD, hE, _hSink, _hmsg, hs'⟩
+      rw [hs']
+      rw [txnLineInv, hcur] at htxnLine
+      simp only [txnLineInv, recvGrantState, recvGrantShared, hcur]
+      intro j
+      have hpre_j := htxnLine j
+      by_cases hji : j = i
+      · subst j
+        simp only [recvGrantLocals, recvGrantLocal, setFn, ite_true]
+        simp only [txnSnapshotLine, show TxnPhase.grantPendingAck = TxnPhase.grantPendingAck from rfl,
+          true_and, hreq, ite_true, hphase]
+        simp only [show (some ({ sink := tx.sink } : EMsg) = none) = False from by simp, ite_false]
+        simp only [txnSnapshotLine, show TxnPhase.grantPendingAck = TxnPhase.grantPendingAck from rfl,
+          true_and, hreq, ite_true, hphase, hE, ite_true] at hpre_j
+        rw [hpre_j]
+      · simp only [recvGrantLocals, setFn, show (j = i) = False from propext ⟨hji, False.elim⟩, ite_false]
+        have hreq_ne : ¬(tx.requester = j.1) := by
+          intro h; apply hji; exact Fin.ext_iff.mpr (by rw [← hreq]; exact h.symm)
+        simp only [txnSnapshotLine, show ¬(TxnPhase.grantPendingAck = TxnPhase.grantPendingAck ∧ tx.requester = j.1) from
+          fun ⟨_, h⟩ => hreq_ne h, ite_false] at hpre_j ⊢
+        exact hpre_j
+  | .recvGrantAckAtManager =>
+      rcases hstep with ⟨tx, msg, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp [txnLineInv, recvGrantAckState, recvGrantAckShared]
+  | .sendRelease param =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, _, _, htail⟩
+      rcases htail with ⟨_, hs'⟩
+      rw [hs']
+      simp [txnLineInv, hcur, sendReleaseState]
+  | .sendReleaseData param =>
+      -- currentTxn = none → txnLineInv trivially True
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp [txnLineInv, hcur, sendReleaseState]
+  | .recvReleaseAtManager =>
+      rcases hstep with ⟨msg, param, hcur, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp [txnLineInv, hcur, recvReleaseState, recvReleaseShared]
+  | .recvReleaseAckAtMaster =>
+      rcases hstep with ⟨msg, hcur, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp [txnLineInv, hcur, recvReleaseAckState, recvReleaseAckShared]
+  | .store v =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp [txnLineInv, hcur]
+  | .read =>
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
+      exact htxnLine
+  | .uncachedGet source =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp [txnLineInv, hcur]
+  | .uncachedPut source v =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp [txnLineInv, hcur]
+  | .recvUncachedAtManager =>
+      rcases hstep with ⟨hcur, _, _, msg, _, _, hs'⟩
+      rw [hs']
+      simp [txnLineInv, hcur]
+  | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨msg, _, _, hs'⟩
+      rw [hs']
+      -- currentTxn unchanged (shared unchanged), so match on pre-state currentTxn
+      simp only [txnLineInv]
+      match hcur : s.shared.currentTxn with
+      | none => trivial
+      | some tx =>
+          rw [txnLineInv, hcur] at htxnLine
+          intro j
+          have hpre := htxnLine j
+          by_cases hji : j = i
+          · subst j; simp [setFn] at hpre ⊢; exact hpre
+          · simp [setFn, hji] at hpre ⊢; exact hpre
 
 private theorem livenessInv_preserved (n : Nat) :
     ∀ s s', (tlMessagesFair n).next s s' → livenessInv n s → livenessInv n s' := by
-  intro s s' hnext ⟨hfull, hpst, hpci, hacca, hnotreq, hgwa, hpsi, hreq⟩
+  intro s s' hnext ⟨hfull, hpst, hpci, hacca, hnotreq, hgwa, hpsi, hreq, htxnLine⟩
   have hnext' : (tlMessages.toSpec n).next s s' := hnext
   -- Use the individual preservation theorems
-  exact ⟨sorry, -- fullInv_preserved needs txnLineInv from refinement; use sorry
+  exact ⟨fullInv_preserved_with_release n s s' hfull htxnLine hnext',
     pendingSinkTxnInv_preserved hfull hpst hnext',
     probeChannelInv_preserved hfull hpci hnext',
     accessAckChanAInv_preserved hfull hacca hnext',
     accessAckNotRequesterInv_preserved hfull hacca hnotreq hnext',
     grantWaveActiveInv_preserved hfull hnotreq hgwa hnext',
     pendingSinkInv_preserved hfull hnotreq hpst hgwa hnext',
-    requesterChanAInv_preserved hfull hnotreq hreq hnext'⟩
+    requesterChanAInv_preserved hfull hnotreq hreq hnext',
+    txnLineInv_preserved_lite n s s' hfull htxnLine hnext'⟩
 
 private theorem always_livenessInv (n : Nat) (e : exec (SymState HomeState NodeState n))
     (hspec : (tlMessagesFair n).formula e) : ∀ k, livenessInv n (e k) := by
