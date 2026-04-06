@@ -105,12 +105,12 @@ theorem consume_progress (r : Replica) (k : Nat) :
   refine ⟨?safety, ?progress, ?enablement, hnext', hwf⟩
   case safety =>
     intro m ⟨hp, hstep⟩
-    simp only [action_pred, state_pred, exec.drop, Nat.zero_add] at hp hstep ⊢
+    simp only [action_pred, state_pred, exec.drop, Nat.add_zero] at hp hstep ⊢
     obtain ⟨hinv, hck, hlt⟩ := hp
     exact safety_step r k _ _ hinv hck hlt hstep
   case progress =>
     intro m ⟨hp, _, hact⟩
-    simp only [action_pred, state_pred, exec.drop, later, Nat.zero_add] at hp hact ⊢
+    simp only [action_pred, state_pred, exec.drop, later, Nat.add_zero] at hp hact ⊢
     exact progress_step r k _ _ hp.2.1 hp.2.2 hact
   case enablement =>
     intro m hp

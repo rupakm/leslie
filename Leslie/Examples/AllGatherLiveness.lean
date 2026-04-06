@@ -73,13 +73,13 @@ theorem round_progress :
     -- p ∧ ⟨next⟩ ⇒ ◯p ∨ ◯q
     intro m ⟨hp, hstep⟩
     have hinc := agNext_inc_round n hstep
-    simp only [state_pred, later, tla_or, exec.drop, Nat.zero_add] at hp hinc ⊢
+    simp only [state_pred, later, tla_or, exec.drop, Nat.add_zero] at hp hinc ⊢
     right ; omega
   case progress =>
     -- p ∧ ⟨next⟩ ∧ ⟨a⟩ ⇒ ◯q
     intro m ⟨hp, _, hstep⟩
     have hinc := agNext_inc_round n hstep
-    simp only [state_pred, later, exec.drop, Nat.zero_add] at hp hinc ⊢
+    simp only [state_pred, later, exec.drop, Nat.add_zero] at hp hinc ⊢
     omega
   case enablement =>
     intro m _
@@ -105,7 +105,7 @@ theorem ag_eventually_complete :
   have hinv := AllGather.ag_completeness n e hsafety
   refine ⟨j, ?_⟩
   have hinv_at := hinv (k + j)
-  simp only [state_pred, exec.drop, Nat.zero_add, AllGather.ag_inv,
+  simp only [state_pred, exec.drop, Nat.add_zero, AllGather.ag_inv,
              show j + k = k + j from Nat.add_comm j k] at hinv_at hge ⊢
   exact hinv_at.2 hge
 

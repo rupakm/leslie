@@ -75,7 +75,7 @@ theorem cs1_leads_to_flag1_false :
     sorry
   · -- Enablement: exit1 is enabled when pc1=cs
     intro m hp
-    simp only [state_pred, tla_enabled, exec.drop, tla_or, Nat.zero_add,
+    simp only [state_pred, tla_enabled, exec.drop, tla_or, Nat.add_zero,
                GatedAction.toAction] at hp ⊢
     left
     exact ⟨{ (e m) with flag1 := false, pc1 := .idle },
@@ -125,7 +125,7 @@ theorem flag1_false_leads_to_cs :
   · sorry
   · -- Enablement
     intro m hp
-    simp only [state_pred, tla_enabled, exec.drop, tla_or, Nat.zero_add,
+    simp only [state_pred, tla_enabled, exec.drop, tla_or, Nat.add_zero,
                GatedAction.toAction] at hp ⊢
     left
     exact ⟨{ (e m) with pc0 := .cs },
@@ -141,12 +141,12 @@ theorem starvation_freedom_0 :
   intro e hspec k hp
   have hinv := always_inv e hspec
   have hinv_k := hinv k
-  simp only [state_pred, exec.drop, Nat.zero_add] at hp hinv_k
+  simp only [state_pred, exec.drop, Nat.add_zero] at hp hinv_k
   by_cases hpc1_cs : (e k).pc1 = .cs
   · -- pc1=cs: Stage 1 gives flag1=false, then Stage 2 gives cs
     have h1 := cs1_leads_to_flag1_false e hspec k
       (show state_pred _ (e.drop k) by
-        simp only [state_pred, exec.drop, Nat.zero_add]; exact ⟨hp, hpc1_cs⟩)
+        simp only [state_pred, exec.drop, Nat.add_zero]; exact ⟨hp, hpc1_cs⟩)
     obtain ⟨j1, hj1⟩ := h1
     -- hj1 : state_pred _ (e.drop (k + j1))
     -- = (e.drop j1 (e.drop k)) at exec.satisfies level
@@ -161,7 +161,7 @@ theorem starvation_freedom_0 :
     by_cases hf1 : (e k).flag1 = false
     · exact flag1_false_leads_to_cs e hspec k
         (show state_pred _ (e.drop k) by
-          simp only [state_pred, exec.drop, Nat.zero_add]; exact ⟨hp, hf1⟩)
+          simp only [state_pred, exec.drop, Nat.add_zero]; exact ⟨hp, hf1⟩)
     · -- flag1=true, pc1≠cs: process 1 is in {flagged, waiting}.
       -- Eventually process 1 either enters cs (then Stage 1+2) or
       -- turn becomes false (enabling enter0). Full argument is complex.

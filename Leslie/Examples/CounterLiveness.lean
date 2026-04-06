@@ -62,13 +62,11 @@ theorem step_progress (k : Nat) :
   case safety =>
     intro m ⟨hp, hstep⟩
     right
-    simp only [action_pred, state_pred, exec.drop, later,
-               Nat.zero_add] at hp hstep ⊢
+    simp only [action_pred, state_pred, exec.drop, later, Nat.add_zero] at hp hstep ⊢
     have hinc := next_increases hstep ; omega
   case progress =>
     intro m ⟨hp, _, hstep⟩
-    simp only [action_pred, state_pred, exec.drop, later,
-               Nat.zero_add] at hp hstep ⊢
+    simp only [action_pred, state_pred, exec.drop, later, Nat.add_zero] at hp hstep ⊢
     have hinc := next_increases hstep ; omega
   case enablement =>
     -- p ⇒ Enabled(a) ∨ q

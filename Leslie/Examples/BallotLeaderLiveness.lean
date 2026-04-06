@@ -161,7 +161,7 @@ theorem round_ge1_to_ge2 :
   · have h1 : state_pred (fun s : GState n => s.round = 1) (e.drop k) := by
       simp only [state_pred, exec.drop] ; exact heq
     exact round1_to_ge2 e hΓ k h1
-  · exact ⟨0, by simp only [state_pred, exec.drop, Nat.zero_add] at hp heq ⊢ ; omega⟩
+  · exact ⟨0, by simp only [state_pred, exec.drop, Nat.add_zero] at hp heq ⊢ ; omega⟩
 
 /-- **Main theorem**: under weak fairness, the protocol eventually
     completes both rounds. -/

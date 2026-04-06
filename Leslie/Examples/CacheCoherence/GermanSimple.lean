@@ -918,7 +918,7 @@ theorem coherence_of_data_inv (n : Nat) :
 theorem german_coherence_invariant (n : Nat) :
     pred_implies (german.toSpec n).safety [tlafml| □ ⌜ coherence n ⌝] := by
   intro e hs k
-  exact coherence_of_data_inv n (e (0 + k)) ((german_data_invariant n) e hs k)
+  exact coherence_of_data_inv n (e k) ((german_data_invariant n) e hs k)
 
 /-
   What we prove now is enough for coherence:

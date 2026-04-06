@@ -13,9 +13,10 @@ macro_rules
 
 attribute [tlasimp_def] leads_to weak_fairness tla_and tla_or tla_not tla_implies tla_forall tla_exists tla_true tla_false always_implies
   always eventually later tla_until state_pred pure_pred action_pred
-  valid pred_implies exec.satisfies exec.drop_drop
+  valid pred_implies exec.satisfies exec.drop_drop exec.drop_zero
   tla_bigwedge tla_bigvee Foldable.fold
 
+attribute [tlasimp_def] Nat.add_zero
 attribute [execsimp] exec.drop Nat.add_zero Nat.zero_add
 
 macro "tla_unfold" : tactic => `(tactic| (try dsimp only [tlasimp_def] at *))
