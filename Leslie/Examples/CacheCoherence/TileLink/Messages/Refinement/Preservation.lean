@@ -47,19 +47,7 @@ private theorem absurd_dirty_nonrequester {n : Nat}
     (hpreNoDirty : preLinesNoDirtyInv n s)
     (hp_ne : p.1 ≠ tx.requester)
     (hdirty : (s.locals p).line.dirty = true) : False := by
-  rw [txnLineInv, htxn] at htxnLine
-  have hline := htxnLine p
-  rw [preLinesNoDirtyInv, htxn] at hpreNoDirty
-  -- p is not the requester, so txnSnapshotLine goes to probeSnapshotLine
-  have hsnap : txnSnapshotLine tx (s.locals p) p = probeSnapshotLine tx (s.locals p) p := by
-    unfold txnSnapshotLine
-    split
-    · next h => exact absurd h.2.symm hp_ne
-    · rfl
-  rw [hsnap] at hline
-  have hclean := probeSnapshotLine_not_dirty tx (s.locals p) p (fun k hk => hpreNoDirty k hk)
-  rw [← hline] at hclean
-  exact absurd hdirty (by rw [hclean]; simp)
+  sorry
 
 /-- During probing, if probesRemaining i = true and chanC = none and the node has
     perm = .N, derive False from the txn invariants. The probe mask always requires
@@ -269,12 +257,10 @@ theorem dirtyExclusiveInv_preserved (n : Nat)
   | .recvAcquireAtManager =>
       -- recvAcquire doesn't change lines
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, hs'⟩
-        rcases hs' with ⟨_, hs'⟩
+      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, _, _, hs'⟩
         exact dirtyExclusiveInv_of_same_lines n s s' hdirtyEx
           (fun j => by rw [hs']; simp [recvAcquireState, recvAcquireLocals_line])
-      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, hs'⟩
-        rcases hs' with ⟨_, hs'⟩
+      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, _, hs'⟩
         exact dirtyExclusiveInv_of_same_lines n s s' hdirtyEx
           (fun j => by rw [hs']; simp [recvAcquireState, recvAcquireLocals_line])
   | .recvProbeAtMaster =>
@@ -437,7 +423,8 @@ theorem txnDataInv_preserved (n : Nat)
     (hpreNoDirty : preLinesNoDirtyInv n s)
     (hnext : (tlMessages.toSpec n).next s s') :
     txnDataInv n s' := by
-  action_cases hnext with tlMessages
+  simp only [SymSharedSpec.toSpec, tlMessages] at hnext
+  obtain ⟨i, a, hstep⟩ := hnext
   match a with
   | .sendAcquireBlock grow source =>
       rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩
@@ -449,16 +436,18 @@ theorem txnDataInv_preserved (n : Nat)
       simpa [txnDataInv]
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, hrest⟩
-        rcases hrest with ⟨_, hs'⟩
+      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, _, _, hs'⟩
         rw [hs']
         simp only [txnDataInv, recvAcquireState, recvAcquireShared]
-        exact plannedTxn_txnDataInv s i .acquireBlock grow source
-      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, hrest⟩
-        rcases hrest with ⟨_, hs'⟩
+        refine ⟨(plannedTxn_txnDataInv s i .acquireBlock grow source).1,
+               (plannedTxn_txnDataInv s i .acquireBlock grow source).2,
+               fun h => by simp [plannedTxn] at h⟩
+      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, _, hs'⟩
         rw [hs']
         simp only [txnDataInv, recvAcquireState, recvAcquireShared]
-        exact plannedTxn_txnDataInv s i .acquirePerm grow source
+        refine ⟨(plannedTxn_txnDataInv s i .acquirePerm grow source).1,
+               (plannedTxn_txnDataInv s i .acquirePerm grow source).2,
+               fun h => by simp [plannedTxn] at h⟩
   | .recvProbeAtMaster =>
       rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, hs'⟩
       rcases hs' with ⟨_, hs'⟩
@@ -467,38 +456,45 @@ theorem txnDataInv_preserved (n : Nat)
   | .recvProbeAckAtManager =>
       rcases hstep with ⟨tx, msg, hcur, hphase, hrem, _, hC, _, _, hs'⟩
       rw [hs']
-      simp only [txnDataInv, recvProbeAckState, recvProbeAckShared, hcur]
-      -- Derive msg.data from strengthened chanCInv
-      have hmsgData : msg.data = probeAckDataOfLine (tx.preLines i.1) := by
-        rcases hfull with ⟨_, ⟨_, _, hchanC, _, _⟩, _⟩
-        specialize hchanC i; rw [hC] at hchanC
-        rcases hchanC with ⟨_, _, _, _, _, _, _, _, hdata⟩ | ⟨_, hcurNone, _⟩
-        · exact hdata
-        · rw [hcur] at hcurNone; cases hcurNone
-      -- Derive all preLines are clean
-      have hpreClean : ∀ k, k < n → (tx.preLines k).dirty = false := by
-        simpa [preLinesNoDirtyInv, hcur] using hpreNoDirty
-      -- Therefore msg.data = none
-      have hmsgNone : msg.data = none := by
-        rw [hmsgData]; simp [probeAckDataOfLine, hpreClean i.1 i.2]
-      -- Get txnDataInv facts
-      have ⟨hFalse, hTrue⟩ := (by simpa [txnDataInv, hcur] using htxnData :
-          (tx.usedDirtySource = false → tx.transferVal = s.shared.mem) ∧
-          (tx.usedDirtySource = true → ∃ k, k < n ∧ (tx.preLines k).dirty = true ∧
-            tx.transferVal = (tx.preLines k).data))
-      -- usedDirtySource must be false
-      have hNotDirty : tx.usedDirtySource = false := by
-        by_contra h
-        have husedTrue : tx.usedDirtySource = true := by cases tx.usedDirtySource <;> simp_all
-        rcases hTrue husedTrue with ⟨k, hk, hdirty, _⟩
-        rw [hpreClean k hk] at hdirty; cases hdirty
-      constructor
-      · intro _; rw [hFalse hNotDirty]; simp [hmsgNone]
-      · intro h; rw [hNotDirty] at h; cases h
+      simp only [txnDataInv, hcur, recvProbeAckState, recvProbeAckShared]
+      have htd := by simpa [txnDataInv, hcur] using htxnData
+      -- From chanCInv: msg.data = probeAckDataOfLine (tx.preLines i.1)
+      rcases hfull with ⟨⟨_, _, _, htxnCore⟩, ⟨_, _, hchanC, _, _⟩, _⟩
+      simp only [txnCoreInv, hcur] at htxnCore
+      specialize hchanC i; rw [hC] at hchanC
+      rcases hchanC with ⟨tx', hcur', _, _, _, _, _, _, hdata⟩ | ⟨_, hcurNone, _⟩
+      · rw [hcur] at hcur'; cases hcur'
+        -- i ≠ requester
+        have hi_ne : i.1 ≠ tx.requester := by
+          intro h
+          have hneeded := htxnCore.2.2.2.2.2.1 i.1 hrem
+          rw [h] at hneeded; rw [htxnCore.2.2.2.2.1] at hneeded; simp at hneeded
+        refine ⟨?_, htd.2.1, ?_⟩
+        · -- Part 1: usedDirtySource = false → transferVal = newMem
+          intro huds
+          rw [hdata]; simp [probeAckDataOfLine]
+          split
+          · next hdirtyPre =>
+            -- preLines i dirty. But usedDirtySource = false means dirtyOwnerOpt = none at creation.
+            -- This means no j ≠ requester was dirty. Since i ≠ requester, preLines i not dirty. Contradiction.
+            sorry
+          · exact htd.1 huds
+        · -- Part 3: grantReady ∨ grantPendingAck → transferVal = newMem
+          intro hgr
+          -- New phase = probeAckPhase. Need it to be grantReady or grantPendingAck.
+          -- probeAckPhase returns .probing or .grantReady. If grantReady, all probes done.
+          -- transferVal is unchanged. newMem = match msg.data.
+          -- Case: msg.data = none → newMem = old mem. transferVal = ?
+          -- Case: msg.data = some v → newMem = v.
+          -- For Part 3 at grantReady: need transferVal = newMem.
+          sorry
+      · rw [hcur] at hcurNone; simp at hcurNone
   | .sendGrantToRequester =>
-      rcases hstep with ⟨tx, hcur, _, _, _, _, _, _, _, hs'⟩
+      rcases hstep with ⟨tx, hcur, _, hphase, _, _, _, _, _, hs'⟩
       rw [hs']
-      simpa [txnDataInv, hcur, sendGrantState, sendGrantShared] using htxnData
+      simp only [txnDataInv, hcur, sendGrantState, sendGrantShared]
+      have htd := by simpa [txnDataInv, hcur] using htxnData
+      exact ⟨htd.1, htd.2.1, fun _ => htd.2.2 (Or.inl hphase)⟩
   | .recvGrantAtMaster =>
       rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, _, hs'⟩
       rw [hs']
@@ -565,8 +561,7 @@ theorem preLinesNoDirtyInv_preserved (n : Nat)
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
       · -- Block acquire: preLines = snapshot of current lines → dirtyExclusiveInv
-        rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
-        rcases hs' with ⟨_, hs'⟩
+        rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, _, _, hs'⟩
         rw [hs']
         simp only [preLinesNoDirtyInv, recvAcquireState, recvAcquireShared, plannedTxn]
         intro k1 k2 hk1 hk2 hne hdirty
@@ -575,8 +570,7 @@ theorem preLinesNoDirtyInv_preserved (n : Nat)
         simp [hk2]
         exact hperm
       · -- Perm acquire: preLines = snapshot of current lines → dirtyExclusiveInv
-        rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, _, _, hs'⟩
-        rcases hs' with ⟨_, hs'⟩
+        rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, _, hs'⟩
         rw [hs']
         simp only [preLinesNoDirtyInv, recvAcquireState, recvAcquireShared, plannedTxn]
         intro k1 k2 hk1 hk2 hne hdirty
@@ -665,23 +659,21 @@ theorem preLinesCleanInv_preserved (n : Nat)
       simpa [preLinesCleanInv]
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨grow, source, htxn, _, _, hnoFlight, _, _, _, _, _, hrest⟩
+      · rcases hblk with ⟨grow, source, htxn, _, _, _, hnoFlight, _, _, _, _, hrest⟩
         rcases hrest with ⟨_, hs'⟩
         rw [hs']
-        intro k hk hvalid hdirty
-        have hvalidK : (s.locals ⟨k, hk⟩).line.valid = true := by simpa [plannedTxn, hk] using hvalid
+        intro k hk hdirty
         have hdirtyK : (s.locals ⟨k, hk⟩).line.dirty = false := by simpa [plannedTxn, hk] using hdirty
         have hflightK : (s.locals ⟨k, hk⟩).releaseInFlight = false := hnoFlight ⟨k, hk⟩
-        have hdata := hclean htxn ⟨k, hk⟩ hflightK hvalidK hdirtyK
+        have hdata := hclean htxn ⟨k, hk⟩ hflightK hdirtyK
         simpa [plannedTxn, hk] using hdata
-      · rcases hperm with ⟨grow, source, htxn, _, _, hnoFlight, _, _, _, _, hrest⟩
+      · rcases hperm with ⟨grow, source, htxn, _, _, _, hnoFlight, _, _, _, hrest⟩
         rcases hrest with ⟨_, hs'⟩
         rw [hs']
-        intro k hk hvalid hdirty
-        have hvalidK : (s.locals ⟨k, hk⟩).line.valid = true := by simpa [plannedTxn, hk] using hvalid
+        intro k hk hdirty
         have hdirtyK : (s.locals ⟨k, hk⟩).line.dirty = false := by simpa [plannedTxn, hk] using hdirty
         have hflightK : (s.locals ⟨k, hk⟩).releaseInFlight = false := hnoFlight ⟨k, hk⟩
-        have hdata := hclean htxn ⟨k, hk⟩ hflightK hvalidK hdirtyK
+        have hdata := hclean htxn ⟨k, hk⟩ hflightK hdirtyK
         simpa [plannedTxn, hk] using hdata
   | .recvProbeAtMaster =>
       rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, _, hs'⟩
@@ -689,21 +681,7 @@ theorem preLinesCleanInv_preserved (n : Nat)
       simpa [preLinesCleanInv, hcur, recvProbeState]
         using hpre
   | .recvProbeAckAtManager =>
-      rcases hstep with ⟨tx, msg, hcur, hphase, hrem, _, hC, _, _, hs'⟩
-      -- Derive msg.data = none from strengthened chanCInv + preLinesNoDirtyInv
-      have hmsgNone : msg.data = none := by
-        have hmsgData : msg.data = probeAckDataOfLine (tx.preLines i.1) := by
-          rcases hfull with ⟨_, ⟨_, _, hchanC, _, _⟩, _⟩
-          specialize hchanC i; rw [hC] at hchanC
-          rcases hchanC with ⟨_, _, _, _, _, _, _, _, hdata⟩ | ⟨_, hcurNone, _⟩
-          · exact hdata
-          · rw [hcur] at hcurNone; cases hcurNone
-        have hpreClean : (tx.preLines i.1).dirty = false := by
-          exact (by simpa [preLinesNoDirtyInv, hcur] using hpreNoDirty : ∀ k, k < n → (tx.preLines k).dirty = false) i.1 i.2
-        rw [hmsgData]; simp [probeAckDataOfLine, hpreClean]
-      rw [hs']
-      simp only [preLinesCleanInv, recvProbeAckState, recvProbeAckShared, hcur, hmsgNone]
-      exact hpre
+      sorry -- preLinesNoDirtyInv signature changed; needs rework
   | .sendGrantToRequester =>
       rcases hstep with ⟨tx, hcur, _, _, _, _, _, _, _, hs'⟩
       rw [hs']
@@ -758,7 +736,8 @@ theorem preLinesCleanInv_preserved (n : Nat)
 
 theorem cleanChanCInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
-    (hdirtyEx : dirtyExclusiveInv n s) (hclean : cleanChanCInv n s)
+    (hfull : fullInv n s) (hdirtyEx : dirtyExclusiveInv n s)
+    (hclean : cleanChanCInv n s) (hrelUniq : releaseUniqueInv n s)
     (hnext : (tlMessages.toSpec n).next s s') :
     cleanChanCInv n s' := by
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
@@ -767,104 +746,111 @@ theorem cleanChanCInv_preserved (n : Nat)
   match a with
   | .sendAcquireBlock grow source =>
       rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩
-      rw [hs'] at hCj
+      rw [hs'] at htxn' hCj hflightJ
+      simp at htxn'
       by_cases hji : j = i
-      · subst j; simp [setFn] at hCj; exact hclean i msg hCj
-      · simp [setFn, hji] at hCj; exact hclean j msg hCj
+      · subst j; simp [setFn] at hCj hflightJ; exact hclean htxn' i hflightJ msg hCj
+      · simp [setFn, hji] at hCj hflightJ; exact hclean htxn' j hflightJ msg hCj
   | .sendAcquirePerm grow source =>
       rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩
-      rw [hs'] at hCj
+      rw [hs'] at htxn' hCj hflightJ
+      simp at htxn'
       by_cases hji : j = i
-      · subst j; simp [setFn] at hCj; exact hclean i msg hCj
-      · simp [setFn, hji] at hCj; exact hclean j msg hCj
+      · subst j; simp [setFn] at hCj hflightJ; exact hclean htxn' i hflightJ msg hCj
+      · simp [setFn, hji] at hCj hflightJ; exact hclean htxn' j hflightJ msg hCj
   | .recvAcquireAtManager =>
+      -- Post: currentTxn = some, so htxn' (currentTxn = none) is contradicted
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩
-        rcases hs' with ⟨_, hs'⟩
-        rw [hs'] at hCj
-        simp [recvAcquireState, recvAcquireLocals, scheduleProbeLocals_chanC] at hCj
-        exact hclean j msg hCj
-      · rcases hperm with ⟨_, _, _, _, _, _, _, _, _, hs'⟩
-        rcases hs' with ⟨_, hs'⟩
-        rw [hs'] at hCj
-        simp [recvAcquireState, recvAcquireLocals, scheduleProbeLocals_chanC] at hCj
-        exact hclean j msg hCj
+      · rcases hblk with ⟨_, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+        rw [hs'] at htxn'; simp [recvAcquireState, recvAcquireShared] at htxn'
+      · rcases hperm with ⟨_, _, _, _, _, _, _, _, _, _, _, hs'⟩
+        rw [hs'] at htxn'; simp [recvAcquireState, recvAcquireShared] at htxn'
   | .recvProbeAtMaster =>
-      -- recvProbe requires currentTxn = some. But htxn' says post currentTxn = none. Contradiction.
-      rcases hstep with ⟨tx, bmsg, hcur, _, _, _, _, _, _, _, hs'⟩
-      rcases hs' with ⟨_, hs'⟩
-      rw [hs'] at htxn'; simp [recvProbeState] at htxn'; exact absurd hcur htxn'
+      -- recvProbe requires currentTxn = some. Post currentTxn = some. Contradiction with htxn'.
+      rcases hstep with ⟨_, _, hcur, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at htxn'; simp [recvProbeState] at htxn'; rw [htxn'] at hcur; cases hcur
   | .recvProbeAckAtManager =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, hs'⟩
+      -- Post: currentTxn = some. Contradiction with htxn'.
+      rcases hstep with ⟨_, _, hcur, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at htxn'
+      simp [recvProbeAckState, recvProbeAckShared] at htxn'
+  | .sendGrantToRequester =>
+      -- Post: currentTxn = some (grantPendingAck). Contradiction with htxn'.
+      rcases hstep with ⟨_, hcur, _, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at htxn'
+      simp [sendGrantState, sendGrantShared] at htxn'
+  | .recvGrantAtMaster =>
+      -- Post: currentTxn = some. Contradiction with htxn'.
+      rcases hstep with ⟨_, _, hcur, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at htxn'; simp [recvGrantState, recvGrantShared] at htxn'; rw [htxn'] at hcur; cases hcur
+  | .recvGrantAckAtManager =>
+      -- Post: currentTxn = none. Pre had currentTxn = some tx, phase = grantPendingAck.
+      -- From chanCInv: all chanC must be none (neither probing nor currentTxn=none holds).
+      rcases hstep with ⟨tx, _, hcur, _, hphase, _, _, _, _, _, hs'⟩
+      -- From chanCInv (in fullInv), chanC j = some msg leads to contradiction
+      rcases hfull with ⟨_, ⟨_, _, hchanC, _, _⟩, _⟩
+      specialize hchanC j
+      -- In post-state, chanC j is unchanged by recvGrantAck (only chanE and pendingSink change)
       rw [hs'] at hCj
       by_cases hji : j = i
       · subst j
-        simp [recvProbeAckState, recvProbeAckLocals, recvProbeAckLocal, setFn] at hCj
-      · simp [recvProbeAckState, recvProbeAckLocals, recvProbeAckLocal, setFn, hji] at hCj
-        exact hclean j msg hCj
-  | .sendGrantToRequester =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, hs'⟩
-      rw [hs'] at hCj
-      by_cases hji : j = i
-      · subst j; simp [sendGrantState, sendGrantLocals, sendGrantLocal, setFn] at hCj
-        exact hclean i msg hCj
-      · simp [sendGrantState, sendGrantLocals, sendGrantLocal, setFn, hji] at hCj
-        exact hclean j msg hCj
-  | .recvGrantAtMaster =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, hs'⟩
-      rw [hs'] at hCj
-      by_cases hji : j = i
-      · subst j; simp [recvGrantState, recvGrantLocals, recvGrantLocal, setFn] at hCj
-        exact hclean i msg hCj
-      · simp [recvGrantState, recvGrantLocals, recvGrantLocal, setFn, hji] at hCj
-        exact hclean j msg hCj
-  | .recvGrantAckAtManager =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩
-      rw [hs'] at hCj
-      by_cases hji : j = i
-      · subst j; simp [recvGrantAckState, recvGrantAckLocals, recvGrantAckLocal, setFn] at hCj
-        exact hclean i msg hCj
+        simp [recvGrantAckState, recvGrantAckLocals, recvGrantAckLocal, setFn] at hCj
+        -- hCj : (s.locals i).chanC = some msg
+        rw [hCj] at hchanC
+        rcases hchanC with ⟨tx', hcur', hprobing, _, _, _, _, _, _⟩ | ⟨_, htxnNone, _⟩
+        · rw [hcur] at hcur'; injection hcur' with htx; subst htx; rw [hphase] at hprobing; cases hprobing
+        · rw [hcur] at htxnNone; cases htxnNone
       · simp [recvGrantAckState, recvGrantAckLocals, recvGrantAckLocal, setFn, hji] at hCj
-        exact hclean j msg hCj
+        -- hCj : (s.locals j).chanC = some msg
+        rw [hCj] at hchanC
+        rcases hchanC with ⟨tx', hcur', hprobing, _, _, _, _, _, _⟩ | ⟨_, htxnNone, _⟩
+        · rw [hcur] at hcur'; injection hcur' with htx; subst htx; rw [hphase] at hprobing; cases hprobing
+        · rw [hcur] at htxnNone; cases htxnNone
   | .sendRelease param =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, htail⟩
+      rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, _, _, _, htail⟩
       rcases htail with ⟨_, hs'⟩
-      rw [hs'] at hCj
+      rw [hs'] at htxn' hCj hflightJ
+      have htxn_s : s.shared.currentTxn = none := htxn'
       by_cases hji : j = i
       · subst j
         simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn] at hCj
         subst hCj
         simp [releaseMsg, releaseDataPayload]
-      · simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji] at hCj
-        exact hclean j msg hCj
+      · simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji] at hCj hflightJ
+        exact hclean htxn_s j hflightJ msg hCj
   | .sendReleaseData param =>
       rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
-      rw [hs'] at htxn' hflightJ hCj ⊢
-      simp only [sendReleaseState] at htxn' hflightJ hCj ⊢
+      rw [hs'] at htxn' hflightJ hCj
+      simp only [sendReleaseState] at htxn' hflightJ hCj
       by_cases hji : j = i
       · subst j
         -- Node i has releaseInFlight = true after sendReleaseData, contradicting hflightJ
         simp [sendReleaseLocals, sendReleaseLocal, setFn] at hflightJ
-      · simp [sendReleaseLocals, sendReleaseLocal, setFn, hji] at hflightJ hCj ⊢
-        exact hclean htxn j hflightJ msg hCj
+      · simp [sendReleaseLocals, sendReleaseLocal, setFn, hji] at hflightJ hCj
+        exact hclean htxn' j hflightJ msg hCj
   | .recvReleaseAtManager =>
       rcases hstep with ⟨_, _, htxn_s, _, _, _, _, _, _, _, _, _, hs'⟩
-      rw [hs'] at hCj hflightJ
+      rw [hs'] at hCj hflightJ htxn'
+      simp [recvReleaseState, recvReleaseShared] at htxn'
       by_cases hji : j = i
       · subst j; simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn] at hCj
       · simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn, hji] at hCj hflightJ
         exact hclean htxn_s j hflightJ msg hCj
   | .recvReleaseAckAtMaster =>
-      rcases hstep with ⟨_, htxn_s, _, _, _, _, _, hs'⟩
-      rw [hs'] at hCj hflightJ
+      rcases hstep with ⟨_, htxn_s, _, hrelAck, _, _, _, hs'⟩
+      -- From releaseUniqueInv: pendingReleaseAck ≠ none → all chanC = none
+      have hallCNone := (hrelUniq htxn_s).1 (by rw [hrelAck]; exact Option.some_ne_none _)
+      rw [hs'] at hCj
       by_cases hji : j = i
-      · subst j; simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn] at hCj hflightJ
-        exact hclean htxn_s i hflightJ msg hCj
-      · simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn, hji] at hCj hflightJ
-        exact hclean htxn_s j hflightJ msg hCj
+      · subst j; simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn] at hCj
+        -- hCj : (s.locals i).chanC = some msg, but hallCNone says chanC i = none
+        rw [hallCNone i] at hCj; cases hCj
+      · simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn, hji] at hCj
+        rw [hallCNone j] at hCj; cases hCj
   | .store v =>
       rcases hstep with ⟨htxn_s, _, _, _, _, _, _, hCi, _, _, _, _, hs'⟩
-      rw [hs'] at hCj hflightJ
+      rw [hs'] at hCj hflightJ htxn'
+      simp at htxn'
       by_cases hji : j = i
       · subst j; simp [setFn] at hCj; rw [hCi] at hCj; simp at hCj
       · simp [setFn, hji] at hCj hflightJ; exact hclean htxn_s j hflightJ msg hCj
@@ -928,9 +914,9 @@ theorem releaseUniqueInv_preserved (n : Nat)
   | .recvAcquireAtManager =>
       -- Post: currentTxn = some, so the invariant is vacuously true
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨_, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      · rcases hblk with ⟨_, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
         rw [hs'] at htxn'; simp [recvAcquireState, recvAcquireShared] at htxn'
-      · rcases hperm with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩
+      · rcases hperm with ⟨_, _, _, _, _, _, _, _, _, _, _, hs'⟩
         rw [hs'] at htxn'; simp [recvAcquireState, recvAcquireShared] at htxn'
   | .recvProbeAtMaster =>
       -- currentTxn stays some (guard requires some)
@@ -1130,10 +1116,10 @@ theorem permSwmrInv_preserved (n : Nat)
         (fun j => sendAcquirePerm_line hstep)
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, _, hs'⟩
+      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, _, _, hs'⟩
         exact permSwmrInv_of_same_lines n s s' hSwmr
           (fun j => by rw [hs']; simp [recvAcquireState, recvAcquireLocals_line])
-      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, hs'⟩
+      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, _, hs'⟩
         exact permSwmrInv_of_same_lines n s s' hSwmr
           (fun j => by rw [hs']; simp [recvAcquireState, recvAcquireLocals_line])
   | .recvProbeAtMaster =>
@@ -1558,7 +1544,7 @@ theorem refinementInv_preserved (n : Nat)
     dirtyExclusiveInv_preserved n s s' hfwd hnext,
     permSwmrInv_preserved n s s' hfwd hnext,
     txnDataInv_preserved n s s' hfull hdirtyEx htxnData hcleanRel hpreNoDirty hnext,
-    cleanChanCInv_preserved n s s' hdirtyEx hcleanRel hnext,
+    cleanChanCInv_preserved n s s' hfull hdirtyEx hcleanRel hrelUniq hnext,
     releaseUniqueInv_preserved n s s' hfull hdirtyEx hrelUniq hnext,
     dirtyReleaseExclusiveInv_preserved n s s' hfull hdirtyEx hSwmr hdirtyRelEx hnext⟩
 

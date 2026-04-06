@@ -67,7 +67,9 @@ def chanDInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
           (s.locals i).chanC = none ∧
           (s.locals i).chanE = none ∧
           msg = releaseAckMsg i.1) ∨
-        (msg.opcode = .accessAck ∨ msg.opcode = .accessAckData)
+        (msg.opcode = .accessAck ∨ msg.opcode = .accessAckData) ∧
+          (s.locals i).pendingSource ≠ none ∧
+          (s.locals i).chanA = none
 
 def chanEInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   ∀ i : Fin n, match (s.locals i).chanE with

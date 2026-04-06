@@ -15,7 +15,10 @@ theorem grantPendingAck_other_channels_none_of_fullInv {n : Nat}
     ∀ j : Fin n, j.1 ≠ tx.requester →
       (s.locals j).chanB = none ∧
       (s.locals j).chanC = none ∧
-      (s.locals j).chanD = none ∧
+      ((s.locals j).chanD = none ∨
+        ∃ msg, (s.locals j).chanD = some msg ∧
+          (msg.opcode = .accessAck ∨ msg.opcode = .accessAckData) ∧
+          (s.locals j).pendingSource ≠ none) ∧
       (s.locals j).chanE = none := by
   rcases hinv with ⟨_, hchan, _⟩
   rcases hchan with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
@@ -49,10 +52,10 @@ theorem grantPendingAck_other_channels_none_of_fullInv {n : Nat}
           simp at htxnNone
   · specialize hchanD j
     cases hD : (s.locals j).chanD with
-    | none => exact rfl
-    | some _ =>
+    | none => exact Or.inl rfl
+    | some msg =>
         rw [hD] at hchanD
-        rcases hchanD with hgrant | hrel
+        rcases hchanD with hgrant | hrel | ⟨hacc, hps, _⟩
         · rcases hgrant with ⟨tx0, hcur0, hreq0, hphase0, _, _, _, _⟩
           rw [hcur] at hcur0
           injection hcur0 with htx
@@ -61,6 +64,7 @@ theorem grantPendingAck_other_channels_none_of_fullInv {n : Nat}
         · rcases hrel with ⟨htxnNone, _, _, _, _, _, _⟩
           rw [hcur] at htxnNone
           simp at htxnNone
+        · exact Or.inr ⟨msg, rfl, hacc, hps⟩
   · specialize hchanE j
     cases hE : (s.locals j).chanE with
     | none => exact rfl

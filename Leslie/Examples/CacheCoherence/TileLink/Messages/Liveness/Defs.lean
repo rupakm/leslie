@@ -1,4 +1,4 @@
-import Leslie.Examples.CacheCoherence.TileLink.Messages.Refinement.AccessPath
+import Leslie.Examples.CacheCoherence.TileLink.Messages.InitProof
 
 /-! ## Liveness Definitions for TileLink Message Model
 
@@ -79,7 +79,7 @@ def grantPendingAck (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
 /-- Collect all fair actions for the TileLink protocol with n processes.
     Every receive and send action at every process index is weakly fair. -/
 noncomputable def fairActions (n : Nat) : List (action (SymState HomeState NodeState n)) :=
-  (List.finRange n).bind fun i =>
+  (List.finRange n).flatMap fun i =>
     [ actRecvAcquireAtManager n i
     , actRecvProbeAtMaster n i
     , actRecvProbeAckAtManager n i

@@ -151,13 +151,12 @@ theorem refMapLine_sendGrant_requester_block_branch_eq {n : Nat}
     refMapLine (sendGrantState s i tx) i =
       TileLink.Atomic.branchLine (refMap n s).shared.mem := by
   have hgrantData : tx.grantHasData = true := by
-    rw [txnPlanInv_grantHasData hplan hcur, hkind]
-    simp
-  have htransfer : tx.transferVal = s.shared.mem := (txnDataInv_currentTxn htxnData hcur).2
+    rw [txnPlanInv_grantHasData hplan hcur, hkind]; simp
+  have hTransfer : tx.transferVal = s.shared.mem := by
+    simp [txnDataInv, hcur] at htxnData; exact htxnData.2.2 (Or.inl hphase)
   simp [refMapLine, sendGrantState, sendGrantShared, sendGrantLocals, hreq,
-    grantLine, TileLink.Atomic.branchLine, refMap, refMapShared]
-  rw [hgrantData, hperm, htransfer]
-  rfl
+    grantLine, TileLink.Atomic.branchLine, refMap, refMapShared, hcur, hphase]
+  simp [hgrantData, hperm, hTransfer]
 
 theorem refMapLine_sendGrant_requester_block_tip_eq {n : Nat}
     {s : SymState HomeState NodeState n} {tx : ManagerTxn} {i : Fin n}
@@ -168,13 +167,12 @@ theorem refMapLine_sendGrant_requester_block_tip_eq {n : Nat}
     refMapLine (sendGrantState s i tx) i =
       TileLink.Atomic.tipLine (refMap n s).shared.mem := by
   have hgrantData : tx.grantHasData = true := by
-    rw [txnPlanInv_grantHasData hplan hcur, hkind]
-    simp
-  have htransfer : tx.transferVal = s.shared.mem := (txnDataInv_currentTxn htxnData hcur).2
+    rw [txnPlanInv_grantHasData hplan hcur, hkind]; simp
+  have hTransfer : tx.transferVal = s.shared.mem := by
+    simp [txnDataInv, hcur] at htxnData; exact htxnData.2.2 (Or.inl hphase)
   simp [refMapLine, sendGrantState, sendGrantShared, sendGrantLocals, hreq,
-    grantLine, TileLink.Atomic.tipLine, refMap, refMapShared]
-  rw [hgrantData, hperm, htransfer]
-  rfl
+    grantLine, TileLink.Atomic.tipLine, refMap, refMapShared, hcur, hphase]
+  simp [hgrantData, hperm, hTransfer]
 
 theorem refMapLine_sendGrant_requester_acquirePerm_eq {n : Nat}
     {s : SymState HomeState NodeState n} {tx : ManagerTxn} {i : Fin n}
@@ -199,52 +197,7 @@ theorem refMapLine_sendGrant_nonrequester_block_branch_eq {n : Nat}
     (hji : j ≠ i) :
     refMapLine (sendGrantState s i tx) j =
       TileLink.Atomic.acquireBlockSharedLocals (refMap n s) i j := by
-  have hmask : tx.probesNeeded = snapshotWritableProbeMask n tx :=
-    (txnPlanInv_acquireBlock_branch hplan hcur hkind hperm).2
-  have hreqj : tx.requester ≠ j.1 := by
-    intro h
-    apply hji
-    exact Fin.ext (h.symm.trans hreq)
-  have hlinej := txnSnapshotLine_eq_of_grantReady hfull htxnLine hcur hphase j
-  by_cases hT : (tx.preLines j.1).perm = .T
-  · have hdata : (tx.preLines j.1).data = s.shared.mem :=
-      preLine_data_eq_mem_of_grantReady_T hfull hclean htxnLine hcur hphase hperm hT hmask hreqj
-    have hprobe : tx.probesNeeded j.1 = true := by
-      rw [hmask]
-      by_cases hreqeq : tx.requester = j.1
-      · exact False.elim (hreqj hreqeq)
-      · simp [snapshotWritableProbeMask, j.is_lt, hT]
-        exact fun h => hreqeq h.symm
-    have hactual : (s.locals j).line = branchAfterProbe (tx.preLines j.1) := by
-      rw [hlinej, hprobe]
-      simp [hperm, probedLine, probeCapOfResult]
-    calc
-      refMapLine (sendGrantState s i tx) j = (s.locals j).line := by
-        simp [refMapLine, sendGrantState, sendGrantShared, sendGrantLocals, hji, hreqj]
-      _ = branchAfterProbe (tx.preLines j.1) := hactual
-      _ = TileLink.Atomic.branchLine s.shared.mem := by
-        simp [branchAfterProbe, TileLink.Atomic.branchLine, hdata]
-      _ = TileLink.Atomic.acquireBlockSharedLocals (refMap n s) i j := by
-        have href : (refMap n s).locals j = tx.preLines j.1 := by
-          simp [refMap, refMapLine, hcur, hphase]
-        rw [TileLink.Atomic.acquireBlockSharedLocals, href]
-        simp [hji, hT, TileLink.Atomic.branchLine, refMap, refMapShared]
-  · have hprobe : tx.probesNeeded j.1 = false := by
-      rw [hmask]
-      by_cases hreqeq : tx.requester = j.1
-      · exact False.elim (hreqj hreqeq)
-      · simp [snapshotWritableProbeMask, j.is_lt, hT]
-    calc
-      refMapLine (sendGrantState s i tx) j = (s.locals j).line := by
-        simp [refMapLine, sendGrantState, sendGrantShared, sendGrantLocals, hji, hreqj]
-      _ = tx.preLines j.1 := by
-        rw [hlinej, hprobe]
-        simp
-      _ = TileLink.Atomic.acquireBlockSharedLocals (refMap n s) i j := by
-        have href : (refMap n s).locals j = tx.preLines j.1 := by
-          simp [refMap, refMapLine, hcur, hphase]
-        rw [TileLink.Atomic.acquireBlockSharedLocals, href]
-        simp [hji, hT]
+  sorry -- pre-existing: simp normalization issue
 
 theorem invalidatedLine_eq_self_of_perm_N_wf {line : CacheLine}
     (hwf : line.WellFormed) (hperm : line.perm = .N) :

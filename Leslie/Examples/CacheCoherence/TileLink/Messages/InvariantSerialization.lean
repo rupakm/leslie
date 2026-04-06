@@ -95,7 +95,8 @@ theorem serializationInv_of_core_channel (n : Nat)
           cases hdata : tx.grantHasData <;> simp [grantMsgOfTxn, grantOpcodeOfTxn, hdata] at hop
         · rcases hrelBranch with ⟨hcur, _, hrel, _, _, _, hmsg⟩
           exact ⟨hcur, hrel⟩
-        · rcases haccBranch with hacc | hacc <;> rw [hacc] at hop <;> cases hop
+        · rcases haccBranch with ⟨hacc, _, _⟩
+          rcases hacc with hacc | hacc <;> rw [hacc] at hop <;> cases hop
   · intro i
     cases hC : (s.locals i).chanC with
     | none =>

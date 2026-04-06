@@ -48,8 +48,8 @@ noncomputable def findDirtyReleaseVal (n : Nat) (s : SymState HomeState NodeStat
   if h : ∃ i : Fin n, (s.locals i).releaseInFlight = true ∧
       ∃ msg : CMsg, (s.locals i).chanC = some msg ∧ msg.data ≠ none then
     let i := Classical.choose h
-    let ⟨_, msg, hmsg, _⟩ := (Classical.choose_spec h).2
-    msg.data
+    let spec := (Classical.choose_spec h).2
+    (Classical.choose spec).data
   else
     none
 
@@ -157,6 +157,46 @@ theorem queuedReleaseIdx_eq_none_of_all_chanC_none {n : Nat}
     contradiction
   simp [hnone]
 
+/-- If `shared` is identical and locals only change in fields invisible to refMap
+    (i.e., line, chanC, releaseInFlight are all preserved), then `refMap` is unchanged. -/
+theorem refMap_eq_of_invisible_local_change {n : Nat}
+    {s : SymState HomeState NodeState n}
+    {ls' : Fin n → NodeState}
+    (hline : ∀ j : Fin n, (ls' j).line = (s.locals j).line)
+    (hC : ∀ j : Fin n, (ls' j).chanC = (s.locals j).chanC)
+    (hflight : ∀ j : Fin n, (ls' j).releaseInFlight = (s.locals j).releaseInFlight) :
+    refMap n { shared := s.shared, locals := ls' } = refMap n s := by
+  let s' : SymState HomeState NodeState n := ⟨s.shared, ls'⟩
+  show refMap n s' = refMap n s
+  have hloc : (fun j => refMapLine s' j) = (fun j => refMapLine s j) := by
+    funext j
+    simp only [refMapLine, show s'.shared = s.shared from rfl]
+    cases htxn : s.shared.currentTxn with
+    | some tx =>
+      simp [htxn]
+      split
+      · split
+        · rfl
+        · exact hline j
+      · rfl
+    | none =>
+      simp [htxn]
+      exact hline j
+  have hsh : refMapShared n s' = refMapShared n s := by
+    unfold refMapShared
+    simp only [show s'.shared = s.shared from rfl, show s'.locals = ls' from rfl]
+    simp only [show ∀ j : Fin n, (ls' j).line = (s.locals j).line from hline]
+    -- findDirtyReleaseVal and queuedReleaseIdx still have s'.locals references.
+    -- Since s' = ⟨s.shared, ls'⟩ and hC/hflight hold, these are equal.
+    -- Use simp to rewrite hC and hflight inside the remaining references.
+    -- After simp only [hline], the remaining differences should only be in
+    -- findDirtyReleaseVal and queuedReleaseIdx which access chanC/releaseInFlight.
+    -- Since those access s'.locals which is ls', and hC/hflight equate the relevant fields,
+    -- simp should close this.
+    sorry -- findDirtyReleaseVal/queuedReleaseIdx need extensionality over chanC/releaseInFlight
+  simp only [refMap]
+  exact SymState.ext hsh hloc
+
 theorem preTxnDir_updateDirAt_eq {n : Nat} (tx : ManagerTxn)
     (dir : Nat → TLPerm) (i : Fin n) (perm : TLPerm) :
     preTxnDir n tx (updateDirAt dir i perm) = preTxnDir n tx dir := by
@@ -204,7 +244,8 @@ theorem txnDataInv_currentTxn {n : Nat}
     (tx.usedDirtySource = false → tx.transferVal = s.shared.mem) ∧
     (tx.usedDirtySource = true → ∃ k, k < n ∧ (tx.preLines k).dirty = true ∧
       tx.transferVal = (tx.preLines k).data) := by
-  simpa [txnDataInv, hcur] using htxnData
+  simp [txnDataInv, hcur] at htxnData
+  exact ⟨htxnData.1, htxnData.2.1⟩
 
 theorem txnCoreInv_grantReady_allFalse {n : Nat}
     {s : SymState HomeState NodeState n} {tx : ManagerTxn}
