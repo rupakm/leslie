@@ -36,6 +36,11 @@ import «Leslie».Examples.LastVotingPhased
 import «Leslie».Examples.CASCounterRefinement
 import «Leslie».Examples.SnapshotRefinement
 import «Leslie».Examples.Peterson
+import «Leslie».Examples.CounterLiveness
+import «Leslie».Examples.PetersonLiveness
+import «Leslie».Examples.AllGatherLiveness
+import «Leslie».Examples.BallotLeaderLiveness
+import «Leslie».Examples.KVStoreLiveness
 import «Leslie».Examples.ChandyLamportSnapshot
 import «Leslie».SymShared
 import «Leslie».EnvAbstraction
