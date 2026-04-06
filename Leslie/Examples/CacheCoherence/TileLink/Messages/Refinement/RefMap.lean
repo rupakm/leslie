@@ -193,7 +193,11 @@ theorem refMap_eq_of_invisible_local_change {n : Nat}
     -- findDirtyReleaseVal and queuedReleaseIdx which access chanC/releaseInFlight.
     -- Since those access s'.locals which is ls', and hC/hflight equate the relevant fields,
     -- simp should close this.
-    sorry -- findDirtyReleaseVal/queuedReleaseIdx need extensionality over chanC/releaseInFlight
+    have hFDR : findDirtyReleaseVal n s' = findDirtyReleaseVal n s := by
+      simp only [findDirtyReleaseVal, show s'.locals = ls' from rfl, hC, hflight]
+    have hQRI : queuedReleaseIdx n s' = queuedReleaseIdx n s := by
+      simp only [queuedReleaseIdx, show s'.locals = ls' from rfl, hC, hflight]
+    rw [hFDR, hQRI]
   simp only [refMap]
   exact SymState.ext hsh hloc
 

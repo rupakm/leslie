@@ -191,13 +191,55 @@ theorem refMapLine_sendGrant_requester_acquirePerm_eq {n : Nat}
 theorem refMapLine_sendGrant_nonrequester_block_branch_eq {n : Nat}
     {s : SymState HomeState NodeState n} {tx : ManagerTxn} {i j : Fin n}
     (hfull : fullInv n s) (hclean : cleanDataInv n s) (htxnLine : txnLineInv n s)
-    (hplan : txnPlanInv n s) (hcur : s.shared.currentTxn = some tx)
+    (htxnData : txnDataInv n s) (hplan : txnPlanInv n s)
+    (hcur : s.shared.currentTxn = some tx)
     (hreq : tx.requester = i.1) (hphase : tx.phase = .grantReady)
     (hkind : tx.kind = .acquireBlock) (hperm : tx.resultPerm = .B)
     (hji : j ≠ i) :
     refMapLine (sendGrantState s i tx) j =
       TileLink.Atomic.acquireBlockSharedLocals (refMap n s) i j := by
-  sorry -- pre-existing: simp normalization issue
+  have hreqj : tx.requester ≠ j.1 := by
+    intro h; exact hji (by ext; omega)
+  -- Extract probe mask from txnPlanInv
+  have hplanU := hplan
+  simp only [txnPlanInv, hcur, hkind] at hplanU
+  obtain ⟨_, _, hBplan, _⟩ := hplanU
+  have ⟨_, hmask⟩ := hBplan hperm
+  -- Get transferVal = mem from txnDataInv
+  have hTransfer : tx.transferVal = s.shared.mem := by
+    simp [txnDataInv, hcur] at htxnData; exact htxnData.2.2 (Or.inl hphase)
+  -- Compute (refMap n s).shared.mem = s.shared.mem
+  have hRefMem : (refMap n s).shared.mem = s.shared.mem := by
+    simp [refMap, refMapShared, hcur, hphase, hTransfer]
+  -- Get the snapshot line equality for j
+  have hlinej := txnSnapshotLine_eq_of_grantReady hfull htxnLine hcur hphase j
+  -- Simplify LHS to (s.locals j).line
+  have hLHS : refMapLine (sendGrantState s i tx) j = (s.locals j).line := by
+    simp [refMapLine, sendGrantState, sendGrantShared, sendGrantLocals,
+      setFn, hji, hreqj]
+  -- Simplify RHS: since j ≠ i, acquireBlockSharedLocals checks perm of refMapLine s j
+  have hRefJ : (refMap n s).locals j = tx.preLines j.1 := by
+    simp [refMap, refMapLine, hcur, hphase]
+  have hRHS : TileLink.Atomic.acquireBlockSharedLocals (refMap n s) i j =
+      (if (tx.preLines j.1).perm = .T
+       then TileLink.Atomic.branchLine s.shared.mem
+       else tx.preLines j.1) := by
+    simp [TileLink.Atomic.acquireBlockSharedLocals, hji, hRefJ, hRefMem]
+  rw [hLHS, hRHS]
+  by_cases hT : (tx.preLines j.1).perm = .T
+  · -- j has perm T, so was probed → line is branchAfterProbe
+    simp only [hT, ite_true]
+    have hprobe : tx.probesNeeded j.1 = true := by
+      rw [hmask]; simp [snapshotWritableProbeMask, j.is_lt, hT]
+      exact fun h => hreqj h.symm
+    rw [hlinej, if_pos hprobe]
+    simp only [hperm, probeCapOfResult, probedLine, branchAfterProbe, TileLink.Atomic.branchLine]
+    exact congrArg _ (preLine_data_eq_mem_of_grantReady_T hfull hclean htxnLine hcur hphase hperm hT hmask hreqj)
+  · -- j has non-T perm, not probed → line = tx.preLines j.1
+    simp only [hT, ite_false]
+    have hprobe : tx.probesNeeded j.1 = false := by
+      rw [hmask]; simp [snapshotWritableProbeMask, j.is_lt, hreqj, hT]
+    rw [hlinej, if_neg (by simp [hprobe])]
 
 theorem invalidatedLine_eq_self_of_perm_N_wf {line : CacheLine}
     (hwf : line.WellFormed) (hperm : line.perm = .N) :
@@ -321,7 +363,7 @@ theorem refMap_sendGrant_block_branch_locals_eq {n : Nat}
     simpa [refMap, TileLink.Atomic.acquireBlockSharedLocals] using
       refMapLine_sendGrant_requester_block_branch_eq htxnData hplan hcur hreq hphase hkind hperm
   · simpa [refMap] using
-      refMapLine_sendGrant_nonrequester_block_branch_eq hfull hclean htxnLine hplan hcur hreq hphase
+      refMapLine_sendGrant_nonrequester_block_branch_eq hfull hclean htxnLine htxnData hplan hcur hreq hphase
         hkind hperm hji
 
 theorem refMap_sendGrant_block_tip_locals_eq {n : Nat}
