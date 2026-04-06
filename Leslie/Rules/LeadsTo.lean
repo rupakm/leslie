@@ -55,6 +55,36 @@ theorem leads_to_strengthen_lhs (p q inv : pred σ) :
   |-tla- (□ inv → (p ∧ inv ↝ q) → (p ↝ q)) := by
   tla_unfold_simp ; aesop
 
+/-! ### Composition under a common hypothesis -/
+
+/-- Chain two leads-to properties under a common hypothesis Γ.
+    `(Γ ⊢ p ↝ q) ∧ (Γ ⊢ q ↝ r) → (Γ ⊢ p ↝ r)` -/
+theorem leads_to_chain {Γ p q r : pred σ}
+    (h1 : pred_implies Γ (leads_to p q))
+    (h2 : pred_implies Γ (leads_to q r)) :
+    pred_implies Γ (leads_to p r) :=
+  fun e hΓ => leads_to_trans p q r e (h1 e hΓ) (h2 e hΓ)
+
+/-- Chain three leads-to properties under a common hypothesis Γ. -/
+theorem leads_to_chain3 {Γ p q r s : pred σ}
+    (h1 : pred_implies Γ (leads_to p q))
+    (h2 : pred_implies Γ (leads_to q r))
+    (h3 : pred_implies Γ (leads_to r s)) :
+    pred_implies Γ (leads_to p s) :=
+  leads_to_chain h1 (leads_to_chain h2 h3)
+
+/-- Disjunction elimination for leads-to under a common hypothesis. -/
+theorem leads_to_or {Γ p1 p2 q : pred σ}
+    (h1 : pred_implies Γ (leads_to p1 q))
+    (h2 : pred_implies Γ (leads_to p2 q)) :
+    pred_implies Γ (leads_to (tla_or p1 p2) q) :=
+  fun e hΓ k hp => hp.elim (h1 e hΓ k) (h2 e hΓ k)
+
+/-- Trivial leads-to: p ↝ p. -/
+theorem leads_to_refl (Γ p : pred σ) :
+    pred_implies Γ (leads_to p p) :=
+  fun _ _ k hp => ⟨0, (exec.drop_zero _).symm ▸ hp⟩
+
 end leads_to
 
 end TLA
