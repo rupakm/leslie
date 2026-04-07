@@ -175,6 +175,67 @@ theorem refMapShared_mem_none {n : Nat} {s : SymState HomeState NodeState n}
     (hpra : a.pendingReleaseAck = b.pendingReleaseAck) : a = b := by
   cases a; cases b; simp_all
 
+theorem findDirtyReleaseVal_none_of_all_chanC_none' {n : Nat}
+    (s : SymState HomeState NodeState n)
+    (hallC : ∀ j : Fin n, (s.locals j).chanC = none) :
+    findDirtyReleaseVal n s = none := by
+  unfold findDirtyReleaseVal
+  have hnone : ¬∃ i : Fin n, (s.locals i).releaseInFlight = true ∧
+      ∃ msg : CMsg, (s.locals i).chanC = some msg ∧ msg.data ≠ none := by
+    intro ⟨j, _, msg, hC, _⟩; rw [hallC j] at hC; cases hC
+  simp [hnone]
+
+/-! ### Per-action mem lemmas
+
+    The `mem` field of `refMapShared` is the hardest to reason about.
+    These lemmas specialize it for each action that changes the refMap. -/
+
+/-- sendGrant preserves refMapShared.mem: same tx (just phase change), same mem. -/
+theorem refMapShared_mem_sendGrant {n : Nat}
+    {s : SymState HomeState NodeState n} {i : Fin n} {tx : ManagerTxn}
+    (hcur : s.shared.currentTxn = some tx) :
+    (refMapShared n (sendGrantState s i tx)).mem = (refMapShared n s).mem := by
+  simp [refMapShared, sendGrantState, sendGrantShared, hcur]
+
+/-- recvGrant preserves refMapShared.mem: currentTxn unchanged. -/
+theorem refMapShared_mem_recvGrant {n : Nat}
+    {s : SymState HomeState NodeState n} {i : Fin n} {tx : ManagerTxn}
+    (hcur : s.shared.currentTxn = some tx) :
+    (refMapShared n (recvGrantState s i tx)).mem = (refMapShared n s).mem := by
+  simp [refMapShared, recvGrantState, recvGrantShared, hcur]
+
+/-- recvProbeAck preserves refMapShared.mem when usedDirtySource = true:
+    transferVal is unchanged, and mem is unchanged in the shared state. -/
+theorem refMapShared_mem_recvProbeAck_dirty {n : Nat}
+    {s : SymState HomeState NodeState n} {i : Fin n}
+    {tx : ManagerTxn} {msg : CMsg}
+    (hused : tx.usedDirtySource = true) :
+    (refMapShared n (recvProbeAckState s i tx msg)).mem = tx.transferVal := by
+  simp [refMapShared, recvProbeAckState, recvProbeAckShared, hused]
+
+/-- recvAcquire under noDirtyInv: new mem = old mem = s.shared.mem. -/
+theorem refMapShared_mem_recvAcquire_noDirty {n : Nat}
+    {s : SymState HomeState NodeState n} {i : Fin n}
+    {kind : ReqKind} {grow : GrowParam} {source : SourceId}
+    (hnoDirty : noDirtyInv n s)
+    (htxn : s.shared.currentTxn = none)
+    (hrel : s.shared.pendingReleaseAck = none)
+    (hallC : ∀ j : Fin n, (s.locals j).chanC = none) :
+    (refMapShared n (recvAcquireState s i kind grow source)).mem =
+      (refMapShared n s).mem := by
+  -- New state has txn, usedDirtySource = false (since noDirtyInv → no dirty other)
+  have hdo : dirtyOwnerOpt s i = none := by
+    unfold dirtyOwnerOpt
+    simp [show ¬∃ j : Fin n, j ≠ i ∧ (s.locals j).line.dirty = true from
+      fun ⟨j, _, hd⟩ => absurd hd (by simp [hnoDirty j])]
+  have hud : (plannedTxn s i kind grow source).usedDirtySource = false := by
+    simp [plannedTxn, plannedUsedDirtySource, hdo]
+  simp [refMapShared, recvAcquireState, recvAcquireShared, hud, htxn, hrel]
+  -- Both sides reduce to s.shared.mem (no dirty owner under noDirtyInv)
+  have hnd : ¬∃ j : Fin n, (s.locals j).line.dirty = true := by
+    intro ⟨j, hd⟩; exact absurd hd (by simp [hnoDirty j])
+  simp [hnd, findDirtyReleaseVal_none_of_all_chanC_none' s hallC]
+
 /-- Local-line abstraction during an active acquire wave. Before grant delivery,
     lines are hidden behind the transaction snapshot; after grant delivery, the
     requester is synthesized from the grant metadata even if the concrete D
