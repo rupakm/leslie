@@ -285,4 +285,115 @@ theorem init_strongRefinementInv (n : Nat) :
     init_preLinesCleanInv n s hinit, init_preLinesNoDirtyInv n s hinit,
     init_txnPlanInv n s hinit⟩
 
+/-- When usedDirtySource = false, no non-requester preLines is dirty.
+    This follows from how dirtyOwnerOpt is computed at txn creation:
+    usedDirtySource = false means dirtyOwnerOpt found no j ≠ requester
+    with dirty = true. Since preLines captures the line state at creation,
+    the invariant holds at creation and is trivially preserved (neither
+    usedDirtySource nor preLines are ever modified during a transaction). -/
+def usedDirtySourceInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
+  ∀ tx, s.shared.currentTxn = some tx → tx.usedDirtySource = false →
+    ∀ k, k < n → k ≠ tx.requester → (tx.preLines k).dirty = false
+
+theorem init_usedDirtySourceInv (n : Nat) :
+    ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s →
+      usedDirtySourceInv n s := by
+  intro s ⟨⟨_, _, htxn, _, _, _⟩, _⟩
+  intro tx hcur; rw [htxn] at hcur; cases hcur
+
+theorem usedDirtySourceInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
+    (hfull : fullInv n s) (hinv : usedDirtySourceInv n s)
+    (hnext : (tlMessages.toSpec n).next s s') :
+    usedDirtySourceInv n s' := by
+  simp only [SymSharedSpec.toSpec, tlMessages] at hnext
+  obtain ⟨i, a, hstep⟩ := hnext
+  match a with
+  | .sendAcquireBlock _ _ =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩
+      rw [hs']; simpa [usedDirtySourceInv] using hinv
+  | .sendAcquirePerm _ _ =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩
+      rw [hs']; simpa [usedDirtySourceInv] using hinv
+  | .recvAcquireAtManager =>
+      rcases hstep with hblk | hperm
+      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, _, _, hs'⟩
+        rw [hs']
+        intro tx' hcur' hused k hk hne
+        simp only [recvAcquireState, recvAcquireShared] at hcur'
+        cases hcur'
+        simp only [plannedTxn] at hused hne ⊢
+        simp only [dif_pos hk]
+        unfold plannedUsedDirtySource dirtyOwnerOpt at hused
+        by_cases hex : ∃ j : Fin n, j ≠ i ∧ (s.locals j).line.dirty = true
+        · simp [hex] at hused
+        · have hfin : ⟨k, hk⟩ ≠ i := by intro h; exact hne (congrArg Fin.val h)
+          cases hdirty : (s.locals ⟨k, hk⟩).line.dirty
+          · rfl
+          · exact absurd ⟨⟨k, hk⟩, hfin, hdirty⟩ hex
+      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, _, hs'⟩
+        rw [hs']
+        intro tx' hcur' hused k hk hne
+        simp only [recvAcquireState, recvAcquireShared] at hcur'
+        cases hcur'
+        simp only [plannedTxn] at hused hne ⊢
+        simp only [dif_pos hk]
+        unfold plannedUsedDirtySource dirtyOwnerOpt at hused
+        by_cases hex : ∃ j : Fin n, j ≠ i ∧ (s.locals j).line.dirty = true
+        · simp [hex] at hused
+        · have hfin : ⟨k, hk⟩ ≠ i := by intro h; exact hne (congrArg Fin.val h)
+          cases hdirty : (s.locals ⟨k, hk⟩).line.dirty
+          · rfl
+          · exact absurd ⟨⟨k, hk⟩, hfin, hdirty⟩ hex
+  | .recvProbeAtMaster =>
+      rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']; simpa [usedDirtySourceInv, recvProbeState] using hinv
+  | .recvProbeAckAtManager =>
+      rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simpa [usedDirtySourceInv, hcur, recvProbeAckState, recvProbeAckShared] using hinv
+  | .sendGrantToRequester =>
+      rcases hstep with ⟨tx, hcur, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simpa [usedDirtySourceInv, hcur, sendGrantState, sendGrantShared] using hinv
+  | .recvGrantAtMaster =>
+      rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simpa [usedDirtySourceInv, recvGrantState, recvGrantShared] using hinv
+  | .recvGrantAckAtManager =>
+      rcases hstep with ⟨tx, msg, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp [usedDirtySourceInv, recvGrantAckState, recvGrantAckShared]
+  | .sendRelease _ =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, _, _, htail⟩
+      rcases htail with ⟨_, hs'⟩
+      rw [hs']; simp [usedDirtySourceInv, hcur, sendReleaseState]
+  | .sendReleaseData _ =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']; simp [usedDirtySourceInv, hcur, sendReleaseState]
+  | .recvReleaseAtManager =>
+      rcases hstep with ⟨msg, param, hcur, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']; simp [usedDirtySourceInv, hcur, recvReleaseState, recvReleaseShared]
+  | .recvReleaseAckAtMaster =>
+      rcases hstep with ⟨msg, hcur, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simpa [usedDirtySourceInv, recvReleaseAckState, recvReleaseAckShared] using hinv
+  | .store v =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']; simp [usedDirtySourceInv, hcur]
+  | .read =>
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
+      exact hinv
+  | .uncachedGet source =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, rfl⟩
+      simp [usedDirtySourceInv, hcur]
+  | .uncachedPut source v =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      simp [usedDirtySourceInv, hcur]
+  | .recvUncachedAtManager =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, rfl⟩
+      simp [usedDirtySourceInv, hcur]
+  | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨_, _, _, rfl⟩
+      exact hinv
+
 end TileLink.Messages
