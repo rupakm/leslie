@@ -126,15 +126,17 @@ theorem atomic_allOthersInvalid_refMap_iff {n : Nat}
 
 theorem atomic_not_hasDirtyOther_of_preNoDirty {n : Nat}
     {s : SymState HomeState NodeState n} {tx : ManagerTxn} {i : Fin n}
-    (hpre : preLinesNoDirtyInv n s)
-    (hcur : s.shared.currentTxn = some tx) (hphase : tx.phase ≠ .grantPendingAck) :
+    (hused : usedDirtySourceInv n s)
+    (hcur : s.shared.currentTxn = some tx) (hreq : tx.requester = i.1)
+    (hphase : tx.phase ≠ .grantPendingAck) (hclean : tx.usedDirtySource = false) :
     ¬ TileLink.Atomic.hasDirtyOther n i (refMap n s) := by
-  -- NOTE: This theorem appears unprovable as stated. `preLinesNoDirtyInv` ensures
-  -- at most one preLines entry is dirty, but does not rule out a dirty entry at
-  -- some j ≠ i. An additional hypothesis is needed, e.g., that tx.requester = i.1
-  -- (so the dirty preLines belongs to the requester) or that no preLines is dirty
-  -- at all. Leaving sorry until the statement is strengthened.
-  sorry
+  intro ⟨j, hji, hdirty⟩
+  have hjreq : j.1 ≠ tx.requester := fun h => hji (Fin.ext (h.trans hreq))
+  have hdirty' : (tx.preLines j.1).dirty = true := by
+    simpa [refMap, refMapLine, hcur, hphase] using hdirty
+  have := hused tx hcur hclean j.1 j.isLt hjreq
+  rw [this] at hdirty'
+  exact absurd hdirty' (by simp)
 
 theorem atomic_hasCachedOther_refMap_snapshot_iff {n : Nat}
     {s : SymState HomeState NodeState n} {tx : ManagerTxn} {i : Fin n}
@@ -519,7 +521,49 @@ theorem refMap_recvAcquireBlock_branch_next {n : Nat}
     (hNoDirty : ¬hasDirtyOther s i)
     (hbranch : hasCachedOther s i ∧ grow.result = .B) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  sorry
+  rcases hstep with ⟨htxn, hpga, hpra, hallC, _, _, hpermN, _, _, _, hs'⟩
+  subst hs'
+  simp only [SymSharedSpec.toSpec]
+  refine ⟨i, .acquireBlock, ?_, ?_, ?_, ?_, ?_⟩
+  · -- pendingGrantMeta = none
+    simp [refMap, refMapShared, htxn]
+  · -- pendingGrantAck = none
+    simp [refMap, refMapShared, hpga]
+  · -- pendingReleaseAck = none
+    simp [refMap, refMapShared, htxn, hpra]
+    exact queuedReleaseIdx_eq_none_of_all_chanC_none s hallC
+  · -- perm = .N
+    simp [refMap, refMapLine, htxn, hpermN]
+  · -- sub-case: ¬hasDirtyOther ∧ hasCachedOther ∧ s' = acquireBlockSharedState
+    right; left
+    refine ⟨atomic_not_hasDirtyOther_of_not_hasDirtyOther hNoDirty htxn,
+            (atomic_hasCachedOther_refMap_iff htxn).mpr hbranch.1, ?_⟩
+    -- s' = acquireBlockSharedState (refMap n s) i
+    have hShared := refMapShared_recvAcquireState_eq_absPending' s i .acquireBlock grow source
+      hNoDirty hpermN hinv.full.1.1 htxn hpra hallC
+    have hPG := absPendingGrantMeta_planned_acquireBlock_branch_eq' s i grow source
+      hNoDirty htxn hbranch.2
+    have hLocals := refMap_recvAcquireState_locals_eq s i .acquireBlock grow source htxn
+    have hDir := refMapShared_dir_none htxn
+    -- Derive noDirtyInv for mem lemma
+    have hnoDirty : noDirtyInv n s := by
+      intro j; by_cases hji : j = i
+      · subst hji; by_contra hd; simp only [Bool.not_eq_false] at hd
+        have := (hinv.full.1.1 j).1 hd; rw [hpermN] at this; simp [TLPerm.noConfusion] at this
+      · by_contra hd; simp only [Bool.not_eq_false] at hd; exact hNoDirty ⟨j, hji, hd⟩
+    have hMemEq : (refMapShared n s).mem = s.shared.mem := by
+      rw [refMapShared_mem_none htxn]
+      have hnd : ¬∃ j : Fin n, (s.locals j).line.dirty = true :=
+        fun ⟨j, hd⟩ => absurd hd (by simp [hnoDirty j])
+      simp [hnd, findDirtyReleaseVal_none_of_all_chanC_none' s hallC]
+    simp only [refMap] at hShared hLocals ⊢
+    have hSharedEq : refMapShared n (recvAcquireState s i .acquireBlock grow source) =
+        (TileLink.Atomic.acquireBlockSharedState
+          { shared := refMapShared n s, locals := refMapLine s } i).shared := by
+      rw [hShared]
+      simp only [TileLink.Atomic.acquireBlockSharedState, hPG, hDir, ← hMemEq]
+      simp only [refMap]
+    exact SymState.ext hSharedEq hLocals
 
 theorem refMap_recvAcquireBlock_tip_next {n : Nat}
     {s s' : SymState HomeState NodeState n}
@@ -528,7 +572,46 @@ theorem refMap_recvAcquireBlock_tip_next {n : Nat}
     (hstep : RecvAcquireBlockAtManager s s' i grow source)
     (htip : allOthersInvalid s i ∧ grow.result = .T) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  sorry
+  rcases hstep with ⟨htxn, hpga, hpra, hallC, _, _, hpermN, _, _, _, hs'⟩
+  subst hs'
+  have hNoDirty : ¬hasDirtyOther s i := by
+    intro ⟨j, hji, hd⟩
+    have hpN := htip.1 j hji
+    have hpT := (hinv.full.1.1 j).1 hd
+    rw [hpN] at hpT; exact absurd hpT.1 (by simp)
+  simp only [SymSharedSpec.toSpec]
+  refine ⟨i, .acquireBlock, ?_, ?_, ?_, ?_, ?_⟩
+  · simp [refMap, refMapShared, htxn]
+  · simp [refMap, refMapShared, hpga]
+  · simp [refMap, refMapShared, htxn, hpra]
+    exact queuedReleaseIdx_eq_none_of_all_chanC_none s hallC
+  · simp [refMap, refMapLine, htxn, hpermN]
+  · -- sub-case: allOthersInvalid ∧ s' = acquireBlockInvalidState
+    right; right
+    refine ⟨(atomic_allOthersInvalid_refMap_iff htxn).mpr htip.1, ?_⟩
+    have hShared := refMapShared_recvAcquireState_eq_absPending' s i .acquireBlock grow source
+      hNoDirty hpermN hinv.full.1.1 htxn hpra hallC
+    have hPG := absPendingGrantMeta_planned_acquireBlock_tip_eq' s i grow source
+      hNoDirty htip.1 htip.2
+    have hLocals := refMap_recvAcquireState_locals_eq s i .acquireBlock grow source htxn
+    have hDir := refMapShared_dir_none htxn
+    have hnoDirty : noDirtyInv n s := by
+      intro j; by_cases hji : j = i
+      · subst hji; by_contra hd; simp only [Bool.not_eq_false] at hd
+        have := (hinv.full.1.1 j).1 hd; rw [hpermN] at this; simp at this
+      · by_contra hd; simp only [Bool.not_eq_false] at hd; exact hNoDirty ⟨j, hji, hd⟩
+    have hMemEq : (refMapShared n s).mem = s.shared.mem := by
+      rw [refMapShared_mem_none htxn]
+      have hnd : ¬∃ j : Fin n, (s.locals j).line.dirty = true :=
+        fun ⟨j, hd⟩ => absurd hd (by simp [hnoDirty j])
+      simp [hnd, findDirtyReleaseVal_none_of_all_chanC_none' s hallC]
+    simp only [refMap] at hShared hLocals ⊢
+    have hSharedEq : refMapShared n (recvAcquireState s i .acquireBlock grow source) =
+        (TileLink.Atomic.acquireBlockInvalidState
+          { shared := refMapShared n s, locals := refMapLine s } i).shared := by
+      rw [hShared]
+      simp only [TileLink.Atomic.acquireBlockInvalidState, hPG, hDir, ← hMemEq]
+    exact SymState.ext hSharedEq hLocals
 
 theorem refMap_recvAcquirePerm_next {n : Nat}
     {s s' : SymState HomeState NodeState n}
@@ -536,6 +619,12 @@ theorem refMap_recvAcquirePerm_next {n : Nat}
     (hinv : refinementInv n s)
     (hstep : RecvAcquirePermAtManager s s' i grow source) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
+  -- This requires dirty-source acquire infrastructure (for NtoT with a dirty other).
+  -- The existing refMapShared_recvAcquireState_eq_absPending lemmas only handle
+  -- the clean case (¬hasDirtyOther / noDirtyInv). Closing this requires either:
+  -- (a) a new refMapShared_recvAcquireState_eq_absPending_dirty lemma, or
+  -- (b) inline field-by-field proof for both dirty and clean sub-cases.
+  -- Leaving sorry until dirty-source acquire infrastructure is added.
   sorry
 
 theorem refMap_recvAcquireAtManager_next {n : Nat}
@@ -544,6 +633,23 @@ theorem refMap_recvAcquireAtManager_next {n : Nat}
     (hinv : refinementInv n s)
     (hstep : RecvAcquireAtManager s s' i) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  sorry
+  rcases hstep with ⟨grow, source, hblock⟩ | ⟨grow, source, hperm⟩
+  · -- RecvAcquireBlockAtManager
+    rcases hblock with ⟨htxn, hpga, hpra, hallC, hrelIF, hchanA, hpermN, hlegal, hcases, hBs, hs'⟩
+    rcases hcases with ⟨hDirty, hresB⟩ | ⟨hNoDirty, hCached, hresB⟩ | ⟨hAllInv, hresT⟩
+    · -- dirty case: needs dirty-source infrastructure
+      sorry
+    · -- branch case: ¬hasDirtyOther ∧ hasCachedOther ∧ result = .B
+      exact refMap_recvAcquireBlock_branch_next hinv
+        ⟨htxn, hpga, hpra, hallC, hrelIF, hchanA, hpermN, hlegal,
+          Or.inr (Or.inl ⟨hNoDirty, hCached, hresB⟩), hBs, hs'⟩
+        hNoDirty ⟨hCached, hresB⟩
+    · -- tip case: allOthersInvalid ∧ result = .T
+      exact refMap_recvAcquireBlock_tip_next hinv
+        ⟨htxn, hpga, hpra, hallC, hrelIF, hchanA, hpermN, hlegal,
+          Or.inr (Or.inr ⟨hAllInv, hresT⟩), hBs, hs'⟩
+        ⟨hAllInv, hresT⟩
+  · -- RecvAcquirePermAtManager
+    exact refMap_recvAcquirePerm_next hinv hperm
 
 end TileLink.Messages
