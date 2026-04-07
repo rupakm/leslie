@@ -420,7 +420,7 @@ theorem txnDataInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
     (hfull : fullInv n s) (hdirtyEx : dirtyExclusiveInv n s)
     (htxnData : txnDataInv n s) (hcleanC : cleanChanCInv n s)
-    (hpreNoDirty : preLinesNoDirtyInv n s)
+    (hpreNoDirty : preLinesNoDirtyInv n s) (husedDirty : usedDirtySourceInv n s)
     (hnext : (tlMessages.toSpec n).next s s') :
     txnDataInv n s' := by
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
@@ -475,9 +475,11 @@ theorem txnDataInv_preserved (n : Nat)
           rw [hdata]; simp [probeAckDataOfLine]
           split
           · next hdirtyPre =>
-            -- preLines i dirty. But usedDirtySource = false means dirtyOwnerOpt = none at creation.
-            -- This means no j ≠ requester was dirty. Since i ≠ requester, preLines i not dirty. Contradiction.
-            sorry
+            -- preLines i dirty + usedDirtySource = false → contradiction via usedDirtySourceInv
+            exfalso
+            simp only [Bool.not_eq_true] at huds
+            have := husedDirty tx hcur huds i.1 i.isLt hi_ne
+            rw [this] at hdirtyPre; simp at hdirtyPre
           · exact htd.1 huds
         · -- Part 3: grantReady ∨ grantPendingAck → transferVal = newMem
           intro hgr
@@ -1543,7 +1545,8 @@ theorem refinementInv_preserved (n : Nat)
   exact ⟨fullInv_preserved_with_release n s s' hfull htxnLine hnext,
     dirtyExclusiveInv_preserved n s s' hfwd hnext,
     permSwmrInv_preserved n s s' hfwd hnext,
-    txnDataInv_preserved n s s' hfull hdirtyEx htxnData hcleanRel hpreNoDirty hnext,
+    txnDataInv_preserved n s s' hfull hdirtyEx htxnData hcleanRel hpreNoDirty
+      hfwd.usedDirty hnext,
     cleanChanCInv_preserved n s s' hfull hdirtyEx hcleanRel hrelUniq hnext,
     releaseUniqueInv_preserved n s s' hfull hdirtyEx hrelUniq hnext,
     dirtyReleaseExclusiveInv_preserved n s s' hfull hdirtyEx hSwmr hdirtyRelEx hnext⟩
