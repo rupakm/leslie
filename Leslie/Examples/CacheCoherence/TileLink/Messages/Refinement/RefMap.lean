@@ -97,6 +97,84 @@ noncomputable def refMapShared (n : Nat) (s : SymState HomeState NodeState n) :
   , pendingGrantAck := s.shared.pendingGrantAck
   , pendingReleaseAck := pendingReleaseAck }
 
+/-! ### Per-field projection lemmas for refMapShared
+
+    These make simulation proofs modular: instead of reasoning about the
+    entire 5-field record, each action only needs to show which fields
+    changed and which stayed the same. -/
+
+@[simp] theorem refMapShared_pendingGrantMeta (n : Nat) (s : SymState HomeState NodeState n) :
+    (refMapShared n s).pendingGrantMeta = s.shared.currentTxn.map absPendingGrantMeta := rfl
+
+@[simp] theorem refMapShared_pendingGrantAck (n : Nat) (s : SymState HomeState NodeState n) :
+    (refMapShared n s).pendingGrantAck = s.shared.pendingGrantAck := rfl
+
+/-- refMapShared.dir under currentTxn = none. -/
+@[simp] theorem refMapShared_dir_none {n : Nat} {s : SymState HomeState NodeState n}
+    (h : s.shared.currentTxn = none) :
+    (refMapShared n s).dir = TileLink.Atomic.syncDir s.shared.dir (fun i => (s.locals i).line) := by
+  simp [refMapShared, h]
+
+/-- refMapShared.dir under currentTxn = some tx, phase ≠ grantPendingAck. -/
+@[simp] theorem refMapShared_dir_some_not_gpa {n : Nat} {s : SymState HomeState NodeState n}
+    {tx : ManagerTxn} (hcur : s.shared.currentTxn = some tx)
+    (hphase : tx.phase ≠ .grantPendingAck) :
+    (refMapShared n s).dir = preTxnDir n tx s.shared.dir := by
+  simp [refMapShared, hcur, hphase]
+
+/-- refMapShared.dir under currentTxn = some tx, phase = grantPendingAck. -/
+@[simp] theorem refMapShared_dir_gpa {n : Nat} {s : SymState HomeState NodeState n}
+    {tx : ManagerTxn} (hcur : s.shared.currentTxn = some tx)
+    (hphase : tx.phase = .grantPendingAck) :
+    (refMapShared n s).dir = grantPendingDir n tx s.shared.dir := by
+  simp [refMapShared, hcur, hphase]
+
+/-- refMapShared.mem under currentTxn = some tx. -/
+@[simp] theorem refMapShared_mem_some {n : Nat} {s : SymState HomeState NodeState n}
+    {tx : ManagerTxn} (hcur : s.shared.currentTxn = some tx) :
+    (refMapShared n s).mem =
+      if tx.usedDirtySource then tx.transferVal else s.shared.mem := by
+  simp [refMapShared, hcur]
+
+/-- refMapShared.mem under currentTxn = none. -/
+theorem refMapShared_mem_none {n : Nat} {s : SymState HomeState NodeState n}
+    (hcur : s.shared.currentTxn = none) :
+    (refMapShared n s).mem =
+      if h : ∃ j : Fin n, (s.locals j).line.dirty = true then
+        (s.locals (Classical.choose h)).line.data
+      else
+        match findDirtyReleaseVal n s with
+        | some v => v
+        | none => s.shared.mem := by
+  simp [refMapShared, hcur]
+
+/-- refMapShared.pendingReleaseAck under pendingReleaseAck = some. -/
+@[simp] theorem refMapShared_pra_some {n : Nat} {s : SymState HomeState NodeState n}
+    {i : Nat} (h : s.shared.pendingReleaseAck = some i) :
+    (refMapShared n s).pendingReleaseAck = some i := by
+  simp [refMapShared, h]
+
+/-- refMapShared.pendingReleaseAck under pendingReleaseAck = none, currentTxn = some. -/
+@[simp] theorem refMapShared_pra_none_txn {n : Nat} {s : SymState HomeState NodeState n}
+    {tx : ManagerTxn} (hrel : s.shared.pendingReleaseAck = none)
+    (hcur : s.shared.currentTxn = some tx) :
+    (refMapShared n s).pendingReleaseAck = none := by
+  simp [refMapShared, hrel, hcur]
+
+/-- refMapShared.pendingReleaseAck under pendingReleaseAck = none, currentTxn = none. -/
+@[simp] theorem refMapShared_pra_none_notxn {n : Nat} {s : SymState HomeState NodeState n}
+    (hrel : s.shared.pendingReleaseAck = none) (hcur : s.shared.currentTxn = none) :
+    (refMapShared n s).pendingReleaseAck = queuedReleaseIdx n s := by
+  simp [refMapShared, hrel, hcur]
+
+/-- Extensionality for TileLink.Atomic.HomeState. -/
+@[ext] theorem Atomic.HomeState.ext {a b : TileLink.Atomic.HomeState}
+    (hmem : a.mem = b.mem) (hdir : a.dir = b.dir)
+    (hpgm : a.pendingGrantMeta = b.pendingGrantMeta)
+    (hpga : a.pendingGrantAck = b.pendingGrantAck)
+    (hpra : a.pendingReleaseAck = b.pendingReleaseAck) : a = b := by
+  cases a; cases b; simp_all
+
 /-- Local-line abstraction during an active acquire wave. Before grant delivery,
     lines are hidden behind the transaction snapshot; after grant delivery, the
     requester is synthesized from the grant metadata even if the concrete D
