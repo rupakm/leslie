@@ -25,6 +25,7 @@ structure ForwardSimInv (n : Nat) (s : SymState HomeState NodeState n) : Prop wh
   preNoDirty : preLinesNoDirtyInv n s
   plan : txnPlanInv n s
   usedDirty : usedDirtySourceInv n s
+  dirtyOwner : dirtyOwnerExistsInv n s
 
 abbrev forwardSimInv := @ForwardSimInv
 

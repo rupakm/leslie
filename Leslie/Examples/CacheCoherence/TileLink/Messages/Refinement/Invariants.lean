@@ -126,6 +126,30 @@ structure RefinementInv (n : Nat) (s : SymState HomeState NodeState n) : Prop wh
 
 abbrev refinementInv := @RefinementInv
 
+/-- When usedDirtySource = false, no non-requester preLines is dirty. -/
+def usedDirtySourceInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
+  ∀ tx, s.shared.currentTxn = some tx → tx.usedDirtySource = false →
+    ∀ k, k < n → k ≠ tx.requester → (tx.preLines k).dirty = false
+
+theorem init_usedDirtySourceInv (n : Nat) :
+    ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s →
+      usedDirtySourceInv n s := by
+  intro s ⟨⟨_, _, htxn, _, _, _⟩, _⟩
+  intro tx hcur; rw [htxn] at hcur; cases hcur
+
+/-- When usedDirtySource = true, there exists a dirty non-requester preLines
+    entry, and transferVal holds its data. -/
+def dirtyOwnerExistsInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
+  ∀ tx, s.shared.currentTxn = some tx → tx.usedDirtySource = true →
+    ∃ k, k < n ∧ k ≠ tx.requester ∧ (tx.preLines k).dirty = true ∧
+      tx.transferVal = (tx.preLines k).data
+
+theorem init_dirtyOwnerExistsInv (n : Nat) :
+    ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s →
+      dirtyOwnerExistsInv n s := by
+  intro s ⟨⟨_, _, htxn, _, _, _⟩, _⟩
+  intro tx hcur; rw [htxn] at hcur; cases hcur
+
 structure StrongRefinementInv (n : Nat) (s : SymState HomeState NodeState n) : Prop where
   ref : RefinementInv n s
   txnLine : txnLineInv n s
@@ -133,6 +157,7 @@ structure StrongRefinementInv (n : Nat) (s : SymState HomeState NodeState n) : P
   preNoDirty : preLinesNoDirtyInv n s
   plan : txnPlanInv n s
   usedDirty : usedDirtySourceInv n s
+  dirtyOwner : dirtyOwnerExistsInv n s
 
 abbrev strongRefinementInv := @StrongRefinementInv
 
@@ -284,23 +309,8 @@ theorem init_strongRefinementInv (n : Nat) :
   intro s hinit
   exact ⟨init_refinementInv n s hinit, init_txnLineInv n s hinit,
     init_preLinesCleanInv n s hinit, init_preLinesNoDirtyInv n s hinit,
-    init_txnPlanInv n s hinit, init_usedDirtySourceInv n s hinit⟩
-
-/-- When usedDirtySource = false, no non-requester preLines is dirty.
-    This follows from how dirtyOwnerOpt is computed at txn creation:
-    usedDirtySource = false means dirtyOwnerOpt found no j ≠ requester
-    with dirty = true. Since preLines captures the line state at creation,
-    the invariant holds at creation and is trivially preserved (neither
-    usedDirtySource nor preLines are ever modified during a transaction). -/
-def usedDirtySourceInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
-  ∀ tx, s.shared.currentTxn = some tx → tx.usedDirtySource = false →
-    ∀ k, k < n → k ≠ tx.requester → (tx.preLines k).dirty = false
-
-theorem init_usedDirtySourceInv (n : Nat) :
-    ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s →
-      usedDirtySourceInv n s := by
-  intro s ⟨⟨_, _, htxn, _, _, _⟩, _⟩
-  intro tx hcur; rw [htxn] at hcur; cases hcur
+    init_txnPlanInv n s hinit, init_usedDirtySourceInv n s hinit,
+    init_dirtyOwnerExistsInv n s hinit⟩
 
 theorem usedDirtySourceInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hfull : fullInv n s) (hinv : usedDirtySourceInv n s)
@@ -393,6 +403,110 @@ theorem usedDirtySourceInv_preserved (n : Nat) (s s' : SymState HomeState NodeSt
   | .recvUncachedAtManager =>
       rcases hstep with ⟨hcur, _, _, _, _, _, rfl⟩
       simp [usedDirtySourceInv, hcur]
+  | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨_, _, _, rfl⟩
+      exact hinv
+
+theorem dirtyOwnerExistsInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
+    (hfull : fullInv n s) (hinv : dirtyOwnerExistsInv n s)
+    (hnext : (tlMessages.toSpec n).next s s') :
+    dirtyOwnerExistsInv n s' := by
+  -- Same structure as usedDirtySourceInv_preserved: preLines/usedDirtySource/transferVal frozen
+  simp only [SymSharedSpec.toSpec, tlMessages] at hnext
+  obtain ⟨i, a, hstep⟩ := hnext
+  match a with
+  | .sendAcquireBlock _ _ =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩
+      rw [hs']; simpa [dirtyOwnerExistsInv] using hinv
+  | .sendAcquirePerm _ _ =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩
+      rw [hs']; simpa [dirtyOwnerExistsInv] using hinv
+  | .recvAcquireAtManager =>
+      rcases hstep with hblk | hperm
+      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, _, _, hs'⟩
+        rw [hs']
+        intro tx' hcur' hused
+        simp only [recvAcquireState, recvAcquireShared] at hcur'
+        cases hcur'
+        simp only [plannedTxn] at hused ⊢
+        -- usedDirtySource = true means dirtyOwnerOpt returned some j
+        unfold plannedUsedDirtySource at hused
+        unfold dirtyOwnerOpt at hused
+        by_cases hex : ∃ j : Fin n, j ≠ i ∧ (s.locals j).line.dirty = true
+        · -- dirtyOwnerOpt = some (choose hex)
+          simp [hex] at hused
+          let j := Classical.choose hex
+          have hj := Classical.choose_spec hex
+          refine ⟨j.1, j.isLt, ?_, ?_, ?_⟩
+          · intro h; exact hj.1 (Fin.ext h)
+          · simp [dif_pos j.isLt]; exact hj.2
+          · simp [plannedTransferVal, dirtyOwnerOpt, hex, dif_pos j.isLt]; rfl
+        · simp [hex] at hused
+      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, _, hs'⟩
+        rw [hs']
+        intro tx' hcur' hused
+        simp only [recvAcquireState, recvAcquireShared] at hcur'
+        cases hcur'
+        simp only [plannedTxn] at hused ⊢
+        unfold plannedUsedDirtySource at hused
+        unfold dirtyOwnerOpt at hused
+        by_cases hex : ∃ j : Fin n, j ≠ i ∧ (s.locals j).line.dirty = true
+        · simp [hex] at hused
+          let j := Classical.choose hex
+          have hj := Classical.choose_spec hex
+          refine ⟨j.1, j.isLt, ?_, ?_, ?_⟩
+          · intro h; exact hj.1 (Fin.ext h)
+          · simp [dif_pos j.isLt]; exact hj.2
+          · simp [plannedTransferVal, dirtyOwnerOpt, hex, dif_pos j.isLt]; rfl
+        · simp [hex] at hused
+  | .recvProbeAtMaster =>
+      rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']; simpa [dirtyOwnerExistsInv, recvProbeState] using hinv
+  | .recvProbeAckAtManager =>
+      rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simpa [dirtyOwnerExistsInv, hcur, recvProbeAckState, recvProbeAckShared] using hinv
+  | .sendGrantToRequester =>
+      rcases hstep with ⟨tx, hcur, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simpa [dirtyOwnerExistsInv, hcur, sendGrantState, sendGrantShared] using hinv
+  | .recvGrantAtMaster =>
+      rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simpa [dirtyOwnerExistsInv, recvGrantState, recvGrantShared] using hinv
+  | .recvGrantAckAtManager =>
+      rcases hstep with ⟨tx, msg, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp [dirtyOwnerExistsInv, recvGrantAckState, recvGrantAckShared]
+  | .sendRelease _ =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, _, _, htail⟩
+      rcases htail with ⟨_, hs'⟩
+      rw [hs']; simp [dirtyOwnerExistsInv, hcur, sendReleaseState]
+  | .sendReleaseData _ =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']; simp [dirtyOwnerExistsInv, hcur, sendReleaseState]
+  | .recvReleaseAtManager =>
+      rcases hstep with ⟨msg, param, hcur, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']; simp [dirtyOwnerExistsInv, hcur, recvReleaseState, recvReleaseShared]
+  | .recvReleaseAckAtMaster =>
+      rcases hstep with ⟨msg, hcur, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simpa [dirtyOwnerExistsInv, recvReleaseAckState, recvReleaseAckShared] using hinv
+  | .store v =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']; simp [dirtyOwnerExistsInv, hcur]
+  | .read =>
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
+      exact hinv
+  | .uncachedGet source =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, rfl⟩
+      simp [dirtyOwnerExistsInv, hcur]
+  | .uncachedPut source v =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      simp [dirtyOwnerExistsInv, hcur]
+  | .recvUncachedAtManager =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, rfl⟩
+      simp [dirtyOwnerExistsInv, hcur]
   | .recvAccessAckAtMaster =>
       rcases hstep with ⟨_, _, _, rfl⟩
       exact hinv
