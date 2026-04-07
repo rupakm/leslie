@@ -24,6 +24,7 @@ structure ForwardSimInv (n : Nat) (s : SymState HomeState NodeState n) : Prop wh
   preClean : preLinesCleanInv n s
   preNoDirty : preLinesNoDirtyInv n s
   plan : txnPlanInv n s
+  usedDirty : usedDirtySourceInv n s
 
 abbrev forwardSimInv := @ForwardSimInv
 
@@ -32,7 +33,8 @@ theorem init_forwardSimInv (n : Nat) :
   intro s hinit
   exact ⟨init_refinementInv n s hinit, init_dataCoherenceInv n s hinit,
     init_txnLineInv n s hinit, init_preLinesCleanInv n s hinit,
-    init_preLinesNoDirtyInv n s hinit, init_txnPlanInv n s hinit⟩
+    init_preLinesNoDirtyInv n s hinit, init_txnPlanInv n s hinit,
+    init_usedDirtySourceInv n s hinit⟩
 
 -- The following preservation proofs are needed to close `forwardSimInv_preserved`.
 -- `refinementInv_preserved`, `preLinesNoDirtyInv_preserved`, and `preLinesCleanInv_preserved`
@@ -42,7 +44,7 @@ theorem init_forwardSimInv (n : Nat) :
 theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     dataCoherenceInv n s' := by
-  rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanC, _, _⟩, hdata, _, _, _, _⟩
+  rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanC, _, _⟩, hdata, _, _, _, _, _⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   intro j hvalidJ hdirtyJ
@@ -232,7 +234,7 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
 theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     txnLineInv n s' := by
-  rcases hinv with ⟨⟨hfull, hnoDirty, _, _, _⟩, _, htxnLine, _, _, _⟩
+  rcases hinv with ⟨⟨hfull, hnoDirty, _, _, _⟩, _, htxnLine, _, _, _, _⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   match a with
@@ -525,7 +527,7 @@ private theorem allOthersInvalid_iff_snapshotAllOthersInvalid {n : Nat}
 theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     txnPlanInv n s' := by
-  rcases hinv with ⟨⟨hfull, hnoDirty, _, _, _⟩, _, _, _, _, hplan⟩
+  rcases hinv with ⟨⟨hfull, hnoDirty, _, _, _⟩, _, _, _, _, hplan, _⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   match a with
@@ -662,20 +664,124 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
           rw [txnPlanInv, hcur] at hplan
           exact hplan
 
+theorem usedDirtySourceInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
+    (hfull : fullInv n s) (husedDirty : usedDirtySourceInv n s)
+    (hnext : (tlMessages.toSpec n).next s s') :
+    usedDirtySourceInv n s' := by
+  simp only [SymSharedSpec.toSpec, tlMessages] at hnext
+  obtain ⟨i, a, hstep⟩ := hnext
+  match a with
+  | .recvAcquireAtManager =>
+    rcases hstep with hblk | hperm
+    · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, _, hrest⟩
+      rcases hrest with ⟨_, hs'⟩
+      rw [hs']
+      simp only [usedDirtySourceInv, recvAcquireState, recvAcquireShared]
+      intro huds k hk hne
+      -- usedDirtySource = plannedUsedDirtySource s i = false
+      -- means dirtyOwnerOpt s i = none, i.e., ¬∃ j ≠ i, (s.locals j).line.dirty
+      -- preLines k = (s.locals ⟨k, hk⟩).line
+      simp only [plannedTxn, hk, dite_true] at huds ⊢
+      -- huds : plannedUsedDirtySource s i = false
+      unfold plannedUsedDirtySource dirtyOwnerOpt at huds
+      split at huds
+      · simp at huds
+      · next hnoDirty =>
+        push_neg at hnoDirty
+        have hfin : Fin.mk k hk ≠ i := by
+          intro heq; exact hne (congrArg Fin.val heq)
+        exact (hnoDirty ⟨k, hk⟩ hfin).2
+    · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, hrest⟩
+      rcases hrest with ⟨_, hs'⟩
+      rw [hs']
+      simp only [usedDirtySourceInv, recvAcquireState, recvAcquireShared]
+      intro huds k hk hne
+      simp only [plannedTxn, hk, dite_true] at huds ⊢
+      unfold plannedUsedDirtySource dirtyOwnerOpt at huds
+      split at huds
+      · simp at huds
+      · next hnoDirty =>
+        push_neg at hnoDirty
+        have hfin : Fin.mk k hk ≠ i := by
+          intro heq; exact hne (congrArg Fin.val heq)
+        exact (hnoDirty ⟨k, hk⟩ hfin).2
+  | .recvGrantAckAtManager =>
+    rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩
+    rw [hs']; simp [usedDirtySourceInv, recvGrantAckState, recvGrantAckShared]
+  | .sendRelease _ | .sendReleaseData _ =>
+    rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, rest⟩
+    rcases rest with ⟨_, _, _, hs'⟩ | hs'
+    all_goals { rw [hs']; simp [usedDirtySourceInv, sendReleaseState, hcur] }
+  | _ =>
+    -- All other actions preserve currentTxn or have trivial usedDirtySourceInv
+    -- (they either don't change the txn, or clear it)
+    simp only [usedDirtySourceInv]
+    match a with
+    | .sendAcquireBlock _ _ =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩; rw [hs']; exact husedDirty
+    | .sendAcquirePerm _ _ =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩; rw [hs']; exact husedDirty
+    | .recvProbeAtMaster =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']; simpa [recvProbeState] using husedDirty
+    | .recvProbeAckAtManager =>
+      rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp only [usedDirtySourceInv, recvProbeAckState, recvProbeAckShared, hcur] at husedDirty ⊢
+      exact husedDirty
+    | .sendGrantToRequester =>
+      rcases hstep with ⟨tx, hcur, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp only [usedDirtySourceInv, sendGrantState, sendGrantShared, hcur] at husedDirty ⊢
+      exact husedDirty
+    | .recvGrantAtMaster =>
+      rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']
+      simp only [usedDirtySourceInv, recvGrantState, recvGrantShared, hcur] at husedDirty ⊢
+      exact husedDirty
+    | .recvReleaseAtManager =>
+      rcases hstep with ⟨_, _, hcur, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']; simp [usedDirtySourceInv, recvReleaseState, recvReleaseShared, hcur]
+    | .recvReleaseAckAtMaster =>
+      rcases hstep with ⟨_, hcur, _, _, _, _, _, hs'⟩
+      rw [hs']; simp [usedDirtySourceInv, recvReleaseAckState, recvReleaseAckShared, hcur]
+    | .store _ =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']; simp [usedDirtySourceInv, hcur]
+    | .read =>
+      rcases hstep with ⟨_, _, _, _, _, _, hs'⟩
+      rw [hs']; exact husedDirty
+    | .uncachedGet _ =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']; exact husedDirty
+    | .uncachedPut _ _ =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs']; simp [usedDirtySourceInv, hcur]
+    | .recvUncachedAtManager =>
+      rcases hstep with ⟨hcur, _, _, _, _, _, hs'⟩
+      rw [hs']; simp [usedDirtySourceInv, hcur]
+    | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨_, _, _, hs'⟩
+      rw [hs']; exact husedDirty
+
 theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     forwardSimInv n s' := by
-  rcases hinv with ⟨hrefInv, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩
+  rcases hinv with ⟨hrefInv, hdata, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty⟩
   rcases hrefInv with ⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩
-  refine ⟨refinementInv_preserved n s s' ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
-    dataCoherenceInv_preserved n s s' ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
-    txnLineInv_preserved n s s' ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩ hnext,
-    ?_, ?_, ?_⟩
+  have hstrong : strongRefinementInv n s :=
+    ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty⟩
+  have hfwd : forwardSimInv n s :=
+    ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty⟩
+  refine ⟨refinementInv_preserved n s s' hstrong hnext,
+    dataCoherenceInv_preserved n s s' hfwd hnext,
+    txnLineInv_preserved n s s' hfwd hnext,
+    ?_, ?_, ?_, ?_⟩
   · exact preLinesCleanInv_preserved n s s' hfull hdata hpreClean hcleanRel hpreNoDirty hnext
   · exact preLinesNoDirtyInv_preserved n s s' hfull hdirtyEx hSwmr hpreNoDirty hnext
-  · exact txnPlanInv_preserved n s s'
-      ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan⟩
-      hnext
+  · exact txnPlanInv_preserved n s s' hfwd hnext
+  · -- usedDirtySourceInv preservation: preLines and usedDirtySource are frozen during txn
+    exact usedDirtySourceInv_preserved n s s' hfull husedDirty hnext
 
 theorem refinement_inv_invariant (n : Nat) :
     pred_implies (tlMessages.toSpec n).safety [tlafml| □ ⌜ refinementInv n ⌝] := by
@@ -710,7 +816,7 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') ∨
     refMap n s = refMap n s' := by
-  rcases hinv with ⟨⟨hfull, hnoDirty, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, hclean, htxnLine, _, hpreNoDirty, hplan⟩
+  rcases hinv with ⟨⟨hfull, hnoDirty, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, hclean, htxnLine, _, hpreNoDirty, hplan, husedDirty⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   match a with
@@ -723,7 +829,7 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
   | .recvProbeAtMaster =>
       right; exact (refMap_recvProbeAtMaster_eq hstep).symm
   | .recvProbeAckAtManager =>
-      right; exact (refMap_recvProbeAckAtManager_eq hfull htxnData hpreNoDirty hstep).symm
+      right; exact (refMap_recvProbeAckAtManager_eq hfull htxnData hpreNoDirty husedDirty hstep).symm
   | .sendGrantToRequester =>
       left
       rcases hstep with ⟨tx, hcur, hreq, hphase, hgrant, hrel, hD, hE, hSink, hs'⟩

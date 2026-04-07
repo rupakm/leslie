@@ -157,6 +157,17 @@ theorem queuedReleaseIdx_eq_none_of_all_chanC_none {n : Nat}
     contradiction
   simp [hnone]
 
+theorem findDirtyReleaseVal_none_of_all_chanC_none {n : Nat}
+    (s : SymState HomeState NodeState n)
+    (hallC : ∀ j : Fin n, (s.locals j).chanC = none) :
+    findDirtyReleaseVal n s = none := by
+  unfold findDirtyReleaseVal
+  have hnone : ¬∃ i : Fin n, (s.locals i).releaseInFlight = true ∧
+      ∃ msg : CMsg, (s.locals i).chanC = some msg ∧ msg.data ≠ none := by
+    intro ⟨j, _, msg, hC, _⟩
+    rw [hallC j] at hC; cases hC
+  simp [hnone]
+
 /-- If `shared` is identical and locals only change in fields invisible to refMap
     (i.e., line, chanC, releaseInFlight are all preserved), then `refMap` is unchanged. -/
 theorem refMap_eq_of_invisible_local_change {n : Nat}
