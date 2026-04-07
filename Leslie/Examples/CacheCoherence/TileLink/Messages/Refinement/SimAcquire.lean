@@ -368,6 +368,8 @@ theorem refMapShared_recvAcquireState_eq_absPending' {n : Nat}
     (s : SymState HomeState NodeState n)
     (i : Fin n) (kind : ReqKind) (grow : GrowParam) (source : SourceId)
     (hnd : ¬hasDirtyOther s i)
+    (hperm : (s.locals i).line.perm = .N)
+    (hlineWF : lineWFInv n s)
     (htxn : s.shared.currentTxn = none)
     (hrel : s.shared.pendingReleaseAck = none)
     (hallC : ∀ j : Fin n, (s.locals j).chanC = none) :
@@ -377,7 +379,18 @@ theorem refMapShared_recvAcquireState_eq_absPending' {n : Nat}
       , pendingGrantMeta := some (absPendingGrantMeta (plannedTxn s i kind grow source))
       , pendingGrantAck := none
       , pendingReleaseAck := none } := by
-  sorry
+  -- Derive noDirtyInv from ¬hasDirtyOther + perm = .N + lineWF
+  have hnoDirty : noDirtyInv n s := by
+    intro j
+    by_cases hji : j = i
+    · subst hji
+      -- i has perm .N → dirty = false (from lineWF: dirty → perm = .T)
+      by_contra hd; simp only [Bool.not_eq_false] at hd
+      have hpT := (hlineWF j).1 hd; rw [hperm] at hpT; exact absurd hpT (by simp [TLPerm.noConfusion])
+    · -- j ≠ i → not dirty (from ¬hasDirtyOther)
+      by_contra hd; simp only [Bool.not_eq_false] at hd
+      exact hnd ⟨j, hji, hd⟩
+  exact refMapShared_recvAcquireState_eq_absPending s i kind grow source hnoDirty htxn hrel hallC
 
 theorem absPendingGrantMeta_planned_acquireBlock_branch_eq' {n : Nat}
     (s : SymState HomeState NodeState n)
