@@ -616,7 +616,27 @@ private theorem grantReady_progress {n : Nat} (i : Fin n)
 theorem chanA_leads_to_txnActive (n : Nat) (i : Fin n) :
     pred_implies (tlMessagesFair n).formula
       (leads_to (chanAPending n i) (txnActiveForI n i)) := by
-  sorry
+  intro e hspec k hp
+  have hp' : ((e k).locals i).chanA ≠ none := by
+    change state_pred _ (e.drop k) at hp
+    simp only [chanAPending, state_pred, exec.drop, Nat.add_zero] at hp; exact hp
+  -- Case split on currentTxn at position k
+  match hcur : (e k).shared.currentTxn with
+  | some tx =>
+    by_cases hreq : tx.requester = i.1
+    · -- currentTxn = some tx with tx.requester = i.1: q already holds
+      exact ⟨0, by
+        simp only [txnActiveForI, state_pred, exec.drop, Nat.add_zero]
+        exact ⟨tx, hcur, hreq⟩⟩
+    · -- currentTxn = some tx with tx.requester ≠ i.1: hard case — need txn to complete first
+      -- then recvAcquire fires for i. Requires the full liveness chain (circular dependency).
+      sorry
+  | none =>
+    -- currentTxn = none: WF1 with recvAcquireAtManager
+    -- Enablement requires draining pending releases, constructing grow/source from chanA
+    -- message, etc. — this is a significant sub-proof. Sorry for now (same family as the
+    -- hard sub-case: requires composing multiple liveness chains).
+    sorry
 
 /-- Step 2: During probing, probes are eventually consumed.
     Uses well-founded induction on |{j | probesRemaining j = true}|.
@@ -763,9 +783,163 @@ theorem grantPendingAck_leads_to_grantAckSent (n : Nat) :
     apply wf1_apply (next := (tlMessages.toSpec n).next) (a := actRecvGrantAtMaster n req)
     exact {
       safety := by
-        sorry -- chanD grant safety: each step preserves p' or reaches grantAckOnChanE
+        intro m hpm hnxt
+        have hpm' := by simp only [p', state_pred, exec.drop] at hpm; exact hpm
+        have hcur_m : (e (k + m)).shared.currentTxn = some tx := hpm'.1
+        have hphase_m : tx.phase = .grantPendingAck := hpm'.2.1
+        have hchanD_m : ((e (k + m)).locals req).chanD ≠ none := hpm'.2.2
+        have hnxt' : (tlMessages.toSpec n).next (e (k + m)) (e (k + m + 1)) := hnxt
+        simp only [SymSharedSpec.toSpec, tlMessages] at hnxt'
+        obtain ⟨j, a, hstep⟩ := hnxt'
+        match a with
+        | .recvGrantAtMaster =>
+            -- This is the key case: if j = req, chanD consumed, chanE produced → q
+            -- If j ≠ req, chanD at req unchanged → p'
+            rcases hstep with ⟨tx_r, msg_r, hcur_r, hreq_r, hphase_r, _, _, hD_r, _, _, _, hs'_r⟩
+            by_cases hjr : j = req
+            · -- j = req: recvGrant at req consumes chanD, sets chanE → grantAckOnChanE
+              right; show grantAckOnChanE n ((e.drop k).drop (m + 1))
+              simp only [grantAckOnChanE, state_pred, exec.drop]
+              have : ((e (k + m + 1)).locals req).chanE ≠ none := by
+                rw [hs'_r, hjr]; simp [recvGrantState, recvGrantLocals, setFn, recvGrantLocal]
+              exact ⟨req, this⟩
+            · -- j ≠ req: chanD at req unchanged, currentTxn unchanged
+              left; show p' ((e.drop k).drop (m + 1))
+              simp only [p', state_pred, exec.drop]
+              have hcur' : (e (k + m + 1)).shared.currentTxn = some tx := by
+                rw [hs'_r]; simp only [recvGrantState, SymState.shared, recvGrantShared]
+                exact hcur_m
+              have hchanD' : ((e (k + m + 1)).locals req).chanD ≠ none := by
+                rw [hs'_r]; simp only [recvGrantState, SymState.locals, recvGrantLocals, setFn]
+                simp only [show (req = j) = False from propext ⟨fun h => hjr h.symm, False.elim⟩, ite_false]
+                exact hchanD_m
+              exact ⟨hcur', hphase_m, hchanD'⟩
+        | .recvGrantAckAtManager =>
+            -- Requires chanE ≠ none and chanD = none at j; if j = req then chanD req ≠ none
+            -- contradicts guard chanD = none. If j ≠ req, currentTxn cleared → but phase is grantPendingAck
+            rcases hstep with ⟨tx_r, msg_r, hcur_r, hreq_r, hphase_r, _, hD_none_r, hE_r, _, _, hs'_r⟩
+            rw [hcur_m] at hcur_r; cases hcur_r
+            -- tx_r = tx, so requester = j.1 and chanD j = none
+            -- But req has chanD ≠ none and j.1 = tx.requester = req.1, so j = req
+            -- Then chanD req = none contradicts hchanD_m
+            have hjeq : j = req := by ext; exact hreq_r.symm
+            rw [hjeq] at hD_none_r
+            exact absurd hD_none_r hchanD_m
+        | .recvAcquireAtManager =>
+            -- Requires currentTxn = none, but we have currentTxn = some tx
+            rcases hstep with ⟨_, _, hblk⟩ | ⟨_, _, hperm⟩
+            · rcases hblk with ⟨hcurNone, _⟩; rw [hcur_m] at hcurNone; simp at hcurNone
+            · rcases hperm with ⟨hcurNone, _⟩; rw [hcur_m] at hcurNone; simp at hcurNone
+        | .sendGrantToRequester =>
+            -- Requires phase = grantReady, but we have grantPendingAck
+            rcases hstep with ⟨tx_r, hcur_r, _, hphase_r, _, _, _, _, _, _⟩
+            rw [hcur_m] at hcur_r; cases hcur_r
+            exact absurd hphase_r (by rw [hphase_m]; decide)
+        | .recvProbeAckAtManager =>
+            -- Requires phase = probing, but we have grantPendingAck
+            rcases hstep with ⟨tx_r, _, hcur_r, hphase_r, _, _, _, _, _, hs'_r⟩
+            rw [hcur_m] at hcur_r; cases hcur_r
+            exact absurd hphase_r (by rw [hphase_m]; decide)
+        | .recvProbeAtMaster =>
+            -- Requires phase = probing, but we have grantPendingAck
+            rcases hstep with ⟨tx_r, _, hcur_r, hphase_r, _, _, _, _, _, _, _, hs'_r⟩
+            rw [hcur_m] at hcur_r; cases hcur_r
+            exact absurd hphase_r (by rw [hphase_m]; decide)
+        | .sendRelease _ =>
+            -- Requires currentTxn = none
+            rcases hstep with ⟨hcurNone, _, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'_r⟩
+            rw [hcur_m] at hcurNone; simp at hcurNone
+        | .sendReleaseData _ =>
+            -- Requires currentTxn = none
+            rcases hstep with ⟨hcurNone, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'_r⟩
+            rw [hcur_m] at hcurNone; simp at hcurNone
+        | .recvReleaseAtManager =>
+            -- Requires currentTxn = none
+            rcases hstep with ⟨_, _, hcurNone, _, _, _, _, _, _, _, _, _, hs'_r⟩
+            rw [hcur_m] at hcurNone; simp at hcurNone
+        | .recvReleaseAckAtMaster =>
+            -- Requires currentTxn = none
+            rcases hstep with ⟨_, hcurNone, _, _, _, _, _, hs'_r⟩
+            rw [hcur_m] at hcurNone; simp at hcurNone
+        | .store _ =>
+            -- Requires currentTxn = none
+            rcases hstep with ⟨hcurNone, _, _, _, _, _, _, _, _, _, _, _, hs'_r⟩
+            rw [hcur_m] at hcurNone; simp at hcurNone
+        | .read =>
+            -- s' = s
+            rcases hstep with ⟨_, _, _, _, _, _, hs'_r⟩
+            left; show p' ((e.drop k).drop (m + 1))
+            simp only [p', state_pred, exec.drop]
+            have hcur' : (e (k + m + 1)).shared.currentTxn = some tx := hs'_r ▸ hcur_m
+            have hchanD' : ((e (k + m + 1)).locals req).chanD ≠ none := hs'_r ▸ hchanD_m
+            exact ⟨hcur', hphase_m, hchanD'⟩
+        | .uncachedGet _ =>
+            -- Requires currentTxn = none
+            rcases hstep with ⟨hcurNone, _, _, _, _, _, _, _, _, _, hs'_r⟩
+            rw [hcur_m] at hcurNone; simp at hcurNone
+        | .uncachedPut _ _ =>
+            -- Requires currentTxn = none
+            rcases hstep with ⟨hcurNone, _, _, _, _, _, _, _, _, _, _, hs'_r⟩
+            rw [hcur_m] at hcurNone; simp at hcurNone
+        | .recvUncachedAtManager =>
+            -- Requires currentTxn = none
+            rcases hstep with ⟨hcurNone, _, _, _, _, _, hs'_r⟩
+            rw [hcur_m] at hcurNone; simp at hcurNone
+        | .sendAcquireBlock _ _ =>
+            -- Shared unchanged, chanD at req unchanged (only chanA/pendingSource at j change)
+            rcases hstep with ⟨_, _, _, _, _, _, _, hs'_r⟩
+            left; show p' ((e.drop k).drop (m + 1))
+            simp only [p', state_pred, exec.drop]
+            have hcur' : (e (k + m + 1)).shared.currentTxn = some tx := by
+              rw [hs'_r]; exact hcur_m
+            have hchanD' : ((e (k + m + 1)).locals req).chanD ≠ none := by
+              rw [hs'_r]; simp only [SymState.locals, setFn]
+              split
+              · -- req = j: chanD of the updated record = chanD of original
+                simp_all
+              · exact hchanD_m
+            exact ⟨hcur', hphase_m, hchanD'⟩
+        | .sendAcquirePerm _ _ =>
+            -- Shared unchanged, chanD at req unchanged
+            rcases hstep with ⟨_, _, _, _, _, _, _, hs'_r⟩
+            left; show p' ((e.drop k).drop (m + 1))
+            simp only [p', state_pred, exec.drop]
+            have hcur' : (e (k + m + 1)).shared.currentTxn = some tx := by
+              rw [hs'_r]; exact hcur_m
+            have hchanD' : ((e (k + m + 1)).locals req).chanD ≠ none := by
+              rw [hs'_r]; simp only [SymState.locals, setFn]
+              split
+              · simp_all
+              · exact hchanD_m
+            exact ⟨hcur', hphase_m, hchanD'⟩
+        | .recvAccessAckAtMaster =>
+            rcases hstep with ⟨msg_r, hD_r, hop_r, hs'_r⟩
+            by_cases hjr : j = req
+            · -- j = req: accessAckNotRequesterInv says accessAck msg can't be at requester
+              have hD_req : ((e (k + m)).locals req).chanD = some msg_r := by rw [← hjr]; exact hD_r
+              have hinvm := always_livenessInv n e hspec (k + m)
+              rcases hinvm with ⟨_, _, _, _, hnotreqm, _, _, _, _⟩
+              exact absurd rfl (hnotreqm req msg_r hD_req hop_r tx hcur_m)
+            · left; show p' ((e.drop k).drop (m + 1))
+              simp only [p', state_pred, exec.drop]
+              have hcur' : (e (k + m + 1)).shared.currentTxn = some tx := by
+                rw [hs'_r]; exact hcur_m
+              have hchanD' : ((e (k + m + 1)).locals req).chanD ≠ none := by
+                rw [hs'_r]; simp only [SymState.locals, setFn]
+                simp only [show (req = j) = False from propext ⟨fun h => hjr h.symm, False.elim⟩, ite_false]
+                exact hchanD_m
+              exact ⟨hcur', hphase_m, hchanD'⟩
       progress := by
-        sorry -- recvGrant consumes chanD, produces chanE → grantAckOnChanE
+        intro m hpm hnxt hact
+        have hact' : actRecvGrantAtMaster n req (e (k + m)) (e (k + m + 1)) := hact
+        rcases hact' with ⟨a, ha, hstep⟩; cases ha
+        -- hstep : RecvGrantAtMaster (e (k+m)) (e (k+m+1)) req
+        rcases hstep with ⟨tx_r, msg_r, hcur_r, hreq_r, hphase_r, _, _, hD_r, _, _, _, hs'_r⟩
+        have hchanE' : ((e (k + m + 1)).locals req).chanE ≠ none := by
+          rw [hs'_r]; simp [recvGrantState, recvGrantLocals, setFn, recvGrantLocal]
+        show grantAckOnChanE n ((e.drop k).drop (m + 1))
+        simp only [grantAckOnChanE, state_pred, exec.drop]
+        exact ⟨req, hchanE'⟩
       enablement := by
         intro m hpm
         have hpm' := by simp only [p', state_pred, exec.drop] at hpm; exact hpm
