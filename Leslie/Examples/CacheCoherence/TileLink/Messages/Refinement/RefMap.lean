@@ -213,6 +213,44 @@ theorem refMapShared_mem_recvProbeAck_dirty {n : Nat}
     (refMapShared n (recvProbeAckState s i tx msg)).mem = tx.transferVal := by
   simp [refMapShared, recvProbeAckState, recvProbeAckShared, hused]
 
+/-- recvProbeAck preserves refMapShared.mem when usedDirtySource = false
+    and msg carries no data (non-dirty probeAck). -/
+theorem refMapShared_mem_recvProbeAck_clean {n : Nat}
+    {s : SymState HomeState NodeState n} {i : Fin n}
+    {tx : ManagerTxn} {msg : CMsg}
+    (hused : tx.usedDirtySource = false) (hdata : msg.data = none) :
+    (refMapShared n (recvProbeAckState s i tx msg)).mem = s.shared.mem := by
+  simp [refMapShared, recvProbeAckState, recvProbeAckShared, hused, hdata]
+
+/-- recvProbeAck: when usedDirtySource = false, mem reduces to match on msg.data. -/
+theorem refMapShared_mem_recvProbeAck_clean' {n : Nat}
+    {s : SymState HomeState NodeState n} {i : Fin n}
+    {tx : ManagerTxn} {msg : CMsg}
+    (hused : tx.usedDirtySource = false) :
+    (refMapShared n (recvProbeAckState s i tx msg)).mem =
+      match msg.data with | some v => v | none => s.shared.mem := by
+  simp [refMapShared, recvProbeAckState, recvProbeAckShared, hused]; rfl
+
+/-- recvGrantAck general form: mem is determined by dirty owners in post-state. -/
+theorem refMapShared_mem_recvGrantAck {n : Nat}
+    {s : SymState HomeState NodeState n} {i : Fin n} :
+    (refMapShared n (recvGrantAckState s i)).mem =
+      if h : ∃ j : Fin n, ((recvGrantAckState s i).locals j).line.dirty = true then
+        ((recvGrantAckState s i).locals (Classical.choose h)).line.data
+      else
+        match findDirtyReleaseVal n (recvGrantAckState s i) with
+        | some v => v
+        | none => s.shared.mem := by
+  simp [refMapShared, recvGrantAckState, recvGrantAckShared]
+
+theorem refMapShared_mem_recvGrantAck_clean {n : Nat}
+    {s : SymState HomeState NodeState n} {i : Fin n}
+    (hnoDirtyPost : ¬∃ j : Fin n, ((recvGrantAckState s i).locals j).line.dirty = true)
+    (hnoRelPost : findDirtyReleaseVal n (recvGrantAckState s i) = none) :
+    (refMapShared n (recvGrantAckState s i)).mem = s.shared.mem := by
+  rw [refMapShared_mem_recvGrantAck]
+  simp only [dif_neg hnoDirtyPost, hnoRelPost]
+
 /-- recvAcquire under noDirtyInv: new mem = old mem = s.shared.mem. -/
 theorem refMapShared_mem_recvAcquire_noDirty {n : Nat}
     {s : SymState HomeState NodeState n} {i : Fin n}
