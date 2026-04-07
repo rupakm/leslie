@@ -132,6 +132,7 @@ structure StrongRefinementInv (n : Nat) (s : SymState HomeState NodeState n) : P
   preClean : preLinesCleanInv n s
   preNoDirty : preLinesNoDirtyInv n s
   plan : txnPlanInv n s
+  usedDirty : usedDirtySourceInv n s
 
 abbrev strongRefinementInv := @StrongRefinementInv
 
@@ -283,7 +284,7 @@ theorem init_strongRefinementInv (n : Nat) :
   intro s hinit
   exact ⟨init_refinementInv n s hinit, init_txnLineInv n s hinit,
     init_preLinesCleanInv n s hinit, init_preLinesNoDirtyInv n s hinit,
-    init_txnPlanInv n s hinit⟩
+    init_txnPlanInv n s hinit, init_usedDirtySourceInv n s hinit⟩
 
 /-- When usedDirtySource = false, no non-requester preLines is dirty.
     This follows from how dirtyOwnerOpt is computed at txn creation:

@@ -1537,11 +1537,11 @@ theorem dirtyReleaseExclusiveInv_preserved (n : Nat)
 
 theorem refinementInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
-    (hinv : strongRefinementInv n s) (husedDirty : usedDirtySourceInv n s)
+    (hinv : strongRefinementInv n s)
     (hnext : (tlMessages.toSpec n).next s s') :
     refinementInv n s' := by
-  rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, htxnLine, hpreClean, hpreNoDirty, htxnPlan⟩
-  have hfwd : strongRefinementInv n s := ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, htxnLine, hpreClean, hpreNoDirty, htxnPlan⟩
+  rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, htxnLine, hpreClean, hpreNoDirty, htxnPlan, husedDirty⟩
+  have hfwd : strongRefinementInv n s := ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, htxnLine, hpreClean, hpreNoDirty, htxnPlan, husedDirty⟩
   exact ⟨fullInv_preserved_with_release n s s' hfull htxnLine hnext,
     dirtyExclusiveInv_preserved n s s' hfwd hnext,
     permSwmrInv_preserved n s s' hfwd hnext,

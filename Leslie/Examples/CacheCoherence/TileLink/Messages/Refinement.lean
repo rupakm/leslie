@@ -773,7 +773,7 @@ theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n
     ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty⟩
   have hfwd : forwardSimInv n s :=
     ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty⟩
-  refine ⟨refinementInv_preserved n s s' hstrong husedDirty hnext,
+  refine ⟨refinementInv_preserved n s s' hstrong hnext,
     dataCoherenceInv_preserved n s s' hfwd hnext,
     txnLineInv_preserved n s s' hfwd hnext,
     ?_, ?_, ?_, ?_⟩
