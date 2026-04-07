@@ -515,7 +515,7 @@ theorem refMap_recvReleaseAtManager_eq {n : Nat}
     (hCother : ∀ j : Fin n, j ≠ i → (s.locals j).chanC = none)
     (hstep : RecvReleaseAtManager s s' i) :
     refMap n s' = refMap n s := by
-  rcases hstep with ⟨msg, param, htxn, _, hrelAck, hflight, hCi, _, _, _, _, _, hs'⟩
+  rcases hstep with ⟨msg, param, htxn, hgrantAck, hrelAck, hflight, hCi, _, _, _, _, _, hs'⟩
   rw [hs']
   apply SymState.ext
   · -- refMapShared equality
@@ -548,14 +548,80 @@ theorem refMap_recvReleaseAtManager_eq {n : Nat}
     have hqueued : queuedReleaseIdx n s = some i.1 :=
       queuedReleaseIdx_recvRelease s i hflight (by rw [hCi]; exact Option.some_ne_none _) hCother
     -- Now show the 5-tuple is equal field by field
-    -- The mem field requires the most work
-    -- sorry the entire shared equality for now; the key insight is:
-    -- 1. dir: syncDir uses lines (unchanged) for k < n, and dir k for k >= n (updateDirAt is identity since i < n)
-    -- 2. pendingGrantMeta: none = none
+    -- The post-state and pre-state both have currentTxn = none.
+    -- We need to show refMapShared of post = refMapShared of pre.
+    -- Work with the concrete refMapShared definition under currentTxn = none.
+    -- 1. dir: syncDir uses lines (unchanged for k < n), updateDirAt is invisible to syncDir
+    have hdir : TileLink.Atomic.syncDir (updateDirAt s.shared.dir i param.result)
+        (fun j => ((setFn s.locals i (recvReleaseLocal (s.locals i) i.1)) j).line) =
+        TileLink.Atomic.syncDir s.shared.dir (fun j => (s.locals j).line) := by
+      funext k
+      simp only [TileLink.Atomic.syncDir]
+      split
+      · next hk => rw [hline_eq ⟨k, hk⟩]
+      · next hk =>
+        simp only [updateDirAt]
+        have hne : k ≠ i.1 := fun h => hk (h ▸ i.is_lt)
+        simp [hne]
+    -- 2. pendingGrantMeta: none = none (both currentTxn = none)
     -- 3. pendingGrantAck: none = none
-    -- 4. pendingReleaseAck: some i.1 = queuedReleaseIdx = some i.1
-    -- 5. mem: the tricky part with dirty owners and findDirtyReleaseVal
-    sorry
+    -- 4. pendingReleaseAck
+    have hpra : (match (some i.1 : Option Nat) with
+        | some i => some i | none => queuedReleaseIdx n
+          { shared := { s.shared with mem := releaseWriteback s.shared.mem msg,
+                        dir := updateDirAt s.shared.dir i param.result,
+                        pendingReleaseAck := some i.1 },
+            locals := setFn s.locals i (recvReleaseLocal (s.locals i) i.1) }) =
+        (match (none : Option Nat) with
+        | some i => some i | none => queuedReleaseIdx n s) := by
+      simp
+      exact hqueued.symm
+    -- 5. mem: case split on dirty owner existence and msg.data
+    have hmem : (if h : ∃ j : Fin n,
+            ((setFn s.locals i (recvReleaseLocal (s.locals i) i.1)) j).line.dirty = true
+          then ((setFn s.locals i (recvReleaseLocal (s.locals i) i.1)) (Classical.choose h)).line.data
+          else match hfind_post ▸ (none : Option Val) with
+               | some v => v | none => releaseWriteback s.shared.mem msg) =
+        (if h : ∃ j : Fin n, (s.locals j).line.dirty = true
+          then (s.locals (Classical.choose h)).line.data
+          else match findDirtyReleaseVal n s with
+               | some v => v | none => s.shared.mem) := by
+      rw [dif_congr hdirty_iff]
+      · -- dirty owner case: same data because same lines
+        intro h
+        have h' := hdirty_iff.mp h
+        rw [hline_eq (Classical.choose h)]
+        congr 1
+      · -- no dirty owner case
+        intro hno
+        -- case split on msg.data
+        cases hdata : msg.data with
+        | some v =>
+          -- findDirtyReleaseVal n s = some v
+          have hfind_pre : findDirtyReleaseVal n s = msg.data := by
+            exact findDirtyReleaseVal_unique_release s i msg hflight (hCi ▸ rfl) (by rw [hdata]; simp) hCother
+          rw [hfind_pre, hdata]
+          simp [releaseWriteback, hdata]
+        | none =>
+          -- findDirtyReleaseVal n s = none (msg.data = none, no other chanC)
+          have hfind_pre : findDirtyReleaseVal n s = none := by
+            simp only [findDirtyReleaseVal]
+            have hnone : ¬∃ j : Fin n, (s.locals j).releaseInFlight = true ∧
+                ∃ m : CMsg, (s.locals j).chanC = some m ∧ m.data ≠ none := by
+              intro ⟨j, hfl, m, hcj, hdm⟩
+              by_cases hji : j = i
+              · subst j; rw [hCi] at hcj; cases Option.some.inj hcj; rw [hdata] at hdm; exact hdm rfl
+              · rw [hCother j hji] at hcj; cases hcj
+            rw [dif_neg hnone]
+          rw [hfind_pre]
+          simp [releaseWriteback, hdata]
+    -- Combine all 5 fields
+    rw [TileLink.Atomic.HomeState.mk.injEq]
+    refine ⟨hmem, hdir, ?_, ?_, hpra⟩
+    · -- pendingGrantMeta: none = none
+      rfl
+    · -- pendingGrantAck: none = none
+      rfl
   · -- refMapLine equality: currentTxn = none, so refMapLine uses locals line
     funext j
     simp only [refMap, refMapLine, recvReleaseState, recvReleaseShared, recvReleaseLocals, htxn,
