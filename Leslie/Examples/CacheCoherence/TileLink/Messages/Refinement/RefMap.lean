@@ -167,13 +167,6 @@ theorem refMapShared_mem_none {n : Nat} {s : SymState HomeState NodeState n}
     (refMapShared n s).pendingReleaseAck = queuedReleaseIdx n s := by
   simp [refMapShared, hrel, hcur]
 
-/-- Extensionality for TileLink.Atomic.HomeState. -/
-@[ext] theorem Atomic.HomeState.ext {a b : TileLink.Atomic.HomeState}
-    (hmem : a.mem = b.mem) (hdir : a.dir = b.dir)
-    (hpgm : a.pendingGrantMeta = b.pendingGrantMeta)
-    (hpga : a.pendingGrantAck = b.pendingGrantAck)
-    (hpra : a.pendingReleaseAck = b.pendingReleaseAck) : a = b := by
-  cases a; cases b; simp_all
 
 theorem findDirtyReleaseVal_none_of_all_chanC_none' {n : Nat}
     (s : SymState HomeState NodeState n)

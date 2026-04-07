@@ -66,7 +66,7 @@ structure PendingGrantMeta where
   probesNeeded : Nat → Bool
   probesRemaining : Nat → Bool
 
-structure HomeState where
+@[ext] structure HomeState where
   mem : Val
   dir : Nat → TLPerm
   pendingGrantMeta : Option PendingGrantMeta
