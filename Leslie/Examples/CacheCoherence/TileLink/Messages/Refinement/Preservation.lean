@@ -477,7 +477,6 @@ theorem txnDataInv_preserved (n : Nat)
           · next hdirtyPre =>
             -- preLines i dirty + usedDirtySource = false → contradiction via usedDirtySourceInv
             exfalso
-            simp only [Bool.not_eq_true] at huds
             have := husedDirty tx hcur huds i.1 i.isLt hi_ne
             rw [this] at hdirtyPre; simp at hdirtyPre
           · exact htd.1 huds
@@ -1538,15 +1537,15 @@ theorem dirtyReleaseExclusiveInv_preserved (n : Nat)
 
 theorem refinementInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
-    (hinv : strongRefinementInv n s) (hnext : (tlMessages.toSpec n).next s s') :
+    (hinv : strongRefinementInv n s) (husedDirty : usedDirtySourceInv n s)
+    (hnext : (tlMessages.toSpec n).next s s') :
     refinementInv n s' := by
   rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, htxnLine, hpreClean, hpreNoDirty, htxnPlan⟩
   have hfwd : strongRefinementInv n s := ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, htxnLine, hpreClean, hpreNoDirty, htxnPlan⟩
   exact ⟨fullInv_preserved_with_release n s s' hfull htxnLine hnext,
     dirtyExclusiveInv_preserved n s s' hfwd hnext,
     permSwmrInv_preserved n s s' hfwd hnext,
-    txnDataInv_preserved n s s' hfull hdirtyEx htxnData hcleanRel hpreNoDirty
-      hfwd.usedDirty hnext,
+    txnDataInv_preserved n s s' hfull hdirtyEx htxnData hcleanRel hpreNoDirty husedDirty hnext,
     cleanChanCInv_preserved n s s' hfull hdirtyEx hcleanRel hrelUniq hnext,
     releaseUniqueInv_preserved n s s' hfull hdirtyEx hrelUniq hnext,
     dirtyReleaseExclusiveInv_preserved n s s' hfull hdirtyEx hSwmr hdirtyRelEx hnext⟩
