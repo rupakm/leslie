@@ -23,6 +23,7 @@ private theorem recvProbeAckAtManager_mem_eq {n : Nat}
     {i : Fin n} {tx : ManagerTxn} {msg : CMsg}
     (hfull : fullInv n s)
     (htxnData : txnDataInv n s) (hpreNoDirty : preLinesNoDirtyInv n s)
+    (husedDirty : usedDirtySourceInv n s)
     (hcur : s.shared.currentTxn = some tx)
     (hphase : tx.phase = .probing)
     (hremaining : tx.probesRemaining i.1 = true)
@@ -34,16 +35,8 @@ private theorem recvProbeAckAtManager_mem_eq {n : Nat}
   by_cases hused : tx.usedDirtySource = true
   · simp [hused]
   · simp [hused]
-    -- Need: match msg.data ... = s.shared.mem
-    -- From chanCInv: msg.data = probeAckDataOfLine (tx.preLines i.1)
-    -- If (tx.preLines i.1).dirty = false: msg.data = none, so match = s.shared.mem ✓
-    -- If (tx.preLines i.1).dirty = true: msg.data = some data.
-    --   Need: (tx.preLines i.1).data = s.shared.mem
-    --   This requires: usedDirtySource = false → no preLines (except requester) is dirty.
-    --   Node i ≠ requester (from probesRemaining/probesNeeded), so (tx.preLines i.1).dirty = false.
-    --   But deriving this formally requires invariant not currently stated.
     -- Extract chanCInv from fullInv
-    rcases hfull with ⟨⟨_, _, _, _⟩, ⟨_, _, hchanC, _, _⟩, _⟩
+    rcases hfull with ⟨⟨_, _, _, htxnCore⟩, ⟨_, _, hchanC, _, _⟩, _⟩
     have hCdata := hchanC i
     rw [hCi] at hCdata
     rcases hCdata with ⟨tx', hcur', _, _, _, _, _, _, hdata⟩ | ⟨_, htxnNone, _⟩
@@ -51,15 +44,18 @@ private theorem recvProbeAckAtManager_mem_eq {n : Nat}
       rw [hdata]
       simp [probeAckDataOfLine]
       split
-      · -- (tx.preLines i.1).dirty = true, usedDirtySource = false
-        -- Need (tx.preLines i.1).data = s.shared.mem
-        -- This requires: usedDirtySource = false → ∀ k ≠ requester, k < n → (preLines k).dirty = false
-        -- which follows from how plannedUsedDirtySource/dirtyOwnerOpt are computed at txn creation.
-        -- Node i ≠ requester (since probesRemaining i = true → probesNeeded i = true
-        -- → i ≠ requester since probesNeeded requester = false from txnCoreInv).
-        -- So (preLines i.1).dirty = true contradicts usedDirtySource = false.
-        -- Needs new invariant: usedDirtySourceConsistentInv
-        sorry
+      · -- (tx.preLines i.1).dirty = true, usedDirtySource = false → contradiction
+        next hdirtyPre =>
+        -- Derive i ≠ requester from txnCoreInv
+        rw [txnCoreInv, hcur] at htxnCore
+        have hi_ne : i.1 ≠ tx.requester := by
+          intro h
+          have hneeded := htxnCore.2.2.2.2.2.1 i.1 hremaining
+          rw [h] at hneeded; rw [htxnCore.2.2.2.2.1] at hneeded; simp at hneeded
+        -- From usedDirtySourceInv
+        simp only [Bool.not_eq_true] at hused
+        have := husedDirty tx hcur hused i.1 i.isLt hi_ne
+        rw [this] at hdirtyPre; simp at hdirtyPre
       · rfl
     · rw [hcur] at htxnNone; cases htxnNone
 
@@ -68,6 +64,7 @@ theorem refMap_recvProbeAckAtManager_eq {n : Nat}
     {i : Fin n}
     (hfull : fullInv n s)
     (htxnData : txnDataInv n s) (hpreNoDirty : preLinesNoDirtyInv n s)
+    (husedDirty : usedDirtySourceInv n s)
     (hstep : RecvProbeAckAtManager s s' i) :
     refMap n s' = refMap n s := by
   rcases hstep with ⟨tx, msg, hcur, hphase, hremaining, _, hCi, _, hwf, hs'⟩
@@ -77,22 +74,16 @@ theorem refMap_recvProbeAckAtManager_eq {n : Nat}
     simp only [refMap]
     unfold refMapShared
     simp only [recvProbeAckState, recvProbeAckShared, recvProbeAckLocals]
-    -- currentTxn in post = some { tx with probesRemaining := ..., phase := ... }
-    -- Simplify the match on currentTxn
     have hcur_post : (recvProbeAckShared s i tx msg).currentTxn =
         some { tx with probesRemaining := clearProbeIdx tx.probesRemaining i.1
                      , phase := probeAckPhase (n := n) (clearProbeIdx tx.probesRemaining i.1) } := by
       simp [recvProbeAckShared]
-    -- The new phase is either probing or grantReady, never grantPendingAck
     have hphase_not_gpa : (probeAckPhase (n := n) (clearProbeIdx tx.probesRemaining i.1)) ≠ .grantPendingAck := by
       simp [probeAckPhase]; split <;> simp [TxnPhase.noConfusion]
-    -- Simplify dir: preTxnDir with same preLines
-    -- Simplify pendingGrantMeta: absPendingGrantMeta with same fields
-    -- The key is showing all 5 fields of the record are equal
     congr 1
     · -- mem
       simp [hcur]
-      exact recvProbeAckAtManager_mem_eq hfull htxnData hpreNoDirty hcur hphase hremaining hCi hwf
+      exact recvProbeAckAtManager_mem_eq hfull htxnData hpreNoDirty husedDirty hcur hphase hremaining hCi hwf
     · -- dir
       simp [hcur, hphase, hphase_not_gpa]
       exact preTxnDir_tx_update_eq tx s.shared.dir _ _
