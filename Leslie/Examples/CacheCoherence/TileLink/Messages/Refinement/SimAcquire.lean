@@ -285,7 +285,29 @@ theorem refMapShared_recvAcquireState_eq_absPending {n : Nat}
       , pendingGrantMeta := some (absPendingGrantMeta (plannedTxn s i kind grow source))
       , pendingGrantAck := none
       , pendingReleaseAck := none } := by
-  sorry
+  have hnd_all : ¬∃ j : Fin n, j ≠ i ∧ (s.locals j).line.dirty = true :=
+    fun ⟨j, _, hd⟩ => absurd hd (by simp [hnoDirty j])
+  have hdo : dirtyOwnerOpt s i = none := by unfold dirtyOwnerOpt; simp [hnd_all]
+  have hud : (plannedTxn s i kind grow source).usedDirtySource = false := by
+    simp [plannedTxn, plannedUsedDirtySource, hdo]
+  have hnd : ¬∃ j : Fin n, (s.locals j).line.dirty = true :=
+    fun ⟨j, hd⟩ => absurd hd (by simp [hnoDirty j])
+  have hfdrv := findDirtyReleaseVal_none_of_all_chanC_none' s hallC
+  have hcur_post : (recvAcquireState s i kind grow source).shared.currentTxn =
+      some (plannedTxn s i kind grow source) := by simp [recvAcquireState, recvAcquireShared]
+  have hphase : (plannedTxn s i kind grow source).phase ≠ .grantPendingAck := by simp [plannedTxn]
+  ext
+  · -- mem: both sides = s.shared.mem
+    simp [refMapShared, recvAcquireState, recvAcquireShared, hud, htxn, hrel, hnd, hfdrv, refMap]
+  · -- dir: preTxnDir = syncDir (via existing lemma)
+    simp [refMapShared, recvAcquireState, recvAcquireShared, hphase, htxn, refMap]
+    exact congrFun (preTxnDir_plannedTxn_eq_syncDir s i kind grow source) _
+  · -- pendingGrantMeta
+    simp [refMapShared, recvAcquireState, recvAcquireShared]
+  · -- pendingGrantAck
+    simp [refMapShared, recvAcquireState, recvAcquireShared]
+  · -- pendingReleaseAck
+    simp [refMapShared, recvAcquireState, recvAcquireShared, hrel]
 
 theorem absPendingGrantMeta_planned_acquireBlock_branch_eq {n : Nat}
     (s : SymState HomeState NodeState n)
