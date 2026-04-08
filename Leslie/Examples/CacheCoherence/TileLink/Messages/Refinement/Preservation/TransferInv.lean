@@ -290,20 +290,29 @@ theorem releaseDataInv_preserved (n : Nat)
       rcases hstep with ⟨tx, _, hcur, _, _, _, _, _, _, _, rfl⟩
       -- currentTxn was some → all releaseInFlight = false (txnNoReleaseInv)
       intro _ j hflight _hCclean _hperm _hdirty
-      -- All releaseInFlight = false during txn (txnNoReleaseInv)
       have hnoRel := htxnNoRel (by rw [hcur]; simp) j
-      simp [recvGrantAckState, recvGrantAckLocals, setFn] at hflight
+      simp only [recvGrantAckState, recvGrantAckLocals, setFn] at hflight
       by_cases hji : j = i
-      · simp [hji, recvGrantAckLocal] at hflight; rw [hnoRel] at hflight; cases hflight
-      · simp [hji] at hflight; rw [hnoRel] at hflight; cases hflight
+      · subst hji; simp_all [recvGrantAckLocal]
+      · simp_all
   | .sendRelease param =>
       -- Clean release: chanC has clean msg (data = none), guard holds. Use dataCoherenceInv.
-      rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, hflight_pre, _, hdirty_pre, _, hs'⟩
+      rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, hflight_pre, hlegal, hdirty_pre, _, hs'⟩
       subst hs'
       intro htxn' j hflight hCclean hperm hdirty
       by_cases hji : j = i
       · -- Node i: releasedLine preserves data. dataCoherenceInv pre → data = mem.
-        subst hji; sorry -- sendRelease clean init: data = mem from dataCoherenceInv pre-state
+        rw [hji] at hperm hdirty ⊢
+        simp only [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, ite_true] at hperm hdirty ⊢
+        -- Eliminate param.result = .N case: post-perm = .N → hperm contradiction
+        -- For .B/.T: data = line.data = mem from dataCoherenceInv
+        have hperm_pre : (s.locals i).line.perm ≠ .N := by
+          rw [PruneReportParam.legalFrom] at hlegal; rw [hlegal]
+          cases param <;> simp [PruneReportParam.source]
+          -- NtoN: source = .N, but then post perm = .N from releasedLine, contradicting hperm
+          simp [releasedLine, invalidatedLine] at hperm
+        have hmem := hdata htxn i hflight_pre hperm_pre hdirty_pre
+        cases param.result <;> simp_all [releasedLine, invalidatedLine, branchAfterProbe, tipAfterProbe]
       · simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji] at hflight hCclean hperm hdirty ⊢
         exact hrelData htxn j hflight hCclean hperm hdirty
   | .sendReleaseData param =>
