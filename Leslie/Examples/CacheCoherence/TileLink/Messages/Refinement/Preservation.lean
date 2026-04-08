@@ -732,6 +732,7 @@ theorem preLinesCleanInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
     (hfull : fullInv n s) (hclean : dataCoherenceInv n s) (hpre : preLinesCleanInv n s)
     (hcleanC : cleanChanCInv n s) (hpreNoDirty : preLinesNoDirtyInv n s)
+    (hpreWF : preLinesWFInv n s)
     (hnext : (tlMessages.toSpec n).next s s') :
     preLinesCleanInv n s' := by
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
@@ -771,7 +772,36 @@ theorem preLinesCleanInv_preserved (n : Nat)
       simpa [preLinesCleanInv, hcur, recvProbeState]
         using hpre
   | .recvProbeAckAtManager =>
-      sorry -- preLinesNoDirtyInv signature changed; needs rework
+      rcases hstep with ⟨tx, msg, hcur, _, _, _, hC, _, _, hs'⟩
+      rw [hs']
+      -- From chanCInv: msg.data = probeAckDataOfLine (tx.preLines i.1)
+      rcases hfull with ⟨_, ⟨_, _, hchanC, _, _⟩, _⟩
+      specialize hchanC i; rw [hC] at hchanC
+      rcases hchanC with ⟨tx', hcur', _, _, _, _, _, _, hdata⟩ | ⟨_, hcurNone, _⟩
+      · rw [hcur] at hcur'; cases hcur'
+        cases hdirtyI : (tx.preLines i.1).dirty
+        · -- Clean probeAck: msg.data = none → mem unchanged → preserved from hpre
+          have hmsg : msg.data = none := by simp [hdata, probeAckDataOfLine, hdirtyI]
+          simpa [preLinesCleanInv, hcur, recvProbeAckState, recvProbeAckShared, hmsg]
+            using hpre
+        · -- Dirty probeAck: vacuously true — no valid+clean preLines besides dirty node
+          simp only [preLinesCleanInv, hcur, recvProbeAckState, recvProbeAckShared]
+          have hmsg : msg.data = some (tx.preLines i.1).data := by
+            simp [hdata, probeAckDataOfLine, hdirtyI]
+          simp only [hmsg]
+          intro k hk hvalid hdirty
+          -- From preLinesNoDirtyInv: dirty node i → perm k = .N for k ≠ i
+          exfalso
+          have hpnd := by simpa [preLinesNoDirtyInv, hcur] using hpreNoDirty
+          by_cases hki : i.1 = k
+          · -- k = i: preLines i is dirty, contradicts hdirty (dirty = false)
+            rw [← hki] at hdirty; rw [hdirtyI] at hdirty; cases hdirty
+          · -- k ≠ i: perm k = .N → valid k = false → contradicts hvalid
+            have hpermN := hpnd i.1 k i.is_lt hk hki hdirtyI
+            have hwf := by simpa [preLinesWFInv, hcur] using hpreWF
+            have ⟨hvalidFalse, _⟩ := (hwf k hk).2.2 hpermN
+            rw [hvalidFalse] at hvalid; cases hvalid
+      · rw [hcur] at hcurNone; simp at hcurNone
   | .sendGrantToRequester =>
       rcases hstep with ⟨tx, hcur, _, _, _, _, _, _, _, hs'⟩
       rw [hs']

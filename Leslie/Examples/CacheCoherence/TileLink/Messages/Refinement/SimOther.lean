@@ -118,6 +118,8 @@ theorem refMap_recvGrantAckAtManager_next {n : Nat}
     {s s' : SymState HomeState NodeState n}
     {i : Fin n}
     (hfull : fullInv n s) (htxnLine : txnLineInv n s) (htxnData : txnDataInv n s)
+    (hpreNoDirty : preLinesNoDirtyInv n s) (husedDirty : usedDirtySourceInv n s)
+    (hpreWF : preLinesWFInv n s)
     (hstep : RecvGrantAckAtManager s s' i) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
   rcases hstep with ⟨tx, msg, hcur, hreq, hphase, hpga, _, hEi, _, _, hs'⟩
@@ -232,16 +234,18 @@ theorem refMap_recvGrantAckAtManager_next {n : Nat}
         -- Case 1: there exists a dirty line in post-state
         by_cases hdirtyPost : ∃ j : Fin n, ((recvGrantAckState s i).locals j).line.dirty = true
         · rw [dif_pos hdirtyPost]
-          -- The dirty node exists; get it
-          obtain ⟨j, hdj⟩ := hdirtyPost
+          -- Generalize choose to get j in the goal
+          generalize hj_eq : Classical.choose hdirtyPost = j
+          have hdj : ((recvGrantAckState s i).locals j).line.dirty = true :=
+            hj_eq ▸ Classical.choose_spec hdirtyPost
           simp only [recvGrantAckState] at hdj
           rw [hline_preserved] at hdj
           -- j cannot be the requester (grantLine has dirty = false)
           have hj_ne_i : j ≠ i := by
-            intro heq; subst heq
-            simp only [recvGrantAckLocals, setFn_same, recvGrantAckLocal] at hdj
-            rw [show (s.locals j).line = grantLine (tx.preLines j.1) tx from hline_req] at hdj
-            revert hdj; simp only [grantLine]
+            intro heq
+            have hdj' : (s.locals i).line.dirty = true := heq ▸ hdj
+            rw [hline_req] at hdj'
+            revert hdj'; simp only [grantLine]
             split <;> (cases tx.resultPerm <;> simp [invalidatedLine])
           -- From txnLineInv, j's line = probeSnapshotLine tx (s.locals j) j
           have hlinej := htxnLine j
@@ -256,41 +260,31 @@ theorem refMap_recvGrantAckAtManager_next {n : Nat}
             revert hdj; simp_all [probedLine]
             cases probeCapOfResult tx.grow.result <;> simp [invalidatedLine, branchAfterProbe, tipAfterProbe]
           · -- probesNeeded j = false: line = preLines j
-            -- preLines j is dirty → usedDirtySource must be true
-            -- From choose_spec, the chosen dirty node has its data
-            -- From txnDataInv Part 3: transferVal = s.shared.mem during grantPendingAck
+            rename_i hprobesNeeded_false
             have htd := by simpa [txnDataInv, hcur] using htxnData
             have htv := htd.2.2 (Or.inr hphase)
-            -- The chosen dirty post-state node also has preLines dirty (by same analysis)
-            -- Since line preserved and line = preLines j (not probed), data = (preLines j).data
-            -- And since transferVal = s.shared.mem, we need (preLines j).data = s.shared.mem
-            -- From preLinesCleanInv: if (preLines j).dirty = false then (preLines j).data = s.shared.mem
-            -- But (preLines j).dirty = TRUE here. So preLinesCleanInv doesn't help directly.
-            -- However, transferVal = s.shared.mem AND transferVal = (preLines k).data (from dirtyOwnerExistsInv)
-            -- So (preLines k).data = s.shared.mem. By uniqueness (preLinesNoDirtyInv), k = j.
-            -- Actually, we can use a simpler argument:
-            -- Since transferVal = s.shared.mem, and the refMap mem was
-            -- `if usedDirtySource then transferVal else s.shared.mem` = s.shared.mem in both cases,
-            -- we just need (choose hdirtyPost).line.data = s.shared.mem.
-            -- But we can't prove this without more invariants.
-            -- Alternative: show hdirtyPost is actually False (no dirty owner should exist)
-            -- After grantPendingAck, the requester has grantLine (dirty=false by construction).
-            -- Non-requester j with probesNeeded=false was NOT probed, so line = preLines j.
-            -- If preLines j is dirty, then usedDirtySource = true (from usedDirtySourceInv contrapositive).
-            -- From dirtyOwnerExistsInv: exactly one such k, with transferVal = (preLines k).data.
-            -- From preLinesNoDirtyInv: at most one dirty preLines. So j = k.
-            -- transferVal = s.shared.mem (from txnDataInv Part 3).
-            -- So (preLines j).data = s.shared.mem. And (s.locals j).line = preLines j (from txnLineInv).
-            -- So (s.locals j).line.data = s.shared.mem.
-            -- The chosen dirty post-state node: (choose hdirtyPost).line = (s.locals (choose ...)).line (preserved).
-            -- By the same argument, its data = s.shared.mem = transferVal.
-            -- So the whole `if dirty then dirty.data else ...` = s.shared.mem.
-            -- This matches `if usedDirtySource then transferVal else s.shared.mem` = s.shared.mem.
-            -- So both sides = s.shared.mem. QED.
-            rw [htv]; simp
-            -- Goal should now be: (s.locals (choose ...)).line.data = s.shared.mem
-            -- or similar after simp
-            sorry
+            have hdata : (s.locals j).line.data = (tx.preLines j.1).data := by
+              rw [hlinej]; simp [probeSnapshotLine, hprobesNeeded_false]
+            have husedDS : tx.usedDirtySource = true := by
+              by_contra h
+              have h' := Bool.eq_false_iff.mpr h
+              have huds := by simpa [usedDirtySourceInv, hcur] using husedDirty
+              have := huds h' j.1 j.is_lt (show j.1 ≠ tx.requester from by
+                intro heq; exact hj_ne_i (Fin.ext (by omega)))
+              rw [this] at hdj; cases hdj
+            obtain ⟨k, hklt, hk_dirty, htv_k⟩ := htd.2.1 husedDS
+            have hj_eq_k : j.1 = k := by
+              by_contra hne
+              have hpnd := by simpa [preLinesNoDirtyInv, hcur] using hpreNoDirty
+              have hpermN := hpnd k j.1 hklt j.is_lt (fun h => hne h.symm) hk_dirty
+              have hwf := by simpa [preLinesWFInv, hcur] using hpreWF
+              have hpermT := (hwf j.1 j.is_lt).1 hdj |>.1
+              rw [hpermT] at hpermN; exact TLPerm.noConfusion hpermN
+            -- Assemble: j.line.data = (preLines j.1).data = (preLines k).data = transferVal = mem
+            have hgoal : (s.locals j).line.data = s.shared.mem := by
+              rw [hdata, show j.1 = k from hj_eq_k, ← htv_k]; exact htv
+            -- Close the full goal (generalized j matches the goal)
+            rw [htv]; simp; exact hgoal
         · rw [dif_neg hdirtyPost, hDRV_post]
           -- No dirty owner in post-state.
           -- From txnDataInv Part 3: grantPendingAck → transferVal = s.shared.mem
