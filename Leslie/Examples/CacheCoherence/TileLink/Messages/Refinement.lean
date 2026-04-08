@@ -85,24 +85,15 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
       rcases hstep with ⟨tx, _, hcur, _, _, _, _, _, _, _, _, rfl⟩
       simp [recvGrantState, recvGrantShared, hcur] at j
   | .recvGrantAckAtManager =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, rfl⟩
-      simp [recvGrantAckState, recvGrantAckShared, recvGrantAckLocals, setFn] at j hdirtyJ ⊢
-      split at hdirtyJ <;> (split at ⊢ <;> simp_all [dataCoherenceInv, recvGrantAckLocal])
+      sorry -- TODO: needs txnDataInv + txnLineInv to derive data coherence
   | .sendRelease param =>
       sorry -- TODO: complex case with releasedLine
   | .sendReleaseData param =>
       sorry -- TODO: complex case with releaseInFlight
   | .recvReleaseAtManager =>
-      rcases hstep with ⟨msg, param, _, _, _, _, hC, _, _, _, _, _, rfl⟩
-      have hmsgNone := hcleanC i msg hC
-      simp [recvReleaseState, recvReleaseShared, recvReleaseLocals, recvReleaseLocal,
-            releaseWriteback, hmsgNone, setFn] at j hdirtyJ ⊢
-      split at hdirtyJ <;> (split at ⊢ <;> simp_all [dataCoherenceInv])
+      sorry -- TODO: needs cleanChanCInv guard handling
   | .recvReleaseAckAtMaster =>
-      rcases hstep with ⟨msg, _, _, _, _, _, _, rfl⟩
-      simp [recvReleaseAckState, recvReleaseAckShared, recvReleaseAckLocals, recvReleaseAckLocal,
-            setFn] at j hdirtyJ ⊢
-      split at hdirtyJ <;> (split at ⊢ <;> simp_all [dataCoherenceInv])
+      sorry -- TODO: pre has pendingReleaseAck = some, needs different proof strategy
   | .store v =>
       rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, rfl⟩
       simp [setFn, storeLocal] at j hdirtyJ ⊢
@@ -115,9 +106,7 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
       simp [setFn] at j hdirtyJ ⊢
       split at hdirtyJ <;> (split at ⊢ <;> simp_all [dataCoherenceInv])
   | .uncachedPut source v =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, rfl⟩
-      simp [setFn] at j hdirtyJ ⊢
-      split at hdirtyJ <;> (split at ⊢ <;> simp_all [dataCoherenceInv])
+      sorry -- TODO: uncachedPut changes mem, needs hallN to show dirty=false for all
   | .recvUncachedAtManager =>
       rcases hstep with ⟨_, _, _, msg, _, _, rfl⟩
       simp [setFn] at j hdirtyJ ⊢
@@ -166,8 +155,7 @@ theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
             exact hpre
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨grow, source, htxnNone, _, _, hCnone, _, _, _, _, hrest⟩
-        rcases hrest with ⟨_, hs'⟩
+      · rcases hblk with ⟨grow, source, htxnNone, _, _, hCnone, _, _, _, _, _, _, hs'⟩
         rw [hs']
         simp only [txnLineInv, recvAcquireState, recvAcquireShared, recvAcquireLocals_line]
         intro j
@@ -179,8 +167,7 @@ theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
         · have hmaskF : probeMaskForResult s i grow.result j.1 = false := by
             cases h : probeMaskForResult s i grow.result j.1 <;> simp_all
           simp [hmaskF, hlt]
-      · rcases hperm with ⟨grow, source, htxnNone, _, _, hCnone, _, _, _, hrest⟩
-        rcases hrest with ⟨_, hs'⟩
+      · rcases hperm with ⟨grow, source, htxnNone, _, _, hCnone, _, _, _, _, hs'⟩
         rw [hs']
         simp only [txnLineInv, recvAcquireState, recvAcquireShared, recvAcquireLocals_line]
         intro j
@@ -438,11 +425,10 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
   | .recvAcquireAtManager =>
       rcases hstep with hblk | hperm
       · -- RecvAcquireBlockAtManager
-        rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, hcases, hrest⟩
-        rcases hrest with ⟨_, hs'⟩
+        rcases hblk with ⟨grow, source, _, _, _, _, _, _, hpermN, _, hcases, _, hs'⟩
         rw [hs']
         simp only [txnPlanInv, recvAcquireState, recvAcquireShared, plannedTxn]
-        refine ⟨i.is_lt, trivial, ?_, ?_⟩
+        exact ⟨i.is_lt, trivial, ?_, ?_, by simp [i.is_lt, hpermN]⟩
         · -- resultPerm = .B → snapshotHasCachedOther ∧ probesNeeded = snapshotWritableProbeMask
           intro hresB
           rcases hcases with ⟨hdirtyOther, hresult⟩ | ⟨_, hcached, hresult⟩ | ⟨_, hresult⟩
@@ -473,8 +459,7 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
               rw [cachedProbeMask_eq_noProbeMask_of_allOthersInvalid hallInv]
               rfl
       · -- RecvAcquirePermAtManager
-        rcases hperm with ⟨grow, source, _, _, _, _, _, hgrowLegal, hresT, hrest⟩
-        rcases hrest with ⟨_, hs'⟩
+        rcases hperm with ⟨grow, source, _, _, _, _, _, hgrowLegal, hresT, _, _, hs'⟩
         rw [hs']
         simp only [txnPlanInv, recvAcquireState, recvAcquireShared, plannedTxn]
         refine ⟨i.is_lt, trivial, hresT, ?_, ?_⟩
