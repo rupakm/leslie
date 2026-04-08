@@ -71,28 +71,18 @@ theorem refMap_recvProbeAckAtManager_eq {n : Nat}
   rw [hs']
   apply SymState.ext
   · -- refMapShared equality
-    simp only [refMap]
-    unfold refMapShared
-    simp only [recvProbeAckState, recvProbeAckShared, recvProbeAckLocals]
-    have hcur_post : (recvProbeAckShared s i tx msg).currentTxn =
-        some { tx with probesRemaining := clearProbeIdx tx.probesRemaining i.1
-                     , phase := probeAckPhase (n := n) (clearProbeIdx tx.probesRemaining i.1) } := by
-      simp [recvProbeAckShared]
+    simp only [refMap, refMapShared, recvProbeAckState, recvProbeAckShared, recvProbeAckLocals]
     have hphase_not_gpa : (probeAckPhase (n := n) (clearProbeIdx tx.probesRemaining i.1)) ≠ .grantPendingAck := by
-      simp [probeAckPhase]; split <;> simp [TxnPhase.noConfusion]
-    congr 1
-    · -- mem
-      simp [hcur]
-      exact recvProbeAckAtManager_mem_eq hfull htxnData hpreNoDirty husedDirty hcur hphase hremaining hCi hwf
-    · -- dir
-      simp [hcur, hphase, hphase_not_gpa]
-      exact preTxnDir_tx_update_eq tx s.shared.dir _ _
-    · -- pendingGrantMeta
-      simp [hcur, absPendingGrantMeta, absGrantKind, hphase_not_gpa]
-    · -- pendingGrantAck
-      simp [recvProbeAckShared]
-    · -- pendingReleaseAck
-      simp [recvProbeAckShared]
+      simp [probeAckPhase]; split <;> simp
+    have hphase_probing : tx.phase ≠ .grantPendingAck := by simp [hphase]
+    simp only [hcur, hphase_probing, hphase_not_gpa, ite_false]
+    simp only [Atomic.HomeState.mk.injEq]
+    refine ⟨?_, ?_, ?_, ?_, ?_⟩
+    · exact recvProbeAckAtManager_mem_eq hfull htxnData hpreNoDirty husedDirty hcur hphase hremaining hCi hwf
+    · funext k; simp [preTxnDir, hphase, updateDirAt]; split <;> simp_all; omega
+    · simp [absPendingGrantMeta, absGrantKind, hphase_not_gpa, hphase_probing]
+    · simp [recvProbeAckShared]
+    · simp [recvProbeAckShared]
   · -- refMapLine equality
     funext j
     simp only [refMap, refMapLine, recvProbeAckState, recvProbeAckShared,
@@ -120,7 +110,7 @@ theorem refMap_recvGrantAtMaster_eq {n : Nat}
     · have hreqj : tx.requester ≠ j.1 := by
         intro hreq'
         apply hji
-        exact Fin.ext ((hreq.symm.trans hreq').symm)
+        exact Fin.ext (by omega)
       simpa [refMap, refMapLine, recvGrantState, recvGrantShared, recvGrantLocals,
         recvGrantLocal, setFn, hcur, hphase, hreqj, hji]
 
@@ -137,7 +127,7 @@ theorem refMap_recvGrantAckAtManager_next {n : Nat}
   -- txnCoreInv gives us grantHasData → resultPerm and probesRemaining all false
   rw [txnCoreInv, hcur] at htxnCore
   have hreqLt := htxnCore.1
-  have hnoData := htxnCore.2.2.1
+  have hnoData := htxnCore.2.2.2.1
   have hprobesNone := htxnCore.2.2.2.2.2.2.2 hphase
   -- pendingInv gives pendingReleaseAck = none
   rw [pendingInv, hcur] at hpending
@@ -159,22 +149,18 @@ theorem refMap_recvGrantAckAtManager_next {n : Nat}
       ((recvGrantAckLocals s i j)).line = (s.locals j).line := by
     intro j
     simp [recvGrantAckLocals, setFn]
-    split
-    · simp [recvGrantAckLocal]
-    · rfl
+    split <;> simp_all [recvGrantAckLocal]
   -- All chanC are none in the post-state too
   have hallC_post : ∀ j : Fin n, ((recvGrantAckState s i).locals j).chanC = none := by
     intro j
     simp [recvGrantAckState, recvGrantAckLocals, setFn]
-    split
-    · simp [recvGrantAckLocal, hallC j]
-    · exact hallC j
+    split <;> simp_all [recvGrantAckLocal]
   have hQRI_post := queuedReleaseIdx_eq_none_of_all_chanC_none (recvGrantAckState s i) hallC_post
   have hDRV_post := findDirtyReleaseVal_none_of_all_chanC_none' (recvGrantAckState s i) hallC_post
   -- txnLineInv: during grantPendingAck with chanE = some, line = grantLine
   rw [txnLineInv, hcur] at htxnLine
   -- At the requester: line = grantLine because chanE ≠ none
-  have hreq_fin : (⟨tx.requester, hreqLt⟩ : Fin n) = i := Fin.ext hreq.symm
+  have hreq_fin : (⟨tx.requester, hreqLt⟩ : Fin n) = i := by ext; simp [hreq]
   have hline_req : (s.locals i).line = grantLine (tx.preLines i.1) tx := by
     have := htxnLine i
     simp [txnSnapshotLine, hphase, hreq, hEi] at this
@@ -223,6 +209,7 @@ theorem refMap_recvGrantAckAtManager_next {n : Nat}
         split
         · -- k < n
           next hk =>
+          simp only [recvGrantAckState] at *
           rw [hline_preserved ⟨k, hk⟩]
           simp only [grantPendingDir, show tx.requester < n from hreqLt, dite_true, updateDirAt]
           by_cases hki : k = tx.requester
@@ -231,9 +218,7 @@ theorem refMap_recvGrantAckAtManager_next {n : Nat}
             exact (hdirInv ⟨k, hk⟩ (hallC ⟨k, hk⟩)).symm
         · -- k ≥ n
           simp [grantPendingDir, show tx.requester < n from hreqLt, updateDirAt]
-          split
-          · next hki => exact absurd (hki ▸ hreqLt) (by omega)
-          · rfl
+          intro hki; omega
       -- mem equality
       have hmem_post : (refMapShared n (recvGrantAckState s i)).mem =
           (refMapShared n s).mem := by
@@ -249,29 +234,27 @@ theorem refMap_recvGrantAckAtManager_next {n : Nat}
         · rw [dif_pos hdirtyPost]
           -- The dirty node exists; get it
           obtain ⟨j, hdj⟩ := hdirtyPost
+          simp only [recvGrantAckState] at hdj
           rw [hline_preserved] at hdj
           -- j cannot be the requester (grantLine has dirty = false)
           have hj_ne_i : j ≠ i := by
             intro heq; subst heq
-            rw [hline_req] at hdj
-            cases htxnCore.2.2.1 rfl with
-            | _ =>
-            cases hdata : tx.grantHasData
-            · simp [grantLine, hdata] at hdj
-            · cases hperm : tx.resultPerm <;> simp [grantLine, hdata, hperm, invalidatedLine] at hdj
+            simp only [recvGrantAckLocals, setFn_same, recvGrantAckLocal] at hdj
+            rw [show (s.locals j).line = grantLine (tx.preLines j.1) tx from hline_req] at hdj
+            revert hdj; simp only [grantLine]
+            split <;> (cases tx.resultPerm <;> simp [invalidatedLine])
           -- From txnLineInv, j's line = probeSnapshotLine tx (s.locals j) j
           have hlinej := htxnLine j
           simp [txnSnapshotLine, hphase, show tx.requester ≠ j.1 from by
-            intro h; exact hj_ne_i (Fin.ext (hreq.symm.trans h))] at hlinej
+            intro h; exact hj_ne_i (Fin.ext (by omega))] at hlinej
           rw [hlinej] at hdj
           -- probeSnapshotLine: since probesRemaining j = false...
           simp [probeSnapshotLine] at hdj
           split at hdj
           · -- probesNeeded j = true, probesRemaining j = false (since grantPendingAck)
             have := hprobesNone j
-            simp [this] at hdj
-            -- probedLine has dirty = false
-            simp [probedLine] at hdj
+            revert hdj; simp_all [probedLine]
+            cases probeCapOfResult tx.grow.result <;> simp [invalidatedLine, branchAfterProbe, tipAfterProbe]
           · -- probesNeeded j = false: line = preLines j
             -- preLines j is dirty → usedDirtySource must be true
             -- From choose_spec, the chosen dirty node has its data
@@ -319,14 +302,11 @@ theorem refMap_recvGrantAckAtManager_next {n : Nat}
       cases hrhs : refMapShared n (recvGrantAckState s i) with | mk m d pgm pga pra =>
       simp only [hrhs] at hpgm hpga_post hpra_post hdir_eq hmem_post
       subst hpgm; subst hpga_post
-      simp only [hrhs] at hpra_post
       show Atomic.HomeState.mk m d none none pra =
         { refMapShared n s with pendingGrantMeta := none, pendingGrantAck := none }
-      ext
-      · exact hmem_post
+      simp only [Atomic.HomeState.mk.injEq]
+      refine ⟨hmem_post, ?_, trivial, trivial, ?_⟩
       · exact hdir_eq
-      · rfl
-      · rfl
       · rw [hpra_post, hpra_pre]
     · -- locals equality
       funext j
@@ -346,14 +326,11 @@ theorem refMap_recvGrantAckAtManager_next {n : Nat}
         have := htxnLine j
         simp [txnSnapshotLine, hphase, hji] at this
         -- j = i (requester)
-        have : j = i := Fin.ext (hreq.symm.trans hji)
+        have : j = i := Fin.ext (by omega)
         subst this
         rw [hline_req]
       · -- j is not the requester
         simp [hji]
-        -- (s.locals j).line = preLines j from txnLineInv (probeSnapshotLine = line during grantPendingAck)
-        -- Actually refMapLine returns (s.locals j).line for non-requester during grantPendingAck
-        rfl
 
 theorem releasedLine_eq (line : CacheLine) (perm : TLPerm) :
     TileLink.Messages.releasedLine line perm = TileLink.Atomic.releasedLine line perm := by
@@ -385,16 +362,7 @@ private theorem queuedReleaseIdx_sendRelease {n : Nat}
   have heqi := huniq _ (Classical.choose_spec hexists)
   exact congrArg (fun x => some (x : Fin n).1) heqi
 
-private theorem findDirtyReleaseVal_none_of_all_chanC_none {n : Nat}
-    (s : SymState HomeState NodeState n)
-    (hallC : ∀ j : Fin n, (s.locals j).chanC = none) :
-    findDirtyReleaseVal n s = none := by
-  unfold findDirtyReleaseVal
-  have hnone : ¬∃ i : Fin n, (s.locals i).releaseInFlight = true ∧
-      ∃ msg : CMsg, (s.locals i).chanC = some msg ∧ msg.data ≠ none := by
-    intro ⟨j, _, msg, hC, _⟩
-    rw [hallC j] at hC; cases hC
-  simp [hnone]
+-- findDirtyReleaseVal_none_of_all_chanC_none removed: use findDirtyReleaseVal_none_of_all_chanC_none' from RefMap.lean
 
 private theorem findDirtyReleaseVal_sendRelease {n : Nat}
     (s : SymState HomeState NodeState n) (i : Fin n) (param : PruneReportParam)
@@ -434,7 +402,7 @@ theorem refMap_sendRelease_next {n : Nat}
     by_cases hji : j = i
     · subst j; exact hCi
     · exact hCother j hji
-  have hDRV_pre := findDirtyReleaseVal_none_of_all_chanC_none s hallC
+  have hDRV_pre := findDirtyReleaseVal_none_of_all_chanC_none' s hallC
   have hQRI_pre := queuedReleaseIdx_eq_none_of_all_chanC_none s hallC
   have hQRI_post := queuedReleaseIdx_sendRelease s i param false hCi hflight hCother
   have hDRV_post := findDirtyReleaseVal_sendRelease s i param hCi hCother
@@ -594,7 +562,7 @@ theorem refMap_sendReleaseData_next {n : Nat}
     by_cases hji : j = i
     · subst j; exact hCi
     · exact hCother j hji
-  have hDRV_pre := findDirtyReleaseVal_none_of_all_chanC_none s hallC
+  have hDRV_pre := findDirtyReleaseVal_none_of_all_chanC_none' s hallC
   have hQRI_pre := queuedReleaseIdx_eq_none_of_all_chanC_none s hallC
   have hQRI_post := queuedReleaseIdx_sendRelease s i param true hCi hflight hCother
   have hDRV_post := findDirtyReleaseVal_sendReleaseData s i param hCi hCother
@@ -720,7 +688,7 @@ private theorem findDirtyReleaseVal_unique_release {n : Nat}
   have hmsg_spec := Classical.choose_spec (Classical.choose_spec hexists).2
   have hmsg_eq : Classical.choose (Classical.choose_spec hexists).2 = msg := by
     exact Option.some.inj (hmsg_spec.1.symm.trans hCchosen)
-  rw [hmsg_eq]
+  simp only [hmsg_eq]
 
 theorem refMap_recvReleaseAtManager_eq {n : Nat}
     {s s' : SymState HomeState NodeState n}
@@ -738,7 +706,7 @@ theorem refMap_recvReleaseAtManager_eq {n : Nat}
     -- Lines are unchanged (recvReleaseLocal only touches chanC/chanD)
     have hline_eq : ∀ j : Fin n, ((setFn s.locals i (recvReleaseLocal (s.locals i) i.1)) j).line =
         (s.locals j).line := by
-      intro j; simp [setFn]; split <;> simp [recvReleaseLocal]
+      intro j; simp [setFn]; split <;> simp_all [recvReleaseLocal]
     -- Dirty owner existence is the same
     have hdirty_iff : (∃ j : Fin n, ((setFn s.locals i (recvReleaseLocal (s.locals i) i.1)) j).line.dirty = true) ↔
         (∃ j : Fin n, (s.locals j).line.dirty = true) := by
@@ -750,97 +718,50 @@ theorem refMap_recvReleaseAtManager_eq {n : Nat}
         ((setFn s.locals i (recvReleaseLocal (s.locals i) i.1)) j).chanC = none := by
       intro j; simp [setFn]; split
       · simp [recvReleaseLocal]
-      · next h => exact hCother j (fun heq => h (Fin.ext heq))
+      · next h => exact hCother j (fun heq => h (by exact heq))
     -- Post findDirtyReleaseVal = none
-    have hfind_post : findDirtyReleaseVal n
-        { shared := { s.shared with mem := releaseWriteback s.shared.mem msg
-                     , dir := updateDirAt s.shared.dir i param.result
-                     , pendingReleaseAck := some i.1 }
-        , locals := setFn s.locals i (recvReleaseLocal (s.locals i) i.1) } = none :=
-      findDirtyReleaseVal_none_of_all_chanC_none _ hallC_post
+    have hfind_post : findDirtyReleaseVal n (recvReleaseState s i msg param) = none := by
+      simp [recvReleaseState]
+      exact findDirtyReleaseVal_none_of_all_chanC_none' _ hallC_post
     -- Pre: queuedReleaseIdx = some i.1
     have hqueued : queuedReleaseIdx n s = some i.1 :=
       queuedReleaseIdx_recvRelease s i hflight (by rw [hCi]; exact Option.some_ne_none _) hCother
-    -- Now show the 5-tuple is equal field by field
-    -- The post-state and pre-state both have currentTxn = none.
-    -- We need to show refMapShared of post = refMapShared of pre.
-    -- Work with the concrete refMapShared definition under currentTxn = none.
-    -- 1. dir: syncDir uses lines (unchanged for k < n), updateDirAt is invisible to syncDir
+    -- dir: syncDir with same lines, updateDirAt is invisible for k ≥ n
     have hdir : TileLink.Atomic.syncDir (updateDirAt s.shared.dir i param.result)
         (fun j => ((setFn s.locals i (recvReleaseLocal (s.locals i) i.1)) j).line) =
         TileLink.Atomic.syncDir s.shared.dir (fun j => (s.locals j).line) := by
-      funext k
-      simp only [TileLink.Atomic.syncDir]
-      split
+      funext k; simp only [TileLink.Atomic.syncDir]; split
       · next hk => rw [hline_eq ⟨k, hk⟩]
-      · next hk =>
-        simp only [updateDirAt]
-        have hne : k ≠ i.1 := fun h => hk (h ▸ i.is_lt)
-        simp [hne]
-    -- 2. pendingGrantMeta: none = none (both currentTxn = none)
-    -- 3. pendingGrantAck: none = none
-    -- 4. pendingReleaseAck
-    have hpra : (match (some i.1 : Option Nat) with
-        | some i => some i | none => queuedReleaseIdx n
-          { shared := { s.shared with mem := releaseWriteback s.shared.mem msg,
-                        dir := updateDirAt s.shared.dir i param.result,
-                        pendingReleaseAck := some i.1 },
-            locals := setFn s.locals i (recvReleaseLocal (s.locals i) i.1) }) =
-        (match (none : Option Nat) with
-        | some i => some i | none => queuedReleaseIdx n s) := by
-      simp
-      exact hqueued.symm
-    -- 5. mem: case split on dirty owner existence and msg.data
-    have hmem : (if h : ∃ j : Fin n,
-            ((setFn s.locals i (recvReleaseLocal (s.locals i) i.1)) j).line.dirty = true
-          then ((setFn s.locals i (recvReleaseLocal (s.locals i) i.1)) (Classical.choose h)).line.data
-          else match hfind_post ▸ (none : Option Val) with
-               | some v => v | none => releaseWriteback s.shared.mem msg) =
-        (if h : ∃ j : Fin n, (s.locals j).line.dirty = true
-          then (s.locals (Classical.choose h)).line.data
-          else match findDirtyReleaseVal n s with
-               | some v => v | none => s.shared.mem) := by
-      rw [dif_congr hdirty_iff]
-      · -- dirty owner case: same data because same lines
-        intro h
-        have h' := hdirty_iff.mp h
-        rw [hline_eq (Classical.choose h)]
-        congr 1
-      · -- no dirty owner case
-        intro hno
-        -- case split on msg.data
+      · next hk => simp [updateDirAt, show k ≠ i.1 from fun h => hk (h ▸ i.is_lt)]
+    -- pra
+    have hpra_eq : (some i.1 : Option Nat) = queuedReleaseIdx n s := hqueued.symm
+    -- Assemble all 5 fields
+    simp only [Atomic.HomeState.mk.injEq]
+    refine ⟨?_, hdir, trivial, trivial, by simp [hpra_eq]⟩
+    -- mem: by_cases on dirty owner existence
+    show _ = _
+    by_cases hd : ∃ j : Fin n, ((setFn s.locals i (recvReleaseLocal (s.locals i) i.1)) j).line.dirty = true
+    · rw [dif_pos hd, dif_pos (hdirty_iff.mp hd)]; simp only [hline_eq]
+    · rw [dif_neg hd, dif_neg (fun h => hd (hdirty_iff.mpr h))]
+      simp [recvReleaseState] at hfind_post
+      rw [hfind_post]
         cases hdata : msg.data with
         | some v =>
-          -- findDirtyReleaseVal n s = some v
-          have hfind_pre : findDirtyReleaseVal n s = msg.data := by
-            exact findDirtyReleaseVal_unique_release s i msg hflight (hCi ▸ rfl) (by rw [hdata]; simp) hCother
-          rw [hfind_pre, hdata]
-          simp [releaseWriteback, hdata]
+          have := findDirtyReleaseVal_unique_release s i msg hflight (hCi ▸ rfl) (by rw [hdata]; simp) hCother
+          rw [this, hdata]; simp [releaseWriteback, hdata]
         | none =>
-          -- findDirtyReleaseVal n s = none (msg.data = none, no other chanC)
-          have hfind_pre : findDirtyReleaseVal n s = none := by
+          have : findDirtyReleaseVal n s = none := by
             simp only [findDirtyReleaseVal]
-            have hnone : ¬∃ j : Fin n, (s.locals j).releaseInFlight = true ∧
-                ∃ m : CMsg, (s.locals j).chanC = some m ∧ m.data ≠ none := by
-              intro ⟨j, hfl, m, hcj, hdm⟩
-              by_cases hji : j = i
-              · subst j; rw [hCi] at hcj; cases Option.some.inj hcj; rw [hdata] at hdm; exact hdm rfl
-              · rw [hCother j hji] at hcj; cases hcj
-            rw [dif_neg hnone]
-          rw [hfind_pre]
-          simp [releaseWriteback, hdata]
-    -- Combine all 5 fields
-    rw [TileLink.Atomic.HomeState.mk.injEq]
-    refine ⟨hmem, hdir, ?_, ?_, hpra⟩
-    · -- pendingGrantMeta: none = none
-      rfl
-    · -- pendingGrantAck: none = none
-      rfl
-  · -- refMapLine equality: currentTxn = none, so refMapLine uses locals line
+            rw [dif_neg]; intro ⟨j, hfl, m, hcj, hdm⟩
+            by_cases hji : j = i
+            · subst j; rw [hCi] at hcj; cases Option.some.inj hcj; rw [hdata] at hdm; exact hdm rfl
+            · rw [hCother j hji] at hcj; cases hcj
+          rw [this]; simp [releaseWriteback, hdata]
+  · -- refMapLine equality
     funext j
     simp only [refMap, refMapLine, recvReleaseState, recvReleaseShared, recvReleaseLocals, htxn,
       recvReleaseLocal, setFn]
-    split <;> simp [recvReleaseLocal]
+    split <;> simp_all [recvReleaseLocal]
 
 theorem refMap_recvReleaseAckAtMaster_next {n : Nat}
     {s s' : SymState HomeState NodeState n}
@@ -871,9 +792,9 @@ theorem refMap_recvReleaseAckAtMaster_next {n : Nat}
     intro j; rw [hchanC_eq j]; exact hCnone j
   -- findDirtyReleaseVal = none in both pre and post (all chanC = none)
   have hDRV_pre : findDirtyReleaseVal n s = none :=
-    findDirtyReleaseVal_none_of_all_chanC_none s hCnone
+    findDirtyReleaseVal_none_of_all_chanC_none' s hCnone
   have hDRV_post : findDirtyReleaseVal n (⟨sh', ls'⟩ : SymState HomeState NodeState n) = none :=
-    findDirtyReleaseVal_none_of_all_chanC_none _ hCnone'
+    findDirtyReleaseVal_none_of_all_chanC_none' _ hCnone'
   -- queuedReleaseIdx = none in both pre and post (all chanC = none)
   have hQRI_pre : queuedReleaseIdx n s = none :=
     queuedReleaseIdx_eq_none_of_all_chanC_none s hCnone
@@ -921,7 +842,7 @@ theorem refMap_recvReleaseAckAtMaster_next {n : Nat}
         have hdirty_eq : (∃ j : Fin n, (ls' j).line.dirty = true) =
             (∃ j : Fin n, (s.locals j).line.dirty = true) := by
           congr 1; exact funext (fun j => by rw [hline_eq j])
-        rw [dif_congr hdirty_eq]
+        rw [dite_congr hdirty_eq]
         · -- dirty case: data is the same
           intro h
           have h' := hdirty_eq ▸ h
@@ -969,9 +890,9 @@ theorem refMap_uncachedGet_eq {n : Nat}
   rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩
   rw [hs']
   exact refMap_eq_of_invisible_local_change
-    (fun j => by simp [setFn]; split <;> simp)
-    (fun j => by simp [setFn]; split <;> simp)
-    (fun j => by simp [setFn]; split <;> simp)
+    (fun j => by simp [setFn]; split <;> simp_all)
+    (fun j => by simp [setFn]; split <;> simp_all)
+    (fun j => by simp [setFn]; split <;> simp_all)
 
 -- Helper: findDirtyReleaseVal is unchanged when chanC and releaseInFlight are preserved
 private theorem findDirtyReleaseVal_eq_of_chanC_releaseEq {n : Nat}
@@ -1097,9 +1018,9 @@ theorem refMap_recvUncachedAtManager_eq {n : Nat}
   rcases hstep with ⟨_, _, _, msg, _, _, hs'⟩
   rw [hs']
   exact refMap_eq_of_invisible_local_change
-    (fun j => by simp [setFn]; split <;> simp)
-    (fun j => by simp [setFn]; split <;> simp)
-    (fun j => by simp [setFn]; split <;> simp)
+    (fun j => by simp [setFn]; split <;> simp_all)
+    (fun j => by simp [setFn]; split <;> simp_all)
+    (fun j => by simp [setFn]; split <;> simp_all)
 
 theorem refMap_recvAccessAckAtMaster_eq {n : Nat}
     {s s' : SymState HomeState NodeState n}
@@ -1109,8 +1030,8 @@ theorem refMap_recvAccessAckAtMaster_eq {n : Nat}
   rcases hstep with ⟨msg, _, _, hs'⟩
   rw [hs']
   exact refMap_eq_of_invisible_local_change
-    (fun j => by simp [setFn]; split <;> simp)
-    (fun j => by simp [setFn]; split <;> simp)
-    (fun j => by simp [setFn]; split <;> simp)
+    (fun j => by simp [setFn]; split <;> simp_all)
+    (fun j => by simp [setFn]; split <;> simp_all)
+    (fun j => by simp [setFn]; split <;> simp_all)
 
 end TileLink.Messages
