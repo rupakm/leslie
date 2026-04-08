@@ -737,15 +737,17 @@ theorem refMap_recvReleaseAtManager_eq {n : Nat}
     have hpra_eq : (some i.1 : Option Nat) = queuedReleaseIdx n s := hqueued.symm
     -- Assemble all 5 fields
     simp only [Atomic.HomeState.mk.injEq]
-    refine ⟨?_, hdir, trivial, trivial, by simp [hpra_eq]⟩
+    refine ⟨?_, hdir, trivial, trivial, by simp [hrelAck, hqueued]⟩
     -- mem: by_cases on dirty owner existence
     show _ = _
     by_cases hd : ∃ j : Fin n, ((setFn s.locals i (recvReleaseLocal (s.locals i) i.1)) j).line.dirty = true
     · rw [dif_pos hd, dif_pos (hdirty_iff.mp hd)]; simp only [hline_eq]
     · rw [dif_neg hd, dif_neg (fun h => hd (hdirty_iff.mpr h))]
-      simp [recvReleaseState] at hfind_post
+      -- Normalize both goal and hfind_post to match
+      show (match findDirtyReleaseVal n (recvReleaseState s i msg param) with
+            | some v => v | none => releaseWriteback s.shared.mem msg) = _
       rw [hfind_post]
-        cases hdata : msg.data with
+      cases hdata : msg.data with
         | some v =>
           have := findDirtyReleaseVal_unique_release s i msg hflight (hCi ▸ rfl) (by rw [hdata]; simp) hCother
           rw [this, hdata]; simp [releaseWriteback, hdata]
@@ -842,15 +844,11 @@ theorem refMap_recvReleaseAckAtMaster_next {n : Nat}
         have hdirty_eq : (∃ j : Fin n, (ls' j).line.dirty = true) =
             (∃ j : Fin n, (s.locals j).line.dirty = true) := by
           congr 1; exact funext (fun j => by rw [hline_eq j])
-        rw [dite_congr hdirty_eq]
-        · -- dirty case: data is the same
-          intro h
-          have h' := hdirty_eq ▸ h
-          rw [hline_eq (Classical.choose h')]
-          congr 1
-        · -- non-dirty case
-          intro _
-          rw [hDRV_post, hDRV_pre]
+        by_cases hd : ∃ j : Fin n, (ls' j).line.dirty = true
+        · rw [dif_pos hd, dif_pos (hdirty_eq ▸ hd)]
+          simp only [hline_eq]
+        · rw [dif_neg hd, dif_neg (by rwa [hdirty_eq] at hd)]
+          rw [hDRV_post, hDRV_pre]; rfl
       · -- dir: syncDir with same lines
         show (refMapShared n ⟨sh', ls'⟩).dir = (refMapShared n s).dir
         simp only [refMapShared, hcur', hcur]
