@@ -925,8 +925,25 @@ theorem refMap_recvAcquireAtManager_next {n : Nat}
   · -- RecvAcquireBlockAtManager
     rcases hblock with ⟨htxn, hpga, hpra, hallC, hrelIF, hchanA, hpermN, hlegal, hcases, hBs, hs'⟩
     rcases hcases with ⟨hDirty, hresB⟩ | ⟨hNoDirty, hCached, hresB⟩ | ⟨hAllInv, hresT⟩
-    · -- dirty case: needs dirty-source infrastructure
-      sorry
+    · -- dirty case: hasDirtyOther, grow.result = .B
+      obtain ⟨j, hji, hdj⟩ := hDirty
+      subst hs'
+      simp only [SymSharedSpec.toSpec]
+      refine ⟨i, .acquireBlock, ?_, ?_, ?_, ?_, ?_⟩
+      · simp [refMap, refMapShared, htxn]
+      · simp [refMap, refMapShared, hpga]
+      · simp [refMap, refMapShared, htxn, hpra]
+        exact queuedReleaseIdx_eq_none_of_all_chanC_none s hallC
+      · simp [refMap, refMapLine, htxn, hpermN]
+      · -- dirty sub-case (first disjunct)
+        left
+        refine ⟨j, hji, ?_, ?_⟩
+        · simp [refMap, refMapLine, htxn]; exact hdj
+        · -- s' = acquireBlockDirtyState (refMap n s) i j
+          apply SymState.ext
+          · -- shared equality
+            sorry -- field-by-field shared state matching
+          · exact refMap_recvAcquireState_locals_eq s i .acquireBlock grow source htxn
     · -- branch case: ¬hasDirtyOther ∧ hasCachedOther ∧ result = .B
       exact refMap_recvAcquireBlock_branch_next hinv
         ⟨htxn, hpga, hpra, hallC, hrelIF, hchanA, hpermN, hlegal,

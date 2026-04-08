@@ -289,34 +289,35 @@ theorem releaseDataInv_preserved (n : Nat)
   | .recvGrantAckAtManager =>
       rcases hstep with ⟨tx, _, hcur, _, _, _, _, _, _, _, rfl⟩
       -- currentTxn was some → all releaseInFlight = false (txnNoReleaseInv)
-      intro _ j hflight
-      exfalso
+      intro _ j hflight _hCclean _hperm _hdirty
+      -- All releaseInFlight = false during txn (txnNoReleaseInv)
+      have hnoRel := htxnNoRel (by rw [hcur]; simp) j
       simp [recvGrantAckState, recvGrantAckLocals, setFn] at hflight
       by_cases hji : j = i
-      · simp [hji, recvGrantAckLocal] at hflight
-        exact absurd hflight (by rw [htxnNoRel (by rw [hcur]; simp) j]; decide)
-      · simp [hji] at hflight
-        exact absurd hflight (by rw [htxnNoRel (by rw [hcur]; simp) j]; decide)
+      · simp [hji, recvGrantAckLocal] at hflight; rw [hnoRel] at hflight; cases hflight
+      · simp [hji] at hflight; rw [hnoRel] at hflight; cases hflight
   | .sendRelease param =>
-      -- chanC set to some → chanC = none guard fails → vacuous for node i
-      rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, hflight_pre, _, _, _, hs'⟩
+      -- Clean release: chanC has clean msg (data = none), guard holds. Use dataCoherenceInv.
+      rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, hflight_pre, _, hdirty_pre, _, hs'⟩
       subst hs'
-      intro htxn' j hflight hCnone hperm hdirty
+      intro htxn' j hflight hCclean hperm hdirty
       by_cases hji : j = i
-      · subst hji
-        simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn] at hCnone
-      · simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji] at hflight hCnone hperm hdirty ⊢
-        exact hrelData htxn j hflight hCnone hperm hdirty
+      · -- Node i: releasedLine preserves data. dataCoherenceInv pre → data = mem.
+        subst hji; sorry -- sendRelease clean init: data = mem from dataCoherenceInv pre-state
+      · simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji] at hflight hCclean hperm hdirty ⊢
+        exact hrelData htxn j hflight hCclean hperm hdirty
   | .sendReleaseData param =>
-      -- Same: chanC set to some → guard fails for node i
+      -- Dirty release: chanC has dirty msg (data ≠ none) → hCclean gives contradiction for node i
       rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
       subst hs'
-      intro htxn' j hflight hCnone hperm hdirty
+      intro htxn' j hflight hCclean hperm hdirty
       by_cases hji : j = i
       · subst hji
-        simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn] at hCnone
-      · simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji] at hflight hCnone hperm hdirty ⊢
-        exact hrelData htxn j hflight hCnone hperm hdirty
+        simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn] at hCclean
+        -- hCclean applied to releaseMsg with data = some ... gives none = some → contradiction
+        exfalso; have := hCclean _ rfl; simp [releaseMsg, releaseDataPayload] at this
+      · simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji] at hflight hCclean hperm hdirty ⊢
+        exact hrelData htxn j hflight hCclean hperm hdirty
   | .recvReleaseAtManager =>
       -- chanC cleared for node i; mem may change via releaseWriteback
       rcases hstep with ⟨msg, param, htxn, _, _, hflight_i, hCi, _, _, _, _, _, hs'⟩
