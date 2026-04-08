@@ -242,7 +242,9 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
         subst hji
         simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal,
           recvReleaseAckShared, setFn] at hvalid hdirtyK ⊢
-        exact hrelData' htxn i hflight hvalid hdirtyK
+        -- chanC i = none: from releaseUniqueInv (pendingReleaseAck ≠ none → all chanC = none)
+        have hCnone := (hrelUniq htxn).1 (by rw [hrel]; simp)
+        exact hrelData' htxn i hflight (hCnone i) hvalid hdirtyK
       · -- Node j ≠ i: unchanged
         have hlineEq : (recvReleaseAckLocals s i hvalidJ).line = (s.locals hvalidJ).line := by
           simp [recvReleaseAckLocals, setFn, hji, recvReleaseAckLocal]

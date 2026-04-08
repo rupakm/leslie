@@ -202,9 +202,10 @@ theorem init_txnTransferMemInv (n : Nat) :
 def releaseDataInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   s.shared.currentTxn = none →
     ∀ i : Fin n, (s.locals i).releaseInFlight = true →
-      (s.locals i).line.perm ≠ .N →
-        (s.locals i).line.dirty = false →
-          (s.locals i).line.data = s.shared.mem
+      (s.locals i).chanC = none →
+        (s.locals i).line.perm ≠ .N →
+          (s.locals i).line.dirty = false →
+            (s.locals i).line.data = s.shared.mem
 
 theorem init_releaseDataInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s →
