@@ -87,13 +87,35 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
   | .recvGrantAckAtManager =>
       sorry -- TODO: needs txnDataInv + txnLineInv to derive data coherence
   | .sendRelease param =>
-      sorry -- TODO: complex case with releasedLine
+      rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, hflight, _, _, _, hs'⟩
+      subst hs'; intro hdirtyK
+      -- sendRelease sets releaseInFlight := true at node i; shared unchanged
+      by_cases hji : hvalidJ = i
+      · -- node i: releaseInFlight = true in post-state, contradicts hdirtyJ
+        subst hji; simp [sendReleaseState_releaseInFlight] at hdirtyJ
+      · -- other nodes: unchanged, use hdata
+        simp only [sendReleaseState_releaseInFlight, hji, ite_false] at hdirtyJ
+        have hln : ((sendReleaseState s i param false).locals hvalidJ).line =
+            (s.locals hvalidJ).line := by simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji]
+        rw [hln] at hdirtyK ⊢
+        simpa [sendReleaseState] using hdata (by simpa [sendReleaseState] using j) hvalidJ hdirtyJ hdirtyK
   | .sendReleaseData param =>
-      sorry -- TODO: complex case with releaseInFlight
+      rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, hflight, _, _, hs'⟩
+      subst hs'; intro hdirtyK
+      -- sendReleaseData sets releaseInFlight := true at node i; shared unchanged
+      by_cases hji : hvalidJ = i
+      · -- node i: releaseInFlight = true in post-state, contradicts hdirtyJ
+        subst hji; simp [sendReleaseState_releaseInFlight] at hdirtyJ
+      · -- other nodes: unchanged, use hdata
+        simp only [sendReleaseState_releaseInFlight, hji, ite_false] at hdirtyJ
+        have hln : ((sendReleaseState s i param true).locals hvalidJ).line =
+            (s.locals hvalidJ).line := by simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji]
+        rw [hln] at hdirtyK ⊢
+        simpa [sendReleaseState] using hdata (by simpa [sendReleaseState] using j) hvalidJ hdirtyJ hdirtyK
   | .recvReleaseAtManager =>
       sorry -- TODO: needs cleanChanCInv guard handling
   | .recvReleaseAckAtMaster =>
-      sorry -- TODO: pre has pendingReleaseAck = some, needs different proof strategy
+      sorry -- TODO: recvReleaseAckLocal clears releaseInFlight; needs release cycle invariant
   | .store v =>
       rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, rfl⟩
       simp [setFn, storeLocal] at j hdirtyJ ⊢
