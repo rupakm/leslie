@@ -318,10 +318,101 @@ theorem refMap_sendGrant_acquirePerm_next {n : Nat}
     {s s' : SymState HomeState NodeState n} {i : Fin n}
     (hfull : fullInv n s) (hpre : preLinesNoDirtyInv n s)
     (htxnLine : txnLineInv n s) (htxnData : txnDataInv n s) (hplan : txnPlanInv n s)
+    (husedDirty : usedDirtySourceInv n s) (hpreWF : preLinesWFInv n s)
     (hstep : SendGrantToRequester s s' i) :
     ∀ {tx : ManagerTxn}, s.shared.currentTxn = some tx → tx.kind = .acquirePerm →
       (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  sorry
+  intro tx hcur hkind
+  rcases hstep with ⟨tx', hcur', hreq, hphase, hgrant, hrel, _, _, _, hs'⟩
+  rw [hcur] at hcur'; cases hcur'
+  simp only [SymSharedSpec.toSpec, TileLink.Atomic.tlAtomic]
+  have hreqLt : tx.requester < n := by
+    rcases (by simpa [txnPlanInv, hcur] using hplan) with ⟨hlt, _⟩; exact hlt
+  let req : Fin n := ⟨tx.requester, hreqLt⟩
+  have hreqi : req = i := Fin.ext hreq
+  have hplanP := txnPlanInv_acquirePerm hplan hcur hkind
+  have htxnD := by simpa [txnDataInv, hcur] using htxnData
+  refine ⟨req, .finishGrant, ?_⟩
+  let pg := absPendingGrantMeta tx
+  refine ⟨pg, ?_, ?_, ?_, ?_, ?_⟩
+  · simp [refMap, pg, hcur]
+  · simp [refMap, hgrant]
+  · simp [refMap, refMapShared, hcur, hrel, show tx.phase ≠ .grantPendingAck from by simp [hphase]]
+  · simp [pg, absPendingGrantMeta, req]
+  · -- Case split on usedDirtySource for perm sub-case
+    have hnotGPA : tx.phase ≠ .grantPendingAck := by simp [hphase]
+    cases husedDS : tx.usedDirtySource with
+    | false =>
+      -- Perm-clean (5th disjunct): ¬hasDirtyOther, usedDirtySource = false
+      right; right; right; right
+      have hNoDirty : ¬TileLink.Atomic.hasDirtyOther n req (refMap n s) := by
+        intro ⟨j, hji, hdj⟩
+        simp only [refMap, refMapLine, hcur, hnotGPA, ite_false] at hdj
+        -- hdj : (tx.preLines j.1).dirty = true
+        have hwf := by simpa [preLinesWFInv, hcur] using hpreWF
+        have hpermT := (hwf j.1 j.is_lt).1 hdj |>.1
+        by_cases hjr : j.1 = tx.requester
+        · -- requester: perm ≠ .T contradicts dirty → perm .T
+          rw [hjr] at hpermT; exact absurd hpermT hplanP.2.2
+        · -- non-requester: usedDirtySourceInv → dirty = false
+          have huds := by simpa [usedDirtySourceInv, hcur] using husedDirty
+          rw [huds husedDS j.1 j.is_lt hjr] at hdj; cases hdj
+      refine ⟨hNoDirty, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+      · simp [pg, absPendingGrantMeta, absGrantKind, hkind]
+      · simp [pg, absPendingGrantMeta, hplanP.1]
+      · simp [pg, absPendingGrantMeta, husedDS]
+      · -- transferVal = mem
+        simp only [pg, absPendingGrantMeta, refMap, refMapShared, hcur, hnotGPA, ite_false, husedDS]
+        exact htxnD.1 husedDS
+      · -- probesNeeded = cachedProbeMask
+        simp only [pg, absPendingGrantMeta]; rw [hreqi, hplanP.2.1]
+        exact (atomic_cachedProbeMask_refMap_snapshot_eq hcur hreq hnotGPA).symm
+      · -- probesRemaining = cachedProbeMask
+        simp only [pg, absPendingGrantMeta, hnotGPA, ite_false]; rw [hreqi, hplanP.2.1]
+        exact (atomic_cachedProbeMask_refMap_snapshot_eq hcur hreq hnotGPA).symm
+      · -- s' = finishGrantPermCleanState
+        rw [hs', hreqi]
+        apply SymState.ext
+        · exact refMapShared_sendGrant_acquirePerm_eq hfull htxnLine htxnData hplan hcur hreq hphase hrel hkind
+        · exact refMap_sendGrant_acquirePerm_locals_eq hfull htxnLine hplan hcur hreq hphase hkind
+    | true =>
+      -- Perm-dirty (4th disjunct): ∃ dirty j, usedDirtySource = true
+      right; right; right; left
+      obtain ⟨k, hklt, hk_dirty, htv_k⟩ := htxnD.2.1 husedDS
+      -- k ≠ requester (dirty → perm .T, but requester perm ≠ .T)
+      have hwf_pre := by simpa [preLinesWFInv, hcur] using hpreWF
+      have hkne : k ≠ tx.requester := by
+        intro heq
+        have hpermT := (hwf_pre k hklt).1 hk_dirty |>.1
+        rw [heq] at hpermT; exact absurd hpermT hplanP.2.2
+      let j : Fin n := ⟨k, hklt⟩
+      have hji : j ≠ req := by intro h; exact hkne (congrArg Fin.val h)
+      refine ⟨j, hji, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+      · -- (refMap n s).locals j dirty
+        simp only [refMap, refMapLine, hcur, hnotGPA, ite_false]; exact hk_dirty
+      · simp [pg, absPendingGrantMeta, absGrantKind, hkind]
+      · simp [pg, absPendingGrantMeta, hplanP.1]
+      · simp [pg, absPendingGrantMeta, husedDS]
+      · -- transferVal = (refMap n s).locals j .data
+        simp only [pg, absPendingGrantMeta, refMap, refMapLine, hcur, hnotGPA, ite_false]
+        exact htv_k
+      · -- probesNeeded = cachedProbeMask
+        simp only [pg, absPendingGrantMeta]; rw [hreqi, hplanP.2.1]
+        exact (atomic_cachedProbeMask_refMap_snapshot_eq hcur hreq hnotGPA).symm
+      · -- probesRemaining = cachedProbeMask
+        simp only [pg, absPendingGrantMeta, hnotGPA, ite_false]; rw [hreqi, hplanP.2.1]
+        exact (atomic_cachedProbeMask_refMap_snapshot_eq hcur hreq hnotGPA).symm
+      · -- s' = finishGrantPermDirtyState
+        rw [hs', hreqi]
+        -- Key: (refMap n s).shared.mem = ((refMap n s).locals j).data at grantReady+dirty
+        have hmem_eq : (refMap n s).shared.mem = ((refMap n s).locals j).data := by
+          simp only [refMap, refMapShared, refMapLine, hcur, hnotGPA, ite_false, husedDS, ite_true]
+          exact htv_k
+        apply SymState.ext
+        · -- shared: unfold finishGrantPermDirtyState, rewrite mem to match acquirePerm_eq
+          have h := refMapShared_sendGrant_acquirePerm_eq hfull htxnLine htxnData hplan hcur hreq hphase hrel hkind
+          simp only [TileLink.Atomic.finishGrantPermDirtyState, ← hmem_eq]; exact h
+        · exact refMap_sendGrant_acquirePerm_locals_eq hfull htxnLine hplan hcur hreq hphase hkind
 
 theorem cachedProbeMask_eq_noProbeMask_of_allOthersInvalid {n : Nat}
     {s : SymState HomeState NodeState n} {i : Fin n}

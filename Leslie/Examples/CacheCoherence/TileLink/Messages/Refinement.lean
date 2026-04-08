@@ -786,7 +786,7 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
                  exact refMap_sendGrant_block_branch_next hfull hcleanData htxnLine hpreNoDirty htxnData hplan hstep' hcur htx hperm
           | T => exact refMap_sendGrant_block_tip_next hfull htxnLine htxnData hplan hreqPerm hstep' hcur htx hperm
       | acquirePerm =>
-          exact refMap_sendGrant_acquirePerm_next hfull hpreNoDirty htxnLine htxnData hplan hstep' hcur htx
+          exact refMap_sendGrant_acquirePerm_next hfull hpreNoDirty htxnLine htxnData hplan husedDirty hpreWF hstep' hcur htx
   | .recvGrantAtMaster =>
       right; exact (refMap_recvGrantAtMaster_eq hstep).symm
   | .recvGrantAckAtManager =>
