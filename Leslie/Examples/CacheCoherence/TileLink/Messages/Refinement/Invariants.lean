@@ -196,6 +196,25 @@ theorem init_txnTransferMemInv (n : Nat) :
   intro s ⟨⟨_, _, htxn, _, _, _⟩, _⟩
   simp [txnTransferMemInv, htxn]
 
+/-- During a release cycle (releaseInFlight = true), clean non-invalid lines
+    match shared memory. This bridges the gap in dataCoherenceInv which guards
+    on releaseInFlight = false. -/
+def releaseDataInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
+  s.shared.currentTxn = none →
+    ∀ i : Fin n, (s.locals i).releaseInFlight = true →
+      (s.locals i).line.perm ≠ .N →
+        (s.locals i).line.dirty = false →
+          (s.locals i).line.data = s.shared.mem
+
+theorem init_releaseDataInv (n : Nat) :
+    ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s →
+      releaseDataInv n s := by
+  intro s ⟨⟨_, _, htxn, _, _, _⟩, hlocals⟩
+  simp [releaseDataInv, htxn]
+  intro i hflight
+  have ⟨_, _, _, _, _, _, _, hrel, _⟩ := hlocals i
+  simp_all
+
 structure StrongRefinementInv (n : Nat) (s : SymState HomeState NodeState n) : Prop where
   ref : RefinementInv n s
   txnLine : txnLineInv n s
