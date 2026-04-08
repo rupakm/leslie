@@ -465,6 +465,7 @@ theorem txnDataInv_preserved (n : Nat)
     (hfull : fullInv n s) (hdirtyEx : dirtyExclusiveInv n s)
     (htxnData : txnDataInv n s) (hcleanC : cleanChanCInv n s)
     (hpreNoDirty : preLinesNoDirtyInv n s) (husedDirty : usedDirtySourceInv n s)
+    (hdirtyOwner : dirtyOwnerExistsInv n s) (hpreWF : preLinesWFInv n s)
     (htxnTM : txnTransferMemInv n s)
     (hnext : (tlMessages.toSpec n).next s s') :
     txnDataInv n s' := by
@@ -528,12 +529,53 @@ theorem txnDataInv_preserved (n : Nat)
         · -- Part 3: grantReady ∨ grantPendingAck → transferVal = newMem
           intro hgr
           rw [hdata]; simp only [probeAckDataOfLine]
-          -- TODO: use txnTransferMemInv to close this.
-          -- Clean case: need tx.transferVal = s.shared.mem from txnTransferMemInv
-          -- Dirty case: both sides reduce to preLines[i].data via rfl
-          -- The technical issue is that the initial simp consumed msg.data, making
-          -- rw [hdata] inapplicable. Need to restructure the outer proof.
-          sorry
+          by_cases hdirtyPre : (tx.preLines i.1).dirty = true
+          · -- Dirty probeAck: both sides reduce to preLines[i].data
+            simp [hdirtyPre]
+            -- Goal: tx.transferVal = (tx.preLines i.1).data
+            by_cases huds : tx.usedDirtySource = true
+            · obtain ⟨k, hk, _, hk_dirty, htv⟩ := hdirtyOwner tx hcur huds
+              have hpreWF' := by simpa [preLinesWFInv, hcur] using hpreWF
+              have hpreND' := by simpa [preLinesNoDirtyInv, hcur] using hpreNoDirty
+              by_cases hki : k = i.1
+              · rw [hki] at htv; exact htv
+              · exfalso
+                have hpermT_k := (hpreWF' k hk).1 hk_dirty |>.1
+                have hpermN_k := hpreND' i.1 k i.is_lt hk (Ne.symm hki) hdirtyPre
+                rw [hpermT_k] at hpermN_k; cases hpermN_k
+            · exfalso
+              have huds_false : tx.usedDirtySource = false := by
+                cases h : tx.usedDirtySource <;> simp_all
+              exact absurd hdirtyPre (by
+                have := husedDirty tx hcur huds_false i.1 i.isLt hi_ne; rw [this]; simp)
+          · -- Clean probeAck: transferVal and mem unchanged
+            have hdirtyFalse : (tx.preLines i.1).dirty = false := by
+              cases h : (tx.preLines i.1).dirty <;> simp_all
+            simp [probeAckDataOfLine, hdirtyFalse]
+            -- Need tx.transferVal = s.shared.mem
+            by_cases huds_pre : tx.usedDirtySource = true
+            · -- Use txnTransferMemInv
+              simp only [txnTransferMemInv, hcur] at htxnTM
+              apply htxnTM huds_pre
+              -- Show all dirty nodes had probesRemaining = false in pre-state
+              intro k hk hdirty
+              -- k ≠ i (preLines[i] clean)
+              have hki : k ≠ i.1 := by
+                intro heq; rw [heq] at hdirty; rw [hdirtyFalse] at hdirty; cases hdirty
+              -- From hgr: grantReady → all post remaining false → pre remaining[k] false
+              rcases hgr with hgr | hgr
+              · unfold probeAckPhase at hgr
+                split at hgr
+                · rename_i hall_rem
+                  have := hall_rem ⟨k, hk⟩
+                  simp [clearProbeIdx, hki] at this
+                  exact this
+                · cases hgr
+              · unfold probeAckPhase at hgr
+                split at hgr <;> cases hgr
+            · -- usedDirtySource = false: Part 1 gives transferVal = mem
+              simp only [Bool.not_eq_true] at huds_pre
+              exact htd.1 huds_pre
       · rw [hcur] at hcurNone; simp at hcurNone
   | .sendGrantToRequester =>
       rcases hstep with ⟨tx, hcur, _, hphase, _, _, _, _, _, hs'⟩
@@ -1585,7 +1627,7 @@ theorem dirtyReleaseExclusiveInv_preserved (n : Nat)
 theorem refinementInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
     (hinv : strongRefinementInv n s)
-    (htxnTM : txnTransferMemInv n s)
+    (hpreWF : preLinesWFInv n s) (htxnTM : txnTransferMemInv n s)
     (hnext : (tlMessages.toSpec n).next s s') :
     refinementInv n s' := by
   rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, htxnLine, hpreClean, hpreNoDirty, htxnPlan, husedDirty, hdirtyOwner⟩
@@ -1593,7 +1635,7 @@ theorem refinementInv_preserved (n : Nat)
   exact ⟨fullInv_preserved_with_release n s s' hfull htxnLine hnext,
     dirtyExclusiveInv_preserved n s s' hfwd hnext,
     permSwmrInv_preserved n s s' hfwd hnext,
-    txnDataInv_preserved n s s' hfull hdirtyEx htxnData hcleanRel hpreNoDirty husedDirty htxnTM hnext,
+    txnDataInv_preserved n s s' hfull hdirtyEx htxnData hcleanRel hpreNoDirty husedDirty hdirtyOwner hpreWF htxnTM hnext,
     cleanChanCInv_preserved n s s' hfull hdirtyEx hcleanRel hrelUniq hnext,
     releaseUniqueInv_preserved n s s' hfull hdirtyEx hrelUniq hnext,
     dirtyReleaseExclusiveInv_preserved n s s' hfull hdirtyEx hSwmr hdirtyRelEx hnext⟩
