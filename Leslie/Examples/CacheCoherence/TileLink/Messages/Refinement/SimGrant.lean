@@ -139,7 +139,8 @@ theorem preLine_data_eq_mem_of_grantReady_T {n : Nat}
   have hactual : (s.locals j).line = branchAfterProbe (tx.preLines j.1) := by
     rw [hlinej, hprobe]
     simp [hres, hpermT, probeCapOfResult, probedLine]
-  have hdata : (s.locals j).line.data = s.shared.mem := hclean j
+  have hvalid_j : (s.locals j).line.valid = true := by rw [hactual]; rfl
+  have hdata : (s.locals j).line.data = s.shared.mem := hclean j hvalid_j
   simpa [hactual, branchAfterProbe] using hdata
 
 theorem refMapLine_sendGrant_requester_block_branch_eq {n : Nat}

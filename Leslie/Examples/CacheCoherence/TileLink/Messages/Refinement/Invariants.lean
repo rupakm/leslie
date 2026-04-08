@@ -9,7 +9,8 @@ def noDirtyInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   ∀ i : Fin n, (s.locals i).line.dirty = false
 
 def cleanDataInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
-  ∀ i : Fin n, (s.locals i).line.data = s.shared.mem
+  ∀ i : Fin n, (s.locals i).line.valid = true →
+    (s.locals i).line.data = s.shared.mem
 
 /-- At most one dirty line; if one exists, all others have perm = .N. -/
 def dirtyExclusiveInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
@@ -22,8 +23,9 @@ def dirtyExclusiveInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
 def dataCoherenceInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   s.shared.currentTxn = none →
     ∀ i : Fin n, (s.locals i).releaseInFlight = false →
-      (s.locals i).line.dirty = false →
-        (s.locals i).line.data = s.shared.mem
+      (s.locals i).line.valid = true →
+        (s.locals i).line.dirty = false →
+          (s.locals i).line.data = s.shared.mem
 
 def txnDataInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   match s.shared.currentTxn with
@@ -39,7 +41,8 @@ def preLinesCleanInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   match s.shared.currentTxn with
   | none => True
   | some tx => ∀ k : Nat, k < n →
-      (tx.preLines k).dirty = false → (tx.preLines k).data = s.shared.mem
+      (tx.preLines k).valid = true →
+        (tx.preLines k).dirty = false → (tx.preLines k).data = s.shared.mem
 
 def preLinesNoDirtyInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   match s.shared.currentTxn with
@@ -182,7 +185,7 @@ theorem init_noDirtyInv (n : Nat) :
 
 theorem init_cleanDataInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → cleanDataInv n s := by
-  intro s hinit i
+  intro s hinit i hvalid
   rcases hinit with ⟨⟨hmem, _, _, _, _, _⟩, hlocals⟩
   rcases hlocals i with ⟨hline, _, _, _, _, _, _, _, _⟩
   simp [hline, hmem]
@@ -289,7 +292,7 @@ theorem init_dirtyExclusiveInv (n : Nat) :
 
 theorem init_dataCoherenceInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → dataCoherenceInv n s := by
-  intro s hinit _ i _ hdirty
+  intro s hinit _ i _ _ hdirty
   rcases hinit with ⟨⟨hmem, _, _, _, _, _⟩, hlocals⟩
   rcases hlocals i with ⟨hline, _, _, _, _, _, _, _, _⟩
   simp [hline, hmem]

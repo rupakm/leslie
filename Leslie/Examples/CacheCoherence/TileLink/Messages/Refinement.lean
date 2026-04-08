@@ -54,11 +54,15 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
   intro j hvalidJ hdirtyJ
   match a with
   | .sendAcquireBlock grow source =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, rfl⟩
-      simp only [setFn] at j hdirtyJ ⊢; split at hdirtyJ <;> (split at ⊢ <;> simp_all [dataCoherenceInv])
+      rcases hstep with ⟨htxn, _, _, _, _, _, _, rfl⟩
+      intro hvalid hdirtyK
+      simp only [setFn] at *
+      split at ⊢ <;> simp_all [dataCoherenceInv]
   | .sendAcquirePerm grow source =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, rfl⟩
-      simp only [setFn] at j hdirtyJ ⊢; split at hdirtyJ <;> (split at ⊢ <;> simp_all [dataCoherenceInv])
+      rcases hstep with ⟨htxn, _, _, _, _, _, _, rfl⟩
+      intro hvalid hdirtyK
+      simp only [setFn] at *
+      split at ⊢ <;> simp_all [dataCoherenceInv]
   | .recvAcquireAtManager =>
       -- lines/mem unchanged
       rcases hstep with hblk | hperm
@@ -67,28 +71,27 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
       · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, _, rfl⟩
         simp [recvAcquireState, recvAcquireLocals, recvAcquireShared, setFn] at j hdirtyJ ⊢
   | .recvProbeAtMaster =>
-      -- recvProbe requires currentTxn = some tx. Post-state also has currentTxn = some.
-      -- dataCoherenceInv has guard currentTxn = none, so it's vacuously true.
       rcases hstep with ⟨tx, _, hcur, _, _, _, _, _, _, _, ⟨_, rfl⟩⟩
       simp [recvProbeState, hcur] at j
   | .recvProbeAckAtManager =>
-      -- recvProbeAck: currentTxn = some tx → dataCoherenceInv vacuously true
       rcases hstep with ⟨tx, msg, hcur, _, _, _, hC, _, _, rfl⟩
       simp [recvProbeAckState, recvProbeAckShared, hcur] at j
   | .sendGrantToRequester =>
-      -- sendGrant: currentTxn = some tx → dataCoherenceInv vacuously true
       rcases hstep with ⟨tx, hcur, _, _, _, _, _, _, _, rfl⟩
       simp [sendGrantState, sendGrantShared, hcur] at j
   | .recvGrantAtMaster =>
-      -- recvGrant requires currentTxn = some tx. Post-state has currentTxn = some.
-      -- dataCoherenceInv has guard currentTxn = none, so it's vacuously true.
       rcases hstep with ⟨tx, _, hcur, _, _, _, _, _, _, _, _, rfl⟩
       simp [recvGrantState, recvGrantShared, hcur] at j
   | .recvGrantAckAtManager =>
-      sorry -- TODO: needs txnDataInv + txnLineInv to derive data coherence
+      -- recvGrantAck: currentTxn transitions from some to none.
+      -- With valid guard: invalid nodes (perm .N) are vacuously true.
+      rcases hstep with ⟨tx, msg, hcur, hreq, hphase, _, _, _, _, hs'⟩
+      simp only [hs', recvGrantAckState, recvGrantAckShared, recvGrantAckLocals] at j hdirtyJ ⊢
+      intro hvalid hdirtyK
+      sorry -- TODO: needs txnLineInv reasoning about valid nodes at grantPendingAck
   | .sendRelease param =>
       rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, hflight, _, _, _, hs'⟩
-      subst hs'; intro hdirtyK
+      subst hs'; intro hvalid hdirtyK
       -- sendRelease sets releaseInFlight := true at node i; shared unchanged
       by_cases hji : hvalidJ = i
       · -- node i: releaseInFlight = true in post-state, contradicts hdirtyJ
@@ -97,11 +100,11 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
         simp only [sendReleaseState_releaseInFlight, hji, ite_false] at hdirtyJ
         have hln : ((sendReleaseState s i param false).locals hvalidJ).line =
             (s.locals hvalidJ).line := by simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji]
-        rw [hln] at hdirtyK ⊢
-        simpa [sendReleaseState] using hdata (by simpa [sendReleaseState] using j) hvalidJ hdirtyJ hdirtyK
+        rw [hln] at hvalid hdirtyK ⊢
+        simpa [sendReleaseState] using hdata (by simpa [sendReleaseState] using j) hvalidJ hdirtyJ hvalid hdirtyK
   | .sendReleaseData param =>
       rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, hflight, _, _, hs'⟩
-      subst hs'; intro hdirtyK
+      subst hs'; intro hvalid hdirtyK
       -- sendReleaseData sets releaseInFlight := true at node i; shared unchanged
       by_cases hji : hvalidJ = i
       · -- node i: releaseInFlight = true in post-state, contradicts hdirtyJ
@@ -110,33 +113,66 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
         simp only [sendReleaseState_releaseInFlight, hji, ite_false] at hdirtyJ
         have hln : ((sendReleaseState s i param true).locals hvalidJ).line =
             (s.locals hvalidJ).line := by simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji]
-        rw [hln] at hdirtyK ⊢
-        simpa [sendReleaseState] using hdata (by simpa [sendReleaseState] using j) hvalidJ hdirtyJ hdirtyK
+        rw [hln] at hvalid hdirtyK ⊢
+        simpa [sendReleaseState] using hdata (by simpa [sendReleaseState] using j) hvalidJ hdirtyJ hvalid hdirtyK
   | .recvReleaseAtManager =>
-      sorry -- TODO: needs cleanChanCInv guard handling
+      -- recvRelease: shared.mem may change (dirty writeback). With valid guard,
+      -- invalid nodes are vacuously true. For valid nodes j ≠ i:
+      -- Under SWMR, the releaser i has perm ≠ .N, so if i is dirty with perm .T,
+      -- all other valid nodes have perm .B (or .N → invalid → vacuous).
+      -- Valid clean nodes with perm .B had data = old mem. But if writeback
+      -- changed mem, we need data = new mem. Since the releasing node's dirty data
+      -- is written back as new mem, and a .B node's data = old mem = the value
+      -- before the dirty store, while new mem = the dirty data ≠ old mem.
+      -- Actually: with the valid guard, the only valid non-releasing nodes have
+      -- perm .B, so they have data = shared.mem (from pre-state dataCoherenceInv).
+      -- But recvRelease changes shared.mem! So this still needs careful reasoning.
+      sorry -- TODO: needs reasoning about valid nodes during release writeback
   | .recvReleaseAckAtMaster =>
-      sorry -- TODO: recvReleaseAckLocal clears releaseInFlight; needs release cycle invariant
+      -- recvReleaseAck: clears releaseInFlight for node i. shared.mem unchanged.
+      -- For node i: was releasing, now releaseInFlight = false. Need valid → dirty = false → data = mem.
+      -- For j ≠ i: unchanged, use hdata.
+      sorry -- TODO: needs release cycle reasoning
   | .store v =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, rfl⟩
-      simp [setFn, storeLocal] at j hdirtyJ ⊢
-      split at hdirtyJ <;> (split at ⊢ <;> simp_all [dataCoherenceInv, storeLocal])
+      rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      intro hvalid hdirtyK
+      simp only [setFn, storeLocal] at *
+      split at ⊢ <;> simp_all [dataCoherenceInv, storeLocal]
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
       exact hdata j hvalidJ hdirtyJ
   | .uncachedGet source =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, rfl⟩
-      simp [setFn] at j hdirtyJ ⊢
-      split at hdirtyJ <;> (split at ⊢ <;> simp_all [dataCoherenceInv])
+      rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, rfl⟩
+      intro hvalid hdirtyK
+      simp only [setFn] at *
+      split at ⊢ <;> simp_all [dataCoherenceInv]
   | .uncachedPut source v =>
-      sorry -- TODO: uncachedPut changes mem, needs hallN to show dirty=false for all
+      -- uncachedPut: all nodes have perm .N (from guard). Under lineWFInv,
+      -- perm .N → valid = false. So the valid = true hypothesis is contradicted.
+      rcases hstep with ⟨htxn, _, _, hallN, _, _, _, _, _, _, _, rfl⟩
+      simp only [setFn] at j hdirtyJ ⊢
+      intro hvalid
+      -- s'.locals hvalidJ has same line as s.locals hvalidJ (uncachedPut only changes chanA/pendingSource)
+      have hpermN : (s.locals hvalidJ).line.perm = .N := hallN hvalidJ
+      have hvalidFalse : (s.locals hvalidJ).line.valid = false :=
+        (hfull.1.1 hvalidJ).2.2 hpermN |>.1
+      -- Post-state line is unchanged for all nodes (setFn only changes chanA/pendingSource)
+      have hlineEq : (if hvalidJ = i then { (s.locals i) with chanA := some (mkPutMsg source), pendingSource := some source } else s.locals hvalidJ).line = (s.locals hvalidJ).line := by
+        split
+        · next h => subst h; rfl
+        · rfl
+      rw [hlineEq] at hvalid
+      rw [hvalidFalse] at hvalid; cases hvalid
   | .recvUncachedAtManager =>
-      rcases hstep with ⟨_, _, _, msg, _, _, rfl⟩
-      simp [setFn] at j hdirtyJ ⊢
-      split at hdirtyJ <;> (split at ⊢ <;> simp_all [dataCoherenceInv])
+      rcases hstep with ⟨htxn, _, _, msg, _, _, rfl⟩
+      intro hvalid hdirtyK
+      simp only [setFn] at *
+      split at ⊢ <;> simp_all [dataCoherenceInv]
   | .recvAccessAckAtMaster =>
       rcases hstep with ⟨msg, _, _, rfl⟩
-      simp [setFn] at j hdirtyJ ⊢
-      split at hdirtyJ <;> (split at ⊢ <;> simp_all [dataCoherenceInv])
+      intro hvalid hdirtyK
+      simp only [setFn] at *
+      split at ⊢ <;> simp_all [dataCoherenceInv]
 
 theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :

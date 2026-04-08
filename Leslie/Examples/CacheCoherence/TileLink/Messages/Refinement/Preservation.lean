@@ -706,18 +706,20 @@ theorem preLinesCleanInv_preserved (n : Nat)
       · rcases hblk with ⟨grow, source, htxn, _, _, _, hnoFlight, _, _, _, _, hrest⟩
         rcases hrest with ⟨_, hs'⟩
         rw [hs']
-        intro k hk hdirty
+        intro k hk hvalid hdirty
+        have hvalidK : (s.locals ⟨k, hk⟩).line.valid = true := by simpa [plannedTxn, hk] using hvalid
         have hdirtyK : (s.locals ⟨k, hk⟩).line.dirty = false := by simpa [plannedTxn, hk] using hdirty
         have hflightK : (s.locals ⟨k, hk⟩).releaseInFlight = false := hnoFlight ⟨k, hk⟩
-        have hdata := hclean htxn ⟨k, hk⟩ hflightK hdirtyK
+        have hdata := hclean htxn ⟨k, hk⟩ hflightK hvalidK hdirtyK
         simpa [plannedTxn, hk] using hdata
       · rcases hperm with ⟨grow, source, htxn, _, _, _, hnoFlight, _, _, _, hrest⟩
         rcases hrest with ⟨_, hs'⟩
         rw [hs']
-        intro k hk hdirty
+        intro k hk hvalid hdirty
+        have hvalidK : (s.locals ⟨k, hk⟩).line.valid = true := by simpa [plannedTxn, hk] using hvalid
         have hdirtyK : (s.locals ⟨k, hk⟩).line.dirty = false := by simpa [plannedTxn, hk] using hdirty
         have hflightK : (s.locals ⟨k, hk⟩).releaseInFlight = false := hnoFlight ⟨k, hk⟩
-        have hdata := hclean htxn ⟨k, hk⟩ hflightK hdirtyK
+        have hdata := hclean htxn ⟨k, hk⟩ hflightK hvalidK hdirtyK
         simpa [plannedTxn, hk] using hdata
   | .recvProbeAtMaster =>
       rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, _, hs'⟩

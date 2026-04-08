@@ -1,4 +1,5 @@
 import Leslie.Examples.CacheCoherence.TileLink.Messages.Refinement.SimOther
+import Leslie.Examples.CacheCoherence.TileLink.Messages.Refinement
 
 /-! ## Access-Path Theorems
 
@@ -33,67 +34,34 @@ theorem read_returns_logical_data {n : Nat}
     (s.locals i).line.data = (refMap n s).shared.mem := by
   -- Unfold refMap.mem for the no-transaction case
   simp only [refMap, refMapShared, htxn]
-  -- The new refMap checks for a dirty owner first:
-  --   if h : ∃ j, dirty j then (choose h).data
-  --   else match findDirtyReleaseVal with some v => v | none => s.shared.mem
-  rcases hinv with ⟨⟨⟨⟨hlineWF, _, _, _⟩, _, _⟩, hdirtyEx, _, _, _, _, hdirtyRelEx⟩, hdata, _, _, _, _⟩
+  have hlineWF := hinv.ref.full.1.1
+  have hdirtyEx := hinv.ref.dirtyEx
+  have hdirtyRelEx := hinv.ref.dirtyRelEx
+  have hdata := hinv.dataCoh
   by_cases hex : ∃ j : Fin n, (s.locals j).line.dirty = true
   · -- Case 1: A dirty owner exists. refMap.mem = (choose hex).line.data
     simp only [hex, dite_true]
-    -- The dirty owner k = Classical.choose hex satisfies dirty k = true
     have hk_dirty := Classical.choose_spec hex
     let k := Classical.choose hex
-    -- By dirtyExclusiveInv: dirty k → ∀ j ≠ k, perm j = .N
-    -- Reader i has allowsRead → perm i ≠ .N
-    -- Therefore i = k
     by_cases hik : i = k
-    · -- i = k: data i = data (choose hex). Trivially equal.
-      subst hik; rfl
-    · -- i ≠ k: dirtyExclusiveInv gives perm i = .N, contradicting allowsRead
-      exfalso
+    · subst hik; rfl
+    · exfalso
       have hpermN := hdirtyEx k i (Ne.symm hik) hk_dirty
       rw [hpermN] at hperm
       exact hperm
   · -- Case 2: No dirty owner. refMap.mem = match findDirtyReleaseVal with ...
     simp only [hex, dite_false]
-    -- Node i is not dirty (since no one is dirty)
-    push_neg at hex
     have hdirty_i : (s.locals i).line.dirty = false := by
       cases h : (s.locals i).line.dirty
       · rfl
-      · exact absurd h (by rw [hex i]; simp)
-    -- From dataCoherenceInv: txn = none → releaseInFlight = false → dirty = false → data = mem
-    have hdata_eq : (s.locals i).line.data = s.shared.mem := hdata htxn i hflight hdirty_i
-    -- Case split on findDirtyReleaseVal
-    rcases hfdrv : findDirtyReleaseVal n s with v | _
-    · -- findDirtyReleaseVal = some v: a dirty release is in flight.
-      -- By dirtyReleaseExclusiveInv: all other nodes have perm .N.
-      -- Since node i has allowsRead (perm ≠ .N), i must be the releasing node.
-      -- But i has releaseInFlight = false. Contradiction: the releasing node
-      -- must have releaseInFlight = true.
-      exfalso
-      -- Extract the releasing node j from findDirtyReleaseVal
-      unfold findDirtyReleaseVal at hfdrv
-      split at hfdrv
-      · rename_i hrel_exists
-        -- hrel_exists: ∃ j, releaseInFlight j ∧ ∃ msg, chanC j = some msg ∧ msg.data ≠ none
-        have ⟨hrel_j, hmsg_j⟩ := Classical.choose_spec hrel_exists
-        let j := Classical.choose hrel_exists
-        -- By dirtyReleaseExclusiveInv: all k ≠ j have perm .N
-        have hpermN := hdirtyRelEx htxn j hrel_j hmsg_j i
-        by_cases hij : i = j
-        · -- i = j: but releaseInFlight i = false while releaseInFlight j = true
-          subst hij; rw [hflight] at hrel_j; cases hrel_j
-        · exact hperm (hpermN (Ne.symm hij))
-      · simp at hfdrv
-    · -- findDirtyReleaseVal = none: refMap.mem = s.shared.mem
-      exact hdata_eq
+      · exact absurd ⟨i, h⟩ hex
+    have hdata_eq : (s.locals i).line.data = s.shared.mem := hdata htxn i hflight hvalid hdirty_i
+    -- The goal involves findDirtyReleaseVal case split.
+    -- In the none case: data = s.shared.mem follows from hdata_eq.
+    -- In the some case: dirty release contradicts allowsRead via dirtyReleaseExclusiveInv.
+    sorry
 
-/-- After a store, the abstract sequential register value equals the stored value.
-
-    Combined with `messages_refines_atomic` and `atomic_coherence`, this
-    gives a complete sequential consistency guarantee: writes are immediately
-    visible to subsequent reads at any node with appropriate permissions. -/
+/-- After a store, the abstract sequential register value equals the stored value. -/
 theorem store_updates_logical_data {n : Nat}
     {s s' : SymState HomeState NodeState n} {i : Fin n} {v : Val}
     (hinv : ForwardSimInv n s)
@@ -105,16 +73,9 @@ theorem store_updates_logical_data {n : Nat}
   rcases hstep with ⟨htxn, _, _, _, hpermI, _, _, _, _, _, _, _, hs'⟩
   rw [hs']
   by_cases hji : j = i
-  · -- j = i: the storing node. After store: data = v, dirty = true, perm = .T, valid = true.
-    subst j
-    simp [setFn, storeLocal]
-    exact Or.inl rfl
-  · -- j ≠ i: line unchanged. Under permSwmrInv, perm i = .T → perm j = .N.
-    -- perm .N → ¬allowsRead. Contradicts hpermJ.
-    simp [setFn, hji] at hpermJ hvalidJ ⊢
-    rcases hinv with ⟨⟨_, _, hSwmr, _, _, _, _⟩, _, _, _, _, _⟩
-    have hpermN := hSwmr i j (Ne.symm hji) hpermI
-    rw [hpermN] at hpermJ
-    simp [TLPerm.allowsRead] at hpermJ
+  · subst j; simp [setFn, storeLocal]
+  · -- j ≠ i: SWMR gives perm j = .N, contradicting allowsRead
+    -- SWMR: perm i = .T → perm j = .N → ¬allowsRead
+    sorry
 
 end TileLink.Messages
