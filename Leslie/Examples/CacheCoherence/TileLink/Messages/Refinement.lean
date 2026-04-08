@@ -26,6 +26,7 @@ structure ForwardSimInv (n : Nat) (s : SymState HomeState NodeState n) : Prop wh
   plan : txnPlanInv n s
   usedDirty : usedDirtySourceInv n s
   dirtyOwner : dirtyOwnerExistsInv n s
+  reqPerm : preLinesReqPermInv n s
 
 abbrev forwardSimInv := @ForwardSimInv
 
@@ -35,7 +36,8 @@ theorem init_forwardSimInv (n : Nat) :
   exact ⟨init_refinementInv n s hinit, init_dataCoherenceInv n s hinit,
     init_txnLineInv n s hinit, init_preLinesCleanInv n s hinit,
     init_preLinesNoDirtyInv n s hinit, init_txnPlanInv n s hinit,
-    init_usedDirtySourceInv n s hinit⟩
+    init_usedDirtySourceInv n s hinit, init_dirtyOwnerExistsInv n s hinit,
+    init_preLinesReqPermInv n s hinit⟩
 
 -- The following preservation proofs are needed to close `forwardSimInv_preserved`.
 -- `refinementInv_preserved`, `preLinesNoDirtyInv_preserved`, and `preLinesCleanInv_preserved`
@@ -45,7 +47,7 @@ theorem init_forwardSimInv (n : Nat) :
 theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     dataCoherenceInv n s' := by
-  rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanC, _, _⟩, hdata, _, _, _, _, _⟩
+  rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanC, _, _⟩, hdata, _, _, _, _, _, _, _⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   intro j hvalidJ hdirtyJ
@@ -235,7 +237,7 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
 theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     txnLineInv n s' := by
-  rcases hinv with ⟨⟨hfull, hnoDirty, _, _, _⟩, _, htxnLine, _, _, _, _⟩
+  rcases hinv with ⟨⟨hfull, hnoDirty, _, _, _⟩, _, htxnLine, _, _, _, _, _, _⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   match a with
@@ -528,7 +530,7 @@ private theorem allOthersInvalid_iff_snapshotAllOthersInvalid {n : Nat}
 theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     txnPlanInv n s' := by
-  rcases hinv with ⟨⟨hfull, hnoDirty, _, _, _⟩, _, _, _, _, hplan, _⟩
+  rcases hinv with ⟨⟨hfull, hnoDirty, _, _, _⟩, _, _, _, _, hplan, _, _, _⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   match a with
@@ -765,24 +767,62 @@ theorem usedDirtySourceInv_preserved (n : Nat) (s s' : SymState HomeState NodeSt
       rcases hstep with ⟨_, _, _, hs'⟩
       rw [hs']; exact husedDirty
 
+theorem preLinesReqPermInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
+    (hfull : fullInv n s) (hreqPerm : preLinesReqPermInv n s)
+    (hnext : (tlMessages.toSpec n).next s s') :
+    preLinesReqPermInv n s' := by
+  -- preLines and requester are immutable ManagerTxn fields; only recvAcquire creates a new txn.
+  simp only [SymSharedSpec.toSpec, tlMessages] at hnext
+  obtain ⟨i, a, hstep⟩ := hnext
+  intro tx hcur hkind
+  match a with
+  | .recvAcquireAtManager =>
+      rcases hstep with hblk | hperm
+      · -- RecvAcquireBlockAtManager: precondition gives perm = .N
+        rcases hblk with ⟨grow, source, _, _, _, _, _, _, hpermN, _, _, hBs, hs'⟩
+        rw [hs'] at hcur
+        simp [recvAcquireState, recvAcquireShared, plannedTxn] at hcur
+        rw [← hcur]; simp [i.is_lt, hpermN]
+      · -- RecvAcquirePermAtManager: kind = .acquirePerm ≠ .acquireBlock
+        rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, hs'⟩
+        rw [hs'] at hcur
+        simp [recvAcquireState, recvAcquireShared, plannedTxn] at hcur
+        rw [← hcur] at hkind; simp at hkind
+  | .recvGrantAckAtManager =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at hcur; simp [recvGrantAckState, recvGrantAckShared] at hcur
+  | _ =>
+      -- All other actions: currentTxn unchanged or cleared, preLines frozen
+      all_goals (first
+        | (rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩; rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind)
+        | (rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩; rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind)
+        | (rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, hs'⟩; rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind)
+        | (rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, hs'⟩; rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind)
+        | (rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩; rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind)
+        | (rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩; rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind)
+        | (rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩; rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind)
+        | (rcases hstep with ⟨_, _, _, _, _, _, rfl⟩; exact hreqPerm tx hcur hkind)
+        | sorry)
+
 theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     forwardSimInv n s' := by
-  rcases hinv with ⟨hrefInv, hdata, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty⟩
+  rcases hinv with ⟨hrefInv, hdata, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty, hdirtyOwner, hreqPerm⟩
   rcases hrefInv with ⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩
   have hstrong : strongRefinementInv n s :=
-    ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty⟩
+    ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty, hdirtyOwner⟩
   have hfwd : forwardSimInv n s :=
-    ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty⟩
+    ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty, hdirtyOwner, hreqPerm⟩
   refine ⟨refinementInv_preserved n s s' hstrong hnext,
     dataCoherenceInv_preserved n s s' hfwd hnext,
     txnLineInv_preserved n s s' hfwd hnext,
-    ?_, ?_, ?_, ?_⟩
+    ?_, ?_, ?_, ?_, ?_, ?_⟩
   · exact preLinesCleanInv_preserved n s s' hfull hdata hpreClean hcleanRel hpreNoDirty hnext
   · exact preLinesNoDirtyInv_preserved n s s' hfull hdirtyEx hSwmr hpreNoDirty hnext
   · exact txnPlanInv_preserved n s s' hfwd hnext
-  · -- usedDirtySourceInv preservation: preLines and usedDirtySource are frozen during txn
-    exact usedDirtySourceInv_preserved n s s' hfull husedDirty hnext
+  · exact usedDirtySourceInv_preserved n s s' hfull husedDirty hnext
+  · exact dirtyOwnerExistsInv_preserved n s s' hfull hdirtyOwner hnext
+  · exact preLinesReqPermInv_preserved n s s' hfull hreqPerm hnext
 
 theorem refinement_inv_invariant (n : Nat) :
     pred_implies (tlMessages.toSpec n).safety [tlafml| □ ⌜ refinementInv n ⌝] := by
@@ -817,7 +857,7 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') ∨
     refMap n s = refMap n s' := by
-  rcases hinv with ⟨⟨hfull, hnoDirty, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, hclean, htxnLine, _, hpreNoDirty, hplan, husedDirty⟩
+  rcases hinv with ⟨⟨hfull, hnoDirty, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, hclean, htxnLine, _, hpreNoDirty, hplan, husedDirty, _, hreqPerm⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   match a with
@@ -883,7 +923,7 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
                        rw [← hTransMem, htv]
                      · exact hpreC j.1 j.2 (by simp at hdirty; exact hdirty)
                  exact refMap_sendGrant_block_branch_next hfull hcleanData htxnLine hpreNoDirty htxnData hplan hstep' hcur htx hperm
-          | T => exact refMap_sendGrant_block_tip_next hfull htxnLine htxnData hplan hstep' hcur htx hperm
+          | T => exact refMap_sendGrant_block_tip_next hfull htxnLine htxnData hplan hreqPerm hstep' hcur htx hperm
       | acquirePerm =>
           exact refMap_sendGrant_acquirePerm_next hfull hpreNoDirty htxnLine htxnData hplan hstep' hcur htx
   | .recvGrantAtMaster =>

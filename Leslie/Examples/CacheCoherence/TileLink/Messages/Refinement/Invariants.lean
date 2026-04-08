@@ -150,6 +150,18 @@ theorem init_dirtyOwnerExistsInv (n : Nat) :
   intro s ⟨⟨_, _, htxn, _, _, _⟩, _⟩
   intro tx hcur; rw [htxn] at hcur; cases hcur
 
+/-- For acquireBlock, the requester's snapshot permission is .N.
+    This is set at acquire time (precondition perm = .N) and preLines are immutable. -/
+def preLinesReqPermInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
+  ∀ tx, s.shared.currentTxn = some tx → tx.kind = .acquireBlock →
+    (tx.preLines tx.requester).perm = .N
+
+theorem init_preLinesReqPermInv (n : Nat) :
+    ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s →
+      preLinesReqPermInv n s := by
+  intro s ⟨⟨_, _, htxn, _, _, _⟩, _⟩
+  intro tx hcur; rw [htxn] at hcur; cases hcur
+
 structure StrongRefinementInv (n : Nat) (s : SymState HomeState NodeState n) : Prop where
   ref : RefinementInv n s
   txnLine : txnLineInv n s

@@ -28,7 +28,7 @@ theorem refMap_init (n : Nat) (s : SymState HomeState NodeState n)
       by_cases hk : k < n
       · simp [TileLink.Atomic.syncDir, hk]
         have := (hloc ⟨k, hk⟩).1
-        rw [this]; rfl
+        rw [this]
       · simp [TileLink.Atomic.syncDir, hk]; exact hdir k
     · rfl  -- pendingGrantMeta = none
     · rfl  -- pendingGrantAck = none
@@ -51,9 +51,9 @@ theorem refMap_sendAcquireBlock_eq {n : Nat}
   rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩
   rw [hs']
   exact refMap_eq_of_invisible_local_change
-    (fun j => by simp [setFn]; split <;> simp)
-    (fun j => by simp [setFn]; split <;> simp)
-    (fun j => by simp [setFn]; split <;> simp)
+    (fun j => by simp [setFn]; split <;> simp_all)
+    (fun j => by simp [setFn]; split <;> simp_all)
+    (fun j => by simp [setFn]; split <;> simp_all)
 
 theorem refMap_sendAcquirePerm_eq {n : Nat}
     {s s' : SymState HomeState NodeState n}
@@ -63,9 +63,9 @@ theorem refMap_sendAcquirePerm_eq {n : Nat}
   rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩
   rw [hs']
   exact refMap_eq_of_invisible_local_change
-    (fun j => by simp [setFn]; split <;> simp)
-    (fun j => by simp [setFn]; split <;> simp)
-    (fun j => by simp [setFn]; split <;> simp)
+    (fun j => by simp [setFn]; split <;> simp_all)
+    (fun j => by simp [setFn]; split <;> simp_all)
+    (fun j => by simp [setFn]; split <;> simp_all)
 
 theorem atomic_writableProbeMask_refMap_eq {n : Nat}
     (s : SymState HomeState NodeState n) (i : Fin n)
@@ -231,6 +231,7 @@ theorem refMap_sendGrant_block_tip_next {n : Nat}
     {s s' : SymState HomeState NodeState n} {i : Fin n}
     (hfull : fullInv n s) (htxnLine : txnLineInv n s)
     (htxnData : txnDataInv n s) (hplan : txnPlanInv n s)
+    (hreqPerm : preLinesReqPermInv n s)
     (hstep : SendGrantToRequester s s' i) :
     ∀ {tx : ManagerTxn}, s.shared.currentTxn = some tx → tx.kind = .acquireBlock →
       tx.resultPerm = .T →
@@ -250,8 +251,7 @@ theorem refMap_sendGrant_block_tip_next {n : Nat}
   let pg := absPendingGrantMeta tx
   refine ⟨pg, ?_, ?_, ?_, ?_, ?_⟩
   · -- pendingGrantMeta = some pg
-    simp [refMap, pg]
-    rw [hcur]; rfl
+    simp [refMap, pg, hcur]
   · -- pendingGrantAck = none
     simp [refMap, hgrant]
   · -- pendingReleaseAck = none
@@ -273,21 +273,35 @@ theorem refMap_sendGrant_block_tip_next {n : Nat}
     · -- pg.requesterPerm = .T
       simp [pg, absPendingGrantMeta, hperm]
     · -- pg.usedDirtySource = false
-      simp [pg, absPendingGrantMeta]
-      -- all others invalid → no non-req preLine dirty → usedDirtySource = false
-      -- By contradiction: if usedDirtySource = true, dirtyOwnerExistsInv gives k ≠ req
-      -- with preLines k dirty, but allOthersInvalid → preLines k perm = .N → not dirty
-      by_contra h
-      push_neg at h
-      -- h : tx.usedDirtySource = true
-      -- Need: preLines k dirty for some k ≠ req → contradiction with allOthersInvalid
-      have htxnD := (by simpa [txnDataInv, hcur] using htxnData)
-      rcases htxnD.2.1 with ⟨k, hk, hkdirty, _⟩
-      · -- from usedDirtySource = true
-        sorry -- placeholder, need txnDataInv dirty case
-      · exact absurd h (by simp)
+      simp only [pg, absPendingGrantMeta]
+      -- Case split on usedDirtySource
+      cases husedDirty : tx.usedDirtySource with
+      | false => rfl
+      | true =>
+        -- usedDirtySource = true → ∃ dirty preLine k (from txnDataInv), but all preLines
+        -- have perm .N (hallInvalid + hreqPerm), and WellFormed gives perm .N → dirty = false.
+        exfalso
+        have htxnD := by simpa [txnDataInv, hcur] using htxnData
+        obtain ⟨k, hk, hkdirty, _⟩ := htxnD.2.1 husedDirty
+        -- All preLines have perm = .N
+        have hreqPermN := hreqPerm tx hcur hkind
+        have hpermN_k : (tx.preLines k).perm = .N := by
+          by_cases hkeq : k = tx.requester
+          · rw [hkeq]; exact hreqPermN
+          · exact hallInvalid ⟨k, hk⟩ hkeq
+        -- Derive WellFormed: at grantReady with noProbeMask, live line = preLines
+        have hmask := (txnPlanInv_acquireBlock_tip hplan hcur hkind hperm).2
+        have hsnap := txnSnapshotLine_eq_of_grantReady hfull htxnLine hcur hphase ⟨k, hk⟩
+        simp [show tx.probesNeeded k = false from by rw [hmask]; simp [TileLink.Atomic.noProbeMask]]
+          at hsnap
+        have hwf : (s.locals ⟨k, hk⟩).line.WellFormed := hfull.1.1 ⟨k, hk⟩
+        rw [hsnap] at hwf
+        -- WellFormed + perm .N → dirty = false, contradicting hkdirty
+        exact absurd hkdirty (by rw [(hwf.2.2 hpermN_k).2]; decide)
     · -- pg.transferVal = (refMap n s).shared.mem
+      have htxnD := by simpa [txnDataInv, hcur] using htxnData
       simp [pg, absPendingGrantMeta, refMap, refMapShared, hcur, hphase]
+      exact htxnD.1
     · -- pg.probesNeeded = noProbeMask
       simp [pg, absPendingGrantMeta]
       exact (txnPlanInv_acquireBlock_tip hplan hcur hkind hperm).2
