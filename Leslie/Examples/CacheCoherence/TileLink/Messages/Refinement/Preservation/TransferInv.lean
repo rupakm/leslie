@@ -249,6 +249,9 @@ theorem releaseDataInv_preserved (n : Nat)
     (s s' : SymState HomeState NodeState n)
     (hfull : fullInv n s) (hdata : dataCoherenceInv n s)
     (hrelData : releaseDataInv n s)
+    (hrelDCC : releaseDataChanCInv n s)
+    (htxnNoRel : txnNoReleaseInv n s)
+    (hdirtyRelEx : dirtyReleaseExclusiveInv n s)
     (hnext : (tlMessages.toSpec n).next s s') :
     releaseDataInv n s' := by
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
@@ -285,7 +288,15 @@ theorem releaseDataInv_preserved (n : Nat)
       intro htxn'; simp [recvGrantState, recvGrantShared, hcur] at htxn'
   | .recvGrantAckAtManager =>
       rcases hstep with ⟨tx, _, hcur, _, _, _, _, _, _, _, rfl⟩
-      sorry -- currentTxn some→none; needs: all releaseInFlight = false during txn
+      -- currentTxn was some → all releaseInFlight = false (txnNoReleaseInv)
+      intro _ j hflight
+      exfalso
+      simp [recvGrantAckState, recvGrantAckLocals, setFn] at hflight
+      by_cases hji : j = i
+      · simp [hji, recvGrantAckLocal] at hflight
+        exact absurd hflight (by rw [htxnNoRel (by rw [hcur]; simp) j]; decide)
+      · simp [hji] at hflight
+        exact absurd hflight (by rw [htxnNoRel (by rw [hcur]; simp) j]; decide)
   | .sendRelease param =>
       -- chanC set to some → chanC = none guard fails → vacuous for node i
       rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, hflight_pre, _, _, _, hs'⟩
@@ -313,33 +324,59 @@ theorem releaseDataInv_preserved (n : Nat)
       intro htxn' j hflight hCnone hperm hdirty
       simp [recvReleaseState, recvReleaseShared] at htxn'
       by_cases hji : j = i
-      · -- Node i: chanC cleared, need data = releaseWriteback old_mem msg
+      · -- Node i: chanC cleared, mem = releaseWriteback old_mem msg
         subst hji
         simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn] at hflight hCnone hperm hdirty ⊢
-        -- Before recvRelease: chanC = some msg. releaseDataInv didn't apply (chanC ≠ none).
-        -- After recvRelease: chanC = none, mem = releaseWriteback old_mem msg.
-        -- For clean release: msg.data = none → mem unchanged.
-        -- Need: node data = new mem. Node line is unchanged by recvReleaseLocal.
-        -- But we need to relate node.data to msg/mem. This requires channel invariant.
-        sorry -- needs channel invariant: msg.data relates to node line data for dirty releases
-      · -- Node j ≠ i: from releaseUniqueInv, j can't be releasing when i has chanC
+        -- recvReleaseLocal doesn't change line. Mem = releaseWriteback old_mem msg.
+        simp only [recvReleaseShared, releaseWriteback]
+        cases hmsg : msg.data with
+        | none =>
+          -- Clean release: mem unchanged → use pre-state. But chanC had msg (pre-state guard fails).
+          -- However: msg.data = none. dataCoherenceInv doesn't help directly either (releaseInFlight = true).
+          -- But: from releaseDataChanCInv with msg.data = none → vacuously true. So we can't get info.
+          -- Need: data = old mem. From releaseDataInv with chanC guard: pre-state had chanC = some → fails.
+          -- Key: the only clean releases come from sendRelease (not sendReleaseData).
+          -- At sendRelease: dataCoherenceInv held → data = mem. Line preserved. Mem unchanged since then.
+          -- Use hrelDCC: msg.data ≠ none → msg.data = some line.data. For msg.data = none: doesn't help.
+          -- Actually for clean release: the SENDING node had data = mem from dataCoherenceInv.
+          -- And no action changed mem between sendRelease and recvRelease (single release, no uncachedPut).
+          -- This is temporal. We need a different invariant for clean releases.
+          -- WORKAROUND: strengthen releaseDataInv to cover chanC = some with clean msg too.
+          -- Clean release: mem unchanged. From PRE-state: chanC had clean msg (data = none),
+          -- so releaseDataInv's guard was satisfied → data = mem. Line unchanged. Mem unchanged.
+          simp [hmsg]
+          -- Pre-state: chanC i = some msg with msg.data = none. releaseDataInv guard holds.
+          have hCclean : ∀ m : CMsg, (s.locals i).chanC = some m → m.data = none := by
+            intro m hm; rw [hCi] at hm; cases hm; exact hmsg
+          exact hrelData htxn i hflight_i hCclean hperm hdirty
+        | some v =>
+          -- Dirty release: new mem = v. From releaseDataChanCInv: msg.data = some line.data.
+          -- So v = line.data. Goal: line.data = v. ✓
+          simp [hmsg]
+          have hrel_data := hrelDCC i hflight_i msg hCi (by rw [hmsg]; simp)
+          rw [hmsg] at hrel_data; cases hrel_data; rfl
+      · -- Node j ≠ i: mem changed, need data j = new mem
         simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn, hji] at hflight hCnone hperm hdirty ⊢
-        -- j has releaseInFlight = true and chanC = none (post-state). Is this possible?
-        -- releaseUniqueInv: chanC i ≠ none → chanC j = none for j ≠ i.
-        -- j's chanC was already none in pre-state (from uniqueness).
-        -- j's releaseInFlight = true: j started releasing, chanC was set then cleared at recvRelease(j).
-        -- But recvRelease(j) sets pendingReleaseAck = some j. And recvRelease(i) requires
-        -- pendingReleaseAck = none. So j's release cycle must have completed before i's started.
-        -- Wait, but j's releaseInFlight is still true... recvReleaseAck(j) would clear it.
-        -- If j's cycle completed, releaseInFlight = false. If still true, cycle not complete.
-        -- Can j have releaseInFlight = true and chanC = none simultaneously?
-        -- Yes: after recvRelease(j), chanC cleared but releaseInFlight still true.
-        -- But then pendingReleaseAck = some j. And recvRelease(i) requires pendingReleaseAck = none.
         -- So at recvRelease(i) time, pendingReleaseAck = none → j's recvRelease already acked.
         -- But wait, recvRelease sets pendingReleaseAck = some j. And recvReleaseAck clears it.
         -- So at recvRelease(i): pendingReleaseAck = none → j's full cycle completed → releaseInFlight(j) = false.
         -- Contradiction with hflight. But we need this formally.
-        sorry -- needs: no other j with releaseInFlight=true at recvRelease
+        -- mem may change via releaseWriteback. Case split on msg.data.
+        simp only [recvReleaseShared, releaseWriteback]
+        cases hmsg : msg.data with
+        | none =>
+          -- Clean release from i: mem unchanged → use pre-state
+          simp [hmsg]; exact hrelData htxn j hflight hCnone hperm hdirty
+        | some v =>
+          -- Dirty release from i: new mem = v. j has perm ≠ .N.
+          -- But dirtyReleaseExclusiveInv: dirty release from i → all j ≠ i have perm .N.
+          -- Contradiction with hperm (perm ≠ .N).
+          exfalso
+          rcases hfull with ⟨_, ⟨_, _, _, _, _⟩, _⟩
+          have hDirtyRel : ∃ msg' : CMsg, (s.locals i).chanC = some msg' ∧ msg'.data ≠ none :=
+            ⟨msg, hCi, by rw [hmsg]; simp⟩
+          have hpermN := hdirtyRelEx htxn i hflight_i hDirtyRel j (Ne.symm hji)
+          exact hperm hpermN
   | .recvReleaseAckAtMaster =>
       -- Node i: releaseInFlight cleared → guard false. Others: unchanged.
       rcases hstep with ⟨msg, htxn, _, _, hflight_i, _, _, hs'⟩
@@ -392,5 +429,209 @@ theorem releaseDataInv_preserved (n : Nat)
       by_cases hji : j = i
       · simp_all; exact hrelData htxn' j hflight hCnone hperm hdirty
       · simp_all; exact hrelData htxn' j hflight hCnone hperm hdirty
+
+theorem releaseDataChanCInv_preserved (n : Nat)
+    (s s' : SymState HomeState NodeState n)
+    (hfull : fullInv n s) (hrelDCC : releaseDataChanCInv n s)
+    (hnext : (tlMessages.toSpec n).next s s') :
+    releaseDataChanCInv n s' := by
+  simp only [SymSharedSpec.toSpec, tlMessages] at hnext
+  obtain ⟨i, a, hstep⟩ := hnext
+  match a with
+  | .sendAcquireBlock _ _ =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, rfl⟩
+      intro j hflight msg hC hdata
+      simp only [setFn] at hflight hC ⊢
+      by_cases hji : j = i <;> simp_all
+  | .sendAcquirePerm _ _ =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, rfl⟩
+      intro j hflight msg hC hdata
+      simp only [setFn] at hflight hC ⊢
+      by_cases hji : j = i <;> simp_all
+  | .recvAcquireAtManager =>
+      rcases hstep with hblk | hperm
+      · rcases hblk with ⟨_, _, _, _, _, _, _, _, _, _, _, _, rfl⟩
+        intro j hflight msg hC
+        simp [recvAcquireState, recvAcquireLocals, setFn] at hflight hC ⊢
+        by_cases hji : j = i <;> simp_all
+      · rcases hperm with ⟨_, _, _, _, _, _, _, _, _, _, _, rfl⟩
+        intro j hflight msg hC
+        simp [recvAcquireState, recvAcquireLocals, setFn] at hflight hC ⊢
+        by_cases hji : j = i <;> simp_all
+  | .recvProbeAtMaster =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, ⟨_, rfl⟩⟩
+      intro j hflight msg hC hdata
+      simp [recvProbeState, recvProbeLocals, setFn] at hflight hC ⊢
+      by_cases hji : j = i <;> simp_all [recvProbeLocal]
+  | .recvProbeAckAtManager =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, rfl⟩
+      intro j hflight msg hC hdata
+      simp [recvProbeAckState, recvProbeAckLocals, setFn] at hflight hC ⊢
+      by_cases hji : j = i <;> simp_all [recvProbeAckLocal]
+  | .sendGrantToRequester =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, rfl⟩
+      intro j hflight msg hC hdata
+      simp [sendGrantState, sendGrantLocals, setFn] at hflight hC ⊢
+      by_cases hji : j = i <;> simp_all [sendGrantLocal]
+  | .recvGrantAtMaster =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      intro j hflight msg hC hdata
+      simp [recvGrantState, recvGrantLocals, setFn] at hflight hC ⊢
+      by_cases hji : j = i <;> simp_all [recvGrantLocal]
+  | .recvGrantAckAtManager =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, rfl⟩
+      intro j hflight msg hC hdata
+      simp [recvGrantAckState, recvGrantAckLocals, setFn] at hflight hC ⊢
+      by_cases hji : j = i <;> simp_all [recvGrantAckLocal]
+  | .sendRelease param =>
+      -- KEY: sendReleaseLocal sets chanC := releaseMsg and line := releasedLine.
+      -- releaseDataPayload preserves relationship: msg.data = some line.data for dirty.
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      subst hs'
+      intro j hflight msg hC hdata
+      by_cases hji : j = i
+      · subst hji
+        simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn] at hflight hC hdata ⊢
+        subst hC -- msg = releaseMsg ...
+        simp [releaseMsg, releaseDataPayload] at hdata ⊢
+        -- withData = false for sendRelease → data = none → contradicts hdata
+        simp at hdata
+      · simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji] at hflight hC hdata ⊢
+        exact hrelDCC j hflight msg hC hdata
+  | .sendReleaseData param =>
+      -- KEY: sendReleaseLocal sets chanC := releaseMsg with data = some line.data.
+      -- And line := releasedLine which preserves data.
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      subst hs'
+      intro j hflight msg hC hdata
+      by_cases hji : j = i
+      · subst hji
+        simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn] at hflight hC hdata ⊢
+        subst hC
+        -- msg = releaseMsg i param true (s.locals i).line
+        -- msg.data = releaseDataPayload (s.locals i).line true = some (s.locals i).line.data
+        -- releasedLine preserves data for all param results
+        simp [releaseMsg, releaseDataPayload, releasedLine]
+        cases param.result <;> simp [invalidatedLine, branchAfterProbe, tipAfterProbe]
+      · simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji] at hflight hC hdata ⊢
+        exact hrelDCC j hflight msg hC hdata
+  | .recvReleaseAtManager =>
+      -- chanC cleared for node i → chanC i = none → condition vacuous for i
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      subst hs'
+      intro j hflight msg hC hdata
+      by_cases hji : j = i
+      · subst hji; simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn] at hC
+      · simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn, hji] at hflight hC hdata ⊢
+        exact hrelDCC j hflight msg hC hdata
+  | .recvReleaseAckAtMaster =>
+      -- releaseInFlight cleared for node i; chanC unchanged
+      rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩
+      subst hs'
+      intro j hflight msg hC hdata
+      by_cases hji : j = i
+      · subst hji; simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn] at hflight
+      · simp [recvReleaseAckState, recvReleaseAckLocals, recvReleaseAckLocal, setFn, hji] at hflight hC hdata ⊢
+        exact hrelDCC j hflight msg hC hdata
+  | .store v =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      intro j hflight msg hC hdata
+      simp only [setFn] at hflight hC hdata ⊢
+      by_cases hji : j = i <;> simp_all [storeLocal]
+  | .read =>
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩; exact hrelDCC
+  | .uncachedGet source =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, rfl⟩
+      intro j hflight msg hC hdata
+      simp only [setFn] at hflight hC hdata ⊢
+      by_cases hji : j = i <;> simp_all
+  | .uncachedPut source v =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      intro j hflight msg hC hdata
+      simp only [setFn] at hflight hC hdata ⊢
+      by_cases hji : j = i <;> simp_all
+  | .recvUncachedAtManager =>
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
+      intro j hflight msg hC hdata
+      simp only [setFn] at hflight hC hdata ⊢
+      by_cases hji : j = i <;> simp_all
+  | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨_, _, _, rfl⟩
+      intro j hflight msg hC hdata
+      simp only [setFn] at hflight hC hdata ⊢
+      by_cases hji : j = i <;> simp_all
+
+theorem txnNoReleaseInv_preserved (n : Nat)
+    (s s' : SymState HomeState NodeState n)
+    (hfull : fullInv n s) (htxnNoRel : txnNoReleaseInv n s)
+    (hnext : (tlMessages.toSpec n).next s s') :
+    txnNoReleaseInv n s' := by
+  simp only [SymSharedSpec.toSpec, tlMessages] at hnext
+  obtain ⟨i, a, hstep⟩ := hnext
+  match a with
+  | .sendAcquireBlock _ _ =>
+      rcases hstep with ⟨htxn, _, _, _, _, _, _, rfl⟩
+      intro hcur j; simp only [setFn]; split <;> simp_all [txnNoReleaseInv]
+  | .sendAcquirePerm _ _ =>
+      rcases hstep with ⟨htxn, _, _, _, _, _, _, rfl⟩
+      intro hcur j; simp only [setFn]; split <;> simp_all [txnNoReleaseInv]
+  | .recvAcquireAtManager =>
+      -- currentTxn → some; precondition: ∀ j, releaseInFlight j = false
+      rcases hstep with hblk | hperm
+      · rcases hblk with ⟨_, _, _, _, _, hnoFlight, _, _, _, _, _, _, rfl⟩
+        intro _ j; simp [recvAcquireState, recvAcquireLocals, setFn]
+        split <;> simp_all
+      · rcases hperm with ⟨_, _, _, _, _, _, hnoFlight, _, _, _, _, rfl⟩
+        intro _ j; simp [recvAcquireState, recvAcquireLocals, setFn]
+        split <;> simp_all
+  | .recvProbeAtMaster =>
+      rcases hstep with ⟨_, _, hcur, _, _, _, _, _, _, _, ⟨_, rfl⟩⟩
+      intro _ j; simp [recvProbeState, recvProbeLocals, setFn]
+      split <;> simp_all [recvProbeLocal, txnNoReleaseInv, hcur]
+  | .recvProbeAckAtManager =>
+      rcases hstep with ⟨_, _, hcur, _, _, _, _, _, _, rfl⟩
+      intro _ j; simp [recvProbeAckState, recvProbeAckLocals, setFn]
+      split <;> simp_all [recvProbeAckLocal, txnNoReleaseInv, hcur]
+  | .sendGrantToRequester =>
+      rcases hstep with ⟨_, hcur, _, _, _, _, _, _, _, rfl⟩
+      intro _ j; simp [sendGrantState, sendGrantLocals, setFn]
+      split <;> simp_all [sendGrantLocal, txnNoReleaseInv, hcur]
+  | .recvGrantAtMaster =>
+      rcases hstep with ⟨_, _, hcur, _, _, _, _, _, _, _, _, rfl⟩
+      intro _ j; simp [recvGrantState, recvGrantLocals, setFn]
+      split <;> simp_all [recvGrantLocal, txnNoReleaseInv, hcur]
+  | .recvGrantAckAtManager =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, rfl⟩
+      -- currentTxn → none → guard false
+      intro hcur; simp [recvGrantAckState, recvGrantAckShared] at hcur
+  | .sendRelease param =>
+      -- sendRelease requires currentTxn = none → post has currentTxn = none → guard false
+      rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      subst hs'; simp [sendReleaseState, txnNoReleaseInv, htxn]
+  | .sendReleaseData param =>
+      rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      subst hs'; simp [sendReleaseState, txnNoReleaseInv, htxn]
+  | .recvReleaseAtManager =>
+      rcases hstep with ⟨_, _, htxn, _, _, _, _, _, _, _, _, _, hs'⟩
+      subst hs'; intro hcur; simp [recvReleaseState, recvReleaseShared, htxn] at hcur
+  | .recvReleaseAckAtMaster =>
+      rcases hstep with ⟨_, htxn, _, _, _, _, _, hs'⟩
+      subst hs'; simp [recvReleaseAckState, recvReleaseAckShared, txnNoReleaseInv, htxn]
+  | .store v =>
+      rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      intro hcur; simp [htxn] at hcur
+  | .read =>
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩; exact htxnNoRel
+  | .uncachedGet source =>
+      rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, rfl⟩
+      intro hcur; simp [htxn] at hcur
+  | .uncachedPut source v =>
+      rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      intro hcur; simp [htxn] at hcur
+  | .recvUncachedAtManager =>
+      rcases hstep with ⟨htxn, _, _, _, _, _, rfl⟩
+      intro hcur; simp [htxn] at hcur
+  | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨_, _, _, rfl⟩; exact htxnNoRel
 
 end TileLink.Messages

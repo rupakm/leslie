@@ -196,13 +196,39 @@ theorem init_txnTransferMemInv (n : Nat) :
   intro s ⟨⟨_, _, htxn, _, _, _⟩, _⟩
   simp [txnTransferMemInv, htxn]
 
+/-- During a dirty release, the chanC message data matches the node's current line data.
+    Set at sendReleaseData (releasedLine preserves data), stable until recvRelease clears chanC. -/
+def releaseDataChanCInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
+  ∀ i : Fin n, (s.locals i).releaseInFlight = true →
+    ∀ msg : CMsg, (s.locals i).chanC = some msg →
+      msg.data ≠ none → msg.data = some (s.locals i).line.data
+
+theorem init_releaseDataChanCInv (n : Nat) :
+    ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s →
+      releaseDataChanCInv n s := by
+  intro s ⟨_, hlocals⟩ i hflight
+  have ⟨_, _, _, _, _, _, _, hrel, _⟩ := hlocals i
+  simp_all
+
+/-- During a transaction (currentTxn ≠ none), no node has releaseInFlight = true.
+    True because recvAcquire requires all releaseInFlight = false and sendRelease
+    requires currentTxn = none. -/
+def txnNoReleaseInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
+  s.shared.currentTxn ≠ none → ∀ j : Fin n, (s.locals j).releaseInFlight = false
+
+theorem init_txnNoReleaseInv (n : Nat) :
+    ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s →
+      txnNoReleaseInv n s := by
+  intro s ⟨⟨_, _, htxn, _, _, _⟩, _⟩
+  simp [txnNoReleaseInv, htxn]
+
 /-- During a release cycle (releaseInFlight = true), clean non-invalid lines
     match shared memory. This bridges the gap in dataCoherenceInv which guards
     on releaseInFlight = false. -/
 def releaseDataInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   s.shared.currentTxn = none →
     ∀ i : Fin n, (s.locals i).releaseInFlight = true →
-      (s.locals i).chanC = none →
+      (∀ msg : CMsg, (s.locals i).chanC = some msg → msg.data = none) →
         (s.locals i).line.perm ≠ .N →
           (s.locals i).line.dirty = false →
             (s.locals i).line.data = s.shared.mem

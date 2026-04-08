@@ -30,6 +30,8 @@ structure ForwardSimInv (n : Nat) (s : SymState HomeState NodeState n) : Prop wh
   preWF : preLinesWFInv n s
   txnTransferMem : txnTransferMemInv n s
   relData : releaseDataInv n s
+  relDataChanC : releaseDataChanCInv n s
+  txnNoRelease : txnNoReleaseInv n s
 
 abbrev forwardSimInv := @ForwardSimInv
 
@@ -41,7 +43,8 @@ theorem init_forwardSimInv (n : Nat) :
     init_preLinesNoDirtyInv n s hinit, init_txnPlanInv n s hinit,
     init_usedDirtySourceInv n s hinit, init_dirtyOwnerExistsInv n s hinit,
     init_preLinesReqPermInv n s hinit, init_preLinesWFInv n s hinit,
-    init_txnTransferMemInv n s hinit, init_releaseDataInv n s hinit⟩
+    init_txnTransferMemInv n s hinit, init_releaseDataInv n s hinit,
+    init_releaseDataChanCInv n s hinit, init_txnNoReleaseInv n s hinit⟩
 
 -- The following preservation proofs are needed to close `forwardSimInv_preserved`.
 -- `refinementInv_preserved`, `preLinesNoDirtyInv_preserved`, and `preLinesCleanInv_preserved`
@@ -51,7 +54,7 @@ theorem init_forwardSimInv (n : Nat) :
 theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     dataCoherenceInv n s' := by
-  rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanC, _, hdirtyRelEx⟩, hdata, htxnLine', hpreClean', hpreNoDirty', _, husedDirty', _, _, hpreWF', _, hrelData'⟩
+  rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanC, hrelUniq, hdirtyRelEx⟩, hdata, htxnLine', hpreClean', hpreNoDirty', _, husedDirty', _, _, hpreWF', _, hrelData', _, _⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   -- intro pattern: j = currentTxn guard, hvalidJ = Fin n, hdirtyJ = releaseInFlight guard
@@ -244,7 +247,7 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
           recvReleaseAckShared, setFn] at hvalid hdirtyK ⊢
         -- chanC i = none: from releaseUniqueInv (pendingReleaseAck ≠ none → all chanC = none)
         have hCnone := (hrelUniq htxn).1 (by rw [hrel]; simp)
-        exact hrelData' htxn i hflight (hCnone i) hvalid hdirtyK
+        exact hrelData' htxn i hflight (fun msg h => by rw [hCnone i] at h; cases h) hvalid hdirtyK
       · -- Node j ≠ i: unchanged
         have hlineEq : (recvReleaseAckLocals s i hvalidJ).line = (s.locals hvalidJ).line := by
           simp [recvReleaseAckLocals, setFn, hji, recvReleaseAckLocal]
@@ -797,16 +800,16 @@ theorem preLinesReqPermInv_preserved (n : Nat) (s s' : SymState HomeState NodeSt
 theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     forwardSimInv n s' := by
-  rcases hinv with ⟨hrefInv, hdata, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty, hdirtyOwner, hreqPerm, hpreWF, htxnTM, hrelData⟩
+  rcases hinv with ⟨hrefInv, hdata, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty, hdirtyOwner, hreqPerm, hpreWF, htxnTM, hrelData, hrelDCC, htxnNoRel⟩
   rcases hrefInv with ⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩
   have hstrong : strongRefinementInv n s :=
     ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty, hdirtyOwner⟩
   have hfwd : forwardSimInv n s :=
-    ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty, hdirtyOwner, hreqPerm, hpreWF, htxnTM, hrelData⟩
+    ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, hdata, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty, hdirtyOwner, hreqPerm, hpreWF, htxnTM, hrelData, hrelDCC, htxnNoRel⟩
   refine ⟨refinementInv_preserved n s s' hstrong hpreWF htxnTM hnext,
     dataCoherenceInv_preserved n s s' hfwd hnext,
     txnLineInv_preserved n s s' hfwd hnext,
-    ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · exact preLinesCleanInv_preserved n s s' hfull hdata hpreClean hcleanRel hpreNoDirty hpreWF hnext
   · exact preLinesNoDirtyInv_preserved n s s' hfull hdirtyEx hSwmr hpreNoDirty hnext
   · exact txnPlanInv_preserved n s s' hfwd hnext
@@ -814,7 +817,9 @@ theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n
   · exact dirtyOwnerExistsInv_preserved n s s' hfull hdirtyOwner hnext
   · exact preLinesReqPermInv_preserved n s s' hfull hreqPerm hnext
   · exact preLinesWFInv_preserved n s s' hfull hpreWF hnext
-  · exact releaseDataInv_preserved n s s' hfull hdata hrelData hnext
+  · exact releaseDataInv_preserved n s s' hfull hdata hrelData hrelDCC htxnNoRel hdirtyRelEx hnext
+  · exact releaseDataChanCInv_preserved n s s' hfull hrelDCC hnext
+  · exact txnNoReleaseInv_preserved n s s' hfull htxnNoRel hnext
   · exact txnTransferMemInv_preserved n s s' hfull htxnData hpreNoDirty husedDirty hdirtyOwner hpreWF htxnTM hnext
 
 theorem refinement_inv_invariant (n : Nat) :
@@ -850,7 +855,7 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') ∨
     refMap n s = refMap n s' := by
-  rcases hinv with ⟨⟨hfull, hnoDirty, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, hclean, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty, _, hreqPerm, hpreWF, _, _⟩
+  rcases hinv with ⟨⟨hfull, hnoDirty, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, hclean, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty, _, hreqPerm, hpreWF, _, _, _, _⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   match a with
