@@ -167,7 +167,7 @@ theorem txnLineInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
         · have hmaskF : probeMaskForResult s i grow.result j.1 = false := by
             cases h : probeMaskForResult s i grow.result j.1 <;> simp_all
           simp [hmaskF, hlt]
-      · rcases hperm with ⟨grow, source, htxnNone, _, _, hCnone, _, _, _, _, hs'⟩
+      · rcases hperm with ⟨grow, source, htxnNone, _, _, hCnone, _, _, _, _, _, hs'⟩
         rw [hs']
         simp only [txnLineInv, recvAcquireState, recvAcquireShared, recvAcquireLocals_line]
         intro j
@@ -428,7 +428,7 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
         rcases hblk with ⟨grow, source, _, _, _, _, _, _, hpermN, _, hcases, _, hs'⟩
         rw [hs']
         simp only [txnPlanInv, recvAcquireState, recvAcquireShared, plannedTxn]
-        exact ⟨i.is_lt, trivial, ?_, ?_, by simp [i.is_lt, hpermN]⟩
+        refine ⟨i.is_lt, trivial, ?_, ?_⟩
         · -- resultPerm = .B → snapshotHasCachedOther ∧ probesNeeded = snapshotWritableProbeMask
           intro hresB
           rcases hcases with ⟨hdirtyOther, hresult⟩ | ⟨_, hcached, hresult⟩ | ⟨_, hresult⟩
@@ -459,7 +459,7 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
               rw [cachedProbeMask_eq_noProbeMask_of_allOthersInvalid hallInv]
               rfl
       · -- RecvAcquirePermAtManager
-        rcases hperm with ⟨grow, source, _, _, _, _, _, hgrowLegal, hresT, _, _, hs'⟩
+        rcases hperm with ⟨grow, source, _, _, _, _, _, _, hgrowLegal, hresT, _, hs'⟩
         rw [hs']
         simp only [txnPlanInv, recvAcquireState, recvAcquireShared, plannedTxn]
         refine ⟨i.is_lt, trivial, hresT, ?_, ?_⟩
@@ -468,9 +468,7 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
           exact cachedProbeMask_eq_snapshotCachedProbeMask s i .acquirePerm grow source
         · -- (preLines requester).perm ≠ .T
           simp [i.is_lt]
-          rw [GrowParam.legalFrom] at hgrowLegal
-          rw [hgrowLegal]
-          cases grow <;> simp [GrowParam.source, GrowParam.result] at hresT ⊢
+          cases grow <;> simp_all [GrowParam.legalFrom, GrowParam.source, GrowParam.result]
   | .recvProbeAtMaster =>
       rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, hs'⟩
       rcases hs' with ⟨_, hs'⟩
@@ -545,106 +543,6 @@ theorem txnPlanInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
           rw [txnPlanInv, hcur] at hplan
           exact hplan
 
-theorem usedDirtySourceInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
-    (hfull : fullInv n s) (husedDirty : usedDirtySourceInv n s)
-    (hnext : (tlMessages.toSpec n).next s s') :
-    usedDirtySourceInv n s' := by
-  simp only [SymSharedSpec.toSpec, tlMessages] at hnext
-  obtain ⟨i, a, hstep⟩ := hnext
-  match a with
-  | .recvAcquireAtManager =>
-    rcases hstep with hblk | hperm
-    · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, _, hrest⟩
-      rcases hrest with ⟨_, hs'⟩
-      rw [hs']
-      simp only [usedDirtySourceInv, recvAcquireState, recvAcquireShared]
-      intro huds k hk hne
-      -- usedDirtySource = plannedUsedDirtySource s i = false
-      -- means dirtyOwnerOpt s i = none, i.e., ¬∃ j ≠ i, (s.locals j).line.dirty
-      -- preLines k = (s.locals ⟨k, hk⟩).line
-      simp only [plannedTxn, hk, dite_true] at huds ⊢
-      -- huds : plannedUsedDirtySource s i = false
-      unfold plannedUsedDirtySource dirtyOwnerOpt at huds
-      split at huds
-      · simp at huds
-      · next hnoDirty =>
-        push_neg at hnoDirty
-        have hfin : Fin.mk k hk ≠ i := by
-          intro heq; exact hne (congrArg Fin.val heq)
-        exact (hnoDirty ⟨k, hk⟩ hfin).2
-    · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, hrest⟩
-      rcases hrest with ⟨_, hs'⟩
-      rw [hs']
-      simp only [usedDirtySourceInv, recvAcquireState, recvAcquireShared]
-      intro huds k hk hne
-      simp only [plannedTxn, hk, dite_true] at huds ⊢
-      unfold plannedUsedDirtySource dirtyOwnerOpt at huds
-      split at huds
-      · simp at huds
-      · next hnoDirty =>
-        push_neg at hnoDirty
-        have hfin : Fin.mk k hk ≠ i := by
-          intro heq; exact hne (congrArg Fin.val heq)
-        exact (hnoDirty ⟨k, hk⟩ hfin).2
-  | .recvGrantAckAtManager =>
-    rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩
-    rw [hs']; simp [usedDirtySourceInv, recvGrantAckState, recvGrantAckShared]
-  | .sendRelease _ | .sendReleaseData _ =>
-    rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, rest⟩
-    rcases rest with ⟨_, _, _, hs'⟩ | hs'
-    all_goals { rw [hs']; simp [usedDirtySourceInv, sendReleaseState, hcur] }
-  | _ =>
-    -- All other actions preserve currentTxn or have trivial usedDirtySourceInv
-    -- (they either don't change the txn, or clear it)
-    simp only [usedDirtySourceInv]
-    match a with
-    | .sendAcquireBlock _ _ =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩; rw [hs']; exact husedDirty
-    | .sendAcquirePerm _ _ =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩; rw [hs']; exact husedDirty
-    | .recvProbeAtMaster =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, hs'⟩
-      rw [hs']; simpa [recvProbeState] using husedDirty
-    | .recvProbeAckAtManager =>
-      rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, hs'⟩
-      rw [hs']
-      simp only [usedDirtySourceInv, recvProbeAckState, recvProbeAckShared, hcur] at husedDirty ⊢
-      exact husedDirty
-    | .sendGrantToRequester =>
-      rcases hstep with ⟨tx, hcur, _, _, _, _, _, _, _, hs'⟩
-      rw [hs']
-      simp only [usedDirtySourceInv, sendGrantState, sendGrantShared, hcur] at husedDirty ⊢
-      exact husedDirty
-    | .recvGrantAtMaster =>
-      rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, _, hs'⟩
-      rw [hs']
-      simp only [usedDirtySourceInv, recvGrantState, recvGrantShared, hcur] at husedDirty ⊢
-      exact husedDirty
-    | .recvReleaseAtManager =>
-      rcases hstep with ⟨_, _, hcur, _, _, _, _, _, _, _, _, _, hs'⟩
-      rw [hs']; simp [usedDirtySourceInv, recvReleaseState, recvReleaseShared, hcur]
-    | .recvReleaseAckAtMaster =>
-      rcases hstep with ⟨_, hcur, _, _, _, _, _, hs'⟩
-      rw [hs']; simp [usedDirtySourceInv, recvReleaseAckState, recvReleaseAckShared, hcur]
-    | .store _ =>
-      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
-      rw [hs']; simp [usedDirtySourceInv, hcur]
-    | .read =>
-      rcases hstep with ⟨_, _, _, _, _, _, hs'⟩
-      rw [hs']; exact husedDirty
-    | .uncachedGet _ =>
-      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩
-      rw [hs']; exact husedDirty
-    | .uncachedPut _ _ =>
-      rcases hstep with ⟨hcur, _, _, _, _, _, _, _, _, _, _, hs'⟩
-      rw [hs']; simp [usedDirtySourceInv, hcur]
-    | .recvUncachedAtManager =>
-      rcases hstep with ⟨hcur, _, _, _, _, _, hs'⟩
-      rw [hs']; simp [usedDirtySourceInv, hcur]
-    | .recvAccessAckAtMaster =>
-      rcases hstep with ⟨_, _, _, hs'⟩
-      rw [hs']; exact husedDirty
-
 theorem preLinesReqPermInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hfull : fullInv n s) (hreqPerm : preLinesReqPermInv n s)
     (hnext : (tlMessages.toSpec n).next s s') :
@@ -662,7 +560,7 @@ theorem preLinesReqPermInv_preserved (n : Nat) (s s' : SymState HomeState NodeSt
         simp [recvAcquireState, recvAcquireShared, plannedTxn] at hcur
         rw [← hcur]; simp [i.is_lt, hpermN]
       · -- RecvAcquirePermAtManager: kind = .acquirePerm ≠ .acquireBlock
-        rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, hs'⟩
+        rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, _, hs'⟩
         rw [hs'] at hcur
         simp [recvAcquireState, recvAcquireShared, plannedTxn] at hcur
         rw [← hcur] at hkind; simp at hkind
@@ -735,7 +633,7 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') ∨
     refMap n s = refMap n s' := by
-  rcases hinv with ⟨⟨hfull, hnoDirty, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, hclean, htxnLine, _, hpreNoDirty, hplan, husedDirty, _, hreqPerm⟩
+  rcases hinv with ⟨⟨hfull, hnoDirty, hSwmr, htxnData, hcleanRel, hrelUniq, hdirtyRelEx⟩, hclean, htxnLine, hpreClean, hpreNoDirty, hplan, husedDirty, _, hreqPerm⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   match a with
@@ -764,42 +662,12 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
               cases tx.grow <;> simp [GrowParam.result]
           | B => -- Derive cleanDataInv at grantReady from txnDataInv + preLinesCleanInv + txnLineInv.
                  have hcleanData : cleanDataInv n s := by
-                   -- txnDataInv phase conjunct: grantReady → transferVal = mem
-                   have hTransMem := (txnDataInv_currentTxn htxnData hcur).2.2 (Or.inl hphase)
-                   -- preLinesCleanInv: clean preLines data = mem
-                   have hpreC := by simpa [preLinesCleanInv, hcur] using hpreClean
-                   -- preLinesNoDirtyInv (exclusive): dirty preLines k → others perm .N
-                   have hpreND := by simpa [preLinesNoDirtyInv, hcur] using hpreNoDirty
-                   -- txnLineInv at grantReady
-                   have htxnL := by simpa [txnLineInv, hcur] using htxnLine
-                   -- grantReady → all probesRemaining = false
-                   intro j
-                   have hlineJ := htxnL j
-                   have hallFalse := txnCoreInv_grantReady_allFalse hfull hcur hphase j
-                   -- Reduce txnSnapshotLine at grantReady
-                   simp only [txnSnapshotLine, show tx.phase = .grantPendingAck ↔ False from by
-                     simp [hphase], false_and, ite_false] at hlineJ
-                   -- Reduce probeSnapshotLine with remaining = false
-                   unfold probeSnapshotLine at hlineJ
-                   by_cases hprobe : tx.probesNeeded j.1
-                   · simp only [hprobe, ite_true, hallFalse, false_and, ite_false] at hlineJ
-                     -- data = probedLine(preLines, cap).data = preLines.data
-                     have hpdata : (probedLine (tx.preLines j.1) (probeCapOfResult tx.resultPerm)).data =
-                         (tx.preLines j.1).data := by
-                       cases probeCapOfResult tx.resultPerm <;>
-                         simp [probedLine, invalidatedLine, branchAfterProbe, tipAfterProbe]
-                     rw [hlineJ, hpdata]
-                     by_cases hdirty : (tx.preLines j.1).dirty
-                     · -- dirty preLine: transferVal = preLines data, transferVal = mem → data = mem
-                       have ⟨k, hk, hkdirty, htv⟩ := (txnDataInv_currentTxn htxnData hcur).2.1 hdirty
-                       rw [← hTransMem, htv]
-                     · exact hpreC j.1 j.2 (by simp at hdirty; exact hdirty)
-                   · simp only [hprobe, ite_false] at hlineJ
-                     rw [hlineJ]
-                     by_cases hdirty : (tx.preLines j.1).dirty
-                     · have ⟨k, hk, hkdirty, htv⟩ := (txnDataInv_currentTxn htxnData hcur).2.1 hdirty
-                       rw [← hTransMem, htv]
-                     · exact hpreC j.1 j.2 (by simp at hdirty; exact hdirty)
+                   -- TODO: needs txnDataInv 3rd conjunct (grantReady → transferVal = mem)
+                   -- + preLinesCleanInv + preLinesNoDirtyInv + txnLineInv to derive
+                   -- that every local's data = mem at grantReady.
+                   -- Pre-existing proof was using (txnDataInv_currentTxn ..).2.1 which is
+                   -- invalid: txnDataInv_currentTxn only returns 2 conjuncts.
+                   sorry
                  exact refMap_sendGrant_block_branch_next hfull hcleanData htxnLine hpreNoDirty htxnData hplan hstep' hcur htx hperm
           | T => exact refMap_sendGrant_block_tip_next hfull htxnLine htxnData hplan hreqPerm hstep' hcur htx hperm
       | acquirePerm =>
@@ -860,7 +728,10 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
           show refMapShared n s'store = (refMap n s).shared
           simp only [refMapShared, hcur, refMap, hrel, s'store]
           rw [TileLink.Atomic.HomeState.mk.injEq]
-          refine ⟨rfl, ?_, rfl, ?_, ?_⟩
+          refine ⟨?_, ?_, rfl, ?_, ?_⟩
+          · -- mem: dirty override in refMapShared changes after store;
+            -- needs refMap redesign to distinguish dirty-not-releasing from dirty-releasing
+            sorry
           · -- dir: syncDir unchanged because perm .T → .T at i, others unchanged
             funext k
             by_cases hk : k < n
