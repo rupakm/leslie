@@ -849,7 +849,7 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
                        -- contradicts hneeded (probesNeeded = false)
                        simp only [this] at hneeded
                      exact hpreC ci.1 ci.is_lt hpermNeN hdirtyF
-                 exact refMap_sendGrant_block_branch_next hfull hcleanData htxnLine hpreNoDirty htxnData hplan hstep' hcur htx hperm
+                 exact refMap_sendGrant_block_branch_next hfull hcleanData htxnLine hpreNoDirty htxnData hplan husedDirty hpreWF hreqPerm hstep' hcur htx hperm
           | T => exact refMap_sendGrant_block_tip_next hfull htxnLine htxnData hplan hreqPerm hstep' hcur htx hperm
       | acquirePerm =>
           exact refMap_sendGrant_acquirePerm_next hfull hpreNoDirty htxnLine htxnData hplan husedDirty hpreWF hstep' hcur htx

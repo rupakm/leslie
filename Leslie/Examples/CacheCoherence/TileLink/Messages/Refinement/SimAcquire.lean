@@ -221,11 +221,75 @@ theorem refMap_sendGrant_block_branch_next {n : Nat}
     {s s' : SymState HomeState NodeState n} {i : Fin n}
     (hfull : fullInv n s) (hclean : cleanDataInv n s) (htxnLine : txnLineInv n s)
     (hpre : preLinesNoDirtyInv n s) (htxnData : txnDataInv n s) (hplan : txnPlanInv n s)
+    (husedDirty : usedDirtySourceInv n s) (hpreWF : preLinesWFInv n s)
+    (hreqPerm : preLinesReqPermInv n s)
     (hstep : SendGrantToRequester s s' i) :
     ∀ {tx : ManagerTxn}, s.shared.currentTxn = some tx → tx.kind = .acquireBlock →
       tx.resultPerm = .B →
       (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  sorry
+  intro tx hcur hkind hperm
+  rcases hstep with ⟨tx', hcur', hreq, hphase, hgrant, hrel, _, _, _, hs'⟩
+  rw [hcur] at hcur'; cases hcur'
+  simp only [SymSharedSpec.toSpec, TileLink.Atomic.tlAtomic]
+  have hreqLt : tx.requester < n := by
+    rcases (by simpa [txnPlanInv, hcur] using hplan) with ⟨hlt, _⟩; exact hlt
+  let req : Fin n := ⟨tx.requester, hreqLt⟩
+  have hreqi : req = i := Fin.ext hreq
+  have hplanB := txnPlanInv_acquireBlock_branch hplan hcur hkind hperm
+  have htxnD := by simpa [txnDataInv, hcur] using htxnData
+  have hnotGPA : tx.phase ≠ .grantPendingAck := by simp [hphase]
+  refine ⟨req, .finishGrant, ?_⟩
+  let pg := absPendingGrantMeta tx
+  refine ⟨pg, ?_, ?_, ?_, ?_, ?_⟩
+  · simp [refMap, pg, hcur]
+  · simp [refMap, hgrant]
+  · simp [refMap, refMapShared, hcur, hrel, hnotGPA]
+  · simp [pg, absPendingGrantMeta, req]
+  · -- Case split on usedDirtySource
+    cases husedDS : tx.usedDirtySource with
+    | false =>
+      -- Block-shared (2nd disjunct): ¬hasDirtyOther, hasCachedOther, usedDirtySource = false
+      right; left
+      have hwfPre := by simpa [preLinesWFInv, hcur] using hpreWF
+      have hNoDirty : ¬TileLink.Atomic.hasDirtyOther n req (refMap n s) := by
+        intro ⟨j, hji, hdj⟩
+        simp only [refMap, refMapLine, hcur, hnotGPA, ite_false] at hdj
+        have hpermT := (hwfPre j.1 j.is_lt).1 hdj |>.1
+        by_cases hjr : j.1 = tx.requester
+        · rw [hjr] at hpermT; exact absurd hpermT (by rw [hreqPerm tx hcur hkind]; exact TLPerm.noConfusion)
+        · have huds := by simpa [usedDirtySourceInv, hcur] using husedDirty
+          rw [huds husedDS j.1 j.is_lt hjr] at hdj; cases hdj
+      refine ⟨hNoDirty, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+      · -- hasCachedOther
+        rw [hreqi]; rw [atomic_hasCachedOther_refMap_snapshot_iff hcur hreq hnotGPA]
+        exact hplanB.1
+      · simp [pg, absPendingGrantMeta, absGrantKind, hkind]
+      · simp [pg, absPendingGrantMeta, hperm]
+      · simp [pg, absPendingGrantMeta, husedDS]
+      · -- transferVal = mem
+        simp only [pg, absPendingGrantMeta, refMap, refMapShared, hcur, hnotGPA, ite_false, husedDS]
+        exact htxnD.1 husedDS
+      · -- probesNeeded = writableProbeMask
+        simp only [pg, absPendingGrantMeta]; rw [hreqi, hplanB.2]
+        exact (atomic_writableProbeMask_refMap_snapshot_eq hcur hreq hnotGPA).symm
+      · -- probesRemaining = writableProbeMask
+        simp only [pg, absPendingGrantMeta, hnotGPA, ite_false]; rw [hreqi, hplanB.2]
+        exact (atomic_writableProbeMask_refMap_snapshot_eq hcur hreq hnotGPA).symm
+      · -- s' = finishGrantBlockSharedState
+        rw [hs', hreqi]
+        apply SymState.ext
+        · exact refMapShared_sendGrant_block_branch_eq hfull hclean htxnLine hpre htxnData hplan hcur hreq hphase hrel hkind hperm
+        · exact refMap_sendGrant_block_branch_locals_eq hfull htxnLine hplan hcur hreq hphase hkind hperm
+    | true =>
+      -- Block-dirty (1st disjunct): ∃ dirty j, usedDirtySource = true
+      left
+      obtain ⟨k, hklt, hk_dirty, htv_k⟩ := htxnD.2.1 husedDS
+      have hwfPre := by simpa [preLinesWFInv, hcur] using hpreWF
+      have hkne : k ≠ tx.requester := by
+        intro heq
+        have hpermT := (hwfPre k hklt).1 hk_dirty |>.1
+        rw [heq] at hpermT; exact absurd hpermT (by rw [hreqPerm tx hcur hkind]; exact TLPerm.noConfusion)
+      sorry -- block-dirty sub-case: need singleProbeMask = writableProbeMask from SWMR + finishGrantBlockDirtyState eq
 
 theorem refMap_sendGrant_block_tip_next {n : Nat}
     {s s' : SymState HomeState NodeState n} {i : Fin n}
