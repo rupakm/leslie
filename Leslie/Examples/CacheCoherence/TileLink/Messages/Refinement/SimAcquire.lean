@@ -279,7 +279,7 @@ theorem refMap_sendGrant_block_branch_next {n : Nat}
         rw [hs', hreqi]
         apply SymState.ext
         · exact refMapShared_sendGrant_block_branch_eq hfull hclean htxnLine htxnData hplan hcur hreq hphase hrel hkind hperm
-        · exact refMap_sendGrant_block_branch_locals_eq hfull htxnLine hplan hcur hreq hphase hkind hperm
+        · exact refMap_sendGrant_block_branch_locals_eq hfull hclean htxnLine htxnData hplan hcur hreq hphase hkind hperm
     | true =>
       -- Block-dirty (1st disjunct): ∃ dirty j, usedDirtySource = true
       left
@@ -289,7 +289,63 @@ theorem refMap_sendGrant_block_branch_next {n : Nat}
         intro heq
         have hpermT := (hwfPre k hklt).1 hk_dirty |>.1
         rw [heq] at hpermT; exact absurd hpermT (by rw [hreqPerm tx hcur hkind]; exact TLPerm.noConfusion)
-      sorry -- block-dirty sub-case: need singleProbeMask = writableProbeMask from SWMR + finishGrantBlockDirtyState eq
+      let j : Fin n := ⟨k, hklt⟩
+      have hji : j ≠ req := by intro h; exact hkne (congrArg Fin.val h)
+      have hpnd := by simpa [preLinesNoDirtyInv, hcur] using hpre
+      -- probesNeeded = singleProbeMask k (SWMR: j is unique .T owner)
+      have hpermT := (hwfPre k hklt).1 hk_dirty |>.1
+      have hmask : snapshotWritableProbeMask n tx = TileLink.Atomic.singleProbeMask k := by
+        funext m
+        simp only [snapshotWritableProbeMask, TileLink.Atomic.singleProbeMask]
+        by_cases hm : m < n
+        · by_cases hmreq : m = tx.requester
+          · simp [hm, hmreq]; omega
+          · simp [hm, hmreq]
+            by_cases hmk : m = k
+            · subst hmk; simp [hpermT]
+            · simp [hmk]; intro h; exact absurd h (by rw [hpnd k m hklt hm (Ne.symm hmk) hk_dirty]; decide)
+        · simp [hm]; intro hmk; subst hmk; omega
+      -- finishGrantBlockDirtyState = finishGrantBlockSharedState (j.data = mem at grantReady)
+      have hmem_eq : ((refMap n s).locals j).data = (refMap n s).shared.mem := by
+        simp only [refMap, refMapLine, refMapShared, hcur, hnotGPA, ite_false, husedDS, ite_true]
+        exact htv_k.symm
+      have hlocals_eq : TileLink.Atomic.acquireBlockDirtyLocals (refMap n s) i j =
+          TileLink.Atomic.acquireBlockSharedLocals (refMap n s) i := by
+        funext m
+        simp only [TileLink.Atomic.acquireBlockDirtyLocals, TileLink.Atomic.acquireBlockSharedLocals]
+        by_cases hmi : m = i
+        · simp [hmi, hmem_eq]
+        · by_cases hmj : m = j
+          · -- m = j (dirty owner): dirty gives branchLine j.data, shared gives branchLine mem (perm .T)
+            subst hmj; simp only [hmi, ite_false, ite_true]
+            rw [hmem_eq]
+            have : ((refMap n s).locals j).perm = .T := by
+              simp [refMap, refMapLine, hcur, hnotGPA]; exact hpermT
+            simp [this]
+          · -- m ≠ i ∧ m ≠ j: both give s.locals m (perm ≠ .T from SWMR)
+            simp only [hmi, hmj, ite_false]
+            have : ((refMap n s).locals m).perm ≠ .T := by
+              simp only [refMap, refMapLine, hcur, hnotGPA, ite_false]
+              intro hpT
+              exact absurd (hpnd k m.1 hklt m.is_lt (fun h => hmj (Fin.ext h.symm)) hk_dirty)
+                (by rw [hpT]; exact TLPerm.noConfusion)
+            simp [this]
+      have hstate_eq : TileLink.Atomic.finishGrantBlockDirtyState (refMap n s) i j pg =
+          TileLink.Atomic.finishGrantBlockSharedState (refMap n s) i pg := by
+        simp only [TileLink.Atomic.finishGrantBlockDirtyState, TileLink.Atomic.finishGrantBlockSharedState,
+          hmem_eq, hlocals_eq]
+      refine ⟨j, hji, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+      · simp only [refMap, refMapLine, hcur, hnotGPA, ite_false]; exact hk_dirty
+      · simp [pg, absPendingGrantMeta, absGrantKind, hkind]
+      · simp [pg, absPendingGrantMeta, hperm]
+      · simp [pg, absPendingGrantMeta, husedDS]
+      · simp only [pg, absPendingGrantMeta, refMap, refMapLine, hcur, hnotGPA, ite_false]; exact htv_k
+      · simp only [pg, absPendingGrantMeta]; rw [hplanB.2, hmask]
+      · simp only [pg, absPendingGrantMeta, hnotGPA, ite_false]; rw [hplanB.2, hmask]
+      · rw [hs', hreqi, hstate_eq]
+        apply SymState.ext
+        · exact refMapShared_sendGrant_block_branch_eq hfull hclean htxnLine htxnData hplan hcur hreq hphase hrel hkind hperm
+        · exact refMap_sendGrant_block_branch_locals_eq hfull hclean htxnLine htxnData hplan hcur hreq hphase hkind hperm
 
 theorem refMap_sendGrant_block_tip_next {n : Nat}
     {s s' : SymState HomeState NodeState n} {i : Fin n}
