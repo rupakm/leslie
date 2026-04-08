@@ -424,7 +424,7 @@ def deliveredGrantMeta (pg : PendingGrantMeta) : PendingGrantMeta :=
 @[reducible] def storeState {n : Nat}
     (s : SymState HomeState CacheLine n) (i : Fin n) (v : Val) :
     SymState HomeState CacheLine n :=
-  { shared := s.shared
+  { shared := { s.shared with mem := v }
   , locals := setFn s.locals i (dirtyTipLine v) }
 
 /-- `grantAck` post-state. -/

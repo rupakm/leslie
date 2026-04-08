@@ -485,16 +485,17 @@ private theorem cleanDataInv_preserved (n : Nat)
             simpa [acquirePermLocals, hpi] using hpvalid
           exact False.elim this
   | .store v =>
-      rcases hstep with ⟨_, _, _, _, rfl⟩
+      rcases hstep with ⟨_, _, _, hpreT, rfl⟩
       by_cases hpi : p = i
       · have : False := by
           simpa [setFn, hpi] using hpclean
         exact False.elim this
-      · have hpvalidPre : (s.locals p).valid = true := by
+      · -- p ≠ i: under SWMR, perm p = .N so not valid — contradiction
+        have hpN : (s.locals p).perm = .N := hswmr i p (fun h => hpi h.symm) hpreT
+        have hpvalidFalse : (s.locals p).valid = false := (hwf p).2.2 hpN |>.1
+        have hpvalidPre : (s.locals p).valid = true := by
           simpa [setFn, hpi] using hpvalid
-        have hpcleanPre : (s.locals p).dirty = false := by
-          simpa [setFn, hpi] using hpclean
-        simpa [setFn, hpi] using hcleanData p hpvalidPre hpcleanPre
+        rw [hpvalidFalse] at hpvalidPre; cases hpvalidPre
   | .grantAck =>
       rcases hstep with ⟨_, rfl⟩
       exact hcleanData p hpvalid hpclean

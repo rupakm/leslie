@@ -724,15 +724,28 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
         simpa [refMap, refMapLine, hcur] using hperm
       · -- postcondition
         apply SymState.ext
-        · -- shared: refMapShared unchanged (store preserves perm = .T so syncDir same)
-          show refMapShared n s'store = (refMap n s).shared
-          simp only [refMapShared, hcur, refMap, hrel, s'store]
-          rw [TileLink.Atomic.HomeState.mk.injEq]
-          refine ⟨?_, ?_, rfl, ?_, ?_⟩
-          · -- mem: dirty override in refMapShared changes after store;
-            -- needs refMap redesign to distinguish dirty-not-releasing from dirty-releasing
-            sorry
+        · -- shared: store updates mem to v via dirty-owner override
+          refine TileLink.Atomic.HomeState.ext ?_ ?_ ?_ ?_ ?_
+          · -- mem: dirty override gives v (unique dirty node i has data v)
+            simp only [refMap, TileLink.Atomic.storeState, refMapShared, hcur, s'store]
+            have hDirtyI : ((setFn s.locals i (storeLocal (s.locals i) v)) i).line.dirty =
+                true := by simp [setFn, storeLocal]
+            have hExDirty : ∃ j : Fin n,
+                ((setFn s.locals i (storeLocal (s.locals i) v)) j).line.dirty = true :=
+              ⟨i, hDirtyI⟩
+            rw [dif_pos hExDirty]
+            have hChooseI : Classical.choose hExDirty = i := by
+              have hcd := Classical.choose_spec hExDirty
+              by_contra hne
+              have hSame : ((setFn s.locals i (storeLocal (s.locals i) v))
+                  (Classical.choose hExDirty)).line =
+                  (s.locals (Classical.choose hExDirty)).line := by simp [setFn, hne]
+              rw [hSame] at hcd
+              exact absurd ((hfull.1.1 (Classical.choose hExDirty)).1 hcd).1
+                (by rw [hSwmr i _ (Ne.symm hne) hperm]; simp)
+            rw [hChooseI]; simp [setFn, storeLocal]
           · -- dir: syncDir unchanged because perm .T → .T at i, others unchanged
+            simp only [refMap, TileLink.Atomic.storeState, refMapShared, hcur, s'store]
             funext k
             by_cases hk : k < n
             · simp only [TileLink.Atomic.syncDir, hk, dite_true]
@@ -740,9 +753,12 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
               · subst hki; simp [setFn, storeLocal, hperm]
               · simp [setFn, hki]
             · simp [TileLink.Atomic.syncDir, hk]
+          · -- pendingGrantMeta
+            simp [refMap, refMapShared, hcur]
           · -- pendingGrantAck
-            simp [hgrant, hqueuedNone, hqueuedPost]
-          · -- pendingReleaseAck: queuedReleaseIdx unchanged
+            simp [refMap, refMapShared, hcur, hgrant]
+          · -- pendingReleaseAck
+            simp only [refMap, refMapShared, hcur, hrel]
             rw [hqueuedNone]; exact hqueuedPost
         · -- locals: refMapLine at each index
           funext j
