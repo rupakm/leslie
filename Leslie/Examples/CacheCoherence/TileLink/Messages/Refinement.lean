@@ -47,7 +47,7 @@ theorem init_forwardSimInv (n : Nat) :
 theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
     dataCoherenceInv n s' := by
-  rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanC, _, _⟩, hdata, _, _, _, _, _, _, _⟩
+  rcases hinv with ⟨⟨hfull, hdirtyEx, hSwmr, htxnData, hcleanC, _, hdirtyRelEx⟩, hdata, _, _, _, _, _, _, _⟩
   simp only [SymSharedSpec.toSpec, tlMessages] at hnext
   obtain ⟨i, a, hstep⟩ := hnext
   -- intro pattern: j = currentTxn guard, hvalidJ = Fin n, hdirtyJ = releaseInFlight guard
@@ -116,18 +116,35 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
         rw [hln] at hvalid hdirtyK ⊢
         simpa [sendReleaseState] using hdata (by simpa [sendReleaseState] using j) hvalidJ hdirtyJ hvalid hdirtyK
   | .recvReleaseAtManager =>
-      -- recvRelease: shared.mem may change (dirty writeback). With valid guard,
-      -- invalid nodes are vacuously true. For valid nodes j ≠ i:
-      -- Under SWMR, the releaser i has perm ≠ .N, so if i is dirty with perm .T,
-      -- all other valid nodes have perm .B (or .N → invalid → vacuous).
-      -- Valid clean nodes with perm .B had data = old mem. But if writeback
-      -- changed mem, we need data = new mem. Since the releasing node's dirty data
-      -- is written back as new mem, and a .B node's data = old mem = the value
-      -- before the dirty store, while new mem = the dirty data ≠ old mem.
-      -- Actually: with the valid guard, the only valid non-releasing nodes have
-      -- perm .B, so they have data = shared.mem (from pre-state dataCoherenceInv).
-      -- But recvRelease changes shared.mem! So this still needs careful reasoning.
-      sorry -- TODO: needs reasoning about valid nodes during release writeback
+      -- recvRelease at manager: shared.mem may change via releaseWriteback.
+      -- recvReleaseLocal only changes chanC/chanD, NOT line or releaseInFlight.
+      rcases hstep with ⟨msg, param, htxn, _, _, hflight, hchanC, _, _, _, _, _, hs'⟩
+      subst hs'
+      intro hvalid hdirtyK
+      by_cases hji : hvalidJ = i
+      · -- node i: releaseInFlight unchanged (still true), contradicts hdirtyJ
+        subst hji
+        simp only [recvReleaseState, recvReleaseLocals, setFn, ite_true,
+          recvReleaseLocal] at hdirtyJ
+        rw [hflight] at hdirtyJ; cases hdirtyJ
+      · -- node j ≠ i: locals/line unchanged. Case split on msg.data (dirty vs clean release).
+        have hlineEq : (recvReleaseState s i msg param).locals hvalidJ = s.locals hvalidJ := by
+          simp [recvReleaseState, recvReleaseLocals, setFn, hji]
+        simp only [hlineEq] at hvalid hdirtyK ⊢
+        have hflightJ : (s.locals hvalidJ).releaseInFlight = false := by
+          simp only [recvReleaseState, recvReleaseLocals, setFn, hji, ite_false] at hdirtyJ
+          exact hdirtyJ
+        -- Case split on whether the release carries dirty data
+        by_cases hdirtyMsg : msg.data = none
+        · -- Clean release: shared.mem = releaseWriteback old none = old.
+          simp only [recvReleaseState, recvReleaseShared, releaseWriteback, hdirtyMsg]
+          exact hdata htxn hvalidJ hflightJ hvalid hdirtyK
+        · -- Dirty release: dirtyReleaseExclusiveInv gives perm j = .N → valid = false.
+          have hDirtyRel : ∃ msg' : CMsg, (s.locals i).chanC = some msg' ∧ msg'.data ≠ none :=
+            ⟨msg, hchanC, hdirtyMsg⟩
+          have hpermN := hdirtyRelEx htxn i hflight hDirtyRel hvalidJ hji
+          have hvalidFalse := (hfull.1.1 hvalidJ).2.2 hpermN |>.1
+          rw [hvalidFalse] at hvalid; cases hvalid
   | .recvReleaseAckAtMaster =>
       -- recvReleaseAck: clears releaseInFlight for node i. shared.mem unchanged.
       -- For node i: was releasing, now releaseInFlight = false. Need valid → dirty = false → data = mem.
