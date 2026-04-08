@@ -889,7 +889,7 @@ theorem forwardSim_step (n : Nat) (s s' : SymState HomeState NodeState n)
   | .recvGrantAtMaster =>
       right; exact (refMap_recvGrantAtMaster_eq hstep).symm
   | .recvGrantAckAtManager =>
-      left; exact refMap_recvGrantAckAtManager_next hfull htxnLine hstep
+      left; exact refMap_recvGrantAckAtManager_next hfull htxnLine htxnData hstep
   | .sendRelease param =>
       left; exact refMap_sendRelease_next (hdirtyEx := hnoDirty) hfull hstep
   | .sendReleaseData param =>

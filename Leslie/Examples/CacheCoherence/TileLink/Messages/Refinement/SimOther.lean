@@ -127,7 +127,7 @@ theorem refMap_recvGrantAtMaster_eq {n : Nat}
 theorem refMap_recvGrantAckAtManager_next {n : Nat}
     {s s' : SymState HomeState NodeState n}
     {i : Fin n}
-    (hfull : fullInv n s) (htxnLine : txnLineInv n s)
+    (hfull : fullInv n s) (htxnLine : txnLineInv n s) (htxnData : txnDataInv n s)
     (hstep : RecvGrantAckAtManager s s' i) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
   rcases hstep with ⟨tx, msg, hcur, hreq, hphase, hpga, _, hEi, _, _, hs'⟩
@@ -275,18 +275,46 @@ theorem refMap_recvGrantAckAtManager_next {n : Nat}
           · -- probesNeeded j = false: line = preLines j
             -- preLines j is dirty → usedDirtySource must be true
             -- From choose_spec, the chosen dirty node has its data
-            have hchosen := Classical.choose_spec hdirtyPost
-            rw [hline_preserved] at hchosen
-            -- The chosen node is also dirty; by the same analysis it's unprobed
-            -- and its preLines is dirty. So usedDirtySource = true and transferVal = data.
-            -- Actually we need to show the data matches.
+            -- From txnDataInv Part 3: transferVal = s.shared.mem during grantPendingAck
+            have htd := by simpa [txnDataInv, hcur] using htxnData
+            have htv := htd.2.2 (Or.inr hphase)
+            -- The chosen dirty post-state node also has preLines dirty (by same analysis)
+            -- Since line preserved and line = preLines j (not probed), data = (preLines j).data
+            -- And since transferVal = s.shared.mem, we need (preLines j).data = s.shared.mem
+            -- From preLinesCleanInv: if (preLines j).dirty = false then (preLines j).data = s.shared.mem
+            -- But (preLines j).dirty = TRUE here. So preLinesCleanInv doesn't help directly.
+            -- However, transferVal = s.shared.mem AND transferVal = (preLines k).data (from dirtyOwnerExistsInv)
+            -- So (preLines k).data = s.shared.mem. By uniqueness (preLinesNoDirtyInv), k = j.
+            -- Actually, we can use a simpler argument:
+            -- Since transferVal = s.shared.mem, and the refMap mem was
+            -- `if usedDirtySource then transferVal else s.shared.mem` = s.shared.mem in both cases,
+            -- we just need (choose hdirtyPost).line.data = s.shared.mem.
+            -- But we can't prove this without more invariants.
+            -- Alternative: show hdirtyPost is actually False (no dirty owner should exist)
+            -- After grantPendingAck, the requester has grantLine (dirty=false by construction).
+            -- Non-requester j with probesNeeded=false was NOT probed, so line = preLines j.
+            -- If preLines j is dirty, then usedDirtySource = true (from usedDirtySourceInv contrapositive).
+            -- From dirtyOwnerExistsInv: exactly one such k, with transferVal = (preLines k).data.
+            -- From preLinesNoDirtyInv: at most one dirty preLines. So j = k.
+            -- transferVal = s.shared.mem (from txnDataInv Part 3).
+            -- So (preLines j).data = s.shared.mem. And (s.locals j).line = preLines j (from txnLineInv).
+            -- So (s.locals j).line.data = s.shared.mem.
+            -- The chosen dirty post-state node: (choose hdirtyPost).line = (s.locals (choose ...)).line (preserved).
+            -- By the same argument, its data = s.shared.mem = transferVal.
+            -- So the whole `if dirty then dirty.data else ...` = s.shared.mem.
+            -- This matches `if usedDirtySource then transferVal else s.shared.mem` = s.shared.mem.
+            -- So both sides = s.shared.mem. QED.
+            rw [htv]; simp
+            -- Goal should now be: (s.locals (choose ...)).line.data = s.shared.mem
+            -- or similar after simp
             sorry
         · rw [dif_neg hdirtyPost, hDRV_post]
           -- No dirty owner in post-state.
-          -- Need: s.shared.mem = if tx.usedDirtySource then tx.transferVal else s.shared.mem
-          -- If usedDirtySource = false, trivial.
-          -- If usedDirtySource = true: from txnDataInv, transferVal = s.shared.mem during grantPendingAck
-          sorry
+          -- From txnDataInv Part 3: grantPendingAck → transferVal = s.shared.mem
+          have htd := by simpa [txnDataInv, hcur] using htxnData
+          have htv := htd.2.2 (Or.inr hphase)
+          -- So: if usedDirtySource then transferVal else mem = mem (both branches = mem)
+          simp [htv]
       -- Assemble shared equality
       cases hrhs : refMapShared n (recvGrantAckState s i) with | mk m d pgm pga pra =>
       simp only [hrhs] at hpgm hpga_post hpra_post hdir_eq hmem_post
