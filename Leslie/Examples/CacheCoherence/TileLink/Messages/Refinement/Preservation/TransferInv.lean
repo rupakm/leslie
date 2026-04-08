@@ -108,10 +108,46 @@ theorem txnTransferMemInv_preserved (n : Nat)
         rw [hs']
         simp only [txnTransferMemInv, recvAcquireState, recvAcquireShared]
         intro huds hall
-        sorry -- At init: usedDirtySource = true → dirty node k with remaining = needed = true → contradiction
+        -- usedDirtySource = true → dirtyOwnerOpt found a dirty node k
+        -- probesRemaining[k] = probesNeeded[k] at init; dirty → perm .T → in mask → true
+        -- But hall says probesRemaining[k] = false → contradiction
+        exfalso
+        by_cases hex : ∃ j : Fin n, j ≠ i ∧ (s.locals j).line.dirty = true
+        · have hk := Classical.choose_spec hex
+          let k := Classical.choose hex
+          rcases hfull with ⟨⟨hlineWF, _, _, _⟩, _, _⟩
+          have hpermT := (hlineWF k).1 hk.2 |>.1
+          -- hall applied to k: probesRemaining[k] = false
+          have hk_dirty_pre : ((plannedTxn s i .acquireBlock grow source).preLines k.1).dirty = true := by
+            simp [plannedTxn, k.is_lt]; exact hk.2
+          have hrem := hall k.1 k.is_lt hk_dirty_pre
+          -- probesRemaining = probesNeeded at init; dirty → perm .T → in mask → true
+          simp only [plannedTxn, probeMaskForResult,
+            snapshotWritableProbeMask, snapshotCachedProbeMask,
+            TileLink.Atomic.noProbeMask, k.is_lt, hk.1, hpermT] at hrem
+          -- After full reduction, hrem should be False (true = false)
+          -- hrem : (match grow.result with ... probeMask) k = false; but dirty → in mask → true
+          -- For .B: writableProbeMask has dirty k → true, contradiction
+          -- For .N/.T: noProbeMask gives false, so probe is vacuous — but then usedDirtySource
+          -- should be false (no dirty probed node). Need txnPlanInv reasoning.
+          sorry
+        · -- No dirty owner → usedDirtySource should be false → contradiction
+          -- hex : ¬∃ j, j ≠ i ∧ dirty j → dirtyOwnerOpt = none → usedDirtySource = false
+          exfalso; revert huds; simp [plannedTxn, plannedUsedDirtySource, dirtyOwnerOpt, dif_neg hex]
       · rcases hperm with ⟨grow, source, htxn, _, _, _, _, _, _, _, _, hs'⟩
         rw [hs']
-        sorry -- Same as acquireBlock case
+        simp only [txnTransferMemInv, recvAcquireState, recvAcquireShared]
+        intro huds hall
+        exfalso
+        by_cases hex : ∃ j : Fin n, j ≠ i ∧ (s.locals j).line.dirty = true
+        · have hk := Classical.choose_spec hex
+          let k := Classical.choose hex
+          rcases hfull with ⟨⟨hlineWF, _, _, _⟩, _, _⟩
+          have hpermT := (hlineWF k).1 hk.2 |>.1
+          have hk_dirty_pre : ((plannedTxn s i .acquirePerm grow source).preLines k.1).dirty = true := by
+            simp [plannedTxn, k.is_lt]; exact hk.2
+          sorry -- Same probe mask reasoning as acquireBlock
+        · exfalso; revert huds; simp [plannedTxn, plannedUsedDirtySource, dirtyOwnerOpt, dif_neg hex]
   | .recvProbeAtMaster =>
       rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, hs'⟩
       rcases hs' with ⟨_, hs'⟩; rw [hs']
