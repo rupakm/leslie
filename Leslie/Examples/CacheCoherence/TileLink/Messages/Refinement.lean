@@ -86,12 +86,96 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
       rcases hstep with ⟨tx, _, hcur, _, _, _, _, _, _, _, _, rfl⟩
       simp [recvGrantState, recvGrantShared, hcur] at j
   | .recvGrantAckAtManager =>
-      -- recvGrantAck: currentTxn transitions from some to none.
-      -- With valid guard: invalid nodes (perm .N) are vacuously true.
+      -- recvGrantAck: currentTxn → none. Need: perm≠.N → dirty=false → data=mem.
       rcases hstep with ⟨tx, msg, hcur, hreq, hphase, _, _, _, _, hs'⟩
-      simp only [hs', recvGrantAckState, recvGrantAckShared, recvGrantAckLocals] at j hdirtyJ ⊢
-      intro hvalid hdirtyK
-      sorry -- R:94 temporarily reverted
+      rw [hs']
+      -- Post-state: currentTxn = none (discharge guard), lines preserved, mem unchanged
+      intro htxnNone hvalidJ hdirtyJ hvalid hdirtyK
+      -- Lines preserved: recvGrantAckLocal only changes chanE/pendingSink
+      have hline_eq : (recvGrantAckLocals s i hvalidJ).line = (s.locals hvalidJ).line := by
+        simp [recvGrantAckLocals, setFn]; split <;> simp_all [recvGrantAckLocal]
+      simp only [recvGrantAckState] at hvalid hdirtyK ⊢
+      rw [hline_eq] at hvalid hdirtyK ⊢
+      -- Now goal: (s.locals hvalidJ).line.data = s.shared.mem
+      -- Use txnLineInv + probeSnapshotLine (same as cleanDataInv proof)
+      have htxnL := by simpa [txnLineInv, hcur] using htxnLine'
+      have hpreC := by simpa [preLinesCleanInv, hcur] using hpreClean'
+      have htxnD := by simpa [txnDataInv, hcur] using htxnData
+      have hwfPre := by simpa [preLinesWFInv, hcur] using hpreWF'
+      have hlineCi := htxnL hvalidJ
+      -- At grantPendingAck: requester with chanE → grantLine; others → probeSnapshotLine
+      by_cases hreqJ : tx.requester = hvalidJ.1
+      · -- Requester
+        simp [txnSnapshotLine, hphase, hreqJ] at hlineCi
+        by_cases hE : (s.locals hvalidJ).chanE = none
+        · simp [hE] at hlineCi; rw [hlineCi] at hvalid hdirtyK ⊢
+          exact hpreC hvalidJ.1 hvalidJ.is_lt hvalid hdirtyK
+        · simp [show (s.locals hvalidJ).chanE ≠ none from hE] at hlineCi
+          rw [hlineCi] at hvalid hdirtyK ⊢
+          simp only [grantLine] at hvalid hdirtyK ⊢
+          split at hvalid hdirtyK ⊢
+          · exact htxnD.2.2 (Or.inr hphase)
+          · exact hpreC hvalidJ.1 hvalidJ.is_lt (by rwa [← hreqJ]) hdirtyK
+      · -- Non-requester: probeSnapshotLine
+        simp [txnSnapshotLine, hphase, hreqJ] at hlineCi
+        rw [hlineCi] at hvalid hdirtyK ⊢
+        by_cases hneeded : tx.probesNeeded hvalidJ.1 = true
+        · -- Probed: analyze probedLine
+          simp only [probeSnapshotLine, hneeded, ite_true] at hvalid hdirtyK ⊢
+          -- At grantPendingAck, all probesRemaining = false
+          have ⟨⟨_, _, _, htxnCore⟩, _, _⟩ := hfull
+          rw [txnCoreInv, hcur] at htxnCore
+          have hrem := htxnCore.2.2.2.2.2.2.2 hphase hvalidJ
+          simp only [hrem, show (false = true) = False from rfl, false_and, ite_false] at hvalid hdirtyK ⊢
+          -- line = probedLine(preLines, cap)
+          simp only [probedLine] at hvalid hdirtyK ⊢
+          cases hcap : probeCapOfResult tx.resultPerm with
+          | toN => simp [invalidatedLine] at hvalid
+          | toB =>
+            simp only [hcap, branchAfterProbe] at hvalid hdirtyK ⊢
+            by_cases hdirtyPre : (tx.preLines hvalidJ.1).dirty = true
+            · -- Dirty: txnDataInv + uniqueness
+              have husedDS : tx.usedDirtySource = true := by
+                by_contra h; have h' := Bool.eq_false_iff.mpr h
+                have huds := by simpa [usedDirtySourceInv, hcur] using husedDirty'
+                rw [huds h' hvalidJ.1 hvalidJ.is_lt (Ne.symm hreqJ)] at hdirtyPre; cases hdirtyPre
+              obtain ⟨k, hklt, hk_dirty, htv_k⟩ := htxnD.2.1 husedDS
+              have hj_eq_k : hvalidJ.1 = k := by
+                by_contra hne
+                have hpnd := by simpa [preLinesNoDirtyInv, hcur] using hpreNoDirty'
+                exact absurd (hpnd k hvalidJ.1 hklt hvalidJ.is_lt (fun h => hne h.symm) hk_dirty)
+                  ((hwfPre hvalidJ.1 hvalidJ.is_lt).1 hdirtyPre |>.1 ▸ TLPerm.noConfusion)
+              rw [show hvalidJ.1 = k from hj_eq_k]; rw [← htv_k]
+              exact (htxnD.2.2 (Or.inr hphase)).symm
+            · -- Clean: preLinesCleanInv (perm ≠ .N)
+              have hpermNeN : (tx.preLines hvalidJ.1).perm ≠ .N := by
+                intro hpN; exact absurd ((hwfPre hvalidJ.1 hvalidJ.is_lt).2.2 hpN).2
+                  (by rw [hdirtyPre]; decide)
+              exact hpreC hvalidJ.1 hvalidJ.is_lt hpermNeN hdirtyPre
+          | toT =>
+            simp only [hcap, tipAfterProbe] at hvalid hdirtyK ⊢
+            by_cases hdirtyPre : (tx.preLines hvalidJ.1).dirty = true
+            · have husedDS : tx.usedDirtySource = true := by
+                by_contra h; have h' := Bool.eq_false_iff.mpr h
+                have huds := by simpa [usedDirtySourceInv, hcur] using husedDirty'
+                rw [huds h' hvalidJ.1 hvalidJ.is_lt (Ne.symm hreqJ)] at hdirtyPre; cases hdirtyPre
+              obtain ⟨k, hklt, hk_dirty, htv_k⟩ := htxnD.2.1 husedDS
+              have hj_eq_k : hvalidJ.1 = k := by
+                by_contra hne
+                have hpnd := by simpa [preLinesNoDirtyInv, hcur] using hpreNoDirty'
+                exact absurd (hpnd k hvalidJ.1 hklt hvalidJ.is_lt (fun h => hne h.symm) hk_dirty)
+                  ((hwfPre hvalidJ.1 hvalidJ.is_lt).1 hdirtyPre |>.1 ▸ TLPerm.noConfusion)
+              rw [show hvalidJ.1 = k from hj_eq_k]; rw [← htv_k]
+              exact (htxnD.2.2 (Or.inr hphase)).symm
+            · have hpermNeN : (tx.preLines hvalidJ.1).perm ≠ .N := by
+                intro hpN; exact absurd ((hwfPre hvalidJ.1 hvalidJ.is_lt).2.2 hpN).2
+                  (by rw [hdirtyPre]; decide)
+              exact hpreC hvalidJ.1 hvalidJ.is_lt hpermNeN hdirtyPre
+        · -- Unprobed: line = preLines. preLinesCleanInv applies.
+          have hneededF : tx.probesNeeded hvalidJ.1 = false := by
+            cases h : tx.probesNeeded hvalidJ.1 <;> simp_all
+          simp only [probeSnapshotLine, hneededF, ite_false] at hvalid hdirtyK ⊢
+          exact hpreC hvalidJ.1 hvalidJ.is_lt hvalid hdirtyK
   | .sendRelease param =>
       rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, _, hflight, _, _, _, hs'⟩
       subst hs'; intro hvalid hdirtyK

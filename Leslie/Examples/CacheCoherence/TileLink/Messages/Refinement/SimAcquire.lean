@@ -278,7 +278,7 @@ theorem refMap_sendGrant_block_branch_next {n : Nat}
       · -- s' = finishGrantBlockSharedState
         rw [hs', hreqi]
         apply SymState.ext
-        · exact refMapShared_sendGrant_block_branch_eq hfull hclean htxnLine hpre htxnData hplan hcur hreq hphase hrel hkind hperm
+        · exact refMapShared_sendGrant_block_branch_eq hfull hclean htxnLine htxnData hplan hcur hreq hphase hrel hkind hperm
         · exact refMap_sendGrant_block_branch_locals_eq hfull htxnLine hplan hcur hreq hphase hkind hperm
     | true =>
       -- Block-dirty (1st disjunct): ∃ dirty j, usedDirtySource = true
