@@ -53,31 +53,18 @@ theorem dataCoherenceInv_preserved (n : Nat) (s s' : SymState HomeState NodeStat
   intro j hvalidJ hdirtyJ
   match a with
   | .sendAcquireBlock grow source =>
-      -- lines/mem unchanged
-      have hline := sendAcquireBlock_line (j := j) hstep
-      rw [hline] at hvalidJ hdirtyJ
-      have hmem : s'.shared.mem = s.shared.mem := by
-        rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩; rw [hs']
-      rw [hline, hmem]; exact hdata j hvalidJ hdirtyJ
+      rcases hstep with ⟨_, _, _, _, _, _, _, rfl⟩
+      simp only [setFn] at j hdirtyJ ⊢; split at hdirtyJ <;> (split at ⊢ <;> simp_all [dataCoherenceInv])
   | .sendAcquirePerm grow source =>
-      have hline := sendAcquirePerm_line (j := j) hstep
-      rw [hline] at hvalidJ hdirtyJ
-      have hmem : s'.shared.mem = s.shared.mem := by
-        rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩; rw [hs']
-      rw [hline, hmem]; exact hdata j hvalidJ hdirtyJ
+      rcases hstep with ⟨_, _, _, _, _, _, _, rfl⟩
+      simp only [setFn] at j hdirtyJ ⊢; split at hdirtyJ <;> (split at ⊢ <;> simp_all [dataCoherenceInv])
   | .recvAcquireAtManager =>
       -- lines/mem unchanged
       rcases hstep with hblk | hperm
-      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, hs'⟩
-        rcases hs' with ⟨_, hs'⟩
-        rw [hs'] at hvalidJ hdirtyJ ⊢
-        simp [recvAcquireState, recvAcquireLocals_line] at hvalidJ hdirtyJ ⊢
-        exact hdata j hvalidJ hdirtyJ
-      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, hs'⟩
-        rcases hs' with ⟨_, hs'⟩
-        rw [hs'] at hvalidJ hdirtyJ ⊢
-        simp [recvAcquireState, recvAcquireLocals_line] at hvalidJ hdirtyJ ⊢
-        exact hdata j hvalidJ hdirtyJ
+      · rcases hblk with ⟨grow, source, _, _, _, _, _, _, _, _, _, _, rfl⟩
+        simp [recvAcquireState, recvAcquireLocals, recvAcquireShared, setFn] at j hdirtyJ ⊢
+      · rcases hperm with ⟨grow, source, _, _, _, _, _, _, _, _, _, rfl⟩
+        simp [recvAcquireState, recvAcquireLocals, recvAcquireShared, setFn] at j hdirtyJ ⊢
   | .recvProbeAtMaster =>
       -- recvProbe requires currentTxn = some tx. Post-state also has currentTxn = some.
       -- dataCoherenceInv has guard currentTxn = none, so it's vacuously true.
