@@ -165,6 +165,37 @@ theorem init_preLinesReqPermInv (n : Nat) :
   intro s ⟨⟨_, _, htxn, _, _, _⟩, _⟩
   intro tx hcur; rw [htxn] at hcur; cases hcur
 
+/-- Snapshot lines satisfy WellFormed. This holds because preLines are set to
+    current lines at transaction start (which satisfy lineWFInv) and never change. -/
+def preLinesWFInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
+  match s.shared.currentTxn with
+  | none => True
+  | some tx => ∀ k : Nat, k < n → (tx.preLines k).WellFormed
+
+theorem init_preLinesWFInv (n : Nat) :
+    ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s →
+      preLinesWFInv n s := by
+  intro s ⟨⟨_, _, htxn, _, _, _⟩, _⟩
+  simp [preLinesWFInv, htxn]
+
+/-- When usedDirtySource is true and all dirty preLines have had their
+    probeAck processed (probesRemaining = false), then transferVal = mem.
+    This captures the fact that when a dirty probeAck is processed, both
+    transferVal and mem are updated to the same value. -/
+def txnTransferMemInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
+  match s.shared.currentTxn with
+  | none => True
+  | some tx =>
+      tx.usedDirtySource = true →
+        (∀ k : Nat, k < n → (tx.preLines k).dirty = true → tx.probesRemaining k = false) →
+          tx.transferVal = s.shared.mem
+
+theorem init_txnTransferMemInv (n : Nat) :
+    ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s →
+      txnTransferMemInv n s := by
+  intro s ⟨⟨_, _, htxn, _, _, _⟩, _⟩
+  simp [txnTransferMemInv, htxn]
+
 structure StrongRefinementInv (n : Nat) (s : SymState HomeState NodeState n) : Prop where
   ref : RefinementInv n s
   txnLine : txnLineInv n s
