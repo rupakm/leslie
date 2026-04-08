@@ -567,18 +567,53 @@ theorem preLinesReqPermInv_preserved (n : Nat) (s s' : SymState HomeState NodeSt
   | .recvGrantAckAtManager =>
       rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩
       rw [hs'] at hcur; simp [recvGrantAckState, recvGrantAckShared] at hcur
-  | _ =>
-      -- All other actions: currentTxn unchanged or cleared, preLines frozen
-      all_goals (first
-        | (rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩; rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind)
-        | (rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, hs'⟩; rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind)
-        | (rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, hs'⟩; rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind)
-        | (rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, hs'⟩; rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind)
-        | (rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩; rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind)
-        | (rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩; rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind)
-        | (rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩; rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind)
-        | (rcases hstep with ⟨_, _, _, _, _, _, rfl⟩; exact hreqPerm tx hcur hkind)
-        | sorry)
+  | .recvProbeAckAtManager =>
+      -- recvProbeAck updates phase/probesRemaining but preserves preLines, kind, requester
+      rcases hstep with ⟨tx_orig, _, hcur_orig, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at hcur; simp [recvProbeAckState, recvProbeAckShared] at hcur
+      rw [← hcur] at hkind ⊢; exact hreqPerm tx_orig hcur_orig hkind
+  | .sendGrantToRequester =>
+      -- sendGrant updates phase but preserves preLines, kind, requester
+      rcases hstep with ⟨tx_orig, hcur_orig, _, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at hcur; simp [sendGrantState, sendGrantShared] at hcur
+      rw [← hcur] at hkind ⊢; exact hreqPerm tx_orig hcur_orig hkind
+  -- All remaining actions: currentTxn unchanged, use hreqPerm directly
+  | .sendAcquireBlock grow source =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, rfl⟩; exact hreqPerm tx hcur hkind
+  | .sendAcquirePerm grow source =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, rfl⟩; exact hreqPerm tx hcur hkind
+  | .recvProbeAtMaster =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind
+  | .recvGrantAtMaster =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind
+  | .sendRelease param =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind
+  | .sendReleaseData param =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind
+  | .recvReleaseAtManager =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind
+  | .recvReleaseAckAtMaster =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, hs'⟩
+      rw [hs'] at hcur; simpa using hreqPerm tx hcur hkind
+  | .store v =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      exact hreqPerm tx hcur hkind
+  | .read => rcases hstep with ⟨_, _, _, _, _, _, rfl⟩; exact hreqPerm tx hcur hkind
+  | .uncachedGet source =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, rfl⟩
+      exact hreqPerm tx hcur hkind
+  | .uncachedPut source v =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      exact hreqPerm tx hcur hkind
+  | .recvUncachedAtManager =>
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩; exact hreqPerm tx hcur hkind
+  | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨_, _, _, rfl⟩; exact hreqPerm tx hcur hkind
 
 theorem forwardSimInv_preserved (n : Nat) (s s' : SymState HomeState NodeState n)
     (hinv : forwardSimInv n s) (hnext : (tlMessages.toSpec n).next s s') :
