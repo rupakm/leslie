@@ -130,7 +130,202 @@ theorem refMap_recvGrantAckAtManager_next {n : Nat}
     (hfull : fullInv n s) (htxnLine : txnLineInv n s)
     (hstep : RecvGrantAckAtManager s s' i) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  sorry
+  rcases hstep with ⟨tx, msg, hcur, hreq, hphase, hpga, _, hEi, _, _, hs'⟩
+  rw [hs']
+  -- Extract invariants from fullInv
+  rcases hfull with ⟨⟨hlineWF, hdirInv, hpending, htxnCore⟩, ⟨_, _, hchanC, hchanD, hchanE⟩, _⟩
+  -- txnCoreInv gives us grantHasData → resultPerm and probesRemaining all false
+  rw [txnCoreInv, hcur] at htxnCore
+  have hreqLt := htxnCore.1
+  have hnoData := htxnCore.2.2.1
+  have hprobesNone := htxnCore.2.2.2.2.2.2.2 hphase
+  -- pendingInv gives pendingReleaseAck = none
+  rw [pendingInv, hcur] at hpending
+  have hrelAck := hpending.1
+  -- dirInv: dir j = line.perm j when chanC j = none
+  -- chanCInv during grantPendingAck: all chanC = none
+  have hallC : ∀ j : Fin n, (s.locals j).chanC = none := by
+    intro j
+    have hcj := hchanC j
+    cases hcjv : (s.locals j).chanC with
+    | none => rfl
+    | some msg' =>
+      rw [hcjv] at hcj
+      rcases hcj with ⟨tx', hcur', hphase', _⟩ | ⟨_, htxnNone, _⟩
+      · rw [hcur] at hcur'; cases hcur'; rw [hphase] at hphase'; cases hphase'
+      · rw [hcur] at htxnNone; cases htxnNone
+  -- recvGrantAckLocal only changes chanE and pendingSink; line is preserved
+  have hline_preserved : ∀ j : Fin n,
+      ((recvGrantAckLocals s i j)).line = (s.locals j).line := by
+    intro j
+    simp [recvGrantAckLocals, setFn]
+    split
+    · simp [recvGrantAckLocal]
+    · rfl
+  -- All chanC are none in the post-state too
+  have hallC_post : ∀ j : Fin n, ((recvGrantAckState s i).locals j).chanC = none := by
+    intro j
+    simp [recvGrantAckState, recvGrantAckLocals, setFn]
+    split
+    · simp [recvGrantAckLocal, hallC j]
+    · exact hallC j
+  have hQRI_post := queuedReleaseIdx_eq_none_of_all_chanC_none (recvGrantAckState s i) hallC_post
+  have hDRV_post := findDirtyReleaseVal_none_of_all_chanC_none' (recvGrantAckState s i) hallC_post
+  -- txnLineInv: during grantPendingAck with chanE = some, line = grantLine
+  rw [txnLineInv, hcur] at htxnLine
+  -- At the requester: line = grantLine because chanE ≠ none
+  have hreq_fin : (⟨tx.requester, hreqLt⟩ : Fin n) = i := Fin.ext hreq.symm
+  have hline_req : (s.locals i).line = grantLine (tx.preLines i.1) tx := by
+    have := htxnLine i
+    simp [txnSnapshotLine, hphase, hreq, hEi] at this
+    exact this
+  -- grantLine perm = resultPerm
+  have hperm_req : (s.locals i).line.perm = tx.resultPerm := by
+    rw [hline_req]
+    exact grantLine_perm_eq_result _ _ hnoData
+  -- Witness: atomic grantAck at node i
+  show ∃ (j : Fin n) (a : TileLink.Atomic.Act),
+    TileLink.Atomic.tlAtomic.step n j a (refMap n s) (refMap n (recvGrantAckState s i))
+  refine ⟨i, .grantAck, ?_, ?_⟩
+  · -- Precondition: (refMap n s).shared.pendingGrantAck = some i.1
+    simp [refMap, refMapShared, hpga]
+  · -- Post-state equality: refMap n (recvGrantAckState s i) = grantAckState (refMap n s)
+    apply SymState.ext
+    · -- shared equality
+      show refMapShared n (recvGrantAckState s i) =
+        { (refMapShared n s) with pendingGrantMeta := none, pendingGrantAck := none }
+      have hcur_post : (recvGrantAckState s i).shared.currentTxn = none := by
+        simp [recvGrantAckState, recvGrantAckShared]
+      -- pendingGrantMeta
+      have hpgm : (refMapShared n (recvGrantAckState s i)).pendingGrantMeta = none := by
+        simp [refMapShared, recvGrantAckState, recvGrantAckShared]
+      -- pendingGrantAck
+      have hpga_post : (refMapShared n (recvGrantAckState s i)).pendingGrantAck = none := by
+        simp [refMapShared, recvGrantAckState, recvGrantAckShared]
+      -- pendingReleaseAck
+      have hpra_post : (refMapShared n (recvGrantAckState s i)).pendingReleaseAck = none := by
+        rw [refMapShared_pra_none_notxn (by simp [recvGrantAckState, recvGrantAckShared, hrelAck]) hcur_post]
+        exact hQRI_post
+      have hpra_pre : (refMapShared n s).pendingReleaseAck = none := by
+        exact refMapShared_pra_none_txn hrelAck hcur
+      -- dir equality: grantPendingDir = syncDir with post-state lines
+      have hdir_post : (refMapShared n (recvGrantAckState s i)).dir =
+          TileLink.Atomic.syncDir s.shared.dir
+            (fun j => ((recvGrantAckState s i).locals j).line) := by
+        simp [refMapShared, recvGrantAckState, recvGrantAckShared]
+      have hdir_pre : (refMapShared n s).dir = grantPendingDir n tx s.shared.dir := by
+        exact refMapShared_dir_gpa hcur hphase
+      have hdir_eq : (refMapShared n (recvGrantAckState s i)).dir = (refMapShared n s).dir := by
+        rw [hdir_post, hdir_pre]
+        -- grantPendingDir = syncDir with lines
+        funext k
+        simp only [TileLink.Atomic.syncDir]
+        split
+        · -- k < n
+          next hk =>
+          rw [hline_preserved ⟨k, hk⟩]
+          simp only [grantPendingDir, show tx.requester < n from hreqLt, dite_true, updateDirAt]
+          by_cases hki : k = tx.requester
+          · simp [hki, hreq, hperm_req]
+          · simp [hki]
+            exact (hdirInv ⟨k, hk⟩ (hallC ⟨k, hk⟩)).symm
+        · -- k ≥ n
+          simp [grantPendingDir, show tx.requester < n from hreqLt, updateDirAt]
+          split
+          · next hki => exact absurd (hki ▸ hreqLt) (by omega)
+          · rfl
+      -- mem equality
+      have hmem_post : (refMapShared n (recvGrantAckState s i)).mem =
+          (refMapShared n s).mem := by
+        rw [refMapShared_mem_recvGrantAck]
+        rw [refMapShared_mem_some hcur]
+        -- Show: no dirty owner in post-state ↔ usedDirtySource determines mem
+        -- From txnLineInv: all lines are determined by the txn snapshot
+        -- grantLine has dirty = false; probed lines have dirty = false; unprobed preLines may have dirty
+        -- But during grantPendingAck, all probesRemaining = false
+        -- Need to show the dite matches the if-then-else
+        -- Case 1: there exists a dirty line in post-state
+        by_cases hdirtyPost : ∃ j : Fin n, ((recvGrantAckState s i).locals j).line.dirty = true
+        · rw [dif_pos hdirtyPost]
+          -- The dirty node exists; get it
+          obtain ⟨j, hdj⟩ := hdirtyPost
+          rw [hline_preserved] at hdj
+          -- j cannot be the requester (grantLine has dirty = false)
+          have hj_ne_i : j ≠ i := by
+            intro heq; subst heq
+            rw [hline_req] at hdj
+            cases htxnCore.2.2.1 rfl with
+            | _ =>
+            cases hdata : tx.grantHasData
+            · simp [grantLine, hdata] at hdj
+            · cases hperm : tx.resultPerm <;> simp [grantLine, hdata, hperm, invalidatedLine] at hdj
+          -- From txnLineInv, j's line = probeSnapshotLine tx (s.locals j) j
+          have hlinej := htxnLine j
+          simp [txnSnapshotLine, hphase, show tx.requester ≠ j.1 from by
+            intro h; exact hj_ne_i (Fin.ext (hreq.symm.trans h))] at hlinej
+          rw [hlinej] at hdj
+          -- probeSnapshotLine: since probesRemaining j = false...
+          simp [probeSnapshotLine] at hdj
+          split at hdj
+          · -- probesNeeded j = true, probesRemaining j = false (since grantPendingAck)
+            have := hprobesNone j
+            simp [this] at hdj
+            -- probedLine has dirty = false
+            simp [probedLine] at hdj
+          · -- probesNeeded j = false: line = preLines j
+            -- preLines j is dirty → usedDirtySource must be true
+            -- From choose_spec, the chosen dirty node has its data
+            have hchosen := Classical.choose_spec hdirtyPost
+            rw [hline_preserved] at hchosen
+            -- The chosen node is also dirty; by the same analysis it's unprobed
+            -- and its preLines is dirty. So usedDirtySource = true and transferVal = data.
+            -- Actually we need to show the data matches.
+            sorry
+        · rw [dif_neg hdirtyPost, hDRV_post]
+          -- No dirty owner in post-state.
+          -- Need: s.shared.mem = if tx.usedDirtySource then tx.transferVal else s.shared.mem
+          -- If usedDirtySource = false, trivial.
+          -- If usedDirtySource = true: from txnDataInv, transferVal = s.shared.mem during grantPendingAck
+          sorry
+      -- Assemble shared equality
+      cases hrhs : refMapShared n (recvGrantAckState s i) with | mk m d pgm pga pra =>
+      simp only [hrhs] at hpgm hpga_post hpra_post hdir_eq hmem_post
+      subst hpgm; subst hpga_post
+      simp only [hrhs] at hpra_post
+      show Atomic.HomeState.mk m d none none pra =
+        { refMapShared n s with pendingGrantMeta := none, pendingGrantAck := none }
+      ext
+      · exact hmem_post
+      · exact hdir_eq
+      · rfl
+      · rfl
+      · rw [hpra_post, hpra_pre]
+    · -- locals equality
+      funext j
+      show refMapLine (recvGrantAckState s i) j =
+        refMapLine s j
+      simp only [refMapLine, recvGrantAckState, recvGrantAckShared, show
+        { s.shared with currentTxn := none, pendingGrantAck := none }.currentTxn = none from rfl]
+      -- Post: currentTxn = none, so refMapLine = line
+      show ((recvGrantAckLocals s i j)).line = _
+      rw [hline_preserved]
+      -- Pre: currentTxn = some tx, phase = grantPendingAck
+      simp only [hcur, hphase]
+      by_cases hji : tx.requester = j.1
+      · -- j is the requester
+        simp [hji]
+        -- grantLine (preLines j) tx = (s.locals j).line
+        have := htxnLine j
+        simp [txnSnapshotLine, hphase, hji] at this
+        -- j = i (requester)
+        have : j = i := Fin.ext (hreq.symm.trans hji)
+        subst this
+        rw [hline_req]
+      · -- j is not the requester
+        simp [hji]
+        -- (s.locals j).line = preLines j from txnLineInv (probeSnapshotLine = line during grantPendingAck)
+        -- Actually refMapLine returns (s.locals j).line for non-requester during grantPendingAck
+        rfl
 
 theorem releasedLine_eq (line : CacheLine) (perm : TLPerm) :
     TileLink.Messages.releasedLine line perm = TileLink.Atomic.releasedLine line perm := by

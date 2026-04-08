@@ -235,7 +235,70 @@ theorem refMap_sendGrant_block_tip_next {n : Nat}
     ∀ {tx : ManagerTxn}, s.shared.currentTxn = some tx → tx.kind = .acquireBlock →
       tx.resultPerm = .T →
       (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  sorry
+  intro tx hcur hkind hperm
+  rcases hstep with ⟨tx', hcur', hreq, hphase, hgrant, hrel, _, _, _, hs'⟩
+  rw [hcur] at hcur'; cases hcur'
+  -- Exhibit the atomic finishGrant step with block-tip sub-case
+  simp only [SymSharedSpec.toSpec, TileLink.Atomic.tlAtomic]
+  -- Build the requester Fin n
+  have hreqLt : tx.requester < n := by
+    rcases (by simpa [txnPlanInv, hcur] using hplan) with ⟨hlt, _⟩; exact hlt
+  let req : Fin n := ⟨tx.requester, hreqLt⟩
+  have hreqi : req = i := Fin.ext hreq
+  refine ⟨req, .finishGrant, ?_⟩
+  -- The pg witness is absPendingGrantMeta tx
+  let pg := absPendingGrantMeta tx
+  refine ⟨pg, ?_, ?_, ?_, ?_, ?_⟩
+  · -- pendingGrantMeta = some pg
+    simp [refMap, pg]
+    rw [hcur]; rfl
+  · -- pendingGrantAck = none
+    simp [refMap, hgrant]
+  · -- pendingReleaseAck = none
+    simp [refMap, refMapShared, hcur, hrel, show tx.phase ≠ .grantPendingAck from by simp [hphase]]
+  · -- pg.requester = req.1
+    simp [pg, absPendingGrantMeta, req]
+  · -- Block-tip sub-case (3rd disjunct)
+    right; right; left
+    -- allOthersInvalid n req (refMap n s)
+    have hallInvalid : snapshotAllOthersInvalid n tx :=
+      (txnPlanInv_acquireBlock_tip hplan hcur hkind hperm).1
+    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    · -- allOthersInvalid
+      rw [hreqi]
+      rw [atomic_allOthersInvalid_refMap_snapshot_iff hcur hreq (by simp [hphase])]
+      exact hallInvalid
+    · -- pg.kind = .block
+      simp [pg, absPendingGrantMeta, absGrantKind, hkind]
+    · -- pg.requesterPerm = .T
+      simp [pg, absPendingGrantMeta, hperm]
+    · -- pg.usedDirtySource = false
+      simp [pg, absPendingGrantMeta]
+      -- all others invalid → no non-req preLine dirty → usedDirtySource = false
+      -- By contradiction: if usedDirtySource = true, dirtyOwnerExistsInv gives k ≠ req
+      -- with preLines k dirty, but allOthersInvalid → preLines k perm = .N → not dirty
+      by_contra h
+      push_neg at h
+      -- h : tx.usedDirtySource = true
+      -- Need: preLines k dirty for some k ≠ req → contradiction with allOthersInvalid
+      have htxnD := (by simpa [txnDataInv, hcur] using htxnData)
+      rcases htxnD.2.1 with ⟨k, hk, hkdirty, _⟩
+      · -- from usedDirtySource = true
+        sorry -- placeholder, need txnDataInv dirty case
+      · exact absurd h (by simp)
+    · -- pg.transferVal = (refMap n s).shared.mem
+      simp [pg, absPendingGrantMeta, refMap, refMapShared, hcur, hphase]
+    · -- pg.probesNeeded = noProbeMask
+      simp [pg, absPendingGrantMeta]
+      exact (txnPlanInv_acquireBlock_tip hplan hcur hkind hperm).2
+    · -- pg.probesRemaining = noProbeMask
+      simp [pg, absPendingGrantMeta, hphase]
+      exact (txnPlanInv_acquireBlock_tip hplan hcur hkind hperm).2
+    · -- s' = finishGrantBlockTipState (refMap n s) req pg
+      rw [hs', hreqi]
+      apply SymState.ext
+      · exact refMapShared_sendGrant_block_tip_eq hfull htxnLine htxnData hplan hcur hreq hphase hrel hkind hperm
+      · exact refMap_sendGrant_block_tip_locals_eq hfull htxnLine htxnData hplan hcur hreq hphase hkind hperm
 
 theorem refMap_sendGrant_acquirePerm_next {n : Nat}
     {s s' : SymState HomeState NodeState n} {i : Fin n}
