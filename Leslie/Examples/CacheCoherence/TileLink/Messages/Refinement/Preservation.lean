@@ -751,20 +751,20 @@ theorem preLinesCleanInv_preserved (n : Nat)
       · rcases hblk with ⟨grow, source, htxn, _, _, _, hnoFlight, _, _, _, _, hrest⟩
         rcases hrest with ⟨_, hs'⟩
         rw [hs']
-        intro k hk hvalid hdirty
-        have hvalidK : (s.locals ⟨k, hk⟩).line.valid = true := by simpa [plannedTxn, hk] using hvalid
+        intro k hk hpermK hdirty
+        have hpermNeN : (s.locals ⟨k, hk⟩).line.perm ≠ .N := by simpa [plannedTxn, hk] using hpermK
         have hdirtyK : (s.locals ⟨k, hk⟩).line.dirty = false := by simpa [plannedTxn, hk] using hdirty
         have hflightK : (s.locals ⟨k, hk⟩).releaseInFlight = false := hnoFlight ⟨k, hk⟩
-        have hdata := hclean htxn ⟨k, hk⟩ hflightK hvalidK hdirtyK
+        have hdata := hclean htxn ⟨k, hk⟩ hflightK hpermNeN hdirtyK
         simpa [plannedTxn, hk] using hdata
       · rcases hperm with ⟨grow, source, htxn, _, _, _, hnoFlight, _, _, _, hrest⟩
         rcases hrest with ⟨_, hs'⟩
         rw [hs']
-        intro k hk hvalid hdirty
-        have hvalidK : (s.locals ⟨k, hk⟩).line.valid = true := by simpa [plannedTxn, hk] using hvalid
+        intro k hk hpermK hdirty
+        have hpermNeN : (s.locals ⟨k, hk⟩).line.perm ≠ .N := by simpa [plannedTxn, hk] using hpermK
         have hdirtyK : (s.locals ⟨k, hk⟩).line.dirty = false := by simpa [plannedTxn, hk] using hdirty
         have hflightK : (s.locals ⟨k, hk⟩).releaseInFlight = false := hnoFlight ⟨k, hk⟩
-        have hdata := hclean htxn ⟨k, hk⟩ hflightK hvalidK hdirtyK
+        have hdata := hclean htxn ⟨k, hk⟩ hflightK hpermNeN hdirtyK
         simpa [plannedTxn, hk] using hdata
   | .recvProbeAtMaster =>
       rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, _, hs'⟩
@@ -796,11 +796,8 @@ theorem preLinesCleanInv_preserved (n : Nat)
           by_cases hki : i.1 = k
           · -- k = i: preLines i is dirty, contradicts hdirty (dirty = false)
             rw [← hki] at hdirty; rw [hdirtyI] at hdirty; cases hdirty
-          · -- k ≠ i: perm k = .N → valid k = false → contradicts hvalid
-            have hpermN := hpnd i.1 k i.is_lt hk hki hdirtyI
-            have hwf := by simpa [preLinesWFInv, hcur] using hpreWF
-            have ⟨hvalidFalse, _⟩ := (hwf k hk).2.2 hpermN
-            rw [hvalidFalse] at hvalid; cases hvalid
+          · -- k ≠ i: perm k = .N → contradicts perm ≠ .N premise
+            exact absurd (hpnd i.1 k i.is_lt hk hki hdirtyI) hvalid
       · rw [hcur] at hcurNone; simp at hcurNone
   | .sendGrantToRequester =>
       rcases hstep with ⟨tx, hcur, _, _, _, _, _, _, _, hs'⟩
