@@ -56,10 +56,23 @@ theorem read_returns_logical_data {n : Nat}
       · rfl
       · exact absurd ⟨i, h⟩ hex
     have hdata_eq : (s.locals i).line.data = s.shared.mem := hdata htxn i hflight hvalid hdirty_i
-    -- The goal involves findDirtyReleaseVal case split.
-    -- In the none case: data = s.shared.mem follows from hdata_eq.
-    -- In the some case: dirty release contradicts allowsRead via dirtyReleaseExclusiveInv.
-    sorry
+    -- Show findDirtyReleaseVal = none: no dirty release in flight
+    have hfdrv : findDirtyReleaseVal n s = none := by
+      unfold findDirtyReleaseVal
+      split
+      · -- Dirty release exists: contradicts reader i having allowsRead
+        rename_i hrel_exists
+        exfalso
+        have hspec := Classical.choose_spec hrel_exists
+        have hrelJ := hspec.1
+        have hmsgJ := hspec.2
+        have hpermN := hdirtyRelEx htxn _ hrelJ hmsgJ
+        by_cases hij : i = Classical.choose hrel_exists
+        · rw [hij] at hflight; rw [hflight] at hrelJ; cases hrelJ
+        · rw [hpermN i hij] at hperm; exact hperm
+      · rfl
+    rw [hfdrv]
+    exact hdata_eq
 
 /-- After a store, the abstract sequential register value equals the stored value. -/
 theorem store_updates_logical_data {n : Nat}
@@ -71,11 +84,13 @@ theorem store_updates_logical_data {n : Nat}
       (s'.locals j).line.data = v ∨ (s'.locals j).line.data = (refMap n s).shared.mem := by
   intro j hpermJ hvalidJ
   rcases hstep with ⟨htxn, _, _, _, hpermI, _, _, _, _, _, _, _, hs'⟩
-  rw [hs']
+  subst hs'
   by_cases hji : j = i
   · subst j; simp [setFn, storeLocal]
   · -- j ≠ i: SWMR gives perm j = .N, contradicting allowsRead
-    -- SWMR: perm i = .T → perm j = .N → ¬allowsRead
-    sorry
+    exfalso
+    simp only [setFn, hji, ite_false] at hpermJ
+    have hpermN := hinv.ref.swmr i j (Ne.symm hji) hpermI
+    rw [hpermN] at hpermJ; exact hpermJ
 
 end TileLink.Messages
