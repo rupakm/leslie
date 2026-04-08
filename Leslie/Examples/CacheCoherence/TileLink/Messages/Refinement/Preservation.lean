@@ -41,13 +41,56 @@ private theorem probeSnapshotLine_not_dirty {n : Nat}
 private theorem absurd_dirty_nonrequester {n : Nat}
     (s : SymState HomeState NodeState n) (tx : ManagerTxn) (p : Fin n)
     (htxn : s.shared.currentTxn = some tx)
-    (hphase : tx.phase = .probing ∨ tx.phase = .grantReady ∨ tx.phase = .grantPendingAck)
+    (hphase : tx.phase = .grantReady ∨ tx.phase = .grantPendingAck)
     (htxnCore : txnCoreInv n s)
+    (hwf : lineWFInv n s)
     (htxnLine : txnLineInv n s)
-    (hpreNoDirty : preLinesNoDirtyInv n s)
+    (htxnPlan : txnPlanInv n s)
     (hp_ne : p.1 ≠ tx.requester)
     (hdirty : (s.locals p).line.dirty = true) : False := by
-  sorry
+  simp only [txnCoreInv, htxn] at htxnCore
+  simp only [txnLineInv, htxn] at htxnLine
+  -- All probes resolved: probesRemaining p = false
+  have hprobesNone : tx.probesRemaining p.1 = false := by
+    rcases hphase with hgr | hgpa
+    · exact htxnCore.2.2.2.2.2.2.1 hgr p
+    · exact htxnCore.2.2.2.2.2.2.2 hgpa p
+  -- txnLineInv: line = txnSnapshotLine = probeSnapshotLine (non-requester)
+  have hline := htxnLine p
+  have hsnap : txnSnapshotLine tx (s.locals p) p = probeSnapshotLine tx (s.locals p) p := by
+    unfold txnSnapshotLine; split
+    · next h => exact absurd h.2.symm hp_ne
+    · rfl
+  rw [hsnap] at hline
+  unfold probeSnapshotLine at hline
+  by_cases hneeded : tx.probesNeeded p.1 = true
+  · -- probesNeeded = true, probesRemaining = false → snapshot = probedLine (dirty = false)
+    simp [hneeded, hprobesNone] at hline
+    rw [hline] at hdirty; exact absurd (probedLine_dirty _ _) (by rw [hdirty]; simp)
+  · -- probesNeeded = false → snapshot = preLines p
+    simp [show tx.probesNeeded p.1 = false from by
+      cases h : tx.probesNeeded p.1 <;> simp_all] at hline
+    -- preLines p is dirty with perm .T (from lineWF)
+    have hpermT : (tx.preLines p.1).perm = .T := by
+      have := hwf p; rw [hline] at this hdirty; exact (this.1 hdirty).1
+    -- txnPlanInv: perm .T at non-requester → probesNeeded = true (contradiction)
+    simp only [txnPlanInv, htxn] at htxnPlan
+    have ⟨_, _, hkind⟩ := htxnPlan
+    match hk : tx.kind with
+    | .acquireBlock =>
+      rw [hk] at hkind
+      cases hres : tx.resultPerm with
+      | N => exact absurd htxnCore.2.2.1 (by rw [hres]; cases tx.grow <;> simp [GrowParam.result])
+      | B =>
+        have ⟨_, hmask⟩ := hkind.1 hres; rw [hmask] at hneeded
+        simp [snapshotWritableProbeMask, p.2, hp_ne, hpermT] at hneeded
+      | T =>
+        have ⟨hallN, _⟩ := hkind.2 hres
+        exact absurd (hallN p hp_ne) (by rw [hpermT]; decide)
+    | .acquirePerm =>
+      rw [hk] at hkind
+      have ⟨_, hmask, _⟩ := hkind; rw [hmask] at hneeded
+      simp [snapshotCachedProbeMask, p.2, hp_ne, hpermT] at hneeded
 
 /-- During probing, if probesRemaining i = true and chanC = none and the node has
     perm = .N, derive False from the txn invariants. The probe mask always requires
@@ -311,7 +354,7 @@ theorem dirtyExclusiveInv_preserved (n : Nat)
           have hp_ne : p.1 ≠ tx.requester := by
             intro h; rw [hreq] at h; exact hpi (Fin.ext h)
           exact (absurd_dirty_nonrequester s tx p htxn
-            (Or.inr (Or.inr hphase)) (hfull.1.2.2.2) htxnLine hpreNoDirty
+            (Or.inr hphase) (hfull.1.2.2.2) hfull.1.1 htxnLine htxnPlan
             hp_ne hdirtyP).elim
         · simp [recvGrantState, recvGrantLocals, setFn, hqi]
           exact hdirtyEx p q hpq hdirtyP
