@@ -106,11 +106,11 @@ theorem countTrue_decrease {f : Nat → Bool} {n j : Nat} (hj : j < n) (hf : f j
 theorem countTrue_clearProbeIdx_le (f : Nat → Bool) (j n : Nat) :
     countTrue (clearProbeIdx f j) n ≤ countTrue f n := by
   induction n with
-  | zero => rfl
+  | zero => simp [countTrue]
   | succ n ih =>
-    unfold countTrue clearProbeIdx
+    simp only [countTrue, clearProbeIdx]
     by_cases hjn : n = j
-    · subst hjn; simp; omega
+    · subst hjn; simp [Bool.toNat]; omega
     · simp [hjn]; omega
 
 /-- Count of remaining probes. Recursively counts true bits in probesRemaining. -/
@@ -682,33 +682,6 @@ private theorem grantReady_progress {n : Nat} (i : Fin n)
     2. Progress: p ∧ next ∧ a ⇒ ◯q (the fair action advances)
     3. Enablement: p ⇒ Enabled(a) ∨ q
     4. Fairness: □⟨next⟩ ∧ WF(a) -/
-
-/-- Step 1: An acquire on chanA is eventually consumed by the manager.
-    Fair action: recvAcquireAtManager for i. -/
-theorem chanA_leads_to_txnActive (n : Nat) (i : Fin n) :
-    pred_implies (tlMessagesFair n).formula
-      (leads_to (chanAPending n i) (txnActiveForI n i)) := by
-  intro e hspec k hp
-  have hp' : ((e k).locals i).chanA ≠ none := by
-    change state_pred _ (e.drop k) at hp
-    simp only [chanAPending, state_pred, exec.drop, Nat.add_zero] at hp; exact hp
-  -- Case split on currentTxn at position k
-  match hcur : (e k).shared.currentTxn with
-  | some tx =>
-    by_cases hreq : tx.requester = i.1
-    · -- currentTxn = some tx with tx.requester = i.1: q already holds
-      exact ⟨0, by
-        simp only [txnActiveForI, state_pred, exec.drop, Nat.add_zero]
-        exact ⟨tx, hcur, hreq⟩⟩
-    · -- currentTxn = some tx with tx.requester ≠ i.1: hard case — need txn to complete first
-      -- then recvAcquire fires for i. Requires the full liveness chain (circular dependency).
-      sorry
-  | none =>
-    -- currentTxn = none: WF1 with recvAcquireAtManager
-    -- Enablement requires draining pending releases, constructing grow/source from chanA
-    -- message, etc. — this is a significant sub-proof. Sorry for now (same family as the
-    -- hard sub-case: requires composing multiple liveness chains).
-    sorry
 
 /-- Step 2: During probing, probes are eventually consumed.
     Uses well-founded induction on |{j | probesRemaining j = true}|.
@@ -1898,6 +1871,31 @@ theorem txnActive_leads_to_txnDone (n : Nat) (i : Fin n) :
     exact (chain2 (grantPendingAck_leads_to_grantAckSent n)
       (grantAckSent_leads_to_txnComplete n)) e hspec k hgpa
 
+/-- Step 1: A pending acquire on chanA eventually reaches txnDone.
+    When currentTxn = none, txnDone already holds.
+    When currentTxn = some tx, that transaction eventually completes. -/
+theorem chanA_leads_to_txnDone (n : Nat) (i : Fin n) :
+    pred_implies (tlMessagesFair n).formula
+      (leads_to (chanAPending n i) (txnDone n)) := by
+  intro e hspec k hp
+  -- Case split on currentTxn at position k
+  match hcur : (e k).shared.currentTxn with
+  | some tx =>
+    -- Any active transaction eventually completes.
+    -- Extract requester bound from txnCoreInv.
+    have hinv := always_livenessInv n e hspec k
+    rcases hinv with ⟨⟨⟨_, _, _, htxnCore⟩, _, _⟩, _⟩
+    rw [txnCoreInv, hcur] at htxnCore
+    rcases htxnCore with ⟨hreqLt, _⟩
+    let req : Fin n := ⟨tx.requester, hreqLt⟩
+    have hta : txnActiveForI n req (e.drop k) := by
+      simp only [txnActiveForI, state_pred, exec.drop, Nat.add_zero]
+      exact ⟨tx, hcur, rfl⟩
+    exact txnActive_leads_to_txnDone n req e hspec k hta
+  | none =>
+    -- currentTxn = none means txnDone already holds.
+    exact ⟨0, by simp only [txnDone, state_pred, exec.drop, Nat.add_zero]; exact hcur⟩
+
 /-- The full acquire wave completes under weak fairness.
     Every acquire request eventually leads to a completed transaction. -/
 theorem acquire_leads_to_txnDone (n : Nat) (i : Fin n) :
@@ -1907,11 +1905,10 @@ theorem acquire_leads_to_txnDone (n : Nat) (i : Fin n) :
   change state_pred (acquirePending n i) (e.drop k) at hp
   simp only [state_pred, exec.drop, Nat.add_zero, acquirePending] at hp
   rcases hp with hchanA | htxn
-  · -- chanAPending: chain chanA ↝ txnActive ↝ txnDone
+  · -- chanAPending: chanA ↝ txnDone directly
     have hca : chanAPending n i (e.drop k) := by
       simp only [chanAPending, state_pred, exec.drop, Nat.add_zero]; exact hchanA
-    exact (chain2 (chanA_leads_to_txnActive n i)
-      (txnActive_leads_to_txnDone n i)) e hspec k hca
+    exact chanA_leads_to_txnDone n i e hspec k hca
   · -- txnActive: direct
     have hta : txnActiveForI n i (e.drop k) := by
       simp only [txnActiveForI, state_pred, exec.drop, Nat.add_zero]; exact htxn
