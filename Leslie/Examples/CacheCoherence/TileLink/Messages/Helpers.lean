@@ -294,7 +294,7 @@ noncomputable def plannedTxn {n : Nat}
   , sink := s.shared.nextSink
   , kind := kind
   , grow := grow
-  , phase := .probing
+  , phase := @probeAckPhase n probeMask
   , grantHasData := decide (kind = .acquireBlock)
   , resultPerm := resultPerm
   , transferVal := plannedTransferVal s requester
@@ -308,6 +308,7 @@ noncomputable def plannedTxn {n : Nat}
 def recvProbeLocal {n : Nat} (node : NodeState) (i : Fin n) (msg : BMsg) : NodeState :=
   { node with
       line := probedLine node.line msg.param
+      chanA := none
       chanB := none
       chanC := some (probeAckMsg i node.line) }
 

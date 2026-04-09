@@ -93,7 +93,6 @@ def RecvProbeAtMaster {n : Nat}
     s.shared.currentTxn = some tx ∧
     tx.phase = .probing ∧
     tx.probesRemaining i.1 = true ∧
-    (s.locals i).chanA = none ∧
     (s.locals i).chanB = some msg ∧
     msg.source = tx.source ∧
     msg.opcode = probeOpcodeOfKind tx.kind ∧
@@ -107,7 +106,6 @@ def RecvProbeAckAtManager {n : Nat}
     s.shared.currentTxn = some tx ∧
     tx.phase = .probing ∧
     tx.probesRemaining i.1 = true ∧
-    (s.locals i).chanA = none ∧
     (s.locals i).chanC = some msg ∧
     msg.source = i.1 ∧
     probeAckMsgWellFormed msg ∧

@@ -142,8 +142,10 @@ theorem coreInv_preserved_recvAcquireBlock (n : Nat)
       simpa [recvAcquireState, recvAcquireLocals, scheduleProbeLocals_chanC] using hCnone
     simpa [recvAcquireState, recvAcquireShared_dir, recvAcquireLocals_line]
       using hdir j hCnone_old
-  · simp [pendingInv, recvAcquireState, recvAcquireShared, plannedTxn]
-  · refine ⟨i.is_lt, Or.inl rfl, rfl, ?_, ?_, ?_, ?_⟩
+  · simp only [pendingInv, recvAcquireState, recvAcquireShared, plannedTxn, probeAckPhase]
+    split <;> simp
+  · refine ⟨i.is_lt, ?_, rfl, ?_, ?_, ?_, ?_⟩
+    · simp only [plannedTxn, probeAckPhase]; split <;> simp
     · intro hnodata
       simp [plannedTxn] at hnodata
     · exact probeMaskForResult_requester_false s i grow.result
@@ -151,9 +153,13 @@ theorem coreInv_preserved_recvAcquireBlock (n : Nat)
       simpa [plannedTxn] using hk
     · refine ⟨?_, ?_⟩
       · intro hready j
-        cases hready
+        simp only [plannedTxn, probeAckPhase] at hready
+        split at hready
+        · rename_i hall; simp only [plannedTxn]; exact hall j
+        · cases hready
       · intro hgrant j
-        cases hgrant
+        simp only [plannedTxn, probeAckPhase] at hgrant
+        split at hgrant <;> cases hgrant
 
 theorem coreInv_preserved_recvAcquirePerm (n : Nat)
     (s s' : SymState HomeState NodeState n) (hinv : coreInv n s)
@@ -170,8 +176,10 @@ theorem coreInv_preserved_recvAcquirePerm (n : Nat)
       simpa [recvAcquireState, recvAcquireLocals, scheduleProbeLocals_chanC] using hCnone
     simpa [recvAcquireState, recvAcquireShared_dir, recvAcquireLocals_line]
       using hdir j hCnone_old
-  · simp [pendingInv, recvAcquireState, recvAcquireShared, plannedTxn]
-  · refine ⟨i.is_lt, Or.inl rfl, rfl, ?_, ?_, ?_, ?_⟩
+  · simp only [pendingInv, recvAcquireState, recvAcquireShared, plannedTxn, probeAckPhase]
+    split <;> simp
+  · refine ⟨i.is_lt, ?_, rfl, ?_, ?_, ?_, ?_⟩
+    · simp only [plannedTxn, probeAckPhase]; split <;> simp
     · intro _
       simpa [plannedTxn] using hresT
     · exact probeMaskForResult_requester_false s i grow.result
@@ -179,9 +187,13 @@ theorem coreInv_preserved_recvAcquirePerm (n : Nat)
       simpa [plannedTxn] using hk
     · refine ⟨?_, ?_⟩
       · intro hready j
-        cases hready
+        simp only [plannedTxn, probeAckPhase] at hready
+        split at hready
+        · rename_i hall; simp only [plannedTxn]; exact hall j
+        · cases hready
       · intro hgrant j
-        cases hgrant
+        simp only [plannedTxn, probeAckPhase] at hgrant
+        split at hgrant <;> cases hgrant
 
 theorem channelInv_preserved_sendAcquireBlock (n : Nat)
     (s s' : SymState HomeState NodeState n) (hinv : channelInv n s)
@@ -324,7 +336,11 @@ theorem channelInv_preserved_recvAcquireBlock (n : Nat)
       rw [hmsg]
       refine ⟨plannedTxn s i .acquireBlock grow source, ?_⟩
       refine ⟨by simp [recvAcquireState, recvAcquireShared, plannedTxn], ?_⟩
-      refine ⟨by simp [plannedTxn], ?_⟩
+      refine ⟨?_, ?_⟩
+      · simp only [plannedTxn, probeAckPhase]
+        split
+        · rename_i hall; exact absurd (hall j) (by simp [hmask])
+        · rfl
       refine ⟨by simpa [plannedTxn] using hmask, ?_⟩
       refine ⟨by simp [plannedTxn], by simp [plannedTxn]⟩
     · have hnone :
@@ -395,7 +411,11 @@ theorem channelInv_preserved_recvAcquirePerm (n : Nat)
       rw [hmsg]
       refine ⟨plannedTxn s i .acquirePerm grow source, ?_⟩
       refine ⟨by simp [recvAcquireState, recvAcquireShared, plannedTxn], ?_⟩
-      refine ⟨by simp [plannedTxn], ?_⟩
+      refine ⟨?_, ?_⟩
+      · simp only [plannedTxn, probeAckPhase]
+        split
+        · rename_i hall; exact absurd (hall j) (by simp [hmask])
+        · rfl
       refine ⟨by simpa [plannedTxn] using hmask, ?_⟩
       refine ⟨by simp [plannedTxn], by simp [plannedTxn]⟩
     · have hnone :

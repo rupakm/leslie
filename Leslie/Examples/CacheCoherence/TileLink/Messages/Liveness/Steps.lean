@@ -546,7 +546,10 @@ theorem accessAckChanAInv_preserved {n : Nat}
       rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, _, rfl⟩
       simp only [recvProbeState, recvProbeLocals, SymState.locals]
       by_cases hki : k = i
-      · subst k; simp only [setFn, ite_true, recvProbeLocal]; exact hacc i
+      · subst k; simp only [setFn, ite_true, recvProbeLocal_chanD]
+        cases (s.locals i).chanD with
+        | none => trivial
+        | some _ => intro _; exact recvProbeLocal_chanA _ _ _
       · simp only [setFn, show k ≠ i from hki, ite_false]; exact hacc k
   | .recvProbeAckAtManager =>
       rcases hstep with ⟨_, _, _, _, _, _, _, _, _, rfl⟩
@@ -916,13 +919,15 @@ theorem grantWaveActiveInv_preserved {n : Nat}
         simp only [recvAcquireState, recvAcquireShared] at hcur'
         have htxeq := Option.some.inj hcur'
         rw [← htxeq] at hphase'
-        simp [plannedTxn] at hphase'
+        simp only [plannedTxn] at hphase'
+        unfold probeAckPhase at hphase'; split at hphase' <;> cases hphase'
       · rcases hperm with ⟨_, _, _, _, _, _, _, _, _, hs'⟩
         rw [hs'] at hcur'
         simp only [recvAcquireState, recvAcquireShared] at hcur'
         have htxeq := Option.some.inj hcur'
         rw [← htxeq] at hphase'
-        simp [plannedTxn] at hphase'
+        simp only [plannedTxn] at hphase'
+        unfold probeAckPhase at hphase'; split at hphase' <;> cases hphase'
   -- RecvProbeAtMaster: shared unchanged, chanD unchanged, chanE unchanged (only chanB/chanC/line change)
   | .recvProbeAtMaster =>
       rcases hstep with ⟨_, _, hcur0, _, _, _, _, _, _, _, _, rfl⟩
@@ -1197,7 +1202,8 @@ theorem requesterChanAInv_preserved {n : Nat}
       have ⟨hA, hPs⟩ := hreq tx hcur k hreqk hphase
       simp only [recvProbeState, recvProbeLocals, SymState.locals]
       by_cases hkj : k = j
-      · subst k; simp only [setFn, ite_true, recvProbeLocal]; exact ⟨hA, hPs⟩
+      · subst k; simp only [setFn, ite_true, recvProbeLocal_chanA, recvProbeLocal_pendingSource]
+        exact ⟨trivial, hPs⟩
       · simp only [setFn, show k ≠ j from hkj, ite_false]; exact ⟨hA, hPs⟩
   -- RecvProbeAckAtManager: may change phase, chanA/pendingSource/chanD unchanged
   | .recvProbeAckAtManager =>
@@ -1488,5 +1494,119 @@ theorem phase_monotone {n : Nat}
   cases h : s'.shared.currentTxn with
   | none => exact Or.inr rfl
   | some tx' => exact Or.inl ⟨tx', rfl⟩
+
+/-! ### Probing has remaining probes
+
+    If the transaction phase is `.probing`, there must be at least one
+    remaining probe. This follows from the model: both recvAcquire and
+    recvProbeAck set phase = probeAckPhase(probesRemaining), and
+    probeAckPhase returns .probing iff some remaining bit is true. -/
+
+def probingHasRemainingInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
+  ∀ tx, s.shared.currentTxn = some tx → tx.phase = .probing →
+    ∃ j : Fin n, tx.probesRemaining j.1 = true
+
+theorem init_probingHasRemainingInv (n : Nat) :
+    ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s →
+      probingHasRemainingInv n s := by
+  intro s hinit tx hcur
+  rcases hinit with ⟨⟨_, _, hcurNone, _, _, _⟩, _⟩
+  rw [hcur] at hcurNone; simp at hcurNone
+
+/-- Helper: if probeAckPhase returns .probing, some index has remaining = true. -/
+private theorem probeAckPhase_probing_has_remaining {n : Nat} {f : Nat → Bool}
+    (h : @probeAckPhase n f = .probing) : ∃ j : Fin n, f j.1 = true := by
+  simp only [probeAckPhase] at h
+  split at h
+  · cases h
+  · rename_i hna
+    by_contra hne
+    apply hna; intro j
+    by_contra hj; exact hne ⟨j, by cases f j.1 <;> simp_all⟩
+
+theorem probingHasRemainingInv_preserved {n : Nat}
+    {s s' : SymState HomeState NodeState n}
+    (hinv : probingHasRemainingInv n s)
+    (hnext : (tlMessages.toSpec n).next s s') :
+    probingHasRemainingInv n s' := by
+  simp only [SymSharedSpec.toSpec, tlMessages] at hnext
+  obtain ⟨i, a, hstep⟩ := hnext
+  intro tx hcur' hphase'
+  match a with
+  -- Actions that don't change shared state → delegate to old invariant
+  | .sendAcquireBlock _ _ =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, rfl⟩; exact hinv tx hcur' hphase'
+  | .sendAcquirePerm _ _ =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, rfl⟩; exact hinv tx hcur' hphase'
+  | .recvProbeAtMaster =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, rfl⟩; exact hinv tx hcur' hphase'
+  | .read =>
+      rcases hstep with ⟨_, _, _, _, _, _, rfl⟩; exact hinv tx hcur' hphase'
+  | .recvAccessAckAtMaster =>
+      rcases hstep with ⟨_, _, _, rfl⟩; exact hinv tx hcur' hphase'
+  -- recvAcquire: new txn with phase = probeAckPhase probeMask
+  | .recvAcquireAtManager =>
+      rcases hstep with ⟨grow, source, hblk⟩ | ⟨grow, source, hperm⟩
+      · rcases hblk with ⟨_, _, _, _, _, _, _, _, _, _, rfl⟩
+        simp only [recvAcquireState, recvAcquireShared] at hcur'
+        have htxeq := Option.some.inj hcur'; subst htxeq
+        simp only [plannedTxn] at hphase'
+        exact probeAckPhase_probing_has_remaining hphase'
+      · rcases hperm with ⟨_, _, _, _, _, _, _, _, _, rfl⟩
+        simp only [recvAcquireState, recvAcquireShared] at hcur'
+        have htxeq := Option.some.inj hcur'; subst htxeq
+        simp only [plannedTxn] at hphase'
+        exact probeAckPhase_probing_has_remaining hphase'
+  -- recvProbeAck: updates phase and remaining together
+  | .recvProbeAckAtManager =>
+      rcases hstep with ⟨tx0, msg, hcur0, _, _, hC, _, _, rfl⟩
+      simp only [recvProbeAckState, recvProbeAckShared] at hcur'
+      have htxeq := Option.some.inj hcur'; subst htxeq
+      exact probeAckPhase_probing_has_remaining hphase'
+  -- sendGrant: phase becomes grantPendingAck ≠ probing
+  | .sendGrantToRequester =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, rfl⟩
+      simp only [sendGrantState, sendGrantShared] at hcur'
+      have htxeq := Option.some.inj hcur'
+      rw [← htxeq] at hphase'; simp at hphase'
+  -- recvGrant: shared preserves currentTxn, phase = grantPendingAck
+  | .recvGrantAtMaster =>
+      rcases hstep with ⟨tx0, _, hcur0, _, hphase0, _, _, _, _, _, _, rfl⟩
+      simp only [recvGrantState, recvGrantShared] at hcur'
+      rw [hcur0] at hcur'; have := Option.some.inj hcur'; subst this
+      exact absurd hphase' (by rw [hphase0]; decide)
+  -- recvGrantAck: clears currentTxn
+  | .recvGrantAckAtManager =>
+      rcases hstep with ⟨_, _, _, _, _, _, _, _, _, _, rfl⟩
+      simp [recvGrantAckState, recvGrantAckShared] at hcur'
+  -- Actions requiring currentTxn = none → vacuous
+  | .sendRelease _ =>
+      rcases hstep with ⟨hcurNone, _, _, _, _, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      simp only [sendReleaseState, SymState.shared] at hcur'
+      rw [hcurNone] at hcur'; simp at hcur'
+  | .sendReleaseData _ =>
+      rcases hstep with ⟨hcurNone, _, _, _, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      simp only [sendReleaseState, SymState.shared] at hcur'
+      rw [hcurNone] at hcur'; simp at hcur'
+  | .recvReleaseAtManager =>
+      rcases hstep with ⟨_, _, hcurNone, _, _, _, _, _, _, _, _, _, rfl⟩
+      simp only [recvReleaseState, recvReleaseShared] at hcur'
+      rw [hcurNone] at hcur'; simp at hcur'
+  | .recvReleaseAckAtMaster =>
+      rcases hstep with ⟨_, hcurNone, _, _, _, _, _, rfl⟩
+      simp only [recvReleaseAckState, recvReleaseAckShared] at hcur'
+      rw [hcurNone] at hcur'; simp at hcur'
+  | .store _ =>
+      rcases hstep with ⟨hcurNone, _, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      rw [hcurNone] at hcur'; simp at hcur'
+  | .uncachedGet _ =>
+      rcases hstep with ⟨hcurNone, _, _, _, _, _, _, _, _, _, rfl⟩
+      rw [hcurNone] at hcur'; simp at hcur'
+  | .uncachedPut _ _ =>
+      rcases hstep with ⟨hcurNone, _, _, _, _, _, _, _, _, _, _, rfl⟩
+      simp at hcur'; rw [hcurNone] at hcur'; simp at hcur'
+  | .recvUncachedAtManager =>
+      rcases hstep with ⟨hcurNone, _, _, _, _, _, rfl⟩
+      rw [hcurNone] at hcur'; simp at hcur'
 
 end TileLink.Messages.Liveness

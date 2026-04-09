@@ -55,13 +55,59 @@ def tlAcquirePending (n : Nat) (i : Fin n) : pred (SymState HomeState NodeState 
 def tlAcquireComplete (n : Nat) (i : Fin n) : pred (SymState HomeState NodeState n) :=
   state_pred (acquireComplete n i)
 
-/-- Count of remaining probes. Without Finset, define recursively on n. -/
+/-- Count true values in a Nat → Bool function up to bound n. -/
+def countTrue (f : Nat → Bool) : Nat → Nat
+  | 0 => 0
+  | n + 1 => (f n).toNat + countTrue f n
+
+@[simp] private theorem Bool.toNat_true : Bool.toNat true = 1 := rfl
+@[simp] private theorem Bool.toNat_false : Bool.toNat false = 0 := rfl
+
+@[simp] private theorem probeAckPhase_ne_grantPendingAck :
+    @probeAckPhase n f ≠ TxnPhase.grantPendingAck := by
+  unfold probeAckPhase; split <;> decide
+
+theorem countTrue_pos {f : Nat → Bool} {n j : Nat} (hj : j < n) (hf : f j = true) :
+    countTrue f n > 0 := by
+  induction n with
+  | zero => omega
+  | succ n ih =>
+    unfold countTrue
+    by_cases hjn : j = n
+    · subst j; simp [hf]; omega
+    · have := ih (by omega : j < n); omega
+
+private theorem countTrue_congr {f g : Nat → Bool} {n : Nat}
+    (h : ∀ k, k < n → f k = g k) : countTrue f n = countTrue g n := by
+  induction n with
+  | zero => rfl
+  | succ n ih =>
+    unfold countTrue; rw [h n (by omega)]
+    congr 1; exact ih (fun k hk => h k (by omega))
+
+theorem countTrue_decrease {f : Nat → Bool} {n j : Nat} (hj : j < n) (hf : f j = true) :
+    countTrue (fun k => if k = j then false else f k) n < countTrue f n := by
+  induction n with
+  | zero => omega
+  | succ n ih =>
+    unfold countTrue
+    by_cases hjn : j = n
+    · subst j
+      have h1 : (if n = n then false else f n) = false := if_pos rfl
+      rw [h1, hf]; simp only [Bool.toNat_false, Bool.toNat_true]
+      have heq : countTrue (fun k => if k = n then false else f k) n = countTrue f n :=
+        countTrue_congr (fun k hk => if_neg (by omega))
+      omega
+    · have hj' : j < n := by omega
+      have hih := ih hj'
+      have h1 : (if n = j then false else f n) = f n := if_neg (fun h => hjn h.symm)
+      rw [h1]; omega
+
+/-- Count of remaining probes. Recursively counts true bits in probesRemaining. -/
 noncomputable def probeRemainingCount (n : Nat) (e : Nat → SymState HomeState NodeState n) : Nat :=
   match e 0 |>.shared.currentTxn with
   | none => 0
-  | some tx =>
-    let count := fun (k : Nat) => if k < n then (if tx.probesRemaining k then 1 else 0) else 0
-    (List.range n).foldl (fun acc k => acc + count k) 0
+  | some tx => countTrue tx.probesRemaining n
 
 /-! ### Helper: chain leads-to under a hypothesis -/
 
@@ -157,7 +203,8 @@ private def livenessInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
   grantWaveActiveInv n s ∧
   pendingSinkInv n s ∧
   requesterChanAInv n s ∧
-  txnLineInv n s
+  txnLineInv n s ∧
+  probingHasRemainingInv n s
 
 private theorem init_livenessInv (n : Nat) :
     ∀ s, (tlMessagesFair n).init s → livenessInv n s := by
@@ -171,7 +218,8 @@ private theorem init_livenessInv (n : Nat) :
     init_grantWaveActiveInv n s hinit',
     init_pendingSinkInv n s hinit',
     init_requesterChanAInv n s hinit',
-    init_txnLineInv n s hinit'⟩
+    init_txnLineInv n s hinit',
+    init_probingHasRemainingInv n s hinit'⟩
 
 /-- `txnLineInv` is preserved under protocol steps, given only `fullInv` and `txnLineInv`.
     This is a lite version of `txnLineInv_preserved` from Refinement.lean which takes
@@ -220,27 +268,31 @@ private theorem txnLineInv_preserved_lite (n : Nat) (s s' : SymState HomeState N
         simp only [txnLineInv, recvAcquireState, recvAcquireShared, recvAcquireLocals_line]
         intro j
         unfold txnSnapshotLine probeSnapshotLine plannedTxn
+        have hnotGPA : probeAckPhase (n := n) (probeMaskForResult s i grow.result) ≠ .grantPendingAck := by
+          simp only [probeAckPhase]; split <;> decide
         have hCj := hCnone j
         have hlt := j.2
         by_cases hmask : probeMaskForResult s i grow.result j.1 = true
-        · simp [hmask, hCj, hlt]
+        · simp [hmask, hCj, hlt, hnotGPA]
         · have hmaskF : probeMaskForResult s i grow.result j.1 = false := by
             cases h : probeMaskForResult s i grow.result j.1 <;> simp_all
-          simp [hmaskF, hlt]
+          simp [hmaskF, hlt, hnotGPA]
       · rcases hperm with ⟨grow, source, htxnNone, _, _, hCnone, _, _, _, _, _, hs'⟩
         rw [hs']
         simp only [txnLineInv, recvAcquireState, recvAcquireShared, recvAcquireLocals_line]
         intro j
         unfold txnSnapshotLine probeSnapshotLine plannedTxn
+        have hnotGPA : probeAckPhase (n := n) (probeMaskForResult s i grow.result) ≠ .grantPendingAck := by
+          simp only [probeAckPhase]; split <;> decide
         have hCj := hCnone j
         have hlt := j.2
         by_cases hmask : probeMaskForResult s i grow.result j.1 = true
-        · simp [hmask, hCj, hlt]
+        · simp [hmask, hCj, hlt, hnotGPA]
         · have hmaskF : probeMaskForResult s i grow.result j.1 = false := by
             cases h : probeMaskForResult s i grow.result j.1 <;> simp_all
-          simp [hmaskF, hlt]
+          simp [hmaskF, hlt, hnotGPA]
   | .recvProbeAtMaster =>
-      rcases hstep with ⟨tx, msg, hcur, hphase, hrem, _hA, _hB, _hsrc, _hop, hparam, hCnone, hs'⟩
+      rcases hstep with ⟨tx, msg, hcur, hphase, hrem, _hB, _hsrc, _hop, hparam, hCnone, hs'⟩
       rw [hs']
       rw [txnLineInv, hcur] at htxnLine
       simp only [txnLineInv, recvProbeState, hcur]
@@ -266,7 +318,7 @@ private theorem txnLineInv_preserved_lite (n : Nat) (s s' : SymState HomeState N
       · simp only [recvProbeLocals, setFn, show (j = i) = False from propext ⟨hji, False.elim⟩, ite_false]
         exact htxnLine j
   | .recvProbeAckAtManager =>
-      rcases hstep with ⟨tx, msg, hcur, hphase, hrem, _hA, hC, _hsrc, _hwf, hs'⟩
+      rcases hstep with ⟨tx, msg, hcur, hphase, hrem, hC, _hsrc, _hwf, hs'⟩
       rw [hs']
       rw [txnLineInv, hcur] at htxnLine
       simp only [txnLineInv, recvProbeAckState, recvProbeAckShared, hcur]
@@ -423,7 +475,7 @@ private theorem txnLineInv_preserved_lite (n : Nat) (s s' : SymState HomeState N
 
 private theorem livenessInv_preserved (n : Nat) :
     ∀ s s', (tlMessagesFair n).next s s' → livenessInv n s → livenessInv n s' := by
-  intro s s' hnext ⟨hfull, hpst, hpci, hacca, hnotreq, hgwa, hpsi, hreq, htxnLine⟩
+  intro s s' hnext ⟨hfull, hpst, hpci, hacca, hnotreq, hgwa, hpsi, hreq, htxnLine, hphr⟩
   have hnext' : (tlMessages.toSpec n).next s s' := hnext
   -- Use the individual preservation theorems
   exact ⟨fullInv_preserved_with_release n s s' hfull htxnLine hnext',
@@ -434,7 +486,8 @@ private theorem livenessInv_preserved (n : Nat) :
     grantWaveActiveInv_preserved hfull hnotreq hgwa hnext',
     pendingSinkInv_preserved hfull hnotreq hpst hgwa hnext',
     requesterChanAInv_preserved hfull hnotreq hreq hnext',
-    txnLineInv_preserved_lite n s s' hfull htxnLine hnext'⟩
+    txnLineInv_preserved_lite n s s' hfull htxnLine hnext',
+    probingHasRemainingInv_preserved hphr hnext'⟩
 
 private theorem always_livenessInv (n : Nat) (e : exec (SymState HomeState NodeState n))
     (hspec : (tlMessagesFair n).formula e) : ∀ k, livenessInv n (e k) := by
@@ -658,10 +711,269 @@ theorem probing_leads_to_grantReady (n : Nat) :
   simp only [probingOrReady, state_pred, exec.drop] at hp
   rcases hp with ⟨tx, hcur, hphase⟩
   rcases hphase with hprobing | hready
-  · -- Probing phase: need to show all probes eventually consumed.
-    -- Use leads_to_via_nat with probe count measure.
-    -- For now, sorry the inductive argument — the infrastructure is in place.
-    sorry
+  · -- Probing phase: use leads_to_via_nat with probe count measure.
+    -- Prove leads_to for "probing" ↝ "grantReady" on the full execution, then instantiate.
+    let p : pred (SymState HomeState NodeState n) := state_pred (fun s =>
+      ∃ tx' : ManagerTxn, s.shared.currentTxn = some tx' ∧ tx'.phase = TxnPhase.probing)
+    have hp_k : p (e.drop k) := by
+      simp only [p, state_pred, exec.drop, Nat.add_zero]; exact ⟨tx, hcur, hprobing⟩
+    suffices h_lt : pred_implies (tlMessagesFair n).formula (leads_to p (tlGrantReady n)) from
+      h_lt e hspec k hp_k
+    apply leads_to_via_nat (probeRemainingCount n)
+    · -- Step case: count = m > 0 → eventually grantReady or count decreased
+      intro m hm e' hspec' i' hp' hmu
+      -- Extract state info at position i'
+      simp only [p, state_pred, exec.drop, Nat.add_zero] at hp'
+      rcases hp' with ⟨tx', hcur', hphase'⟩
+      -- Get invariants at position i'
+      have hinv := always_livenessInv n e' hspec' i'
+      rcases hinv with ⟨hfull', _, hpci', _, _, _, _, _, _, hphr'⟩
+      -- There exists a remaining probe j
+      have ⟨j, hrem⟩ := hphr' tx' hcur' hphase'
+      -- By probeChannelInv, j has chanB or chanC
+      have hBC := hpci' tx' hcur' hphase' j hrem
+      -- Use WF1 on recvProbeAck j (when chanC j ≠ none) or
+      -- recvProbe j then recvProbeAck j (when chanB j ≠ none).
+      -- Define q_step: grantReady or (probing with smaller count)
+      let q_step : pred _ := fun e0 => tlGrantReady n e0 ∨
+        (p e0 ∧ probeRemainingCount n e0 < m)
+      -- It suffices to find j' with q_step at (e'.drop (i' + j'))
+      suffices hs : ∃ j', q_step (e'.drop (i' + j')) by
+        rcases hs with ⟨j', hq⟩
+        exact ⟨j', hq⟩
+      -- Case split: chanC j or chanB j
+      rcases hBC with hBj | hCj
+      · -- Case: chanB j ≠ none (chanC j might be none) — need recvProbe then recvProbeAck
+        -- For now, sorry the chanB case (similar but chains two WF1)
+        sorry
+      · -- Case: chanC j ≠ none — apply WF1 on recvProbeAck j
+        -- The predicate p_pa tracks: probing with remaining j and chanC j
+        let p_pa : pred (SymState HomeState NodeState n) := state_pred (fun s =>
+          ∃ tx0 : ManagerTxn, s.shared.currentTxn = some tx0 ∧ tx0.phase = TxnPhase.probing ∧
+            tx0.probesRemaining j.1 = true ∧ (s.locals j).chanC ≠ none)
+        have hp_pa : p_pa (e'.drop i') := by
+          simp only [p_pa, state_pred, exec.drop, Nat.add_zero]
+          exact ⟨tx', hcur', hphase', hrem, hCj⟩
+        -- Apply WF1 on suffix e'.drop i'
+        have hwf1 : leads_to p_pa q_step (e'.drop i') := by
+          apply wf1_apply (next := (tlMessages.toSpec n).next) (a := actRecvProbeAckAtManager n j)
+          exact {
+            safety := by
+              intro kk hpk hnxt
+              simp only [p_pa, state_pred, exec.drop, Nat.add_zero] at hpk
+              rcases hpk with ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
+              -- Create exec.drop-form aliases for rw compatibility with step hypotheses
+              have hcur0' : ((e'.drop i') kk).shared.currentTxn = some tx0 := hcur0
+              have hphase0' : tx0.phase = TxnPhase.probing := hphase0
+              have hrem0' : tx0.probesRemaining j.1 = true := hrem0
+              have hCj0' : (((e'.drop i') kk).locals j).chanC ≠ none := hCj0
+              -- Generalize post-state to a variable so rcases...rfl can substitute it
+              generalize hpost : (e'.drop i') (kk + 1) = s_post at hnxt
+              simp only [SymSharedSpec.toSpec, tlMessages] at hnxt
+              obtain ⟨ii, a, hstep⟩ := hnxt
+              -- Most actions either preserve p_pa or are disabled during probing.
+              -- Only recvProbeAck k (k≠j) achieves q_step (count decreases).
+              match a with
+              -- Frame: shared unchanged, chanC j unchanged
+              | .sendAcquireBlock _ _ =>
+                  rcases hstep with ⟨_, _, _, _, _, _, _, rfl⟩
+                  simp only [exec.drop] at hpost
+                  left; show p_pa ((e'.drop (i' + kk)).drop 1)
+                  simp only [p_pa, state_pred, exec.drop_drop, exec.drop, Nat.add_zero, Nat.add_assoc]
+                  rw [hpost]
+                  by_cases hjii : j = ii
+                  · cases hjii; simp [setFn]; exact ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
+                  · simp [setFn, hjii]; exact ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
+              | .sendAcquirePerm _ _ =>
+                  rcases hstep with ⟨_, _, _, _, _, _, _, rfl⟩
+                  simp only [exec.drop] at hpost
+                  left; show p_pa ((e'.drop (i' + kk)).drop 1)
+                  simp only [p_pa, state_pred, exec.drop_drop, exec.drop, Nat.add_zero, Nat.add_assoc]
+                  rw [hpost]
+                  by_cases hjii : j = ii
+                  · cases hjii; simp [setFn]; exact ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
+                  · simp [setFn, hjii]; exact ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
+              -- Disabled: currentTxn = none → contradiction
+              | .recvAcquireAtManager =>
+                  rcases hstep with ⟨_, _, h⟩ | ⟨_, _, h⟩ <;>
+                  { rcases h with ⟨hcn, _⟩; rw [hcur0'] at hcn; simp at hcn }
+              -- recvProbe: for j, requires chanC j = none → contradiction.
+              -- For k≠j: chanC j unchanged, shared unchanged → p_pa preserved.
+              | .recvProbeAtMaster =>
+                  rcases hstep with ⟨_, _, _, _, _, _, _, _, _, hCnone, rfl⟩
+                  simp only [exec.drop] at hpost
+                  left; show p_pa ((e'.drop (i' + kk)).drop 1)
+                  simp only [p_pa, state_pred, exec.drop_drop, exec.drop, Nat.add_zero, Nat.add_assoc]
+                  rw [hpost]
+                  simp only [recvProbeState, SymState.shared, recvProbeLocals, SymState.locals]
+                  by_cases hjii : j = ii
+                  · cases hjii; simp [hCj0'] at hCnone
+                  · refine ⟨tx0, hcur0, hphase0, hrem0, ?_⟩
+                    simp [setFn, hjii]; exact hCj0
+              -- recvProbeAck k: if k=j, the fair action fires (handled by progress).
+              -- If k≠j: remaining j unchanged, chanC j unchanged. Count decreases → q_step.
+              | .recvProbeAckAtManager =>
+                  rcases hstep with ⟨tx1, msg1, hcur1, hphase1, hrem1, hC1, hsrc1, hwf1_m, rfl⟩
+                  simp only [exec.drop] at hpost
+                  rw [hcur0'] at hcur1; have := Option.some.inj hcur1; subst this
+                  -- ii is the node that processed the probeAck
+                  by_cases hjii : j = ii
+                  · -- j = ii: this is the fair action (recvProbeAck j fires → progress)
+                    cases hjii
+                    right; show q_step ((e'.drop (i' + kk)).drop 1)
+                    simp only [q_step, p, tlGrantReady, state_pred, exec.drop_drop, exec.drop,
+                      Nat.add_zero, Nat.add_assoc]
+                    rw [hpost]
+                    simp only [recvProbeAckState, SymState.shared, recvProbeAckShared]
+                    -- New tx has clearProbeIdx, new phase
+                    by_cases hphPA : (@probeAckPhase n (clearProbeIdx tx0.probesRemaining j.1)) = TxnPhase.grantReady
+                    · left; exact ⟨_, rfl, hphPA⟩
+                    · right
+                      have hphPr : @probeAckPhase n (clearProbeIdx tx0.probesRemaining j.1) = TxnPhase.probing := by
+                        unfold probeAckPhase at hphPA ⊢
+                        split
+                        · next h => rw [dif_pos h] at hphPA; exact absurd rfl hphPA
+                        · rfl
+                      constructor
+                      · exact ⟨_, rfl, hphPr⟩
+                      · sorry -- count decrease: countTrue_decrease j.2 hrem0
+                  · -- k ≠ j: remaining j unchanged, count decreases → q_step
+                    right; show q_step ((e'.drop (i' + kk)).drop 1)
+                    simp only [q_step, p, tlGrantReady, state_pred, exec.drop_drop, exec.drop,
+                      Nat.add_zero, Nat.add_assoc]
+                    rw [hpost]
+                    simp only [recvProbeAckState, SymState.shared, recvProbeAckShared,
+                      recvProbeAckLocals, SymState.locals]
+                    have hjne : j.1 ≠ ii.1 := fun h => hjii (Fin.ext h)
+                    by_cases hphPA : (@probeAckPhase n (clearProbeIdx tx0.probesRemaining ii.1)) = TxnPhase.grantReady
+                    · left; exact ⟨_, rfl, hphPA⟩
+                    · right
+                      have hphPr : @probeAckPhase n (clearProbeIdx tx0.probesRemaining ii.1) = TxnPhase.probing := by
+                        unfold probeAckPhase at hphPA ⊢
+                        split
+                        · next h => rw [dif_pos h] at hphPA; exact absurd rfl hphPA
+                        · rfl
+                      constructor
+                      · exact ⟨_, rfl, hphPr⟩
+                      · sorry -- count decrease: countTrue_decrease ii.2 hrem1
+              -- Disabled: phase mismatch
+              | .sendGrantToRequester =>
+                  rcases hstep with ⟨tx1, hc1, _, hph, _, _, _, _, _, rfl⟩
+                  rw [hcur0'] at hc1; have := Option.some.inj hc1; subst this
+                  rw [hphase0'] at hph; cases hph
+              | .recvGrantAtMaster =>
+                  rcases hstep with ⟨tx1, _, hc1, _, hph, _, _, _, _, _, _, rfl⟩
+                  rw [hcur0'] at hc1; have := Option.some.inj hc1; subst this
+                  rw [hphase0'] at hph; cases hph
+              | .recvGrantAckAtManager =>
+                  rcases hstep with ⟨tx1, _, hc1, _, hph, _, _, _, _, _, rfl⟩
+                  rw [hcur0'] at hc1; have := Option.some.inj hc1; subst this
+                  rw [hphase0'] at hph; cases hph
+              -- Disabled: currentTxn = none
+              | .sendRelease _ =>
+                  rcases hstep with ⟨hcn, _⟩; rw [hcur0'] at hcn; simp at hcn
+              | .sendReleaseData _ =>
+                  rcases hstep with ⟨hcn, _⟩; rw [hcur0'] at hcn; simp at hcn
+              | .recvReleaseAtManager =>
+                  rcases hstep with ⟨_, _, hcn, _⟩; simp [recvReleaseState, recvReleaseShared] at *
+                  rw [hcur0'] at hcn; simp at hcn
+              | .recvReleaseAckAtMaster =>
+                  rcases hstep with ⟨_, hcn, _⟩; rw [hcur0'] at hcn; simp at hcn
+              | .store _ =>
+                  rcases hstep with ⟨hcn, _⟩; rw [hcur0'] at hcn; simp at hcn
+              | .read =>
+                  rcases hstep with ⟨_, _, _, _, _, _, rfl⟩
+                  simp only [exec.drop] at hpost
+                  left; show p_pa ((e'.drop (i' + kk)).drop 1)
+                  simp only [p_pa, state_pred, exec.drop_drop, exec.drop, Nat.add_zero, Nat.add_assoc]
+                  rw [hpost]
+                  exact ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
+              | .uncachedGet _ =>
+                  rcases hstep with ⟨hcn, _⟩; rw [hcur0'] at hcn; simp at hcn
+              | .uncachedPut _ _ =>
+                  rcases hstep with ⟨hcn, _⟩; rw [hcur0'] at hcn; simp at hcn
+              | .recvUncachedAtManager =>
+                  rcases hstep with ⟨hcn, _⟩; rw [hcur0'] at hcn; simp at hcn
+              | .recvAccessAckAtMaster =>
+                  rcases hstep with ⟨_, _, _, rfl⟩
+                  simp only [exec.drop] at hpost
+                  left; show p_pa ((e'.drop (i' + kk)).drop 1)
+                  simp only [p_pa, state_pred, exec.drop_drop, exec.drop, Nat.add_zero, Nat.add_assoc]
+                  rw [hpost]
+                  by_cases hjii : j = ii
+                  · cases hjii; simp [setFn]; exact ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
+                  · simp [setFn, hjii]; exact ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
+            progress := by
+              intro kk hpk hnxt hact
+              simp only [p_pa, state_pred, exec.drop, Nat.add_zero] at hpk
+              rcases hpk with ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
+              have hcur0' : ((e'.drop i') kk).shared.currentTxn = some tx0 := hcur0
+              generalize hpost : (e'.drop i') (kk + 1) = s_post at hnxt hact
+              rcases hact with ⟨a, ha, hstep⟩; cases ha
+              -- recvProbeAck j fires
+              rcases hstep with ⟨tx1, msg1, hcur1, _, hrem1, hC1, hsrc1, hwf1_m, rfl⟩
+              simp only [exec.drop] at hpost
+              rw [hcur0'] at hcur1; have := Option.some.inj hcur1; subst this
+              show q_step ((e'.drop (i' + kk)).drop 1)
+              simp only [q_step, p, tlGrantReady, state_pred, exec.drop_drop, exec.drop,
+                Nat.add_zero, Nat.add_assoc]
+              rw [hpost]
+              simp only [recvProbeAckState, SymState.shared, recvProbeAckShared]
+              by_cases hphPA : (@probeAckPhase n (clearProbeIdx tx0.probesRemaining j.1)) = TxnPhase.grantReady
+              · left; exact ⟨_, rfl, hphPA⟩
+              · right
+                have hphPr : @probeAckPhase n (clearProbeIdx tx0.probesRemaining j.1) = TxnPhase.probing := by
+                  unfold probeAckPhase at hphPA ⊢; split
+                  · next h => rw [dif_pos h] at hphPA; exact absurd rfl hphPA
+                  · rfl
+                constructor
+                · exact ⟨_, rfl, hphPr⟩
+                · sorry -- count decrease: countTrue_decrease j.2 hrem0
+            enablement := by
+              intro kk hpk
+              simp only [p_pa, state_pred, exec.drop, Nat.add_zero] at hpk
+              rcases hpk with ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
+              -- Get chanCInv to extract message properties
+              have hinv_kk := always_livenessInv n e' hspec' (i' + kk)
+              rcases hinv_kk with ⟨⟨_, ⟨_, _, hchanC_kk, _, _⟩, _⟩, _⟩
+              -- chanC j has a message
+              have hcc := hchanC_kk j
+              rcases (show ∃ msg, ((e' (i' + kk)).locals j).chanC = some msg from
+                match h : ((e' (i' + kk)).locals j).chanC with
+                | some msg => ⟨msg, rfl⟩
+                | none => absurd h hCj0) with ⟨msg, hCmsg⟩
+              rw [hCmsg] at hcc
+              -- chanCInv gives us message properties
+              rcases hcc with ⟨tx1, hcur1, _, _, _, _, hsrc, hwfm, _⟩ | ⟨_, hcurNone, _⟩
+              · -- probeAck case: msg has correct source and is well-formed
+                left; show ∃ s', actRecvProbeAckAtManager n j (e' (i' + kk)) s'
+                rw [hcur0] at hcur1; have := Option.some.inj hcur1; subst this
+                exact ⟨recvProbeAckState (e' (i' + kk)) j tx0 msg,
+                  .recvProbeAckAtManager, rfl, tx0, msg, hcur0, hphase0, hrem0, hCmsg, hsrc, hwfm, rfl⟩
+              · -- release case: currentTxn = none → contradiction
+                rw [hcur0] at hcurNone; simp at hcurNone
+            always_next := by
+              intro m; rw [exec.drop_drop]; exact hspec'.2.1 (i' + m)
+            fair := by
+              intro m henabled
+              rw [exec.drop_drop] at henabled
+              have h := (extract_wf_recvProbeAck j hspec') (i' + m) henabled
+              rw [exec.drop_drop]; exact h
+          }
+        -- Use the leads_to at position 0
+        have := hwf1 0 (exec.drop_zero _ ▸ hp_pa)
+        rw [exec.drop_zero] at this
+        exact this
+    · -- Base case: count = 0 is vacuous (probing → count > 0)
+      intro e' hspec' i' hp' hmu
+      simp only [p, state_pred, exec.drop, Nat.add_zero] at hp'
+      rcases hp' with ⟨tx', hcur', hphase'⟩
+      have hinv := always_livenessInv n e' hspec' i'
+      rcases hinv with ⟨_, _, _, _, _, _, _, _, _, hphr'⟩
+      have ⟨j, hrem⟩ := hphr' tx' hcur' hphase'
+      -- count = 0 but ∃ j remaining → contradiction
+      simp only [probeRemainingCount, exec.drop, Nat.add_zero, hcur'] at hmu
+      exact absurd (countTrue_pos j.2 hrem) (by omega)
   · -- Already grantReady: done immediately
     exact ⟨0, show tlGrantReady n (e.drop (k + 0)) from by
       simp [tlGrantReady, state_pred, exec.drop, grantReady]; exact ⟨tx, hcur, hready⟩⟩
@@ -857,12 +1169,12 @@ theorem grantPendingAck_leads_to_grantAckSent (n : Nat) :
             exact absurd hphase_r (by rw [hphase_m]; decide)
         | .recvProbeAckAtManager =>
             -- Requires phase = probing, but we have grantPendingAck
-            rcases hstep with ⟨tx_r, _, hcur_r, hphase_r, _, _, _, _, _, hs'_r⟩
+            rcases hstep with ⟨tx_r, _, hcur_r, hphase_r, _, _, _, _, hs'_r⟩
             rw [hcur_m] at hcur_r; cases hcur_r
             exact absurd hphase_r (by rw [hphase_m]; decide)
         | .recvProbeAtMaster =>
             -- Requires phase = probing, but we have grantPendingAck
-            rcases hstep with ⟨tx_r, _, hcur_r, hphase_r, _, _, _, _, _, _, _, hs'_r⟩
+            rcases hstep with ⟨tx_r, _, hcur_r, hphase_r, _, _, _, _, _, _, hs'_r⟩
             rw [hcur_m] at hcur_r; cases hcur_r
             exact absurd hphase_r (by rw [hphase_m]; decide)
         | .sendRelease _ =>
