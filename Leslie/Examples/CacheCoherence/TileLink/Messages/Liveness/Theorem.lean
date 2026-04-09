@@ -1,5 +1,6 @@
 import Leslie.Examples.CacheCoherence.TileLink.Messages.Liveness.Steps
 import Leslie.Examples.CacheCoherence.TileLink.Messages.StepRelease
+import Leslie.Rules.LeadsTo
 
 /-! ## Liveness Composition: Acquire Eventually Completes
 
@@ -53,6 +54,14 @@ def tlAcquirePending (n : Nat) (i : Fin n) : pred (SymState HomeState NodeState 
 
 def tlAcquireComplete (n : Nat) (i : Fin n) : pred (SymState HomeState NodeState n) :=
   state_pred (acquireComplete n i)
+
+/-- Count of remaining probes. Without Finset, define recursively on n. -/
+noncomputable def probeRemainingCount (n : Nat) (e : Nat → SymState HomeState NodeState n) : Nat :=
+  match e 0 |>.shared.currentTxn with
+  | none => 0
+  | some tx =>
+    let count := fun (k : Nat) => if k < n then (if tx.probesRemaining k then 1 else 0) else 0
+    (List.range n).foldl (fun acc k => acc + count k) 0
 
 /-! ### Helper: chain leads-to under a hypothesis -/
 
@@ -644,7 +653,18 @@ theorem chanA_leads_to_txnActive (n : Nat) (i : Fin n) :
 theorem probing_leads_to_grantReady (n : Nat) :
     pred_implies (tlMessagesFair n).formula
       (leads_to (probingOrReady n) (tlGrantReady n)) := by
-  sorry
+  intro e hspec k hp
+  -- probingOrReady = probing ∨ grantReady. If already grantReady, done.
+  simp only [probingOrReady, state_pred, exec.drop] at hp
+  rcases hp with ⟨tx, hcur, hphase⟩
+  rcases hphase with hprobing | hready
+  · -- Probing phase: need to show all probes eventually consumed.
+    -- Use leads_to_via_nat with probe count measure.
+    -- For now, sorry the inductive argument — the infrastructure is in place.
+    sorry
+  · -- Already grantReady: done immediately
+    exact ⟨0, show tlGrantReady n (e.drop (k + 0)) from by
+      simp [tlGrantReady, state_pred, exec.drop, grantReady]; exact ⟨tx, hcur, hready⟩⟩
 
 /-- Step 3: At grantReady, the grant is sent to the requester.
     Fair action: sendGrantToRequester.
