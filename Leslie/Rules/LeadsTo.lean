@@ -135,6 +135,98 @@ theorem leads_to_via_nat {Γ : pred σ} {p q : pred σ}
         -- These are equal by Nat.add_assoc
         rwa [show k + j + j' = k + (j + j') from by omega] at hj'
 
+/-- Lexicographic well-founded induction for leads_to using two Nat-valued measures.
+    Each step either achieves q, or decreases μ₁, or keeps μ₁ the same and decreases μ₂.
+    At (0, 0), the base case must achieve q.
+
+    This generalizes `leads_to_via_nat` to lexicographic orderings, useful when
+    progress on one dimension can reset the other (e.g., decreasing x while setting
+    y to an arbitrary value). -/
+theorem leads_to_via_lex {Γ : pred σ} {p q : pred σ}
+    (μ₁ μ₂ : (Nat → σ) → Nat)
+    (hstep : ∀ k₁ k₂ : Nat, (k₁ > 0 ∨ k₂ > 0) →
+      ∀ e, Γ e → ∀ i, p (e.drop i) → μ₁ (e.drop i) = k₁ → μ₂ (e.drop i) = k₂ →
+        ∃ j, q (e.drop (i + j)) ∨
+          (p (e.drop (i + j)) ∧
+            (μ₁ (e.drop (i + j)) < k₁ ∨
+              (μ₁ (e.drop (i + j)) = k₁ ∧ μ₂ (e.drop (i + j)) < k₂))))
+    (hbase : ∀ e, Γ e → ∀ i, p (e.drop i) → μ₁ (e.drop i) = 0 → μ₂ (e.drop i) = 0 →
+        ∃ j, q (e.drop (i + j))) :
+    pred_implies Γ (leads_to p q) := by
+  -- Reduce to leads_to_via_nat with a combined measure.
+  -- Use μ₁ as outer, then for each fixed μ₁, use μ₂ as inner.
+  -- Encode: prove ∀ x, (p ∧ μ₁ = x) ↝ q by induction on x.
+  -- For each x, prove (p ∧ μ₁ = x) ↝ q using leads_to_via_nat on μ₂.
+  apply leads_to_via_nat μ₁
+  · -- Outer step: μ₁ = k₁ > 0
+    intro k₁ hk₁ e hΓ i hp hμ₁
+    -- Use inner leads_to_via_nat on μ₂ to either achieve q or decrease μ₁
+    -- For any μ₂ value, one step gives: q ∨ (μ₁ < k₁) ∨ (μ₁ = k₁ ∧ μ₂ decreased)
+    -- The inner induction on μ₂ handles the (μ₁ = k₁ ∧ μ₂ decreased) case
+    -- until μ₂ reaches 0, at which point the step MUST decrease μ₁ or achieve q
+    -- Inner: show (p ∧ μ₁ = k₁) ↝ (q ∨ (p ∧ μ₁ < k₁))
+    -- Use leads_to_via_nat on μ₂ for this
+    suffices h : ∀ m₂ i', μ₂ (e.drop i') ≤ m₂ → p (e.drop i') → μ₁ (e.drop i') = k₁ →
+        ∃ j, q (e.drop (i' + j)) ∨ (p (e.drop (i' + j)) ∧ μ₁ (e.drop (i' + j)) < k₁) by
+      exact h (μ₂ (e.drop i)) i (Nat.le_refl _) hp hμ₁
+    intro m₂
+    induction m₂ with
+    | zero =>
+      intro i' hle hp' hμ₁'
+      have hμ₂' : μ₂ (e.drop i') = 0 := Nat.le_zero.mp hle
+      obtain ⟨j, hj⟩ := hstep k₁ 0 (Or.inl hk₁) e hΓ i' hp' hμ₁' hμ₂'
+      rcases hj with hq | ⟨hp'', hlt⟩
+      · exact ⟨j, Or.inl hq⟩
+      · rcases hlt with hlt₁ | ⟨_, hlt₂⟩
+        · exact ⟨j, Or.inr ⟨hp'', hlt₁⟩⟩
+        · omega  -- μ₂ < 0 impossible
+    | succ m₂ ih =>
+      intro i' hle hp' hμ₁'
+      by_cases hμ₂ : μ₂ (e.drop i') = 0
+      · -- μ₂ = 0: same as zero case
+        obtain ⟨j, hj⟩ := hstep k₁ 0 (Or.inl hk₁) e hΓ i' hp' hμ₁' hμ₂
+        rcases hj with hq | ⟨hp'', hlt⟩
+        · exact ⟨j, Or.inl hq⟩
+        · rcases hlt with hlt₁ | ⟨_, hlt₂⟩
+          · exact ⟨j, Or.inr ⟨hp'', hlt₁⟩⟩
+          · omega
+      · -- μ₂ > 0: one step
+        obtain ⟨j, hj⟩ := hstep k₁ (μ₂ (e.drop i'))
+          (Or.inr (Nat.pos_of_ne_zero hμ₂)) e hΓ i' hp' hμ₁' rfl
+        rcases hj with hq | ⟨hp'', hlt⟩
+        · exact ⟨j, Or.inl hq⟩
+        · rcases hlt with hlt₁ | ⟨heq₁, hlt₂⟩
+          · -- μ₁ decreased: done
+            exact ⟨j, Or.inr ⟨hp'', hlt₁⟩⟩
+          · -- μ₁ same, μ₂ decreased: apply IH
+            have hle' : μ₂ (e.drop (i' + j)) ≤ m₂ := by omega
+            obtain ⟨j', hj'⟩ := ih (i' + j) hle' hp'' heq₁
+            exact ⟨j + j', by rw [show i' + (j + j') = i' + j + j' from by omega]; assumption⟩
+  · -- Outer base: μ₁ = 0. Use inner leads_to_via_nat on μ₂.
+    intro e hΓ i hp hμ₁
+    -- Need: ∃ j, q (e.drop (i + j))
+    suffices h : ∀ m₂ i', μ₂ (e.drop i') ≤ m₂ → p (e.drop i') → μ₁ (e.drop i') = 0 →
+        ∃ j, q (e.drop (i' + j)) by
+      exact h (μ₂ (e.drop i)) i (Nat.le_refl _) hp hμ₁
+    intro m₂
+    induction m₂ with
+    | zero =>
+      intro i' hle hp' hμ₁'
+      exact hbase e hΓ i' hp' hμ₁' (Nat.le_zero.mp hle)
+    | succ m₂ ih =>
+      intro i' hle hp' hμ₁'
+      by_cases hμ₂ : μ₂ (e.drop i') = 0
+      · exact hbase e hΓ i' hp' hμ₁' hμ₂
+      · obtain ⟨j, hj⟩ := hstep 0 (μ₂ (e.drop i'))
+          (Or.inr (Nat.pos_of_ne_zero hμ₂)) e hΓ i' hp' hμ₁' rfl
+        rcases hj with hq | ⟨hp'', hlt⟩
+        · exact ⟨j, hq⟩
+        · rcases hlt with hlt₁ | ⟨heq₁, hlt₂⟩
+          · omega  -- μ₁ < 0 impossible
+          · have hle' : μ₂ (e.drop (i' + j)) ≤ m₂ := by omega
+            obtain ⟨j', hj'⟩ := ih (i' + j) hle' hp'' heq₁
+            exact ⟨j + j', by rw [show i' + (j + j') = i' + j + j' from by omega]; assumption⟩
+
 end leads_to
 
 end TLA

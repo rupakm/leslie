@@ -245,3 +245,118 @@ theorem countdown_reaches_zero :
     simp only [state_pred, exec.drop] at hp hμ; omega
 
 end NondetDecrement
+
+/-! ## Variant 3: Lexicographic Countdown
+
+    State: (x, y) : Nat × Nat. Three actions:
+    (a) stutter: (x, y) → (x, y)
+    (b) decX:    (x, y) → (x - 1, y') for arbitrary y' (decreases x, resets y)
+    (c) decY:    (x, y) → (x, y - 1) when y > 0 (decreases y, keeps x)
+
+    Only decX and decY are fair. Goal: (x, y) ≠ (0, 0) ↝ (x, y) = (0, 0).
+
+    Uses `leads_to_via_lex` with measures μ₁ = x, μ₂ = y.
+    Action (b) decreases μ₁ (and may increase μ₂ arbitrarily).
+    Action (c) keeps μ₁ fixed and decreases μ₂.
+    This is the canonical lexicographic ranking example. -/
+
+namespace LexCountdown
+
+abbrev LState := Nat × Nat
+
+def stutterL (s s' : LState) : Prop := s' = s
+def decX (s s' : LState) : Prop := s.1 > 0 ∧ s'.1 = s.1 - 1
+def decY (s s' : LState) : Prop := s.2 > 0 ∧ s'.1 = s.1 ∧ s'.2 = s.2 - 1
+def nextL (s s' : LState) : Prop := stutterL s s' ∨ decX s s' ∨ decY s s'
+
+/-- Combined fair action: decX ∨ decY. The spec gives WF to this combined action.
+    When either decX or decY is enabled, eventually one of them fires. -/
+def progress (s s' : LState) : Prop := decX s s' ∨ decY s s'
+
+def spec : Spec LState where
+  init := fun _ => True
+  next := nextL
+  fair := [progress]
+
+def notDone : pred LState := state_pred (fun s => s.1 > 0 ∨ s.2 > 0)
+def done : pred LState := state_pred (fun s => s.1 = 0 ∧ s.2 = 0)
+
+theorem progress_enabled_of_notDone {s : LState} (h : s.1 > 0 ∨ s.2 > 0) :
+    enabled progress s := by
+  rcases h with hx | hy
+  · -- x > 0: decX enabled (choose any y')
+    exact ⟨(s.1 - 1, 0), Or.inl ⟨hx, rfl⟩⟩
+  · -- y > 0: decY enabled
+    exact ⟨(s.1, s.2 - 1), Or.inr ⟨hy, rfl, rfl⟩⟩
+
+theorem lex_countdown :
+    pred_implies spec.formula (leads_to notDone done) := by
+  apply leads_to_via_lex (fun e => (e 0).1) (fun e => (e 0).2)
+  · -- Step case: (k₁, k₂) with k₁ > 0 ∨ k₂ > 0
+    intro k₁ k₂ hpos e ⟨_, hnext, hwf⟩ i hp hμ₁ hμ₂
+    have hwf : weak_fairness progress e := by
+      simp only [spec, tla_bigwedge, Foldable.fold, tla_true] at hwf; exact hwf.1
+    -- WF1 with measure-aware predicates
+    -- p_wf1 = notDone ∧ μ₁ = k₁ ∧ μ₂ = k₂
+    -- q_wf1 = done ∨ (notDone ∧ lex_decreased)
+    have h1 : leads_to
+        (fun e => ((e 0).1 > 0 ∨ (e 0).2 > 0) ∧ (e 0).1 = k₁ ∧ (e 0).2 = k₂)
+        (fun e => ((e 0).1 = 0 ∧ (e 0).2 = 0) ∨
+          (((e 0).1 > 0 ∨ (e 0).2 > 0) ∧
+            ((e 0).1 < k₁ ∨ ((e 0).1 = k₁ ∧ (e 0).2 < k₂))))
+        e := by
+      apply wf1 _ _ nextL progress e
+      refine ⟨?_, ?_, ?_, hnext, hwf⟩
+      · -- Safety: stutter preserves p; decX/decY give q
+        intro m ⟨⟨hnd, hx, hy⟩, hstep⟩
+        simp only [action_pred, exec.drop, later, Nat.add_zero, tla_or, nextL,
+          stutterL, decX, decY] at hnd hx hy hstep ⊢
+        rcases hstep with hstut | ⟨hxp, hx'⟩ | ⟨hyp, hx', hy'⟩
+        · -- Stutter: s' = s → p preserved
+          left; rw [hstut]; exact ⟨hnd, hx, hy⟩
+        · -- decX: x' = x - 1. Done or lex decreased.
+          by_cases hnd' : (e (m + 1)).1 > 0 ∨ (e (m + 1)).2 > 0
+          · right; right; refine ⟨hnd', Or.inl ?_⟩; omega
+          · right; left
+            have hnd1 : ¬(e (m + 1)).1 > 0 := fun h => hnd' (Or.inl h)
+            have hnd2 : ¬(e (m + 1)).2 > 0 := fun h => hnd' (Or.inr h)
+            exact ⟨by omega, by omega⟩
+        · -- decY: x' = x, y' = y - 1. Either done or lex decreased.
+          by_cases hnd' : (e (m + 1)).1 > 0 ∨ (e (m + 1)).2 > 0
+          · right; right; exact ⟨hnd', Or.inr ⟨by omega, by omega⟩⟩
+          · right; left
+            have hnd1 : ¬(e (m + 1)).1 > 0 := fun h => hnd' (Or.inl h)
+            have hnd2 : ¬(e (m + 1)).2 > 0 := fun h => hnd' (Or.inr h)
+            exact ⟨by omega, by omega⟩
+      · -- Progress: decX or decY → q
+        intro m ⟨⟨hnd, hx, hy⟩, _, hstep⟩
+        simp only [action_pred, exec.drop, later, Nat.add_zero, tla_or, progress,
+          decX, decY] at hnd hx hy hstep ⊢
+        rcases hstep with ⟨hxp, hx'⟩ | ⟨hyp, hx', hy'⟩
+        · by_cases hnd' : (e (m + 1)).1 > 0 ∨ (e (m + 1)).2 > 0
+          · right; refine ⟨hnd', Or.inl ?_⟩; omega
+          · left
+            have hnd1 : ¬(e (m + 1)).1 > 0 := fun h => hnd' (Or.inl h)
+            have hnd2 : ¬(e (m + 1)).2 > 0 := fun h => hnd' (Or.inr h)
+            exact ⟨by omega, by omega⟩
+        · by_cases hnd' : (e (m + 1)).1 > 0 ∨ (e (m + 1)).2 > 0
+          · right; exact ⟨hnd', Or.inr ⟨by omega, by omega⟩⟩
+          · left
+            have hnd1 : ¬(e (m + 1)).1 > 0 := fun h => hnd' (Or.inl h)
+            have hnd2 : ¬(e (m + 1)).2 > 0 := fun h => hnd' (Or.inr h)
+            exact ⟨by omega, by omega⟩
+      · -- Enablement: notDone → progress enabled
+        intro m ⟨hnd, _, _⟩
+        simp only [tla_enabled, tla_or, exec.drop] at *
+        left; exact progress_enabled_of_notDone hnd
+    obtain ⟨j, hj⟩ := h1 i ⟨hp, hμ₁, hμ₂⟩
+    simp only [exec.drop_drop] at hj
+    rcases hj with ⟨hq₁, hq₂⟩ | ⟨hnd', hlt⟩
+    · exact ⟨j, Or.inl ⟨hq₁, hq₂⟩⟩
+    · exact ⟨j, Or.inr ⟨hnd', hlt⟩⟩
+  · -- Base case: (0, 0) → done immediately
+    intro e _ i hp hμ₁ hμ₂
+    simp only [notDone, done, state_pred, exec.drop] at hp hμ₁ hμ₂
+    omega
+
+end LexCountdown
