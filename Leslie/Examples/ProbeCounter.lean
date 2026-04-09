@@ -171,30 +171,31 @@ theorem countdown_reaches_zero :
 
 end StutterDecrement
 
-/-! ## Variant 2: Non-deterministic Decrement
+/-! ## Variant 2: Stutter + Non-deterministic Decrement
 
-    Single action: decrement by a non-deterministically chosen amount
-    (any d with 1 ≤ d ≤ s). Under weak fairness, the counter reaches 0.
+    Two actions: `stutter` (s' = s) and `ndDecrement` (s' = s - d for
+    non-deterministic d ∈ [1, s]). Only ndDecrement is fair.
 
     **Property**: `counter > 0 ↝ counter = 0`
 
-    This models TileLink scenarios where a single action might consume
-    multiple probes at once (e.g., if the model batched probe processing). -/
+    Combines both patterns: stutter-resilience and non-deterministic jumps.
+    This is the closest model to TileLink probing, where most actions leave
+    the probe count unchanged and the decrement action (recvProbeAck) may
+    process probes in varying order. -/
 
 namespace NondetDecrement
 
+def stutter (s s' : Nat) : Prop := s' = s
 def ndDecrement (s s' : Nat) : Prop := ∃ d, d ≥ 1 ∧ d ≤ s ∧ s' = s - d
+def next (s s' : Nat) : Prop := stutter s s' ∨ ndDecrement s s'
 
 def spec : Spec Nat where
   init := fun _ => True
-  next := ndDecrement
-  fair := [ndDecrement]
+  next := next
+  fair := [ndDecrement]  -- only ndDecrement is fair
 
 theorem ndDecrement_enabled_of_pos {s : Nat} (h : s > 0) : enabled ndDecrement s :=
   ⟨s - 1, 1, by omega, by omega, by omega⟩
-
-theorem ndDecrement_decreases {s s' : Nat} (h : ndDecrement s s') : s' < s := by
-  obtain ⟨d, hd1, hd2, hs'⟩ := h; omega
 
 theorem countdown_reaches_zero :
     pred_implies spec.formula
@@ -209,17 +210,21 @@ theorem countdown_reaches_zero :
         (fun e => e 0 > 0 ∧ e 0 = k)
         (fun e => e 0 = 0 ∨ (e 0 > 0 ∧ e 0 < k))
         e := by
-      apply wf1 _ _ ndDecrement ndDecrement e
+      apply wf1 _ _ next ndDecrement e
       refine ⟨?_, ?_, ?_, hnext, hwf⟩
-      · -- Safety: ndDecrement gives q (may jump past 0 or land exactly)
+      · -- Safety: stutter preserves p; ndDecrement gives q
         intro m ⟨⟨hp', hcount⟩, hstep⟩
-        simp only [action_pred, exec.drop, later, Nat.add_zero, tla_or, ndDecrement] at *
-        obtain ⟨d, hd1, hd2, hs'⟩ := hstep
-        right
-        by_cases h0 : e m - d = 0
-        · left; rw [hs']; exact h0
-        · right; rw [hs', hcount]; omega
-      · -- Progress: same as safety (single action)
+        simp only [action_pred, exec.drop, later, Nat.add_zero, tla_or, next] at *
+        rcases hstep with hstut | hdec
+        · -- Stutter: p preserved
+          left; rw [stutter] at hstut; rw [hstut]; exact ⟨hp', hcount⟩
+        · -- ndDecrement: q holds
+          right
+          obtain ⟨d, hd1, hd2, hs'⟩ := hdec
+          by_cases h0 : e m - d = 0
+          · left; rw [hs']; exact h0
+          · right; rw [hs', hcount]; omega
+      · -- Progress: ndDecrement fires → q
         intro m ⟨⟨hp', hcount⟩, _, hstep⟩
         simp only [action_pred, exec.drop, later, Nat.add_zero, tla_or, ndDecrement] at *
         obtain ⟨d, hd1, hd2, hs'⟩ := hstep
