@@ -103,6 +103,16 @@ theorem countTrue_decrease {f : Nat → Bool} {n j : Nat} (hj : j < n) (hf : f j
       have h1 : (if n = j then false else f n) = f n := if_neg (fun h => hjn h.symm)
       rw [h1]; omega
 
+theorem countTrue_clearProbeIdx_le (f : Nat → Bool) (j n : Nat) :
+    countTrue (clearProbeIdx f j) n ≤ countTrue f n := by
+  induction n with
+  | zero => rfl
+  | succ n ih =>
+    unfold countTrue clearProbeIdx
+    by_cases hjn : n = j
+    · subst hjn; simp; omega
+    · simp [hjn]; omega
+
 /-- Count of remaining probes. Recursively counts true bits in probesRemaining. -/
 noncomputable def probeRemainingCount (n : Nat) (e : Nat → SymState HomeState NodeState n) : Nat :=
   match e 0 |>.shared.currentTxn with
@@ -750,10 +760,12 @@ theorem probing_leads_to_grantReady (n : Nat) :
         -- The predicate p_pa tracks: probing with remaining j and chanC j
         let p_pa : pred (SymState HomeState NodeState n) := state_pred (fun s =>
           ∃ tx0 : ManagerTxn, s.shared.currentTxn = some tx0 ∧ tx0.phase = TxnPhase.probing ∧
-            tx0.probesRemaining j.1 = true ∧ (s.locals j).chanC ≠ none)
+            tx0.probesRemaining j.1 = true ∧ (s.locals j).chanC ≠ none ∧
+            countTrue tx0.probesRemaining n ≤ m)
         have hp_pa : p_pa (e'.drop i') := by
           simp only [p_pa, state_pred, exec.drop, Nat.add_zero]
-          exact ⟨tx', hcur', hphase', hrem, hCj⟩
+          refine ⟨tx', hcur', hphase', hrem, hCj, ?_⟩
+          simp only [probeRemainingCount, hcur'] at hmu; omega
         -- Apply WF1 on suffix e'.drop i'
         have hwf1 : leads_to p_pa q_step (e'.drop i') := by
           apply wf1_apply (next := (tlMessages.toSpec n).next) (a := actRecvProbeAckAtManager n j)
@@ -761,7 +773,7 @@ theorem probing_leads_to_grantReady (n : Nat) :
             safety := by
               intro kk hpk hnxt
               simp only [p_pa, state_pred, exec.drop, Nat.add_zero] at hpk
-              rcases hpk with ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
+              rcases hpk with ⟨tx0, hcur0, hphase0, hrem0, hCj0, hbound⟩
               -- Create exec.drop-form aliases for rw compatibility with step hypotheses
               have hcur0' : ((e'.drop i') kk).shared.currentTxn = some tx0 := hcur0
               have hphase0' : tx0.phase = TxnPhase.probing := hphase0
@@ -782,8 +794,8 @@ theorem probing_leads_to_grantReady (n : Nat) :
                   simp only [p_pa, state_pred, exec.drop_drop, exec.drop, Nat.add_zero, Nat.add_assoc]
                   rw [hpost]
                   by_cases hjii : j = ii
-                  · cases hjii; simp [setFn]; exact ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
-                  · simp [setFn, hjii]; exact ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
+                  · cases hjii; simp [setFn]; exact ⟨tx0, hcur0, hphase0, hrem0, hCj0, hbound⟩
+                  · simp [setFn, hjii]; exact ⟨tx0, hcur0, hphase0, hrem0, hCj0, hbound⟩
               | .sendAcquirePerm _ _ =>
                   rcases hstep with ⟨_, _, _, _, _, _, _, rfl⟩
                   simp only [exec.drop] at hpost
@@ -791,8 +803,8 @@ theorem probing_leads_to_grantReady (n : Nat) :
                   simp only [p_pa, state_pred, exec.drop_drop, exec.drop, Nat.add_zero, Nat.add_assoc]
                   rw [hpost]
                   by_cases hjii : j = ii
-                  · cases hjii; simp [setFn]; exact ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
-                  · simp [setFn, hjii]; exact ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
+                  · cases hjii; simp [setFn]; exact ⟨tx0, hcur0, hphase0, hrem0, hCj0, hbound⟩
+                  · simp [setFn, hjii]; exact ⟨tx0, hcur0, hphase0, hrem0, hCj0, hbound⟩
               -- Disabled: currentTxn = none → contradiction
               | .recvAcquireAtManager =>
                   rcases hstep with ⟨_, _, h⟩ | ⟨_, _, h⟩ <;>
@@ -808,7 +820,7 @@ theorem probing_leads_to_grantReady (n : Nat) :
                   simp only [recvProbeState, SymState.shared, recvProbeLocals, SymState.locals]
                   by_cases hjii : j = ii
                   · cases hjii; simp [hCj0'] at hCnone
-                  · refine ⟨tx0, hcur0, hphase0, hrem0, ?_⟩
+                  · refine ⟨tx0, hcur0, hphase0, hrem0, ?_, hbound⟩
                     simp [setFn, hjii]; exact hCj0
               -- recvProbeAck k: if k=j, the fair action fires (handled by progress).
               -- If k≠j: remaining j unchanged, chanC j unchanged. Count decreases → q_step.
@@ -836,7 +848,11 @@ theorem probing_leads_to_grantReady (n : Nat) :
                         · rfl
                       constructor
                       · exact ⟨_, rfl, hphPr⟩
-                      · sorry -- count decrease: countTrue_decrease j.2 hrem0
+                      · -- count decrease: clearProbeIdx < original ≤ m
+                        show probeRemainingCount n (e'.drop (i' + (kk + 1))) < m
+                        simp only [probeRemainingCount, exec.drop, Nat.add_zero, Nat.add_assoc]
+                        rw [hpost]; simp only [recvProbeAckState, SymState.shared, recvProbeAckShared]
+                        have := countTrue_decrease j.2 hrem0; omega
                   · -- k ≠ j: remaining j unchanged, count decreases → q_step
                     right; show q_step ((e'.drop (i' + kk)).drop 1)
                     simp only [q_step, p, tlGrantReady, state_pred, exec.drop_drop, exec.drop,
@@ -855,7 +871,10 @@ theorem probing_leads_to_grantReady (n : Nat) :
                         · rfl
                       constructor
                       · exact ⟨_, rfl, hphPr⟩
-                      · sorry -- count decrease: countTrue_decrease ii.2 hrem1
+                      · show probeRemainingCount n (e'.drop (i' + (kk + 1))) < m
+                        simp only [probeRemainingCount, exec.drop, Nat.add_zero, Nat.add_assoc]
+                        rw [hpost]; simp only [recvProbeAckState, SymState.shared, recvProbeAckShared]
+                        have := countTrue_decrease ii.2 hrem1; omega
               -- Disabled: phase mismatch
               | .sendGrantToRequester =>
                   rcases hstep with ⟨tx1, hc1, _, hph, _, _, _, _, _, rfl⟩
@@ -887,7 +906,7 @@ theorem probing_leads_to_grantReady (n : Nat) :
                   left; show p_pa ((e'.drop (i' + kk)).drop 1)
                   simp only [p_pa, state_pred, exec.drop_drop, exec.drop, Nat.add_zero, Nat.add_assoc]
                   rw [hpost]
-                  exact ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
+                  exact ⟨tx0, hcur0, hphase0, hrem0, hCj0, hbound⟩
               | .uncachedGet _ =>
                   rcases hstep with ⟨hcn, _⟩; rw [hcur0'] at hcn; simp at hcn
               | .uncachedPut _ _ =>
@@ -901,12 +920,12 @@ theorem probing_leads_to_grantReady (n : Nat) :
                   simp only [p_pa, state_pred, exec.drop_drop, exec.drop, Nat.add_zero, Nat.add_assoc]
                   rw [hpost]
                   by_cases hjii : j = ii
-                  · cases hjii; simp [setFn]; exact ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
-                  · simp [setFn, hjii]; exact ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
+                  · cases hjii; simp [setFn]; exact ⟨tx0, hcur0, hphase0, hrem0, hCj0, hbound⟩
+                  · simp [setFn, hjii]; exact ⟨tx0, hcur0, hphase0, hrem0, hCj0, hbound⟩
             progress := by
               intro kk hpk hnxt hact
               simp only [p_pa, state_pred, exec.drop, Nat.add_zero] at hpk
-              rcases hpk with ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
+              rcases hpk with ⟨tx0, hcur0, hphase0, hrem0, hCj0, hbound⟩
               have hcur0' : ((e'.drop i') kk).shared.currentTxn = some tx0 := hcur0
               generalize hpost : (e'.drop i') (kk + 1) = s_post at hnxt hact
               rcases hact with ⟨a, ha, hstep⟩; cases ha
@@ -928,11 +947,14 @@ theorem probing_leads_to_grantReady (n : Nat) :
                   · rfl
                 constructor
                 · exact ⟨_, rfl, hphPr⟩
-                · sorry -- count decrease: countTrue_decrease j.2 hrem0
+                · show probeRemainingCount n (e'.drop (i' + (kk + 1))) < m
+                  simp only [probeRemainingCount, exec.drop, Nat.add_zero, Nat.add_assoc]
+                  rw [hpost]; simp only [recvProbeAckState, SymState.shared, recvProbeAckShared]
+                  have := countTrue_decrease j.2 hrem0; omega
             enablement := by
               intro kk hpk
               simp only [p_pa, state_pred, exec.drop, Nat.add_zero] at hpk
-              rcases hpk with ⟨tx0, hcur0, hphase0, hrem0, hCj0⟩
+              rcases hpk with ⟨tx0, hcur0, hphase0, hrem0, hCj0, hbound⟩
               -- Get chanCInv to extract message properties
               have hinv_kk := always_livenessInv n e' hspec' (i' + kk)
               rcases hinv_kk with ⟨⟨_, ⟨_, _, hchanC_kk, _, _⟩, _⟩, _⟩
