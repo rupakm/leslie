@@ -907,13 +907,64 @@ theorem refMap_recvAcquirePerm_next {n : Nat}
     (hinv : refinementInv n s)
     (hstep : RecvAcquirePermAtManager s s' i grow source) :
     (TileLink.Atomic.tlAtomic.toSpec n).next (refMap n s) (refMap n s') := by
-  -- This requires dirty-source acquire infrastructure (for NtoT with a dirty other).
-  -- The existing refMapShared_recvAcquireState_eq_absPending lemmas only handle
-  -- the clean case (¬hasDirtyOther / noDirtyInv). Closing this requires either:
-  -- (a) a new refMapShared_recvAcquireState_eq_absPending_dirty lemma, or
-  -- (b) inline field-by-field proof for both dirty and clean sub-cases.
-  -- Leaving sorry until dirty-source acquire infrastructure is added.
-  sorry
+  rcases hstep with ⟨htxn, hpga, hpra, hallC, hrelIF, hchanA, hlegal, hresT, hBs, hs'⟩
+  subst hs'
+  simp only [SymSharedSpec.toSpec]
+  -- perm ≠ .T: from legalFrom, perm = grow.source. For BtoT: source = .B ≠ .T.
+  have hpermNeT : (s.locals i).line.perm ≠ .T := by
+    rw [GrowParam.legalFrom] at hlegal
+    rw [hlegal]; cases grow <;> simp [GrowParam.source, GrowParam.result] at hresT ⊢
+  by_cases hDirty : hasDirtyOther s i
+  · -- Dirty case: exhibit acquirePerm with dirty sub-case
+    obtain ⟨j, hji, hdj⟩ := hDirty
+    refine ⟨i, .acquirePerm, ?_, ?_, ?_, ?_, ?_⟩
+    · simp [refMap, refMapShared, htxn]
+    · simp [refMap, refMapShared, hpga]
+    · simp [refMap, refMapShared, htxn, hpra]
+      exact queuedReleaseIdx_eq_none_of_all_chanC_none s hallC
+    · -- perm ≠ .T at abstract level
+      simp [refMap, refMapLine, htxn]; exact hpermNeT
+    · -- dirty sub-case (first disjunct)
+      left
+      refine ⟨j, hji, ?_, ?_⟩
+      · simp [refMap, refMapLine, htxn]; exact hdj
+      · -- s' = acquirePermDirtyState (refMap n s) i j
+        apply SymState.ext
+        · -- shared: simp should close (same pattern as acquireBlock dirty)
+          simp only [TileLink.Atomic.acquirePermDirtyState]
+          rw [TileLink.Atomic.HomeState.mk.injEq]
+          refine ⟨?_, ?_, ?_, ?_, ?_⟩
+          · -- mem
+            simp [refMap, refMapShared, refMapLine, recvAcquireState, recvAcquireShared, plannedTxn, htxn]
+          · -- dir
+            simp [refMap, refMapShared, refMapLine, recvAcquireState, recvAcquireShared, plannedTxn, htxn]
+          · simp [refMapShared, recvAcquireState, recvAcquireShared, htxn]
+          · simp [refMapShared, recvAcquireState, recvAcquireShared, hpga]
+          · simp [refMapShared, recvAcquireState, recvAcquireShared, htxn, hpra,
+              findDirtyReleaseVal_none_of_all_chanC_none' s hallC,
+              queuedReleaseIdx_eq_none_of_all_chanC_none s hallC]
+        · exact refMap_recvAcquireState_locals_eq s i .acquirePerm grow source htxn
+  · -- Clean case: ¬hasDirtyOther → acquirePermCleanState
+    refine ⟨i, .acquirePerm, ?_, ?_, ?_, ?_, ?_⟩
+    · simp [refMap, refMapShared, htxn]
+    · simp [refMap, refMapShared, hpga]
+    · simp [refMap, refMapShared, htxn, hpra]
+      exact queuedReleaseIdx_eq_none_of_all_chanC_none s hallC
+    · simp [refMap, refMapLine, htxn]; exact hpermNeT
+    · right
+      refine ⟨(atomic_not_hasDirtyOther_of_not_hasDirtyOther hDirty htxn), ?_⟩
+      apply SymState.ext
+      · simp only [TileLink.Atomic.acquirePermCleanState]
+        rw [TileLink.Atomic.HomeState.mk.injEq]
+        refine ⟨?_, ?_, ?_, ?_, ?_⟩
+        · simp [refMap, refMapShared, refMapLine, recvAcquireState, recvAcquireShared, plannedTxn, htxn]
+        · simp [refMap, refMapShared, refMapLine, recvAcquireState, recvAcquireShared, plannedTxn, htxn]
+        · simp [refMapShared, recvAcquireState, recvAcquireShared, htxn]
+        · simp [refMapShared, recvAcquireState, recvAcquireShared, hpga]
+        · simp [refMapShared, recvAcquireState, recvAcquireShared, htxn, hpra,
+            findDirtyReleaseVal_none_of_all_chanC_none' s hallC,
+            queuedReleaseIdx_eq_none_of_all_chanC_none s hallC]
+      · exact refMap_recvAcquireState_locals_eq s i .acquirePerm grow source htxn
 
 theorem refMap_recvAcquireAtManager_next {n : Nat}
     {s s' : SymState HomeState NodeState n}
