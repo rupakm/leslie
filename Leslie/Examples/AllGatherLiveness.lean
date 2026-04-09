@@ -105,8 +105,7 @@ theorem ag_eventually_complete :
   have hinv := AllGather.ag_completeness n e hsafety
   refine ⟨j, ?_⟩
   have hinv_at := hinv (k + j)
-  simp only [state_pred, exec.drop, Nat.add_zero, AllGather.ag_inv,
-             show j + k = k + j from Nat.add_comm j k] at hinv_at hge ⊢
+  simp only [state_pred, exec.drop, Nat.add_zero] at hinv_at hge ⊢
   exact hinv_at.2 hge
 
 end AllGatherLiveness

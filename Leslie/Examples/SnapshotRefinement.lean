@@ -1136,7 +1136,7 @@ def backward_snap_atomic_sim :
             rfl, rfl,
             fun t => by simp [bpc_rel2, hpc],
             fun t ht => by simp [hpc] at ht,
-            fun t hread _ => by simp [hpc] at hread,
+            fun t hread _ => by simp at hread,
             fun t ht => by simp [hpc] at ht⟩
 
   -- ── Backward step simulation ───────────────────────────────────
@@ -1156,7 +1156,7 @@ def backward_snap_atomic_sim :
     | u_call t =>
       obtain ⟨hpc_t, i, d, hop_t⟩ := hg; subst htrans
       have ha' : a'.pc t = .u_called := by
-        have := hpc_r' t; simp [hpc_t] at this; exact this
+        have := hpc_r' t; simp at this; exact this
       let a₀ : AtState n Val Tid :=
         { a' with pc := fun t' => if t' = t then .idle else a'.pc t' }
       refine ⟨a₀, Star.single ⟨.u_call t, ⟨?_, i, d, ?_⟩, ?_⟩,
@@ -1186,7 +1186,7 @@ def backward_snap_atomic_sim :
       obtain ⟨hpc_t, _⟩ := hg
       obtain ⟨i, d, hop_eq, hs'⟩ := htrans; subst hs'
       have ha' : a'.pc t = .u_done := by
-        have := hpc_r' t; simp [hpc_t] at this; exact this
+        have := hpc_r' t; simp at this; exact this
       let a₀ : AtState n Val Tid :=
         { a' with
           mem := cs.mem
@@ -1223,7 +1223,7 @@ def backward_snap_atomic_sim :
       subst htrans
       have hpc_t' : cs.pc t = .u_done := hg
       have ha' : a'.pc t = .returned := by
-        have := hpc_r' t; simp [hpc_t'] at this; exact this
+        have := hpc_r' t; simp at this; exact this
       let a₀ : AtState n Val Tid :=
         { a' with pc := fun t' => if t' = t then .u_done else a'.pc t' }
       refine ⟨a₀, Star.single ⟨.u_ret t, ?_, ?_⟩,
@@ -1284,7 +1284,7 @@ def backward_snap_atomic_sim :
       · intro t' hret_t'
         have hne : t' ≠ t := by intro heq; rw [heq, hpc_t] at hret_t'; simp at hret_t'
         have := hret' t' (by simp [hne]; exact hret_t')
-        simp [hne] at this; exact this
+        simp at this; exact this
       · intro t' hread hscan
         have hne : t' ≠ t := by intro heq; simp [a₀, heq] at hread
         simp [a₀, hne] at hread
