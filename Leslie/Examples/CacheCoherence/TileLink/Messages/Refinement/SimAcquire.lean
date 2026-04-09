@@ -941,8 +941,35 @@ theorem refMap_recvAcquireAtManager_next {n : Nat}
         · simp [refMap, refMapLine, htxn]; exact hdj
         · -- s' = acquireBlockDirtyState (refMap n s) i j
           apply SymState.ext
-          · -- shared equality
-            sorry -- field-by-field shared state matching
+          · -- shared equality: refMapShared (recvAcquireState ...) = (acquireBlockDirtyState ...).shared
+            -- Key facts:
+            -- 1. mem: refMapShared.mem = tx.transferVal (usedDirtySource=true) = j.data
+            --    AND (refMap n s).shared.mem = j.data (dirty j → dite chooses j)
+            -- 2. dir: preTxnDir = syncDir (pre-state dir with lines)
+            -- 3. pendingGrantMeta: absPendingGrantMeta of planned txn
+            -- 4. pendingGrantAck: none, pendingReleaseAck: none
+            simp only [TileLink.Atomic.acquireBlockDirtyState]
+            rw [TileLink.Atomic.HomeState.mk.injEq]
+            refine ⟨?_, ?_, ?_, ?_, ?_⟩
+            · -- mem: (refMap n s).locals j).data = refMapShared.mem
+              -- Both equal (s.locals j).line.data
+              simp [refMap, refMapShared, refMapLine, recvAcquireState, recvAcquireShared,
+                plannedTxn, htxn]
+              -- Goal should involve plannedTransferVal and dite on dirty
+              -- plannedTransferVal = dirtyOwnerOpt.data when dirty exists
+              -- (refMap n s).shared.mem with dirty j = (choose ...).data
+              -- By SWMR: choose = j (unique dirty) → same data
+              -- (closed by simp above)
+            · -- dir
+              -- (closed by simp above)
+            · -- pendingGrantMeta
+              simp [refMapShared, recvAcquireState, recvAcquireShared, htxn]
+            · -- pendingGrantAck
+              simp [refMapShared, recvAcquireState, recvAcquireShared, hpga]
+            · -- pendingReleaseAck
+              simp [refMapShared, recvAcquireState, recvAcquireShared, htxn, hpra,
+                findDirtyReleaseVal_none_of_all_chanC_none' s hallC,
+                queuedReleaseIdx_eq_none_of_all_chanC_none s hallC]
           · exact refMap_recvAcquireState_locals_eq s i .acquireBlock grow source htxn
     · -- branch case: ¬hasDirtyOther ∧ hasCachedOther ∧ result = .B
       exact refMap_recvAcquireBlock_branch_next hinv

@@ -306,13 +306,17 @@ theorem releaseDataInv_preserved (n : Nat)
         simp only [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, ite_true] at hperm hdirty ⊢
         -- Eliminate param.result = .N case: post-perm = .N → hperm contradiction
         -- For .B/.T: data = line.data = mem from dataCoherenceInv
-        have hperm_pre : (s.locals i).line.perm ≠ .N := by
-          rw [PruneReportParam.legalFrom] at hlegal; rw [hlegal]
-          cases param <;> simp [PruneReportParam.source]
-          -- NtoN: source = .N, but then post perm = .N from releasedLine, contradicting hperm
-          simp [releasedLine, invalidatedLine] at hperm
-        have hmem := hdata htxn i hflight_pre hperm_pre hdirty_pre
-        cases param.result <;> simp_all [releasedLine, invalidatedLine, branchAfterProbe, tipAfterProbe]
+        -- For each param case: either derive perm ≠ .N (and use dataCoherenceInv) or
+        -- show post-state perm = .N (contradicting hperm → vacuous)
+        cases param with
+        | TtoB | TtoN | BtoN | TtoT | BtoB =>
+          have hperm_pre : (s.locals i).line.perm ≠ .N := by
+            rw [PruneReportParam.legalFrom] at hlegal; rw [hlegal]; simp [PruneReportParam.source]
+          have hmem := hdata htxn i hflight_pre hperm_pre hdirty_pre
+          cases h : PruneReportParam.result _ <;>
+            simp_all [releasedLine, invalidatedLine, branchAfterProbe, tipAfterProbe, PruneReportParam.result]
+        | NtoN =>
+          exfalso; simp [PruneReportParam.result, releasedLine, invalidatedLine] at hperm
       · simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji] at hflight hCclean hperm hdirty ⊢
         exact hrelData htxn j hflight hCclean hperm hdirty
   | .sendReleaseData param =>
@@ -322,9 +326,12 @@ theorem releaseDataInv_preserved (n : Nat)
       intro htxn' j hflight hCclean hperm hdirty
       by_cases hji : j = i
       · subst hji
-        simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn] at hCclean
-        -- hCclean applied to releaseMsg with data = some ... gives none = some → contradiction
-        exfalso; have := hCclean _ rfl; simp [releaseMsg, releaseDataPayload] at this
+        -- sendReleaseData: chanC = some (releaseMsg ... true). msg.data = some line.data ≠ none.
+        -- hCclean says ∀ msg, chanC = some msg → msg.data = none. Apply to the release msg.
+        exfalso
+        simp only [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, ite_true] at hCclean
+        have := hCclean _ rfl
+        simp [releaseMsg, releaseDataPayload] at this
       · simp [sendReleaseState, sendReleaseLocals, sendReleaseLocal, setFn, hji] at hflight hCclean hperm hdirty ⊢
         exact hrelData htxn j hflight hCclean hperm hdirty
   | .recvReleaseAtManager =>
@@ -335,33 +342,16 @@ theorem releaseDataInv_preserved (n : Nat)
       simp [recvReleaseState, recvReleaseShared] at htxn'
       by_cases hji : j = i
       · -- Node i: chanC cleared, mem = releaseWriteback old_mem msg
-        subst hji
+        rw [hji] at hflight hCnone hperm hdirty ⊢
         simp [recvReleaseState, recvReleaseLocals, recvReleaseLocal, setFn] at hflight hCnone hperm hdirty ⊢
-        -- recvReleaseLocal doesn't change line. Mem = releaseWriteback old_mem msg.
         simp only [recvReleaseShared, releaseWriteback]
         cases hmsg : msg.data with
         | none =>
-          -- Clean release: mem unchanged → use pre-state. But chanC had msg (pre-state guard fails).
-          -- However: msg.data = none. dataCoherenceInv doesn't help directly either (releaseInFlight = true).
-          -- But: from releaseDataChanCInv with msg.data = none → vacuously true. So we can't get info.
-          -- Need: data = old mem. From releaseDataInv with chanC guard: pre-state had chanC = some → fails.
-          -- Key: the only clean releases come from sendRelease (not sendReleaseData).
-          -- At sendRelease: dataCoherenceInv held → data = mem. Line preserved. Mem unchanged since then.
-          -- Use hrelDCC: msg.data ≠ none → msg.data = some line.data. For msg.data = none: doesn't help.
-          -- Actually for clean release: the SENDING node had data = mem from dataCoherenceInv.
-          -- And no action changed mem between sendRelease and recvRelease (single release, no uncachedPut).
-          -- This is temporal. We need a different invariant for clean releases.
-          -- WORKAROUND: strengthen releaseDataInv to cover chanC = some with clean msg too.
-          -- Clean release: mem unchanged. From PRE-state: chanC had clean msg (data = none),
-          -- so releaseDataInv's guard was satisfied → data = mem. Line unchanged. Mem unchanged.
           simp [hmsg]
-          -- Pre-state: chanC i = some msg with msg.data = none. releaseDataInv guard holds.
           have hCclean : ∀ m : CMsg, (s.locals i).chanC = some m → m.data = none := by
             intro m hm; rw [hCi] at hm; cases hm; exact hmsg
           exact hrelData htxn i hflight_i hCclean hperm hdirty
         | some v =>
-          -- Dirty release: new mem = v. From releaseDataChanCInv: msg.data = some line.data.
-          -- So v = line.data. Goal: line.data = v. ✓
           simp [hmsg]
           have hrel_data := hrelDCC i hflight_i msg hCi (by rw [hmsg]; simp)
           rw [hmsg] at hrel_data; cases hrel_data; rfl
@@ -385,8 +375,7 @@ theorem releaseDataInv_preserved (n : Nat)
           rcases hfull with ⟨_, ⟨_, _, _, _, _⟩, _⟩
           have hDirtyRel : ∃ msg' : CMsg, (s.locals i).chanC = some msg' ∧ msg'.data ≠ none :=
             ⟨msg, hCi, by rw [hmsg]; simp⟩
-          have hpermN := hdirtyRelEx htxn i hflight_i hDirtyRel j (Ne.symm hji)
-          exact hperm hpermN
+          exact hperm (hdirtyRelEx htxn i hflight_i hDirtyRel j (fun h => hji h))
   | .recvReleaseAckAtMaster =>
       -- Node i: releaseInFlight cleared → guard false. Others: unchanged.
       rcases hstep with ⟨msg, htxn, _, _, hflight_i, _, _, hs'⟩
@@ -406,31 +395,26 @@ theorem releaseDataInv_preserved (n : Nat)
   | .read =>
       rcases hstep with ⟨_, _, _, _, _, _, rfl⟩; exact hrelData
   | .uncachedGet source =>
-      -- currentTxn stays none, releaseInFlight/chanC/line unchanged, mem unchanged
       rcases hstep with ⟨htxn, _, _, _, _, _, _, _, _, _, rfl⟩
       intro htxn' j hflight hCnone hperm hdirty
-      simp only [setFn] at hflight hCnone hperm hdirty ⊢
-      by_cases hji : j = i
-      · simp_all; exact hrelData htxn j hflight hCnone hperm hdirty
-      · simp_all; exact hrelData htxn j hflight hCnone hperm hdirty
+      -- chanA/pendingSource changed at node i; line/releaseInFlight/chanC/mem unchanged
+      -- For j = i: line unchanged → use pre-state. For j ≠ i: everything unchanged.
+      exact hrelData htxn j (by simp only [setFn] at hflight; split at hflight <;> simp_all)
+        (by intro msg hC; simp only [setFn] at hC; split at hC <;> simp_all [hCnone])
+        (by simp only [setFn] at hperm; split at hperm <;> simp_all)
+        (by simp only [setFn] at hdirty; split at hdirty <;> simp_all)
   | .uncachedPut source v =>
-      -- currentTxn stays none, releaseInFlight/chanC/line unchanged, but mem := v
-      -- Precondition: ∀ j, perm j = .N → perm ≠ .N guard fails → vacuous
       rcases hstep with ⟨htxn, _, _, hpermAll, _, _, _, _, _, _, _, rfl⟩
       intro htxn' j hflight hCnone hperm hdirty
-      exfalso
-      simp only [setFn] at hperm
-      by_cases hji : j = i
-      · simp [hji] at hperm; exact hperm (hpermAll j)
-      · simp [hji] at hperm; exact hperm (hpermAll j)
+      -- All perm = .N → hperm (perm ≠ .N) fails
+      exfalso; exact hperm (by simp only [setFn] at hperm ⊢; split at hperm ⊢ <;> simp_all [hpermAll])
   | .recvUncachedAtManager =>
-      -- currentTxn stays none, releaseInFlight/chanC/line/mem unchanged
       rcases hstep with ⟨htxn, _, _, _, _, _, rfl⟩
       intro htxn' j hflight hCnone hperm hdirty
-      simp only [setFn] at hflight hCnone hperm hdirty ⊢
-      by_cases hji : j = i
-      · simp_all; exact hrelData htxn j hflight hCnone hperm hdirty
-      · simp_all; exact hrelData htxn j hflight hCnone hperm hdirty
+      exact hrelData htxn j (by simp only [setFn] at hflight; split at hflight <;> simp_all)
+        (by intro msg hC; simp only [setFn] at hC; split at hC <;> simp_all [hCnone])
+        (by simp only [setFn] at hperm; split at hperm <;> simp_all)
+        (by simp only [setFn] at hdirty; split at hdirty <;> simp_all)
   | .recvAccessAckAtMaster =>
       -- shared unchanged, chanD/pendingSource cleared, line/releaseInFlight/chanC unchanged
       rcases hstep with ⟨_, _, _, rfl⟩
