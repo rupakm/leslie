@@ -9,24 +9,27 @@ theorem probeMaskForResult_requester_false {n : Nat}
     probeMaskForResult s i perm i.1 = false := by
   cases perm <;> simp [probeMaskForResult, noProbeMask, writableProbeMask, cachedProbeMask, i.is_lt]
 
-private theorem chanD_none_of_pendingGrant_none (n : Nat)
+private theorem chanD_noneOrAccessAck_of_pendingGrant_none (n : Nat)
     (s : SymState HomeState NodeState n) (hchanD : chanDInv n s)
     (hgrant : s.shared.pendingGrantAck = none)
     (hrel : s.shared.pendingReleaseAck = none) :
-    ∀ j : Fin n, (s.locals j).chanD = none := by
+    ∀ j : Fin n, (s.locals j).chanD = none ∨
+      (∃ msg, (s.locals j).chanD = some msg ∧
+        (msg.opcode = .accessAck ∨ msg.opcode = .accessAckData) ∧
+        (s.locals j).pendingSource ≠ none ∧
+        (s.locals j).chanA = none) := by
   intro j
   specialize hchanD j
   cases hD : (s.locals j).chanD with
-  | none => exact rfl
-  | some _ =>
+  | none => exact Or.inl rfl
+  | some msg =>
       rw [hD] at hchanD
-      rcases hchanD with hgrantBranch | hrelBranch
+      rcases hchanD with hgrantBranch | hrelBranch | ⟨hacc, hps, hchanAnone⟩
       · rcases hgrantBranch with ⟨_, _, _, _, hpending, _, _, _⟩
-        rw [hgrant] at hpending
-        simp at hpending
+        rw [hgrant] at hpending; simp at hpending
       · rcases hrelBranch with ⟨_, _, hpendingRel, _, _, _, _⟩
-        rw [hrel] at hpendingRel
-        simp at hpendingRel
+        rw [hrel] at hpendingRel; simp at hpendingRel
+      · exact Or.inr ⟨msg, rfl, hacc, hps, hchanAnone⟩
 
 private theorem chanE_none_of_pendingGrant_none (n : Nat)
     (s : SymState HomeState NodeState n) (hchanE : chanEInv n s)
@@ -139,8 +142,10 @@ theorem coreInv_preserved_recvAcquireBlock (n : Nat)
       simpa [recvAcquireState, recvAcquireLocals, scheduleProbeLocals_chanC] using hCnone
     simpa [recvAcquireState, recvAcquireShared_dir, recvAcquireLocals_line]
       using hdir j hCnone_old
-  · simp [pendingInv, recvAcquireState, recvAcquireShared, plannedTxn]
-  · refine ⟨i.is_lt, Or.inl rfl, rfl, ?_, ?_, ?_, ?_⟩
+  · simp only [pendingInv, recvAcquireState, recvAcquireShared, plannedTxn, probeAckPhase]
+    split <;> simp
+  · refine ⟨i.is_lt, ?_, rfl, ?_, ?_, ?_, ?_⟩
+    · simp only [plannedTxn, probeAckPhase]; split <;> simp
     · intro hnodata
       simp [plannedTxn] at hnodata
     · exact probeMaskForResult_requester_false s i grow.result
@@ -148,9 +153,13 @@ theorem coreInv_preserved_recvAcquireBlock (n : Nat)
       simpa [plannedTxn] using hk
     · refine ⟨?_, ?_⟩
       · intro hready j
-        cases hready
+        simp only [plannedTxn, probeAckPhase] at hready
+        split at hready
+        · rename_i hall; simp only [plannedTxn]; exact hall j
+        · cases hready
       · intro hgrant j
-        cases hgrant
+        simp only [plannedTxn, probeAckPhase] at hgrant
+        split at hgrant <;> cases hgrant
 
 theorem coreInv_preserved_recvAcquirePerm (n : Nat)
     (s s' : SymState HomeState NodeState n) (hinv : coreInv n s)
@@ -158,7 +167,7 @@ theorem coreInv_preserved_recvAcquirePerm (n : Nat)
     (hstep : RecvAcquirePermAtManager s s' i grow source) :
     coreInv n s' := by
   rcases hinv with ⟨hlineWF, hdir, _, _⟩
-  rcases hstep with ⟨_, _, _, _, _, _, hresT, _, _, ⟨_, rfl⟩⟩
+  rcases hstep with ⟨_, _, _, _, _, _, _, hresT, _, rfl⟩
   refine ⟨?_, ?_, ?_, ?_⟩
   · intro j
     simpa [recvAcquireState, recvAcquireLocals_line] using hlineWF j
@@ -167,8 +176,10 @@ theorem coreInv_preserved_recvAcquirePerm (n : Nat)
       simpa [recvAcquireState, recvAcquireLocals, scheduleProbeLocals_chanC] using hCnone
     simpa [recvAcquireState, recvAcquireShared_dir, recvAcquireLocals_line]
       using hdir j hCnone_old
-  · simp [pendingInv, recvAcquireState, recvAcquireShared, plannedTxn]
-  · refine ⟨i.is_lt, Or.inl rfl, rfl, ?_, ?_, ?_, ?_⟩
+  · simp only [pendingInv, recvAcquireState, recvAcquireShared, plannedTxn, probeAckPhase]
+    split <;> simp
+  · refine ⟨i.is_lt, ?_, rfl, ?_, ?_, ?_, ?_⟩
+    · simp only [plannedTxn, probeAckPhase]; split <;> simp
     · intro _
       simpa [plannedTxn] using hresT
     · exact probeMaskForResult_requester_false s i grow.result
@@ -176,9 +187,13 @@ theorem coreInv_preserved_recvAcquirePerm (n : Nat)
       simpa [plannedTxn] using hk
     · refine ⟨?_, ?_⟩
       · intro hready j
-        cases hready
+        simp only [plannedTxn, probeAckPhase] at hready
+        split at hready
+        · rename_i hall; simp only [plannedTxn]; exact hall j
+        · cases hready
       · intro hgrant j
-        cases hgrant
+        simp only [plannedTxn, probeAckPhase] at hgrant
+        split at hgrant <;> cases hgrant
 
 theorem channelInv_preserved_sendAcquireBlock (n : Nat)
     (s s' : SymState HomeState NodeState n) (hinv : channelInv n s)
@@ -209,10 +224,20 @@ theorem channelInv_preserved_sendAcquireBlock (n : Nat)
           contradiction
     · simpa [setFn, hji] using hchanC j
   · intro j
-    simpa [sendAcquireBlock_shared hstep, sendAcquireBlock_chanD hstep,
-      sendAcquireBlock_pendingSink hstep, sendAcquireBlock_chanE hstep,
-      sendAcquireBlock_chanC hstep,
-      sendAcquireBlock_releaseInFlight hstep] using hchanD j
+    rcases hstep with ⟨_, _, _, hPSrc, _, _, _, rfl⟩
+    by_cases hji : j = i
+    · subst j
+      specialize hchanD i
+      cases hDi : (s.locals i).chanD with
+      | none => simp [setFn, hDi]
+      | some msg =>
+          simp only [hDi] at hchanD
+          simp only [setFn, ite_true, hDi]
+          rcases hchanD with hgrant | hrel | ⟨hacc, hps, _⟩
+          · exact Or.inl hgrant
+          · exact Or.inr (Or.inl hrel)
+          · exact absurd hPSrc hps
+    · simpa [setFn, hji] using hchanD j
   · intro j
     simpa [sendAcquireBlock_shared hstep, sendAcquireBlock_chanE hstep,
       sendAcquireBlock_pendingSink hstep, sendAcquireBlock_chanD hstep] using hchanE j
@@ -229,7 +254,7 @@ theorem channelInv_preserved_sendAcquirePerm (n : Nat)
     · subst j
       rcases hstep with ⟨_, _, _, _, _, hlegal, hresT, rfl⟩
       simp [setFn]
-      exact ⟨rfl, Or.inr ⟨rfl, hlegal, hresT⟩⟩
+      exact ⟨rfl, Or.inr (Or.inl ⟨rfl, hlegal, hresT⟩)⟩
     · rcases hstep with ⟨_, _, _, _, _, _, _, rfl⟩
       simpa [chanAInv, setFn, hji] using hchanA j
   · intro j
@@ -246,10 +271,20 @@ theorem channelInv_preserved_sendAcquirePerm (n : Nat)
           contradiction
     · simpa [setFn, hji] using hchanC j
   · intro j
-    simpa [sendAcquirePerm_shared hstep, sendAcquirePerm_chanD hstep,
-      sendAcquirePerm_pendingSink hstep, sendAcquirePerm_chanE hstep,
-      sendAcquirePerm_chanC hstep,
-      sendAcquirePerm_releaseInFlight hstep] using hchanD j
+    rcases hstep with ⟨_, _, _, hPSrc, _, _, _, rfl⟩
+    by_cases hji : j = i
+    · subst j
+      specialize hchanD i
+      cases hDi : (s.locals i).chanD with
+      | none => simp [setFn, hDi]
+      | some msg =>
+          simp only [hDi] at hchanD
+          simp only [setFn, ite_true, hDi]
+          rcases hchanD with hgrant | hrel | ⟨hacc, hps, _⟩
+          · exact Or.inl hgrant
+          · exact Or.inr (Or.inl hrel)
+          · exact absurd hPSrc hps
+    · simpa [setFn, hji] using hchanD j
   · intro j
     simpa [sendAcquirePerm_shared hstep, sendAcquirePerm_chanE hstep,
       sendAcquirePerm_pendingSink hstep, sendAcquirePerm_chanD hstep] using hchanE j
@@ -276,7 +311,7 @@ theorem channelInv_preserved_recvAcquireBlock (n : Nat)
   rcases hinv with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
   rcases hstep with ⟨hcur, hgrant, hrel, hCnoneAll, _, _, _, _, _, _, rfl⟩
   have hBnone := chanB_none_of_no_txn n s hchanB hcur
-  have hDnone := chanD_none_of_pendingGrant_none n s hchanD hgrant hrel
+  have hDdisj := chanD_noneOrAccessAck_of_pendingGrant_none n s hchanD hgrant hrel
   have hEnone := chanE_none_of_pendingGrant_none n s hchanE hgrant
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · intro j
@@ -301,7 +336,11 @@ theorem channelInv_preserved_recvAcquireBlock (n : Nat)
       rw [hmsg]
       refine ⟨plannedTxn s i .acquireBlock grow source, ?_⟩
       refine ⟨by simp [recvAcquireState, recvAcquireShared, plannedTxn], ?_⟩
-      refine ⟨by simp [plannedTxn], ?_⟩
+      refine ⟨?_, ?_⟩
+      · simp only [plannedTxn, probeAckPhase]
+        split
+        · rename_i hall; exact absurd (hall j) (by simp [hmask])
+        · rfl
       refine ⟨by simpa [plannedTxn] using hmask, ?_⟩
       refine ⟨by simp [plannedTxn], by simp [plannedTxn]⟩
     · have hnone :
@@ -320,10 +359,19 @@ theorem channelInv_preserved_recvAcquireBlock (n : Nat)
     rw [hnone]
     trivial
   · intro j
-    have hnone : ((recvAcquireState s i .acquireBlock grow source).locals j).chanD = none := by
-      simpa [recvAcquireState, recvAcquireLocals, recvAcquireLocals_chanD] using hDnone j
-    rw [hnone]
-    trivial
+    rcases hDdisj j with hDnone | ⟨msg, hD, hacc, hps, hchanAnone⟩
+    · have : ((recvAcquireState s i .acquireBlock grow source).locals j).chanD = none := by
+        simpa [recvAcquireState, recvAcquireLocals, recvAcquireLocals_chanD] using hDnone
+      rw [this]; trivial
+    · have hD' : ((recvAcquireState s i .acquireBlock grow source).locals j).chanD = some msg := by
+        simpa [recvAcquireState, recvAcquireLocals, recvAcquireLocals_chanD] using hD
+      have hps' : ((recvAcquireState s i .acquireBlock grow source).locals j).pendingSource ≠ none := by
+        simpa [recvAcquireState, recvAcquireLocals, scheduleProbeLocals_pendingSource] using hps
+      have hchanAnone' : ((recvAcquireState s i .acquireBlock grow source).locals j).chanA = none := by
+        by_cases hji : j = i
+        · subst j; simp [recvAcquireState, recvAcquireLocals]
+        · simpa [recvAcquireState, recvAcquireLocals, scheduleProbeLocals_chanA_other, hji] using hchanAnone
+      rw [hD']; exact Or.inr (Or.inr ⟨hacc, hps', hchanAnone'⟩)
   · intro j
     have hnone : ((recvAcquireState s i .acquireBlock grow source).locals j).chanE = none := by
       simpa [recvAcquireState, recvAcquireLocals, recvAcquireLocals_chanE] using hEnone j
@@ -338,7 +386,7 @@ theorem channelInv_preserved_recvAcquirePerm (n : Nat)
   rcases hinv with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
   rcases hstep with ⟨hcur, hgrant, hrel, hCnoneAll, _, _, _, _, _, _, rfl⟩
   have hBnone := chanB_none_of_no_txn n s hchanB hcur
-  have hDnone := chanD_none_of_pendingGrant_none n s hchanD hgrant hrel
+  have hDdisj := chanD_noneOrAccessAck_of_pendingGrant_none n s hchanD hgrant hrel
   have hEnone := chanE_none_of_pendingGrant_none n s hchanE hgrant
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · intro j
@@ -363,7 +411,11 @@ theorem channelInv_preserved_recvAcquirePerm (n : Nat)
       rw [hmsg]
       refine ⟨plannedTxn s i .acquirePerm grow source, ?_⟩
       refine ⟨by simp [recvAcquireState, recvAcquireShared, plannedTxn], ?_⟩
-      refine ⟨by simp [plannedTxn], ?_⟩
+      refine ⟨?_, ?_⟩
+      · simp only [plannedTxn, probeAckPhase]
+        split
+        · rename_i hall; exact absurd (hall j) (by simp [hmask])
+        · rfl
       refine ⟨by simpa [plannedTxn] using hmask, ?_⟩
       refine ⟨by simp [plannedTxn], by simp [plannedTxn]⟩
     · have hnone :
@@ -382,10 +434,19 @@ theorem channelInv_preserved_recvAcquirePerm (n : Nat)
     rw [hnone]
     trivial
   · intro j
-    have hnone : ((recvAcquireState s i .acquirePerm grow source).locals j).chanD = none := by
-      simpa [recvAcquireState, recvAcquireLocals, recvAcquireLocals_chanD] using hDnone j
-    rw [hnone]
-    trivial
+    rcases hDdisj j with hDnone | ⟨msg, hD, hacc, hps, hchanAnone⟩
+    · have : ((recvAcquireState s i .acquirePerm grow source).locals j).chanD = none := by
+        simpa [recvAcquireState, recvAcquireLocals, recvAcquireLocals_chanD] using hDnone
+      rw [this]; trivial
+    · have hD' : ((recvAcquireState s i .acquirePerm grow source).locals j).chanD = some msg := by
+        simpa [recvAcquireState, recvAcquireLocals, recvAcquireLocals_chanD] using hD
+      have hps' : ((recvAcquireState s i .acquirePerm grow source).locals j).pendingSource ≠ none := by
+        simpa [recvAcquireState, recvAcquireLocals, scheduleProbeLocals_pendingSource] using hps
+      have hchanAnone' : ((recvAcquireState s i .acquirePerm grow source).locals j).chanA = none := by
+        by_cases hji : j = i
+        · subst j; simp [recvAcquireState, recvAcquireLocals]
+        · simpa [recvAcquireState, recvAcquireLocals, scheduleProbeLocals_chanA_other, hji] using hchanAnone
+      rw [hD']; exact Or.inr (Or.inr ⟨hacc, hps', hchanAnone'⟩)
   · intro j
     have hnone : ((recvAcquireState s i .acquirePerm grow source).locals j).chanE = none := by
       simpa [recvAcquireState, recvAcquireLocals, recvAcquireLocals_chanE] using hEnone j

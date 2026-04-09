@@ -91,7 +91,7 @@ variable (p : pred σ)
 theorem always_intro : (|-tla- (p)) = (|-tla- (□ p)) := by
   tla_unfold_simp ; constructor
   · aesop
-  · intro h ; exact (fun e => h e 0)
+  · intro h e ; exact exec.drop_zero e ▸ h e 0
 
 theorem later_always_comm : (◯ □ p) =tla= (□ ◯ p) := by
   funext e ; tla_unfold_simp
@@ -101,28 +101,30 @@ theorem always_unroll : □ p =tla= (p ∧ ◯ □ p) := by
   rw [later_always_comm]
   funext e ; tla_unfold_simp
   constructor
-  · intro h ; apply And.intro (h 0) (by aesop)
+  · intro h ; exact ⟨exec.drop_zero e ▸ h 0, by aesop⟩
   · intro ⟨h0, hs⟩ k ; cases k with
-    | zero => exact h0
+    | zero => rwa [exec.drop_zero]
     | succ k => apply hs
 
 theorem always_induction : □ p =tla= (p ∧ □ (p → ◯ p)) := by
   funext e ; tla_unfold_simp
   constructor
-  · intro h ; apply And.intro (h 0) (by aesop)
-  · intro ⟨h0, hs⟩ k ; induction k <;> aesop
+  · intro h ; exact ⟨exec.drop_zero e ▸ h 0, by aesop⟩
+  · intro ⟨h0, hs⟩ k ; induction k with
+    | zero => rwa [exec.drop_zero]
+    | succ k ih => exact hs k ih
 
 theorem always_weaken : □ p |-tla- (p) := by
-  tla_unfold_simp ; intro e h ; apply h 0
+  tla_unfold_simp ; intro e h ; exact exec.drop_zero e ▸ h 0
 
 theorem always_weaken_to_eventually : □ p |-tla- ◇ p := by
-  tla_unfold_simp ; intro e h ; exists 0 ; apply h
+  tla_unfold_simp ; intro e h ; exact ⟨0, exec.drop_zero e ▸ h 0⟩
 
 theorem later_weaken_to_eventually : ◯ p |-tla- ◇ p := by
   tla_unfold_simp ; intro e h ; exists 1
 
 theorem now_weaken_to_eventually : (p) |-tla- ◇ p := by
-  tla_unfold_simp ; intro e h ; exists 0
+  tla_unfold_simp ; intro e h ; exact ⟨0, by rwa [exec.drop_zero]⟩
 
 theorem not_always : (¬ □ p) =tla= (◇ ¬ p) := by
   funext e ; tla_unfold_simp
@@ -222,11 +224,13 @@ theorem until_induction : (p ∧ □ (p ∧ ¬ q → ◯ p)) |-tla- ((□ (p ∧
       apply And.intro (And.intro (by apply h2 n' (by simp)) h1) (fun j hlt => h2 _ (by omega))
     apply And.intro hq ; intro j hlt
     induction j with
-    | zero => exact hp
+    | zero => exact (exec.drop_zero e).symm ▸ hp
     | succ j ih => apply h ; apply ih ; omega ; apply hmin ; omega
   · simp at h'
     left ; intro j ; apply And.intro _ (h' _)
-    induction j <;> solve_by_elim
+    induction j with
+    | zero => exact (exec.drop_zero e).symm ▸ hp
+    | succ j ih => solve_by_elim
 
 end two
 

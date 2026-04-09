@@ -36,7 +36,7 @@ private theorem chanC_none_of_phase_ne_probing (n : Nat)
   | some _ =>
       rw [hC] at hchanC
       rcases hchanC with hprobe | hrel
-      · rcases hprobe with ⟨tx0, hcur0, hprobing, _, _, _, _, _⟩
+      · rcases hprobe with ⟨tx0, hcur0, hprobing, _, _, _, _, _, _⟩
         rw [hcur] at hcur0
         injection hcur0 with htx
         subst htx
@@ -45,24 +45,29 @@ private theorem chanC_none_of_phase_ne_probing (n : Nat)
         rw [hcur] at hcurNone
         simp at hcurNone
 
-private theorem chanD_none_of_pendingGrant_none (n : Nat)
+private theorem chanD_noneOrAccessAck_of_pendingGrant_none (n : Nat)
     (s : SymState HomeState NodeState n) (hchanD : chanDInv n s)
     (hgrant : s.shared.pendingGrantAck = none)
     (hrel : s.shared.pendingReleaseAck = none) :
-    ∀ j : Fin n, (s.locals j).chanD = none := by
+    ∀ j : Fin n, (s.locals j).chanD = none ∨
+      (∃ msg, (s.locals j).chanD = some msg ∧
+        (msg.opcode = .accessAck ∨ msg.opcode = .accessAckData) ∧
+        (s.locals j).pendingSource ≠ none ∧
+        (s.locals j).chanA = none) := by
   intro j
   specialize hchanD j
   cases hD : (s.locals j).chanD with
-  | none => exact rfl
-  | some _ =>
+  | none => exact Or.inl rfl
+  | some msg =>
       rw [hD] at hchanD
-      rcases hchanD with hgrantBranch | hrelBranch
+      rcases hchanD with hgrantBranch | hrelBranch | ⟨hacc, hps, hchanAnone⟩
       · rcases hgrantBranch with ⟨_, _, _, _, hpending, _, _, _⟩
         rw [hgrant] at hpending
         simp at hpending
       · rcases hrelBranch with ⟨_, _, hpendingRel, _, _, _, _⟩
         rw [hrel] at hpendingRel
         simp at hpendingRel
+      · exact Or.inr ⟨msg, rfl, hacc, hps, hchanAnone⟩
 
 private theorem chanE_none_of_pendingGrant_none (n : Nat)
     (s : SymState HomeState NodeState n) (hchanE : chanEInv n s)
@@ -78,17 +83,21 @@ private theorem chanE_none_of_pendingGrant_none (n : Nat)
       rw [hgrant] at hpending
       simp at hpending
 
-private theorem chanD_none_of_other_requester (n : Nat)
+private theorem chanD_noneOrAccessAck_of_other_requester (n : Nat)
     (s : SymState HomeState NodeState n) (hchanD : chanDInv n s)
     {tx : ManagerTxn} (hcur : s.shared.currentTxn = some tx) {i : Fin n} (hreq : tx.requester = i.1) :
-    ∀ j : Fin n, j ≠ i → (s.locals j).chanD = none := by
+    ∀ j : Fin n, j ≠ i → (s.locals j).chanD = none ∨
+      (∃ msg, (s.locals j).chanD = some msg ∧
+        (msg.opcode = .accessAck ∨ msg.opcode = .accessAckData) ∧
+        (s.locals j).pendingSource ≠ none ∧
+        (s.locals j).chanA = none) := by
   intro j hji
   specialize hchanD j
   cases hD : (s.locals j).chanD with
-  | none => exact rfl
-  | some _ =>
+  | none => exact Or.inl rfl
+  | some msg =>
       rw [hD] at hchanD
-      rcases hchanD with hgrantBranch | hrelBranch
+      rcases hchanD with hgrantBranch | hrelBranch | ⟨hacc, hps, hchanAnone⟩
       · rcases hgrantBranch with ⟨tx0, hcur0, hreq0, _, _, _, _, _⟩
         rw [hcur] at hcur0
         injection hcur0 with htx
@@ -99,6 +108,7 @@ private theorem chanD_none_of_other_requester (n : Nat)
       · rcases hrelBranch with ⟨hcurNone, _, _, _, _, _, _⟩
         rw [hcur] at hcurNone
         simp at hcurNone
+      · exact Or.inr ⟨msg, rfl, hacc, hps, hchanAnone⟩
 
 private theorem chanE_none_of_other_requester (n : Nat)
     (s : SymState HomeState NodeState n) (hchanE : chanEInv n s)
@@ -162,7 +172,7 @@ theorem channelInv_preserved_sendGrantToRequester (n : Nat)
   rcases hstep with ⟨tx, hcur, hreq, hphase, hgrantNone, hrelNone, hDnone, hEnone, hSinkNone, rfl⟩
   have hBnone := chanB_none_of_phase_ne_probing n s hchanB hcur (by simp [hphase])
   have hCnone := chanC_none_of_phase_ne_probing n s hchanC hcur (by simp [hphase])
-  have hDnoneAll := chanD_none_of_pendingGrant_none n s hchanD hgrantNone hrelNone
+  have hDdisj := chanD_noneOrAccessAck_of_pendingGrant_none n s hchanD hgrantNone hrelNone
   have hEnoneAll := chanE_none_of_pendingGrant_none n s hchanE hgrantNone
   let tx' : ManagerTxn := { tx with phase := .grantPendingAck }
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
@@ -202,10 +212,17 @@ theorem channelInv_preserved_sendGrantToRequester (n : Nat)
       · simpa [sendGrantState, sendGrantLocals, tx'] using hEnone
       · cases tx
         rfl
-    · have hnone : ((sendGrantState s i tx).locals j).chanD = none := by
-        simp [sendGrantState, sendGrantLocals, setFn, hji, hDnoneAll j]
-      rw [hnone]
-      trivial
+    · rcases hDdisj j with hDnone | ⟨msg, hD, hacc, hps, hchanAnone⟩
+      · have hnone : ((sendGrantState s i tx).locals j).chanD = none := by
+          simp [sendGrantState, sendGrantLocals, setFn, hji, hDnone]
+        rw [hnone]; trivial
+      · have hD' : ((sendGrantState s i tx).locals j).chanD = some msg := by
+          simp [sendGrantState, sendGrantLocals, setFn, hji, hD]
+        have hps' : ((sendGrantState s i tx).locals j).pendingSource ≠ none := by
+          simp [sendGrantState, sendGrantLocals, setFn, hji, hps]
+        have hchanAnone' : ((sendGrantState s i tx).locals j).chanA = none := by
+          simp [sendGrantState, sendGrantLocals, setFn, hji, hchanAnone]
+        rw [hD']; exact Or.inr (Or.inr ⟨hacc, hps', hchanAnone'⟩)
   · intro j
     have hnone : ((sendGrantState s i tx).locals j).chanE = none := by
       by_cases hji : j = i
@@ -258,7 +275,7 @@ theorem channelInv_preserved_recvGrantAtMaster (n : Nat)
   rcases hstep with ⟨tx, msg, hcur, hreq, hphase, hpendingGrant, hA, hD, hE, hSink, hmsg, rfl⟩
   have hBnone := chanB_none_of_phase_ne_probing n s hchanB hcur (by simp [hphase])
   have hCnone := chanC_none_of_phase_ne_probing n s hchanC hcur (by simp [hphase])
-  have hDotherNone := chanD_none_of_other_requester n s hchanD hcur hreq
+  have hDotherDisj := chanD_noneOrAccessAck_of_other_requester n s hchanD hcur hreq
   have hEotherNone := chanE_none_of_other_requester n s hchanE hcur hreq
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · intro j
@@ -286,10 +303,17 @@ theorem channelInv_preserved_recvGrantAtMaster (n : Nat)
     by_cases hji : j = i
     · subst j
       simp [recvGrantState, recvGrantLocals, recvGrantLocal]
-    · have hnone : ((recvGrantState s i tx).locals j).chanD = none := by
-        simp [recvGrantState, recvGrantLocals, recvGrantLocal, setFn, hji, hDotherNone j hji]
-      rw [hnone]
-      trivial
+    · rcases hDotherDisj j hji with hDnone | ⟨msg, hD, hacc, hps, hchanAnone⟩
+      · have hnone : ((recvGrantState s i tx).locals j).chanD = none := by
+          simp [recvGrantState, recvGrantLocals, recvGrantLocal, setFn, hji, hDnone]
+        rw [hnone]; trivial
+      · have hD' : ((recvGrantState s i tx).locals j).chanD = some msg := by
+          simp [recvGrantState, recvGrantLocals, recvGrantLocal, setFn, hji, hD]
+        have hps' : ((recvGrantState s i tx).locals j).pendingSource ≠ none := by
+          simp [recvGrantState, recvGrantLocals, recvGrantLocal, setFn, hji, hps]
+        have hchanAnone' : ((recvGrantState s i tx).locals j).chanA = none := by
+          simp [recvGrantState, recvGrantLocals, recvGrantLocal, setFn, hji, hchanAnone]
+        rw [hD']; exact Or.inr (Or.inr ⟨hacc, hps', hchanAnone'⟩)
   · intro j
     by_cases hji : j = i
     · subst j
@@ -340,7 +364,7 @@ theorem channelInv_preserved_recvGrantAckAtManager (n : Nat)
   rcases hstep with ⟨tx, msg, hcur, hreq, hphase, hpendingGrant, hD, hE, hSink, hmsg, rfl⟩
   have hBnone := chanB_none_of_phase_ne_probing n s hchanB hcur (by simp [hphase])
   have hCnone := chanC_none_of_phase_ne_probing n s hchanC hcur (by simp [hphase])
-  have hDotherNone := chanD_none_of_other_requester n s hchanD hcur hreq
+  have hDotherDisj := chanD_noneOrAccessAck_of_other_requester n s hchanD hcur hreq
   have hEotherNone := chanE_none_of_other_requester n s hchanE hcur hreq
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · intro j
@@ -362,13 +386,20 @@ theorem channelInv_preserved_recvGrantAckAtManager (n : Nat)
     rw [hnone]
     trivial
   · intro j
-    have hnone : ((recvGrantAckState s i).locals j).chanD = none := by
-      by_cases hji : j = i
-      · subst j
-        simp [recvGrantAckState, recvGrantAckLocals, hD]
-      · simp [recvGrantAckState, recvGrantAckLocals, setFn, hji, hDotherNone j hji]
-    rw [hnone]
-    trivial
+    by_cases hji : j = i
+    · subst j
+      simp [recvGrantAckState, recvGrantAckLocals, hD]
+    · rcases hDotherDisj j hji with hDnone | ⟨msg, hDmsg, hacc, hps, hchanAnone⟩
+      · have hnone : ((recvGrantAckState s i).locals j).chanD = none := by
+          simp [recvGrantAckState, recvGrantAckLocals, setFn, hji, hDnone]
+        rw [hnone]; trivial
+      · have hD' : ((recvGrantAckState s i).locals j).chanD = some msg := by
+          simp [recvGrantAckState, recvGrantAckLocals, setFn, hji, hDmsg]
+        have hps' : ((recvGrantAckState s i).locals j).pendingSource ≠ none := by
+          simp [recvGrantAckState, recvGrantAckLocals, setFn, hji, hps]
+        have hchanAnone' : ((recvGrantAckState s i).locals j).chanA = none := by
+          simp [recvGrantAckState, recvGrantAckLocals, setFn, hji, hchanAnone]
+        rw [hD']; exact Or.inr (Or.inr ⟨hacc, hps', hchanAnone'⟩)
   · intro j
     by_cases hji : j = i
     · subst j

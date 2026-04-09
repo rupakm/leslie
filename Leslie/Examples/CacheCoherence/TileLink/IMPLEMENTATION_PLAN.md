@@ -673,6 +673,88 @@ overall approach.
 - environment abstraction and focus proof
 - lifted parameterized safety theorem
 
+## Current completion status
+
+| Stage | Status | Notes |
+|-------|--------|-------|
+| 0: Vocabulary | ✅ Done | Types, Permissions, Common |
+| 1: Atomic model | ✅ Done | Safety + sequential refinement |
+| 2: Message model | ✅ Done | Full acquire/probe/grant/release safety |
+| 3: Message→Atomic refinement | ✅ Done | sorry-free with dirty data (store, dirty sources, writeback) |
+| 4: Parameterized scaling | Not started | |
+| 5: Focus/environment abstraction | Not started | |
+| 6: Access-path | ✅ Done | read_returns_logical_data, store_updates_logical_data |
+| 7: Forwarded accesses | Not started | |
+| 8: Liveness | Not started | |
+| Multi-line (MODEL_SEQUENCE Stage 5) | ✅ Done | Product construction, multi_line_read_coherence |
+
+## TileLink features not yet in scope
+
+These TL-C features exist in the spec but are not modeled. Tracked here so
+they are not forgotten.
+
+### Forwarded accesses (B/C access path)
+
+TileLink supports non-coherence data access on B/C/D channels:
+- **B-channel**: `Get`, `PutFullData`, `PutPartialData`, `ArithmeticData`,
+  `LogicalData`, `Hint` (from manager to cache holder for forwarding)
+- **A-channel**: Same opcodes for uncached access (master → manager)
+- **C-channel responses**: `AccessAck`, `AccessAckData`, `HintAck`
+- **D-channel responses**: `AccessAck`, `AccessAckData`, `HintAck`
+
+The opcodes already exist in `Types.lean` but no actions use them.
+
+**Key challenges**:
+- Serialization with coherence: uncached Puts change home memory, breaking
+  data coherence for cached copies unless probes are issued first
+- Forwarded reads to dirty owners: manager must fetch dirty data before
+  responding, or restrict to non-dirty scenarios
+- Response matching: access acks must not conflict with grant/release acks
+
+**Recommended approach**: Start with uncached Gets (reads from home memory)
+with strict exclusion (no concurrent coherence transactions). Extend to
+uncached Puts restricted to when no master has a cached copy.
+
+### Multibeat transfers
+
+TileLink supports multi-beat data transfers for cache lines larger than the
+data bus width. Current model assumes single-beat (one message = one line).
+
+### Denied and corrupt
+
+TileLink error signaling: `denied` (request refused) and `corrupt` (data
+integrity error). Not needed for functional coherence proof.
+
+### Hierarchical caches
+
+Intermediate inclusive caches with `TrunkOnly` permission state. The current
+model has one manager + leaf masters only.
+
+### Partial writes
+
+`PutPartialData` with byte masks. Current model treats writes as full-line
+replacements.
+
+### Atomic operations
+
+`ArithmeticData` and `LogicalData` on A/B channels for hardware atomics
+(add, min, max, xor, or, and, swap). Requires read-modify-write semantics.
+
+### Hints
+
+`Hint` on A/B channels for prefetch. Manager can pre-fill cache lines.
+Response is `HintAck` with no data.
+
+### Source/sink lifecycle
+
+Full source/sink ID tracking with allocation, matching, and recycling.
+Current model uses simplified source/sink without lifecycle constraints.
+
+### Channel priorities and deadlock freedom
+
+TileLink requires channel priority ordering (A < B < C < D < E) to prevent
+deadlocks. This is a liveness property, not a safety property.
+
 ## Review checklist for each stage
 
 - Is the state carrying protocol facts or implementation noise?

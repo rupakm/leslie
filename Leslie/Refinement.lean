@@ -76,7 +76,7 @@ theorem always_action_at {σ : Type u} {next : action σ} {e : exec σ} (k : Nat
     (h : e |=tla= □ ⟨next⟩) : next (e k) (e (k + 1)) := by
   have hk := h k
   simp [action_pred, exec.drop] at hk
-  rwa [Nat.add_comm] at hk
+  exact hk
 
 /-- Key lemma: if every concrete step maps to an abstract step,
     then □⟨next_c⟩ on `e` implies □⟨next_a⟩ on `exec.map f e`. -/
@@ -89,7 +89,6 @@ private theorem map_always_next {σ : Type u} {τ : Type v}
   intro k
   rw [exec.map_drop]
   simp [action_pred, exec.drop, exec.map]
-  rw [Nat.add_comm]
   exact hstep _ _ (always_action_at k hn)
 
 private theorem map_always_next_or_stutter {σ : Type u} {τ : Type v}
@@ -101,7 +100,6 @@ private theorem map_always_next_or_stutter {σ : Type u} {τ : Type v}
   intro k
   rw [exec.map_drop]
   simp [action_pred, exec.drop, exec.map]
-  rw [Nat.add_comm]
   exact hstep _ _ (always_action_at k hn)
 
 /-- Variant with an invariant: the step condition may depend on an invariant. -/
@@ -116,7 +114,6 @@ private theorem map_always_next_inv {σ : Type u} {τ : Type v}
   intro k
   rw [exec.map_drop]
   simp [action_pred, exec.drop, exec.map]
-  rw [Nat.add_comm]
   exact hstep _ _ (hinv k) (always_action_at k hn)
 
 private theorem map_always_next_or_stutter_inv {σ : Type u} {τ : Type v}
@@ -131,7 +128,6 @@ private theorem map_always_next_or_stutter_inv {σ : Type u} {τ : Type v}
   intro k
   rw [exec.map_drop]
   simp [action_pred, exec.drop, exec.map]
-  rw [Nat.add_comm]
   exact hstep _ _ (hinv k) (always_action_at k hn)
 
 /-! ### The Refinement Mapping Theorem (Safety, No Stuttering) -/
@@ -220,11 +216,9 @@ theorem refinement_mapping_stutter_stutter {σ : Type u} {τ : Type v}
   refine ⟨hinit (e 0) hi, ?_⟩
   intro k
   rw [exec.map_drop]
-  simp only [action_pred, exec.drop, exec.map, Nat.zero_add]
+  simp only [action_pred, exec.drop, exec.map]
   have hk := hn k
-  simp only [action_pred, exec.drop, Nat.zero_add] at hk
-  have hcomm : ∀ n, 1 + n = n + 1 := fun n => Nat.add_comm 1 n
-  rw [hcomm] at hk ⊢
+  simp only [action_pred, exec.drop] at hk
   rcases hk with hstep | heq
   · exact hnext _ _ hstep
   · exact Or.inr (congrArg f heq)

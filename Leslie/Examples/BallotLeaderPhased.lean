@@ -299,7 +299,7 @@ theorem at_most_one_leader_invariant :
       -- Unfold ackPhase in hl₁ and hl₂
       have hp := hlocals p ; have hq := hlocals q
       simp only [blSpec, blAlg, show ¬(s.phase.val = 0) by omega, ite_false,
-                  ackPhase, phase_delivered] at hp hq
+                  ackPhase] at hp hq
       rw [hp] at hl₁ ; rw [hq] at hl₂
       simp only at hl₁ hl₂
       -- hl₁ : findMajority n (collectPicks n (filtered_p)) = some l₁

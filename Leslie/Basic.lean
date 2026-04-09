@@ -49,7 +49,7 @@ instance {α : Type u} : Std.Commutative (@tla_or α) := by
 instance {α : Type u} : Std.Associative (@tla_or α) := by
   constructor ; intros ; unfold tla_or ; funext e ; ac_rfl
 
-def exec.drop {α : Type u} (k : Nat) (σ : exec α) : exec α := λ n => σ (n + k)
+def exec.drop {α : Type u} (k : Nat) (σ : exec α) : exec α := λ n => σ (k + n)
 def exec.take {α : Type u} (k : Nat) (σ : exec α) : List α := List.range k |>.map σ
 def exec.take_from {α : Type u} (start k : Nat) (σ : exec α) : List α := List.range' start k |>.map σ
 
@@ -57,8 +57,11 @@ def always {α : Type u} (p : pred α) : pred α := λ σ => ∀ k, p <| σ.drop
 def eventually {α : Type u} (p : pred α) : pred α := λ σ => ∃ k, p <| σ.drop k
 def later {α : Type u} (p : pred α) : pred α := λ σ => p <| σ.drop 1
 
+@[simp] theorem exec.drop_zero {α : Type u} (σ : exec α) : σ.drop 0 = σ := by
+  funext n ; simp [exec.drop]
+
 theorem exec.drop_drop {α : Type u} (k l : Nat) (σ : exec α) : (σ.drop k).drop l = σ.drop (k + l) := by
-  funext n ; simp [exec.drop] ; ac_rfl
+  funext n ; simp [exec.drop, Nat.add_assoc]
 
 def exec.satisfies {α : Type u} (p : pred α) (σ : exec α) : Prop := p σ
 def valid {α : Type u} (p : pred α) : Prop := ∀ (σ : exec α), σ.satisfies p

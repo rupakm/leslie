@@ -18,18 +18,22 @@ private theorem probeAckPhase_of_true {n : Nat} {probeMask : Nat → Bool} {j : 
     contradiction
   · simp [probeAckPhase, hall]
 
-private theorem chanD_none_of_phase_ne_grantPendingAck (n : Nat)
+private theorem chanD_noneOrAccessAck_of_phase_ne_grantPendingAck (n : Nat)
     (s : SymState HomeState NodeState n) (hchanD : chanDInv n s)
     {tx : ManagerTxn} (hcur : s.shared.currentTxn = some tx)
     (hphase : tx.phase ≠ .grantPendingAck) :
-    ∀ j : Fin n, (s.locals j).chanD = none := by
+    ∀ j : Fin n, (s.locals j).chanD = none ∨
+      (∃ msg, (s.locals j).chanD = some msg ∧
+        (msg.opcode = .accessAck ∨ msg.opcode = .accessAckData) ∧
+        (s.locals j).pendingSource ≠ none ∧
+        (s.locals j).chanA = none) := by
   intro j
   specialize hchanD j
   cases hD : (s.locals j).chanD with
-  | none => exact rfl
-  | some _ =>
+  | none => exact Or.inl rfl
+  | some msg =>
       rw [hD] at hchanD
-      rcases hchanD with hgrantBranch | hrelBranch
+      rcases hchanD with hgrantBranch | hrelBranch | ⟨hacc, hps, hchanAnone⟩
       · rcases hgrantBranch with ⟨tx0, hcur0, _, hphase0, _, _, _, _⟩
         rw [hcur] at hcur0
         injection hcur0 with htx
@@ -38,6 +42,7 @@ private theorem chanD_none_of_phase_ne_grantPendingAck (n : Nat)
       · rcases hrelBranch with ⟨hcurNone, _, _, _, _, _, _⟩
         rw [hcur] at hcurNone
         simp at hcurNone
+      · exact Or.inr ⟨msg, rfl, hacc, hps, hchanAnone⟩
 
 private theorem chanE_none_of_phase_ne_grantPendingAck (n : Nat)
     (s : SymState HomeState NodeState n) (hchanE : chanEInv n s)
@@ -80,15 +85,30 @@ theorem coreInv_preserved_recvProbeAtMaster (n : Nat)
 
 theorem channelInv_preserved_recvProbeAtMaster (n : Nat)
     (s s' : SymState HomeState NodeState n) (hinv : channelInv n s)
+    (htxnLine : txnLineInv n s)
     {i : Fin n} (hstep : RecvProbeAtMaster s s' i) :
     channelInv n s' := by
   rcases hinv with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
-  rcases hstep with ⟨tx, msg, hcur, hphase, hremain, hA, hB, hsrc, hop, hparam, ⟨hCnone, rfl⟩⟩
+  rcases hstep with ⟨tx, msg, hcur, hphase, hremain, hB, hsrc, hop, hparam, ⟨hCnone, rfl⟩⟩
+  -- Derive (s.locals i).line = tx.preLines i.1 from txnLineInv
+  have hlineEq : (s.locals i).line = tx.preLines i.1 := by
+    have htl : (s.locals i).line = txnSnapshotLine tx (s.locals i) i := by
+      rw [txnLineInv, hcur] at htxnLine; exact htxnLine i
+    unfold txnSnapshotLine at htl
+    have hnotGP : ¬(tx.phase = .grantPendingAck ∧ tx.requester = i.1) := by
+      intro ⟨h, _⟩; rw [hphase] at h; cases h
+    rw [if_neg hnotGP] at htl
+    unfold probeSnapshotLine at htl
+    split at htl
+    · -- probesNeeded: inner if with probesRemaining ∧ chanC = none
+      rw [if_pos ⟨hremain, hCnone⟩] at htl; exact htl
+    · -- not probesNeeded: preLines directly
+      exact htl
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · intro j
     by_cases hji : j = i
     · subst j
-      simp [recvProbeState, recvProbeLocals, recvProbeLocal, hA]
+      simp [recvProbeState, recvProbeLocals, recvProbeLocal]
     · simpa [recvProbeState, recvProbeLocals, recvProbeLocal, setFn, hji] using hchanA j
   · intro j
     by_cases hji : j = i
@@ -103,22 +123,40 @@ theorem channelInv_preserved_recvProbeAtMaster (n : Nat)
         simp [recvProbeState, recvProbeLocals, recvProbeLocal]
       have hAi :
           ((recvProbeState s i msg).locals i).chanA = none := by
-        simp [recvProbeState, recvProbeLocals, recvProbeLocal, hA]
+        simp [recvProbeState, recvProbeLocals, recvProbeLocal]
       have hBi :
           ((recvProbeState s i msg).locals i).chanB = none := by
         simp [recvProbeState, recvProbeLocals, recvProbeLocal]
       rw [hCi]
       left
       refine ⟨tx, ?_⟩
-      refine ⟨hcur, hphase, hremain, hAi, hBi, ?_, probeAckMsg_wf i (s.locals i).line⟩
+      refine ⟨hcur, hphase, hremain, hAi, hBi, ?_, probeAckMsg_wf i (s.locals i).line, ?_⟩
       · simp [probeAckMsg]
+      · simp [probeAckMsg, hlineEq]
     · simpa [recvProbeState, recvProbeLocals, recvProbeLocal, setFn, hji] using hchanC j
   · intro j
-    have hnoneOld := chanD_none_of_phase_ne_grantPendingAck n s hchanD hcur (by simp [hphase])
-    by_cases hji : j = i
-    · subst j
-      simp [recvProbeState, recvProbeLocals, recvProbeLocal, hnoneOld i]
-    · simp [recvProbeState, recvProbeLocals, recvProbeLocal, setFn, hji, hnoneOld j]
+    have hDdisj := chanD_noneOrAccessAck_of_phase_ne_grantPendingAck n s hchanD hcur (by simp [hphase])
+    rcases hDdisj j with hDnone | ⟨dmsg, hD, hacc, hps, hchanAnone⟩
+    · by_cases hji : j = i
+      · subst j
+        simp [recvProbeState, recvProbeLocals, recvProbeLocal, hDnone]
+      · simp [recvProbeState, recvProbeLocals, recvProbeLocal, setFn, hji, hDnone]
+    · by_cases hji : j = i
+      · subst j
+        have hD' : ((recvProbeState s i msg).locals i).chanD = some dmsg := by
+          simp [recvProbeState, recvProbeLocals, recvProbeLocal, hD]
+        have hps' : ((recvProbeState s i msg).locals i).pendingSource ≠ none := by
+          simp [recvProbeState, recvProbeLocals, recvProbeLocal, hps]
+        have hchanAnone' : ((recvProbeState s i msg).locals i).chanA = none := by
+          simp [recvProbeState, recvProbeLocals, recvProbeLocal]
+        rw [hD']; exact Or.inr (Or.inr ⟨hacc, hps', hchanAnone'⟩)
+      · have hD' : ((recvProbeState s i msg).locals j).chanD = some dmsg := by
+          simp [recvProbeState, recvProbeLocals, recvProbeLocal, setFn, hji, hD]
+        have hps' : ((recvProbeState s i msg).locals j).pendingSource ≠ none := by
+          simp [recvProbeState, recvProbeLocals, recvProbeLocal, setFn, hji, hps]
+        have hchanAnone' : ((recvProbeState s i msg).locals j).chanA = none := by
+          simp [recvProbeState, recvProbeLocals, recvProbeLocal, setFn, hji, hchanAnone]
+        rw [hD']; exact Or.inr (Or.inr ⟨hacc, hps', hchanAnone'⟩)
   · intro j
     have hnoneOld := chanE_none_of_phase_ne_grantPendingAck n s hchanE hcur (by simp [hphase])
     by_cases hji : j = i
@@ -131,7 +169,7 @@ theorem coreInv_preserved_recvProbeAckAtManager (n : Nat)
     {i : Fin n} (hstep : RecvProbeAckAtManager s s' i) :
     coreInv n s' := by
   rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
-  rcases hstep with ⟨tx, msg, hcur, hphase, hremain, hA, hC, hsrc, hwf, rfl⟩
+  rcases hstep with ⟨tx, msg, hcur, hphase, hremain, hC, hsrc, hwf, rfl⟩
   have htxn' : tx.requester < n ∧
       (tx.phase = .probing ∨ tx.phase = .grantReady ∨ tx.phase = .grantPendingAck) ∧
       tx.resultPerm = tx.grow.result ∧
@@ -149,11 +187,11 @@ theorem coreInv_preserved_recvProbeAckAtManager (n : Nat)
   · intro j
     by_cases hji : j = i
     · subst j
-      have hline : ((recvProbeAckState s i tx).locals i).line = (s.locals i).line := by
+      have hline : ((recvProbeAckState s i tx msg).locals i).line = (s.locals i).line := by
         simp [recvProbeAckState, recvProbeAckLocals, setFn]
       rw [hline]
       exact hlineWF i
-    · have hline : ((recvProbeAckState s i tx).locals j).line = (s.locals j).line := by
+    · have hline : ((recvProbeAckState s i tx msg).locals j).line = (s.locals j).line := by
         simp [recvProbeAckState, recvProbeAckLocals, setFn, hji]
       rw [hline]
       exact hlineWF j
@@ -205,8 +243,15 @@ theorem channelInv_preserved_recvProbeAckAtManager (n : Nat)
     {i : Fin n} (hstep : RecvProbeAckAtManager s s' i) :
     channelInv n s' := by
   rcases hinv with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
-  rcases hstep with ⟨tx, msg, hcur, hphase, hremain, hA, hC, hsrc, hwf, rfl⟩
-  have hDnoneOld := chanD_none_of_phase_ne_grantPendingAck n s hchanD hcur (by simp [hphase])
+  rcases hstep with ⟨tx, msg, hcur, hphase, hremain, hC, hsrc, hwf, rfl⟩
+  -- Derive chanA = none from chanCInv (chanC = some msg → chanA = none)
+  have hA : (s.locals i).chanA = none := by
+    have hchanCi := hchanC i
+    rw [hC] at hchanCi
+    rcases hchanCi with hprobe | hrel
+    · rcases hprobe with ⟨_, _, _, _, hAnone, _, _, _, _⟩; exact hAnone
+    · rcases hrel with ⟨_, _, _, hAnone, _, _, _, _, _⟩; exact hAnone
+  have hDdisjOld := chanD_noneOrAccessAck_of_phase_ne_grantPendingAck n s hchanD hcur (by simp [hphase])
   have hEnoneOld := chanE_none_of_phase_ne_grantPendingAck n s hchanE hcur (by simp [hphase])
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · intro j
@@ -221,7 +266,7 @@ theorem channelInv_preserved_recvProbeAckAtManager (n : Nat)
         specialize hchanC i
         rw [hC] at hchanC
         rcases hchanC with hprobe | hrel
-        · rcases hprobe with ⟨_, _, _, _, _, hBnone, _, _⟩
+        · rcases hprobe with ⟨_, _, _, _, _, hBnone, _, _, _⟩
           exact hBnone
         · rcases hrel with ⟨_, _, _, _, hBnone, _, _, _⟩
           exact hBnone
@@ -245,7 +290,7 @@ theorem channelInv_preserved_recvProbeAckAtManager (n : Nat)
             simp [tx', clearProbeIdx, hvalne, hrem0]
           have hphase' : tx'.phase = .probing := by
             exact probeAckPhase_of_true hrem'
-          have hBj' : ((recvProbeAckState s i tx).locals j).chanB = some bmsg := by
+          have hBj' : ((recvProbeAckState s i tx msg).locals j).chanB = some bmsg := by
             simp [recvProbeAckState, recvProbeAckLocals, setFn, hji, hBj]
           rw [hBj']
           refine ⟨tx', ?_⟩
@@ -262,7 +307,7 @@ theorem channelInv_preserved_recvProbeAckAtManager (n : Nat)
           have hchanCj := hchanC j
           rw [hCj] at hchanCj
           rcases hchanCj with hprobe | hrel
-          · rcases hprobe with ⟨tx0, hcur0, hphase0, hrem0, hA0, hBnone, hsrc0, hwf0⟩
+          · rcases hprobe with ⟨tx0, hcur0, hphase0, hrem0, hA0, hBnone, hsrc0, hwf0, hdata0⟩
             rw [hcur] at hcur0
             injection hcur0 with htx
             subst htx
@@ -275,12 +320,12 @@ theorem channelInv_preserved_recvProbeAckAtManager (n : Nat)
               simp [tx', clearProbeIdx, hvalne, hrem0]
             have hphase' : tx'.phase = .probing := by
               exact probeAckPhase_of_true hrem'
-            have hCj' : ((recvProbeAckState s i tx).locals j).chanC = some cmsg := by
+            have hCj' : ((recvProbeAckState s i tx msg).locals j).chanC = some cmsg := by
               simp [recvProbeAckState, recvProbeAckLocals, setFn, hji, hCj]
             rw [hCj']
             left
             refine ⟨tx', ?_⟩
-            refine ⟨?_, hphase', hrem', ?_, ?_, hsrc0, hwf0⟩
+            refine ⟨?_, hphase', hrem', ?_, ?_, hsrc0, hwf0, hdata0⟩
             · simp [recvProbeAckState, recvProbeAckShared, tx']
             · simpa [recvProbeAckState, recvProbeAckLocals, setFn, hji] using hA0
             · simpa [recvProbeAckState, recvProbeAckLocals, setFn, hji] using hBnone
@@ -288,15 +333,31 @@ theorem channelInv_preserved_recvProbeAckAtManager (n : Nat)
             rw [hcur] at hcurNone
             simp at hcurNone
   · intro j
-    have hnone : ((recvProbeAckState s i tx).locals j).chanD = none := by
-      by_cases hji : j = i
+    rcases hDdisjOld j with hDnone | ⟨dmsg, hD, hacc, hps, hchanAnone⟩
+    · have hnone : ((recvProbeAckState s i tx msg).locals j).chanD = none := by
+        by_cases hji : j = i
+        · subst j
+          simp [recvProbeAckState, recvProbeAckLocals, hDnone]
+        · simp [recvProbeAckState, recvProbeAckLocals, setFn, hji, hDnone]
+      rw [hnone]; trivial
+    · by_cases hji : j = i
       · subst j
-        simp [recvProbeAckState, recvProbeAckLocals, hDnoneOld i]
-      · simp [recvProbeAckState, recvProbeAckLocals, setFn, hji, hDnoneOld j]
-    rw [hnone]
-    trivial
+        have hD' : ((recvProbeAckState s i tx msg).locals i).chanD = some dmsg := by
+          simp [recvProbeAckState, recvProbeAckLocals, hD]
+        have hps' : ((recvProbeAckState s i tx msg).locals i).pendingSource ≠ none := by
+          simp [recvProbeAckState, recvProbeAckLocals, hps]
+        have hchanAnone' : ((recvProbeAckState s i tx msg).locals i).chanA = none := by
+          simp [recvProbeAckState, recvProbeAckLocals, hchanAnone]
+        rw [hD']; exact Or.inr (Or.inr ⟨hacc, hps', hchanAnone'⟩)
+      · have hD' : ((recvProbeAckState s i tx msg).locals j).chanD = some dmsg := by
+          simp [recvProbeAckState, recvProbeAckLocals, setFn, hji, hD]
+        have hps' : ((recvProbeAckState s i tx msg).locals j).pendingSource ≠ none := by
+          simp [recvProbeAckState, recvProbeAckLocals, setFn, hji, hps]
+        have hchanAnone' : ((recvProbeAckState s i tx msg).locals j).chanA = none := by
+          simp [recvProbeAckState, recvProbeAckLocals, setFn, hji, hchanAnone]
+        rw [hD']; exact Or.inr (Or.inr ⟨hacc, hps', hchanAnone'⟩)
   · intro j
-    have hnone : ((recvProbeAckState s i tx).locals j).chanE = none := by
+    have hnone : ((recvProbeAckState s i tx msg).locals j).chanE = none := by
       by_cases hji : j = i
       · subst j
         simp [recvProbeAckState, recvProbeAckLocals, hEnoneOld i]

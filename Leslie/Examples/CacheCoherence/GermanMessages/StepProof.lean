@@ -1072,8 +1072,8 @@ theorem fullStrongInvariant_preserved
         intro j hjE
         by_cases hji : j = i
         · subst hji
-          exact ⟨fun hc => (hexcl j hjE).1 (by simpa [setFn] using hc),
-                 fun hc => (hexcl j hjE).2.1 (by simpa [setFn] using hc),
+          exact ⟨fun hc => (hexcl j hjE).1 (by simp [setFn] at hc),
+                 fun hc => (hexcl j hjE).2.1 (by simp [setFn] at hc),
                  (hexcl j hjE).2.2⟩
         · exact ⟨fun hc => (hexcl j hjE).1 (by simpa [setFn, hji] using hc),
                  fun hc => (hexcl j hjE).2.1 (by simpa [setFn, hji] using hc),
@@ -1090,7 +1090,7 @@ theorem fullStrongInvariant_preserved
           rcases hj with hjE | hjGntE | hjAck
           · exact Or.inl hjE
           · by_cases hji : j = i
-            · subst hji; simp [setFn, hchan2i] at hjGntE
+            · subst hji; simp [hchan2i] at hjGntE
             · exact Or.inr (Or.inl (by simpa [setFn, hji] using hjGntE))
           · exact Or.inr (Or.inr hjAck)⟩
       · -- gntSExcludesInvAck: chan2[i]=inv (not gntS); chan3 unchanged
@@ -1268,7 +1268,7 @@ theorem fullStrongInvariant_preserved
           intro hcond j
           by_cases hji : j = i
           · subst hji; simp [setFn]
-          · intro h; simpa [setFn, hji, hnoAckOther j hji] using h
+          · intro h; simp [setFn, hji, hnoAckOther j hji] at h
         · -- invReasonProp: vacuous since chan2[j]≠inv for all j
           intro j hjInv; exact absurd hjInv (hnoInvAll j)
         · -- invAckClearsGrant: chan3[i]=empty
@@ -1327,7 +1327,7 @@ theorem fullStrongInvariant_preserved
           · have hcond' : s.curCmd = .empty ∨ (s.curCmd = .reqS ∧ s.exGntd = false) := by
               rcases hcond with hemp | ⟨hreqS, hexF⟩
               · exact Or.inl hemp
-              · exact Or.inr ⟨hreqS, by simpa [hexFalse] using hexF⟩
+              · exact Or.inr ⟨hreqS, by simp [hexFalse]⟩
             simpa [setFn, hji] using hclean hcond' j
         · -- invReasonProp: chan2/exGntd/curCmd unchanged
           intro j hjInv
