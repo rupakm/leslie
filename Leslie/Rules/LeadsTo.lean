@@ -85,6 +85,56 @@ theorem leads_to_refl (Γ p : pred σ) :
     pred_implies Γ (leads_to p p) :=
   fun _ _ k hp => ⟨0, (exec.drop_zero _).symm ▸ hp⟩
 
+/-! ### Well-founded induction for leads-to
+
+    These rules allow proving p ↝ q by providing a Nat-valued measure μ
+    that decreases with each step. This is the TLA analogue of
+    "proof by well-founded ordering" (Lamport). -/
+
+/-- Well-founded induction for leads-to using a Nat-valued measure.
+    If for every k > 0, p ∧ (μ = k) leads to q ∨ (p ∧ μ < k),
+    and p ∧ (μ = 0) leads to q, then p leads to q.
+
+    This is the standard TLA lattice rule: each step either achieves q
+    or makes progress toward it by decreasing the measure. -/
+theorem leads_to_via_nat {Γ : pred σ} {p q : pred σ}
+    (μ : (Nat → σ) → Nat)
+    (hstep : ∀ k : Nat, k > 0 →
+      ∀ e, Γ e → ∀ i, p (e.drop i) → μ (e.drop i) = k →
+        ∃ j, q (e.drop (i + j)) ∨ (p (e.drop (i + j)) ∧ μ (e.drop (i + j)) < k))
+    (hbase : ∀ e, Γ e → ∀ i, p (e.drop i) → μ (e.drop i) = 0 →
+        ∃ j, q (e.drop (i + j))) :
+    pred_implies Γ (leads_to p q) := by
+  intro e hΓ
+  simp only [leads_to, always, eventually] at *
+  -- Suffices: induct on μ using absolute positions in e
+  suffices h : ∀ m k, μ (e.drop k) ≤ m → p (e.drop k) →
+      ∃ j, q ((e.drop k).drop j) by
+    intro k hp; exact h (μ (e.drop k)) k (Nat.le_refl _) hp
+  intro m
+  induction m with
+  | zero =>
+    intro k hle hp'
+    obtain ⟨j, hj⟩ := hbase e hΓ k hp' (Nat.le_zero.mp hle)
+    exact ⟨j, show q ((e.drop k).drop j) by rw [exec.drop_drop]; exact hj⟩
+  | succ m ih =>
+    intro k hle hp'
+    by_cases hm : μ (e.drop k) = 0
+    · obtain ⟨j, hj⟩ := hbase e hΓ k hp' hm
+      exact ⟨j, show q ((e.drop k).drop j) by rw [exec.drop_drop]; exact hj⟩
+    · obtain ⟨j, hj⟩ := hstep (μ (e.drop k)) (Nat.pos_of_ne_zero hm) e hΓ k hp' rfl
+      rcases hj with hq | ⟨hp'', hlt⟩
+      · exact ⟨j, show q ((e.drop k).drop j) by rw [exec.drop_drop]; exact hq⟩
+      · have hle' : μ (e.drop (k + j)) ≤ m := by omega
+        obtain ⟨j', hj'⟩ := ih (k + j) hle' hp''
+        refine ⟨j + j', ?_⟩
+        show q ((e.drop k).drop (j + j'))
+        -- All exec.drop_drop collapses to e.drop (n) for some n
+        simp only [exec.drop_drop] at hj' ⊢
+        -- hj' : q (e (k + j + j')), goal: q (e (k + (j + j')))
+        -- These are equal by Nat.add_assoc
+        rwa [show k + j + j' = k + (j + j') from by omega] at hj'
+
 end leads_to
 
 end TLA
