@@ -1,4 +1,4 @@
-import Leslie.Examples.Combinators.Basic
+import Leslie.Examples.Combinators.LockInvariant
 import Leslie.Round
 
 /-! ## Threshold Consensus via Combinator Pattern
