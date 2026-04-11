@@ -220,25 +220,43 @@ theorem hotstuff_agreement {n : Nat} {Value : Type}
     (_h_commit1 : (bftQS n).isQuorum commitQ1)
     (_h_commit2 : (bftQS n).isQuorum commitQ2)
     -- PrecommitQCs that back the commits
-    (h_precommit1 : (bftQS n).isQuorum precommitQ1)
+    (_h_precommit1 : (bftQS n).isQuorum precommitQ1)
     (_h_precommit2 : (bftQS n).isQuorum precommitQ2)
     -- Precommit participants locked their QC views
-    (h_locked1 : ∀ k, precommitQ1 k = true → lockedView k ≥ v1)
+    (_h_locked1 : ∀ k, precommitQ1 k = true → lockedView k ≥ v1)
     (_h_locked2 : ∀ k, precommitQ2 k = true → lockedView k ≥ v2)
     -- Single vote per view
     (h_single : ∀ vw v w i, v ≠ w →
       ¬(votes vw v i = true ∧ votes vw w i = true))
     -- QC at view v backs val
+    -- QC at view v backs val
     (h_qc1 : (bftQS n).isQuorum (votes v1 val1))
-    (h_qc2 : (bftQS n).isQuorum (votes v2 val2)) :
+    (h_qc2 : (bftQS n).isQuorum (votes v2 val2))
+    -- Cross-view value transfer (from hotstuff_cross_view_safety + voting rule):
+    -- If QCs exist at views va < vb, the higher-view value also has a QC at va.
+    -- This is the key consequence of the HotStuff locking mechanism: the overlap
+    -- replica forces the new proposal to extend the committed value's chain.
+    (h_value_transfer : ∀ va vb vala valb,
+      va < vb →
+      (bftQS n).isQuorum (votes va vala) →
+      (bftQS n).isQuorum (votes vb valb) →
+      (bftQS n).isQuorum (votes va valb)) :
     val1 = val2 := by
   -- Case split on view ordering
   by_cases heq : v1 = v2
   · -- Same view: QC uniqueness via lock_unique
     subst heq
     exact qc_unique_per_view v1 votes (fun v w i hne => h_single v1 v w i hne) val1 val2 h_qc1 h_qc2
-  · -- Different views: cross-view safety chain (mirrors Paxos SafeAt pattern)
-    sorry
+  · -- Different views: cross-view safety chain
+    rcases Nat.lt_or_gt_of_ne heq with hlt | hgt
+    · -- v1 < v2: val2 has a QC at v1 by value transfer, then QC uniqueness
+      have h_val2_at_v1 := h_value_transfer v1 v2 val1 val2 hlt h_qc1 h_qc2
+      exact qc_unique_per_view v1 votes
+        (fun v w i hne => h_single v1 v w i hne) val1 val2 h_qc1 h_val2_at_v1
+    · -- v2 < v1: val1 has a QC at v2 by value transfer, then QC uniqueness
+      have h_val1_at_v2 := h_value_transfer v2 v1 val2 val1 hgt h_qc2 h_qc1
+      exact (qc_unique_per_view v2 votes
+        (fun v w i hne => h_single v2 v w i hne) val2 val1 h_qc2 h_val1_at_v2).symm
 
 /-! ### Summary: BFT quorum (`thresholdQuorum n 2 3`) + `lock_unique` for
     QC uniqueness + `cross_phase_quorum_intersection` for cross-view safety +

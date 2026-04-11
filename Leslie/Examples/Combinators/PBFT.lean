@@ -112,17 +112,9 @@ theorem prepare_unique
     (hv : (prepareLock n).isLocked (sl, v) locals)
     (hw : (prepareLock n).isLocked (sl, w) locals) :
     v = w := by
-  have h_func : ∀ (a b : Slot × Request) (locs : Fin n → ReplicaState) (i : Fin n),
-      (prepareLock n).holders a locs i = true →
-      (prepareLock n).holders b locs i = true → a = b := by
-    intro ⟨sl₁, v₁⟩ ⟨sl₂, v₂⟩ locs i h1 h2
-    simp only [prepareLock, prepareHolders, beq_iff_eq] at h1 h2
-    have := h1; have := h2
-    -- Both prepared at sl₁ with v₁ and sl₂ with v₂
-    -- From the option equalities we can extract slot and value equality
-    sorry
-  have := lock_unique' (prepareLock n) h_func (sl, v) (sl, w) locals hv hw
-  exact Prod.mk.inj this |>.2
+  obtain ⟨i, hi_v, hi_w⟩ := (prepareLock n).qs.intersection _ _ hv hw
+  simp only [prepareLock, prepareHolders, beq_iff_eq] at hi_v hi_w
+  exact h_local i sl v w hi_v hi_w
 
 /-! ### Commit Safety
 
