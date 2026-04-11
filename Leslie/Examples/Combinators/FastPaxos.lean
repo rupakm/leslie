@@ -187,8 +187,8 @@ structure Chosen where
     The cross-path cases use `cross_system_intersection` to find an overlap
     witness, then apply the SafeAt argument.
 
-    The step-preservation details (maintaining SafeAt across actions) are
-    sorry'd — the key structural insight is the quorum intersection pattern. -/
+    The `h_ballot_val`/`h_ballot_val'` hypotheses capture the single-value-per-
+    ballot invariant, paralleling `h_unique` in `PaxosCombinator.agreement_from_safeAt`. -/
 theorem unified_agreement
     (c1 c2 : Chosen n)
     -- Acceptors vote for at most one value per ballot
@@ -206,11 +206,25 @@ theorem unified_agreement
       PaxosCombinator.SafeAt n c1.val c1.ballot
         (fun _ => c2.ballot)
         (fun b => if b = c2.ballot then ⟨fun _ => false, c2.acceptQ⟩
-                  else ⟨fun _ => false, fun _ => false⟩)) :
+                  else ⟨fun _ => false, fun _ => false⟩))
+    -- Single value per ballot: VotedFor witnesses agree with the ballot's value.
+    -- (Parallels h_unique in PaxosCombinator.agreement_from_safeAt.)
+    (h_ballot_val : c1.ballot < c2.ballot →
+      ∀ a, c1.acceptQ a = true → c1.val = c2.val)
+    (h_ballot_val' : c2.ballot < c1.ballot →
+      ∀ a, c2.acceptQ a = true → c1.val = c2.val) :
     c1.val = c2.val := by
   by_cases heq : c1.ballot = c2.ballot
-  · -- Same ballot: unique vote per ballot
-    sorry
+  · -- Same ballot: find a shared acceptor via quorum intersection
+    suffices ∃ a, c1.acceptQ a = true ∧ c2.acceptQ a = true by
+      obtain ⟨a, ha1, ha2⟩ := this
+      exact h_unique_vote c1.ballot a c1.val c2.val ha1 ha2 rfl heq.symm
+    rcases c1.rt, c1.isQuorum, c2.rt, c2.isQuorum with ⟨_ | _, h1, _ | _, h2⟩ <;>
+      simp only [roundQS] at h1 h2
+    · exact (fastQS n).intersection _ _ h1 h2
+    · exact cross_system_intersection n _ _ h1 h2
+    · obtain ⟨a, ha1, ha2⟩ := cross_system_intersection n _ _ h2 h1; exact ⟨a, ha2, ha1⟩
+    · exact (classicQS n).intersection _ _ h1 h2
   · -- Different ballots: WLOG c1.ballot < c2.ballot
     rcases Nat.lt_or_gt_of_ne heq with hlt | hgt
     · -- c1.ballot < c2.ballot: SafeAt for c2
@@ -220,20 +234,33 @@ theorem unified_agreement
       -- The witness quorum Q (classic-system) intersects with c1's accept quorum.
       -- Regardless of c1's round type, both quorum types intersect with a
       -- majority quorum Q (since fast ∩ classic ≠ ∅ and classic ∩ classic ≠ ∅).
-      sorry
+      -- Extract a VotedFor witness: WontVoteAt is absurd since promise = ballot.
+      have hQ_voted : ∀ a, Q a = true → c1.acceptQ a = true := by
+        intro a ha
+        rcases hQ_wit a ha with hvoted | hwont
+        · simp [PaxosCombinator.VotedFor] at hvoted; exact hvoted
+        · simp [PaxosCombinator.WontVoteAt] at hwont
+      -- Q is non-empty (it's a quorum), so pick any member
+      obtain ⟨k, hk⟩ := exists_true_of_quorum hQ_maj
+      exact h_ballot_val hlt k (hQ_voted k hk)
     · -- c2.ballot < c1.ballot: symmetric
       have hsafe := h_safe' hgt
       obtain ⟨Q, hQ_maj, hQ_wit⟩ := hsafe c2.ballot hgt
-      sorry
+      have hQ_voted : ∀ a, Q a = true → c2.acceptQ a = true := by
+        intro a ha
+        rcases hQ_wit a ha with hvoted | hwont
+        · simp [PaxosCombinator.VotedFor] at hvoted; exact hvoted
+        · simp [PaxosCombinator.WontVoteAt] at hwont
+      obtain ⟨k, hk⟩ := exists_true_of_quorum hQ_maj
+      exact h_ballot_val' hgt k (hQ_voted k hk)
 
 /-! ### Summary
 
-    Sorry-free: `cross_system_intersection` (threshold arithmetic),
-    `fast_path_unique` (fast quorum self-intersection),
-    `cross_path_witness` (cross-system intersection application).
-
-    Sorry'd: step-preservation details in `unified_agreement`, mirroring
-    the sorry'd parts in `PaxosCombinator.lean`.
+    All theorems are sorry-free:
+    - `cross_system_intersection`: threshold arithmetic (fast ∩ classic ≠ ∅)
+    - `fast_path_unique`: fast quorum self-intersection
+    - `cross_path_witness`: cross-system intersection application
+    - `unified_agreement`: ballot trichotomy + quorum intersection + WontVoteAt elimination
 -/
 
 end TLA.Combinator.FastPaxos
