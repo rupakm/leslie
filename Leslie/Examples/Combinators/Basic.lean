@@ -2,3 +2,4 @@ import Leslie.Examples.Combinators.QuorumSystem
 import Leslie.Examples.Combinators.LockInvariant
 import Leslie.Examples.Combinators.PhaseCombinator
 import Leslie.Examples.Combinators.PaxosCombinator
+import Leslie.Examples.Combinators.CutoffIntegration
