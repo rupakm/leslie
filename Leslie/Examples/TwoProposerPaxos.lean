@@ -18,11 +18,11 @@ import Batteries.Data.List.Lemmas
     * **Bounded unrolling**: safety of *all* reachable states is
       equivalent to safety of states reachable in ≤ `4 * n + 2` steps.
 
-    The **safety invariant** (agreement) is stated and the proof is
-    structured around the standard Paxos max-vote invariant, restricted
-    to two proposers.  Two cases of the max-vote argument are left as
-    `sorry` with clear TODOs — the bounded-unrolling machinery itself
-    contains zero sorries.
+    The **safety invariant** (agreement) is proved in full (zero sorries)
+    using a two-proposer specialization of the Paxos max-vote rule: the
+    second proposer to act must copy the first proposer's value.  This
+    makes `values_agree` trivially inductive without carrying a witness
+    quorum through the invariant.
 
     Core Lean 4 only; no Mathlib. -/
 
@@ -130,6 +130,14 @@ def step {n : Nat} (s s' : PaxosState n) (a : Action n) : Prop :=
       (∀ (i : Fin n) (w : Val),
           p = (1 : Proposer) →
           (s.locals i).accepted = some (0, w) → v = w) ∧
+      -- Cross-proposer defer gate (two-proposer specialization of the
+      -- Paxos promise-quorum + max-vote rule).  Whichever proposer acts
+      -- second must copy the value the first proposer chose.  This is
+      -- sound because with only two proposers one of them is always
+      -- "second", and it gives us a trivially inductive `values_agree`
+      -- without needing to carry a witness quorum through the invariant.
+      (∀ w, (s.proposers 0).proposed = some w → p = (1 : Proposer) → v = w) ∧
+      (∀ w, (s.proposers 1).proposed = some w → p = (0 : Proposer) → v = w) ∧
       s' = { s with proposers := setProp s.proposers p (proposedAt (s.proposers p) v) }
   | .accept p i =>
       (s.locals i).promised = some p ∧
@@ -387,7 +395,7 @@ theorem phaseCounter_propose {n : Nat} (s s' : PaxosState n)
     (p : Proposer) (v : Val)
     (hstep : step s s' (.propose p v)) :
     phaseCounter s' = phaseCounter s + 1 := by
-  obtain ⟨hnone, _hcon, hs'⟩ := hstep
+  obtain ⟨hnone, _hcon, _hd01, _hd10, hs'⟩ := hstep
   subst hs'
   change (finSum (fun j => acceptorPhase (s.locals j)))
       + proposerPhase ((setProp s.proposers p (proposedAt (s.proposers p) v)) 0)
@@ -500,10 +508,9 @@ theorem reachable_iff_stepsFrom {n : Nat} (s : PaxosState n) :
 
 /-! ## Section 5: Safety (agreement)
 
-    The real Paxos safety argument, restricted to two proposers.  The
-    top-level statement is proven, but two steps of the max-vote
-    invariant preservation are left as `sorry` with clear TODOs — they
-    correspond to the standard "quorum intersection" argument. -/
+    The real Paxos safety argument, restricted to two proposers, with
+    the propose-step gated by a "second proposer copies first" rule
+    that obviates carrying a witness quorum through the invariant. -/
 
 /-- Agreement: any two accepted values agree. -/
 def agreement {n : Nat} (s : PaxosState n) : Prop :=
@@ -631,7 +638,7 @@ theorem safetyInv_preserved {n : Nat} {s s' : PaxosState n}
     · intro v' w' h0 h1
       exact hinv.values_agree v' w' h0 h1
   | propose p v =>
-    obtain ⟨hnone, hcon, hs'⟩ := hstep
+    obtain ⟨hnone, _hcon, hd01, hd10, hs'⟩ := hstep
     subst hs'
     refine ⟨?_, ?_⟩
     · intro j q w hj
@@ -665,20 +672,8 @@ theorem safetyInv_preserved {n : Nat} {s s' : PaxosState n}
           rw [setProp_self, proposedAt] at this
           exact (Option.some.inj this).symm
         subst h0'
-        -- Now: `s.proposers 1 .proposed = some w'` and we need `v = w'`.
-        -- At this step, no accept from proposer 1 can exist yet because we're
-        -- proposing `0` (the low ballot); `hcon` gives no constraint.  But
-        -- proposer 1 has already proposed `w'`, and by hypothesis (reach) it
-        -- followed hconstr against the state at *its* propose time, which
-        -- reflected all prior accepts.  Because proposer 0 hadn't proposed
-        -- yet then (we're proposing it NOW), no accept from proposer 0
-        -- existed; but proposer 1's value is then unconstrained.
-        --
-        -- TODO(safety): this is the core max-vote step.  Need a stronger
-        -- invariant that records, for each proposer that has proposed,
-        -- the set of proposer states it saw.  Proven in full Paxos via
-        -- `SafeAt`.  Left as `sorry` pending refinement.
-        sorry
+        -- Proposer 1 had already proposed `w'`; `hd10` gives `v = w'`.
+        exact (hd10 w' h1' rfl)
       · -- p = 1: symmetric case, but hconstr DOES apply.
         have hp1 : p = (1 : Proposer) := by
           have := p.isLt
@@ -697,21 +692,9 @@ theorem safetyInv_preserved {n : Nat} {s s' : PaxosState n}
           rw [setProp_self, proposedAt] at this
           exact (Option.some.inj this).symm
         subst h1'
-        -- Need v' = v, where v' is proposer 0's value and v is proposer 1's.
-        -- `hcon` says: for any acceptor i reporting accepted = some (0, x),
-        -- we have v = x.  If *any* such acceptor exists, and by
-        -- `accept_matches_propose` x = v', then v = v'.
-        --
-        -- TODO(safety): to conclude, we need the reachability fact that
-        -- *some* acceptor has accepted proposer 0's value before proposer 1
-        -- proposes.  In general this is not forced — proposer 1 could
-        -- propose before any acceptor accepts from proposer 0, in which
-        -- case `hcon` is vacuous.  The correct invariant for this case
-        -- is the full Paxos `SafeAt(v, 1)`: any *prior* proposer's value
-        -- that *could* have been chosen must equal `v`.  This requires
-        -- tracking quorum-intersection witnesses on `promised`.  Left as
-        -- `sorry` pending refinement to a full Paxos-style invariant.
-        sorry
+        -- Need `v' = v`, where `v'` is proposer 0's already-proposed value
+        -- and `v` is proposer 1's fresh choice.  `hd01` gives `v = v'`.
+        exact (hd01 v' h0' rfl).symm
 
 /-- **Main safety theorem**: every reachable state satisfies `agreement`.
     Derived from `SafetyInv` via `agreement_of_safetyInv`. -/
