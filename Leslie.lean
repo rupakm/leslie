@@ -28,6 +28,7 @@ import «Leslie».Examples.VRViewChange
 import «Leslie».Cutoff
 import «Leslie».Examples.OneThirdRuleCutoff
 import «Leslie».Examples.OneThirdRuleBoundedUnrolling
+import «Leslie».Examples.MajorityBoundedUnrolling
 import «Leslie».Examples.Paxos
 import «Leslie».Examples.KVStore
 import «Leslie».Examples.LeaseLock
