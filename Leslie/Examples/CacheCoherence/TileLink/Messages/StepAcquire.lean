@@ -50,9 +50,12 @@ theorem coreInv_preserved_sendAcquireBlock (n : Nat)
     {i : Fin n} {grow : GrowParam} {source : SourceId}
     (hstep : SendAcquireBlock s s' i grow source) :
     coreInv n s' := by
-  rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
+  have hlineWF := hinv.lineWF
+  have hdir := hinv.dir
+  have hpending := hinv.pending
+  have htxn := hinv.txnCore
   rcases hstep with ⟨hA, hB, hC, hPendingSource, hFlightFalse, _, hlegal, rfl⟩
-  refine ⟨?_, ?_, ?_, ?_⟩
+  refine { lineWF := ?_, dir := ?_, pending := ?_, txnCore := ?_ }
   · intro j
     by_cases hji : j = i
     · subst j
@@ -91,9 +94,12 @@ theorem coreInv_preserved_sendAcquirePerm (n : Nat)
     {i : Fin n} {grow : GrowParam} {source : SourceId}
     (hstep : SendAcquirePerm s s' i grow source) :
     coreInv n s' := by
-  rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
+  have hlineWF := hinv.lineWF
+  have hdir := hinv.dir
+  have hpending := hinv.pending
+  have htxn := hinv.txnCore
   rcases hstep with ⟨hA, hB, hC, hPendingSource, hFlightFalse, hlegal, hresT, rfl⟩
-  refine ⟨?_, ?_, ?_, ?_⟩
+  refine { lineWF := ?_, dir := ?_, pending := ?_, txnCore := ?_ }
   · intro j
     by_cases hji : j = i
     · subst j
@@ -132,9 +138,10 @@ theorem coreInv_preserved_recvAcquireBlock (n : Nat)
     {i : Fin n} {grow : GrowParam} {source : SourceId}
     (hstep : RecvAcquireBlockAtManager s s' i grow source) :
     coreInv n s' := by
-  rcases hinv with ⟨hlineWF, hdir, _, _⟩
+  have hlineWF := hinv.lineWF
+  have hdir := hinv.dir
   rcases hstep with ⟨_, _, _, _, _, _, _, _, _, ⟨_, rfl⟩⟩
-  refine ⟨?_, ?_, ?_, ?_⟩
+  refine { lineWF := ?_, dir := ?_, pending := ?_, txnCore := ?_ }
   · intro j
     simpa [recvAcquireState, recvAcquireLocals_line] using hlineWF j
   · intro j hCnone
@@ -166,9 +173,10 @@ theorem coreInv_preserved_recvAcquirePerm (n : Nat)
     {i : Fin n} {grow : GrowParam} {source : SourceId}
     (hstep : RecvAcquirePermAtManager s s' i grow source) :
     coreInv n s' := by
-  rcases hinv with ⟨hlineWF, hdir, _, _⟩
+  have hlineWF := hinv.lineWF
+  have hdir := hinv.dir
   rcases hstep with ⟨_, _, _, _, _, _, _, hresT, _, rfl⟩
-  refine ⟨?_, ?_, ?_, ?_⟩
+  refine { lineWF := ?_, dir := ?_, pending := ?_, txnCore := ?_ }
   · intro j
     simpa [recvAcquireState, recvAcquireLocals_line] using hlineWF j
   · intro j hCnone

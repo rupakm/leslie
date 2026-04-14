@@ -132,7 +132,10 @@ theorem coreInv_preserved_sendGrantToRequester (n : Nat)
     (s s' : SymState HomeState NodeState n) (hinv : coreInv n s)
     {i : Fin n} (hstep : SendGrantToRequester s s' i) :
     coreInv n s' := by
-  rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
+  have hlineWF := hinv.lineWF
+  have hdir := hinv.dir
+  have hpending := hinv.pending
+  have htxn := hinv.txnCore
   rcases hstep with ⟨tx, hcur, hreq, hphase, hgrantNone, hrelNone, hDnone, hEnone, hSinkNone, rfl⟩
   have htxn' : tx.requester < n ∧
       (tx.phase = .probing ∨ tx.phase = .grantReady ∨ tx.phase = .grantPendingAck) ∧
@@ -145,7 +148,7 @@ theorem coreInv_preserved_sendGrantToRequester (n : Nat)
     simpa [txnCoreInv, hcur] using htxn
   rcases htxn' with ⟨hreqLt, _, hresult, hnoDataT, hreqFalse, hsubset, hready, hgrant⟩
   have hallFalse : ∀ j : Fin n, tx.probesRemaining j.1 = false := hready hphase
-  refine ⟨?_, ?_, ?_, ?_⟩
+  refine { lineWF := ?_, dir := ?_, pending := ?_, txnCore := ?_ }
   · intro j
     simpa [sendGrantState_line] using hlineWF j
   · intro j hCnone
@@ -236,7 +239,10 @@ theorem coreInv_preserved_recvGrantAtMaster (n : Nat)
     (s s' : SymState HomeState NodeState n) (hinv : coreInv n s)
     {i : Fin n} (hstep : RecvGrantAtMaster s s' i) :
     coreInv n s' := by
-  rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
+  have hlineWF := hinv.lineWF
+  have hdir := hinv.dir
+  have hpending := hinv.pending
+  have htxn := hinv.txnCore
   rcases hstep with ⟨tx, msg, hcur, hreq, hphase, hpendingGrant, hA, hD, hE, hSink, hmsg, rfl⟩
   have htxn' : tx.requester < n ∧
       (tx.phase = .probing ∨ tx.phase = .grantReady ∨ tx.phase = .grantPendingAck) ∧
@@ -248,7 +254,7 @@ theorem coreInv_preserved_recvGrantAtMaster (n : Nat)
       (tx.phase = .grantPendingAck → ∀ j : Fin n, tx.probesRemaining j.1 = false) := by
     simpa [txnCoreInv, hcur] using htxn
   rcases htxn' with ⟨hreqLt, hphaseOk, hresult, hnoDataT, hreqFalse, hsubset, hready, hgrant⟩
-  refine ⟨?_, ?_, ?_, ?_⟩
+  refine { lineWF := ?_, dir := ?_, pending := ?_, txnCore := ?_ }
   · intro j
     by_cases hji : j = i
     · subst j
@@ -336,12 +342,15 @@ theorem coreInv_preserved_recvGrantAckAtManager (n : Nat)
     (s s' : SymState HomeState NodeState n) (hinv : coreInv n s)
     {i : Fin n} (hstep : RecvGrantAckAtManager s s' i) :
     coreInv n s' := by
-  rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
+  have hlineWF := hinv.lineWF
+  have hdir := hinv.dir
+  have hpending := hinv.pending
+  have htxn := hinv.txnCore
   rcases hstep with ⟨tx, msg, hcur, hreq, hphase, hpendingGrant, hD, hE, hSink, hmsg, rfl⟩
   have hpendPair : s.shared.pendingReleaseAck = none ∧ s.shared.pendingGrantAck = some tx.requester := by
     simpa [pendingInv, hcur, hphase] using hpending
   rcases hpendPair with ⟨hrelNone, _⟩
-  refine ⟨?_, ?_, ?_, ?_⟩
+  refine { lineWF := ?_, dir := ?_, pending := ?_, txnCore := ?_ }
   · intro j
     simpa [recvGrantAckState_line] using hlineWF j
   · intro j hCnone

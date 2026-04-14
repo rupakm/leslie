@@ -65,9 +65,12 @@ theorem coreInv_preserved_recvProbeAtMaster (n : Nat)
     (s s' : SymState HomeState NodeState n) (hinv : coreInv n s)
     {i : Fin n} (hstep : RecvProbeAtMaster s s' i) :
     coreInv n s' := by
-  rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
+  have hlineWF := hinv.lineWF
+  have hdir := hinv.dir
+  have hpending := hinv.pending
+  have htxn := hinv.txnCore
   rcases hstep with ⟨tx, msg, hcur, _, _, _, _, _, _, _, ⟨hCnone, rfl⟩⟩
-  refine ⟨?_, ?_, ?_, ?_⟩
+  refine { lineWF := ?_, dir := ?_, pending := ?_, txnCore := ?_ }
   · intro j
     by_cases hji : j = i
     · subst j
@@ -168,7 +171,10 @@ theorem coreInv_preserved_recvProbeAckAtManager (n : Nat)
     (s s' : SymState HomeState NodeState n) (hinv : coreInv n s)
     {i : Fin n} (hstep : RecvProbeAckAtManager s s' i) :
     coreInv n s' := by
-  rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
+  have hlineWF := hinv.lineWF
+  have hdir := hinv.dir
+  have hpending := hinv.pending
+  have htxn := hinv.txnCore
   rcases hstep with ⟨tx, msg, hcur, hphase, hremain, hC, hsrc, hwf, rfl⟩
   have htxn' : tx.requester < n ∧
       (tx.phase = .probing ∨ tx.phase = .grantReady ∨ tx.phase = .grantPendingAck) ∧
@@ -183,7 +189,7 @@ theorem coreInv_preserved_recvProbeAckAtManager (n : Nat)
   have hpendPair : s.shared.pendingReleaseAck = none ∧ s.shared.pendingGrantAck = none := by
     simpa [pendingInv, hcur, hphase] using hpending
   rcases hpendPair with ⟨hrelNone, hgrantNone⟩
-  refine ⟨?_, ?_, ?_, ?_⟩
+  refine { lineWF := ?_, dir := ?_, pending := ?_, txnCore := ?_ }
   · intro j
     by_cases hji : j = i
     · subst j
