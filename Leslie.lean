@@ -31,6 +31,7 @@ import «Leslie».Examples.OneThirdRuleBoundedUnrolling
 import «Leslie».Examples.MajorityBoundedUnrolling
 import «Leslie».Examples.SingleProposerPaxos
 import «Leslie».Examples.TwoProposerPaxos
+import «Leslie».Examples.MProposerPaxos
 import «Leslie».Examples.Paxos
 import «Leslie».Examples.KVStore
 import «Leslie».Examples.LeaseLock
