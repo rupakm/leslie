@@ -236,6 +236,100 @@ def tpAgreement (locals : Fin n → TPState) : Prop :=
     (locals q).decision = some w →
     v = w
 
+/-! #### Counting helpers -/
+
+/-- Fuse a `filter`-of-`filterMap` into a single combined filter length.
+    Used to count how many elements of `L` satisfy both a Bool condition
+    `c` and a value-match predicate after applying `g`. -/
+private theorem filter_filterMap_length_eq {α β : Type} [BEq β] (L : List α)
+    (c : α → Bool) (g : α → β) (v : β) :
+    (List.filter (· == v) (List.filterMap
+      (fun q => if c q = true then some (g q) else none) L)).length =
+    (L.filter (fun q => c q && g q == v)).length := by
+  induction L with
+  | nil => rfl
+  | cons a L ih =>
+    rw [List.filterMap_cons]
+    cases hc : c a with
+    | true =>
+      simp only [hc, if_true, List.filter_cons, Bool.true_and]
+      cases hv : (g a == v) with
+      | true => simp only [hv, if_true, List.length_cons, ih]
+      | false =>
+        simp only [hv, Bool.false_eq_true, if_false, ih]
+    | false =>
+      simp only [hc, Bool.false_eq_true, if_false, List.filter_cons, Bool.false_and]
+      exact ih
+
+/-- For any list `L` of `Fin n`, the v0-filter length + v1-filter length = L.length. -/
+private theorem tpvalue_filter_sum (n : Nat) (locals : Fin n → TPState)
+    (L : List (Fin n)) :
+    (L.filter (fun q => (locals q).val == TPValue.v0)).length +
+    (L.filter (fun q => (locals q).val == TPValue.v1)).length =
+    L.length := by
+  induction L with
+  | nil => rfl
+  | cons a L ih =>
+    simp only [List.filter_cons, List.length_cons]
+    cases hv : (locals a).val with
+    | v0 =>
+      have e0 : (TPValue.v0 == TPValue.v0) = true := by decide
+      have e1 : (TPValue.v0 == TPValue.v1) = false := by decide
+      simp only [hv, e0, e1, Bool.false_eq_true, if_true, if_false, List.length_cons]
+      omega
+    | v1 =>
+      have e0 : (TPValue.v1 == TPValue.v0) = false := by decide
+      have e1 : (TPValue.v1 == TPValue.v1) = true := by decide
+      simp only [hv, e0, e1, Bool.false_eq_true, if_false, if_true, List.length_cons]
+      omega
+
+/-- Global v0/v1 counts sum to `n`. -/
+private theorem tpvalue_counts_partition (n : Nat) (locals : Fin n → TPState) :
+    ((List.finRange n).filter (fun q => (locals q).val == TPValue.v0)).length +
+    ((List.finRange n).filter (fun q => (locals q).val == TPValue.v1)).length =
+    n := by
+  rw [tpvalue_filter_sum, List.length_finRange]
+
+/-- If a filtered list is nonempty, there exists an element satisfying the predicate. -/
+private theorem filter_pos_exists {α : Type} (L : List α) (P : α → Bool) :
+    (L.filter P).length > 0 → ∃ x ∈ L, P x = true := by
+  induction L with
+  | nil => simp
+  | cons a L ih =>
+    simp only [List.filter_cons]
+    cases hP : P a with
+    | true =>
+      intro _
+      exact ⟨a, List.mem_cons_self, hP⟩
+    | false =>
+      simp only [hP, Bool.false_eq_true, if_false]
+      intro h
+      obtain ⟨x, hxL, hPx⟩ := ih h
+      exact ⟨x, List.mem_cons_of_mem _ hxL, hPx⟩
+
+/-- Filter length is monotone in the predicate. -/
+private theorem filter_length_mono {α : Type} (L : List α) (P Q : α → Bool)
+    (h : ∀ x, P x = true → Q x = true) :
+    (L.filter P).length ≤ (L.filter Q).length := by
+  induction L with
+  | nil => simp
+  | cons a L ih =>
+    simp only [List.filter_cons]
+    cases hP : P a with
+    | true =>
+      have hQ := h a hP
+      simp only [hP, hQ, if_true, List.length_cons]
+      omega
+    | false =>
+      simp only [hP, Bool.false_eq_true, if_false]
+      cases hQ : Q a with
+      | true =>
+        simp only [hQ, if_true, List.length_cons]
+        omega
+      | false =>
+        simp only [hQ, Bool.false_eq_true, if_false]
+        exact ih
+
 /-! #### The composition argument -/
 
 /-- **Agreement from composed invariants** (sorry-free).
@@ -256,12 +350,76 @@ theorem phase1_establishes_proposal (n : Nat) :
       (∀ p, ((List.finRange n).filter fun q => ho p q).length * 2 > n) →
       atMostOneProposal (CPhase.step (phase1 n) ho locals) := by
   intro locals ho _hcomm p q v w hv hw
-  -- Both p and q proposed after phase 1. A proposal of v means v had
-  -- majority among p's received messages. Similarly w for q.
-  -- By majority quorum intersection, some process is in both HO sets,
-  -- so it sent the same value to both, constraining v = w.
-  -- The detailed counting argument:
-  sorry
+  -- Helper: local count at any proposer ≤ global count.
+  have bound : ∀ (r : Fin n) (val : TPValue),
+      (List.filter (fun x => x == val)
+        (List.filterMap (fun s => if ho r s = true then some (locals s).val else none)
+          (List.finRange n))).length ≤
+      ((List.finRange n).filter (fun s => (locals s).val == val)).length := by
+    intro r val
+    rw [filter_filterMap_length_eq]
+    exact filter_length_mono _ _ _ (by
+      intro x hx
+      simp only [Bool.and_eq_true] at hx
+      exact hx.2)
+  have hpart := tpvalue_counts_partition n locals
+  -- Unfold hv and hw to extract the count conditions.
+  simp only [CPhase.step, phase1] at hv hw
+  cases v with
+  | v0 =>
+    cases w with
+    | v0 => rfl
+    | v1 =>
+      exfalso
+      -- Extract: hv forces count0_p * 2 > n (otherwise prop ≠ some v0).
+      have hp0 : (List.filter (fun x => x == TPValue.v0)
+        (List.filterMap (fun s => if ho p s = true then some (locals s).val else none)
+          (List.finRange n))).length * 2 > n := by
+        rcases Nat.lt_or_ge n _ with h | h
+        · exact h
+        · exfalso
+          simp only [Nat.not_lt.mpr h, if_false] at hv
+          split at hv <;> simp_all [reduceCtorEq]
+      -- Extract: hw forces count1_q * 2 > n (and count0_q * 2 ≤ n).
+      have hq1 : (List.filter (fun x => x == TPValue.v1)
+        (List.filterMap (fun s => if ho q s = true then some (locals s).val else none)
+          (List.finRange n))).length * 2 > n := by
+        rcases Nat.lt_or_ge n _ with h | h
+        · exact h
+        · exfalso
+          split at hw
+          · simp_all [reduceCtorEq]
+          · simp only [Nat.not_lt.mpr h, if_false] at hw
+            simp_all [reduceCtorEq]
+      have b0 := bound p TPValue.v0
+      have b1 := bound q TPValue.v1
+      omega
+  | v1 =>
+    cases w with
+    | v0 =>
+      exfalso
+      have hq0 : (List.filter (fun x => x == TPValue.v0)
+        (List.filterMap (fun s => if ho q s = true then some (locals s).val else none)
+          (List.finRange n))).length * 2 > n := by
+        rcases Nat.lt_or_ge n _ with h | h
+        · exact h
+        · exfalso
+          simp only [Nat.not_lt.mpr h, if_false] at hw
+          split at hw <;> simp_all [reduceCtorEq]
+      have hp1 : (List.filter (fun x => x == TPValue.v1)
+        (List.filterMap (fun s => if ho p s = true then some (locals s).val else none)
+          (List.finRange n))).length * 2 > n := by
+        rcases Nat.lt_or_ge n _ with h | h
+        · exact h
+        · exfalso
+          split at hv
+          · simp_all [reduceCtorEq]
+          · simp only [Nat.not_lt.mpr h, if_false] at hv
+            simp_all [reduceCtorEq]
+      have b0 := bound q TPValue.v0
+      have b1 := bound p TPValue.v1
+      omega
+    | v1 => rfl
 
 /-- Phase 2 establishes `decisionWasProposed` assuming `atMostOneProposal`
     holds and proposals are unchanged by phase 2.
@@ -272,24 +430,102 @@ theorem phase2_preserves_proposal (n : Nat) :
       atMostOneProposal (CPhase.step (phase2 n) ho locals) := by
   intro locals ho h1 p q v w hpv hqw
   -- Phase 2 does not change the proposal field.
-  -- The update in phase2 only modifies the decision field.
-  -- So proposals are inherited from the pre-state.
-  sorry
+  have h_eq : ∀ r, ((phase2 n).step ho locals r).proposal = (locals r).proposal := by
+    intro r
+    show ((phase2 n).update r (locals r) _).proposal = _
+    unfold phase2
+    simp only
+    split
+    · rfl
+    · split
+      · rfl
+      · rfl
+  rw [h_eq p] at hpv
+  rw [h_eq q] at hqw
+  exact h1 p q v w hpv hqw
 
-/-- Phase 2 establishes `decisionWasProposed`: any decision came from
-    a majority of proposals, so at least one proposer exists. -/
+/-- Phase 2 preserves/establishes `decisionWasProposed`. The theorem is a
+    preservation statement: if the pre-state already satisfies the invariant,
+    the post-state does too. New decisions set by phase 2 require a majority
+    of `some v` messages, so at least one process had `proposal = some v`.
+    Existing decisions are inherited via the pre-state invariant. -/
 theorem phase2_establishes_decision (n : Nat) :
     ∀ locals (ho : HOCollection (Fin n)),
+      decisionWasProposed locals →
       (∀ p, ((List.finRange n).filter fun q => ho p q).length * 2 > n) →
       decisionWasProposed (CPhase.step (phase2 n) ho locals) := by
-  intro locals ho _hcomm p v hv
-  -- Process p decided v, meaning a majority of received proposals were `some v`.
-  -- A majority of the n processes sent proposals. By pigeonhole, at least
-  -- one of them had proposal = some v.
-  sorry
+  intro locals ho hprev _hcomm p v hv
+  -- Phase 2 preserves the proposal field.
+  have h_eq : ∀ r, ((phase2 n).step ho locals r).proposal = (locals r).proposal := by
+    intro r
+    show ((phase2 n).update r (locals r) _).proposal = _
+    unfold phase2
+    simp only
+    split
+    · rfl
+    · split
+      · rfl
+      · rfl
+  suffices h : ∃ q, (locals q).proposal = some v by
+    obtain ⟨q, hq⟩ := h
+    exact ⟨q, by rw [h_eq q]; exact hq⟩
+  -- Helper: from a positive-count filter, extract a proposer.
+  have extract : ∀ (val : TPValue),
+      (List.filter (fun x => x == some val)
+        (List.filterMap (fun s => if ho p s = true then some (locals s).proposal else none)
+          (List.finRange n))).length > 0 →
+      ∃ q, (locals q).proposal = some val := by
+    intro val hpos
+    obtain ⟨x, hxL, hxv⟩ := filter_pos_exists _ _ hpos
+    rw [List.mem_filterMap] at hxL
+    obtain ⟨q, _, hq_eq⟩ := hxL
+    refine ⟨q, ?_⟩
+    cases hho : ho p q with
+    | true =>
+      rw [hho] at hq_eq
+      simp only [if_true] at hq_eq
+      -- hq_eq: some (locals q).proposal = x, hxv: x == some val
+      -- So (locals q).proposal = x and x == some val. Need x = some val.
+      have : x = some val := by
+        cases x with
+        | none => simp at hxv
+        | some y =>
+          cases val with
+          | v0 =>
+            cases y with
+            | v0 => rfl
+            | v1 => simp at hxv
+          | v1 =>
+            cases y with
+            | v0 => simp at hxv
+            | v1 => rfl
+      rw [this] at hq_eq
+      exact Option.some.inj hq_eq
+    | false =>
+      rw [hho] at hq_eq
+      simp at hq_eq
+  simp only [CPhase.step, phase2] at hv
+  -- Case analysis on phase2's three branches.
+  split at hv
+  · -- Branch 1: majority of v0 → new decision = some v0
+    rename_i h0
+    obtain rfl : v = TPValue.v0 := by cases hv; rfl
+    exact extract TPValue.v0 (by omega)
+  · split at hv
+    · -- Branch 2: majority of v1 → new decision = some v1
+      rename_i h1
+      obtain rfl : v = TPValue.v1 := by cases hv; rfl
+      exact extract TPValue.v1 (by omega)
+    · -- Branch 3: decision inherited from pre-state
+      exact hprev p v hv
 
 /-- **The composition: agreement for the two-phase protocol** (sorry-free).
-    Uses `seq_compose` to get both invariants, then derives agreement. -/
+
+    Requires `hNoDec : ∀ r, (locals r).decision = none` — we start with no
+    pre-existing decisions (the natural initial condition for consensus).
+    This makes `decisionWasProposed locals` vacuous, and since phase 1 doesn't
+    touch the decision field, it remains vacuous entering phase 2, where
+    `phase2_establishes_decision` takes over. -/
 theorem two_phase_agreement (n : Nat)
     (commA commB : HOCollection (Fin n) → Prop)
     (hcommA : ∀ ho, commA ho →
@@ -299,21 +535,36 @@ theorem two_phase_agreement (n : Nat)
     (locals : Fin n → TPState)
     (hoA hoB : HOCollection (Fin n))
     (hInvA : atMostOneProposal locals)
+    (hNoDec : ∀ r, (locals r).decision = none)
     (hCommA : commA hoA) (hCommB : commB hoB) :
     tpAgreement (CPhase.seqResult (phase1 n) (phase2 n) hoA hoB locals) := by
-  have composed := seq_compose (phase1 n) (phase2 n) commA commB
-    atMostOneProposal decisionWasProposed
-    -- Phase A preserves atMostOneProposal
-    (by intro locs ho hinv hcomm
-        exact phase1_establishes_proposal n locs ho (hcommA ho hcomm))
-    -- Phase B preserves atMostOneProposal
-    (by intro locs ho hinv hcomm
-        exact phase2_preserves_proposal n locs ho hinv)
-    -- Phase B establishes decisionWasProposed given atMostOneProposal
-    (by intro locs ho hinv hcomm
-        exact phase2_establishes_decision n locs ho (hcommB ho hcomm))
-    locals hoA hoB hInvA hCommA hCommB
-  exact agreement_from_invariants _ composed.1 composed.2
+  unfold CPhase.seqResult
+  -- Phase 1 establishes atMostOneProposal on its output.
+  have midA : atMostOneProposal ((phase1 n).step hoA locals) :=
+    phase1_establishes_proposal n locals hoA (hcommA hoA hCommA)
+  -- Phase 1 preserves "no decisions" because it doesn't touch decision field.
+  have midNoDec : ∀ r, ((phase1 n).step hoA locals r).decision = none := by
+    intro r
+    show ((phase1 n).update r (locals r) _).decision = none
+    unfold phase1
+    simp only
+    split
+    · exact hNoDec r
+    · split
+      · exact hNoDec r
+      · exact hNoDec r
+  -- Decision invariant is vacuously true on the mid-state.
+  have midPrevB : decisionWasProposed ((phase1 n).step hoA locals) := by
+    intro p v hv
+    rw [midNoDec p] at hv
+    exact absurd hv (by simp [reduceCtorEq])
+  -- Phase 2 preserves atMostOneProposal.
+  have postA : atMostOneProposal ((phase2 n).step hoB ((phase1 n).step hoA locals)) :=
+    phase2_preserves_proposal n _ hoB midA
+  -- Phase 2 establishes decisionWasProposed on its output.
+  have postB : decisionWasProposed ((phase2 n).step hoB ((phase1 n).step hoA locals)) :=
+    phase2_establishes_decision n _ hoB midPrevB (hcommB hoB hCommB)
+  exact agreement_from_invariants _ postA postB
 
 /-! ### Connecting to Round Infrastructure -/
 
