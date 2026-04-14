@@ -802,6 +802,145 @@ importing `Leslie/Cutoff.lean` and `Leslie/Examples/OneThirdRule.lean`.
   the kernel or use `native_decide`. Small-instance feasibility is
   clear; scaling is not.
 
+### 5.12 Status of concrete instances
+
+As of this writing:
+
+| Protocol | Threshold | Config level | RoundState via bridge | Demo |
+|---|---|---|---|---|
+| One-third rule | 2/3 | ✓ `otr_bounded_unrolling_cutoff` | ✓ via `binaryOtrRsta` | ✓ `verifyCanonical7 = true` |
+| Majority rule | 1/2 | ✓ `majority_bounded_unrolling_cutoff` | ✓ via `majorityRsta` | ✓ `verifyCanonical5 = true` |
+| Absorbing-at-threshold | varies | Planned | — | — |
+| PBFT / HotStuff (per view) | 2/3 | Planned | — | — |
+| Single-decree Paxos | majority (proposer+majority quorum) | Not yet attempted | **Does not fit the current bridge** | — |
+
+Both OTR and majority-rule implementations share the exact same
+proof structure (phase 1 absorbing, phase 2 absorbing-and-monotone,
+single-step lock, depth-2 bounded trace), with only the threshold
+constants changing. This strongly suggests that an abstract
+`PhaseAbsorbingThreshold` theorem could be factored out and
+instantiated for both — a future refactor candidate, not a blocker.
+
+### 5.13 Single-decree Paxos via bounded-unrolling: what would be required
+
+Paxos is structurally incompatible with the `RoundSymThreshAlg`
+bridge from Commit 2 of the bounded-unrolling work. Three specific
+obstacles, each requiring a different framework extension:
+
+#### 5.13.1 Role asymmetry
+
+`RoundSymThreshAlg` assumes every process runs the same update
+function over a uniform local state. Paxos has two roles:
+
+- **Proposers** maintain `(prop : Option Value, got1b : Fin n → Bool,
+  rep : Fin n → Option (Nat × Value))` and run three actions
+  (phase 1a implicit via ballot ownership, phase 2a, a passive role
+  in phase 2b).
+- **Acceptors** maintain `(prom : Nat, acc : Option (Nat × Value),
+  did2b : Fin m → Bool)` and run two actions (phase 1b, phase 2b).
+
+A bridge for Paxos would need a **role-parameterized
+`RoundAlg`** where local state and update depend on a role
+discriminator. This is a nontrivial extension of `Leslie/Round.lean`.
+
+#### 5.13.2 Non-threshold state
+
+`cutoff_reliable` assumes the safety invariant factors through
+`ConfigInv k` — a predicate on threshold counts. Paxos's safety
+invariant `hSafe` (and the 9 auxiliary invariants `hA`–`hJ`,
+`hRepBound`/`hF`) reference *specific values* in `rep` and `acc`,
+not just "how many are above a threshold". Specifically:
+
+- `hC` : `rep q i = some (b, v) → ∃ p, ballot p = b ∧ prop p = some v`
+- `hG` : given `did2b p i ∧ got1b q i ∧ ballot q > ballot p`, there
+  *exists* a report in `rep q i` with the right ballot
+
+These are not threshold properties. They reference the actual
+ballot value in each acceptor's recorded state. Collapsing them to
+a `ThreshView` loses essential information.
+
+A bridge for Paxos would need to abandon `ThreshView` abstraction
+and work directly with per-process state, which defeats the purpose
+of the node cutoff.
+
+#### 5.13.3 The phase-counting diameter argument
+
+Despite the above, **single-decree Paxos does admit a safety
+diameter bound**, via a completely different argument than the
+phase-absorbing threshold protocols:
+
+> **Claim (§5.9).** Single-decree Paxos has safety diameter
+> `O(mn)`, where `m` is the number of proposers and `n` is the
+> number of acceptors.
+
+**Phase counting proof sketch.** Every action fires at most once
+per structural slot:
+- Phase 1a (implicit): `m` slots (one per proposer)
+- Phase 1b: `m · n` slots (one per (proposer, acceptor) pair)
+- Phase 2a: `m` slots (one per proposer)
+- Phase 2b: `m · n` slots (one per (proposer, acceptor) pair)
+
+Total slots: `2m + 2mn = O(mn)`. Every state-changing action fills
+exactly one slot and cannot fire twice (the action's guard becomes
+`false` after firing). Hence the diameter is bounded by `O(mn)`.
+
+**What this proof requires:**
+1. A per-action "slot consumed" counter defined on `PaxosState`
+2. A lemma that each action strictly increases the counter by 1
+3. A bound that the counter is ≤ `O(mn)` at all reachable states
+4. A finite-instance check at small `(m, n)` — `m = 2, n = 3` gives
+   a bounded trace length of `O(6) = O(10)` actions
+
+This is a different shape than the phase-absorbing argument used
+for OTR and majority. It's a **monotone counter** argument rather
+than a **fixpoint** argument. The bounded-unrolling framework
+would need a second specialization for this class.
+
+#### 5.13.4 Tractable subproblems
+
+Rather than attempting the full abstraction, these intermediate
+targets are more actionable:
+
+1. **Single-proposer Paxos** (`m = 1`). With one proposer, there's
+   no role asymmetry in the sense that matters — the proposer runs
+   deterministically and all acceptors are symmetric. Safety
+   diameter reduces to `O(n)` (just the phase-1b and phase-2b
+   acceptor loops). This is essentially "one-shot voting with an
+   elected leader" and could use a variant of the majority-rule
+   framework.
+
+2. **Two-proposer Paxos**. The minimum case where ballot ordering
+   matters. Still small enough that a custom diameter argument
+   might fit in a single file without abstracting over roles.
+   This tests whether the phase-counting argument can be
+   formalized directly without a reusable framework.
+
+3. **Single-decree Paxos with bounded ballots**. Fix a concrete
+   `m, n` (say `m = 3, n = 5`) and prove safety via
+   `native_decide` on a bounded-depth trace. No general theorem;
+   just a demonstration that the phase-counting argument gives
+   a finite verification procedure for specific instances. Could
+   be a first concrete result before abstracting.
+
+#### 5.13.5 Recommendation
+
+Single-decree Paxos via bounded-unrolling is **research-grade
+work**, estimated at 1000+ lines across a role-parameterized
+framework and a Paxos instantiation. Before committing:
+
+1. Implement subproblem (1) above (single-proposer Paxos) to
+   validate that the phase-counting argument is mechanizable.
+2. If that succeeds, extend to (2) (two-proposer Paxos) to test
+   the ballot-ordering argument.
+3. Only then consider the general abstract framework.
+
+The OTR and majority-rule demonstrations in commits 1 and 3 of
+PR #15 provide the foundation: they show the Config-level
+bounded-unrolling machinery works and lifts via the bridge. The
+next frontier — ballot-indexed protocols with per-phase counters
+— is a separate research track that should build on this
+foundation but not yet be conflated with it.
+
 ---
 
 ## 6. Relationship summary
