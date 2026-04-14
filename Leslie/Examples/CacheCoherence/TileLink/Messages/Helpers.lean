@@ -294,7 +294,7 @@ noncomputable def plannedTxn {n : Nat}
   , sink := s.shared.nextSink
   , kind := kind
   , grow := grow
-  , phase := .probing
+  , phase := @probeAckPhase n probeMask
   , grantHasData := decide (kind = .acquireBlock)
   , resultPerm := resultPerm
   , transferVal := plannedTransferVal s requester
@@ -308,6 +308,7 @@ noncomputable def plannedTxn {n : Nat}
 def recvProbeLocal {n : Nat} (node : NodeState) (i : Fin n) (msg : BMsg) : NodeState :=
   { node with
       line := probedLine node.line msg.param
+      chanA := none
       chanB := none
       chanC := some (probeAckMsg i node.line) }
 
@@ -329,10 +330,13 @@ def recvProbeState {n : Nat}
 noncomputable def recvProbeAckShared {n : Nat}
     (s : SymState HomeState NodeState n)
     (i : Fin n)
-    (tx : ManagerTxn) : HomeState :=
+    (tx : ManagerTxn)
+    (msg : CMsg) : HomeState :=
   let remaining := clearProbeIdx tx.probesRemaining i.1
   let phase := probeAckPhase (n := n) remaining
+  let newMem := match msg.data with | some v => v | none => s.shared.mem
   { s.shared with
+      mem := newMem
       dir := updateDirAt s.shared.dir i (s.locals i).line.perm
       currentTxn := some { tx with probesRemaining := remaining, phase := phase } }
 
@@ -349,8 +353,9 @@ def recvProbeAckLocals {n : Nat}
 noncomputable def recvProbeAckState {n : Nat}
     (s : SymState HomeState NodeState n)
     (i : Fin n)
-    (tx : ManagerTxn) : SymState HomeState NodeState n :=
-  { shared := recvProbeAckShared s i tx
+    (tx : ManagerTxn)
+    (msg : CMsg) : SymState HomeState NodeState n :=
+  { shared := recvProbeAckShared s i tx msg
   , locals := recvProbeAckLocals s i }
 
 noncomputable def sendGrantShared {n : Nat}
@@ -512,6 +517,11 @@ noncomputable def recvReleaseAckState {n : Nat}
     (i : Fin n) : SymState HomeState NodeState n :=
   { shared := recvReleaseAckShared s
   , locals := recvReleaseAckLocals s i }
+
+def storeLocal (node : NodeState) (v : Val) : NodeState :=
+  { node with line := { perm := .T, valid := true, dirty := true, data := v } }
+
+#gen_frame_lemmas storeLocal
 
 def scheduleProbeLocals {n : Nat}
     (s : SymState HomeState NodeState n)

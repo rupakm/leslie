@@ -89,12 +89,14 @@ theorem serializationInv_of_core_channel (n : Nat)
         intro hop
         specialize hchanD i
         rw [hD] at hchanD
-        rcases hchanD with hgrantBranch | hrelBranch
+        rcases hchanD with hgrantBranch | hrelBranch | haccBranch
         · rcases hgrantBranch with ⟨tx, hcur, _, _, _, _, _, hmsg⟩
           rw [hmsg] at hop
           cases hdata : tx.grantHasData <;> simp [grantMsgOfTxn, grantOpcodeOfTxn, hdata] at hop
         · rcases hrelBranch with ⟨hcur, _, hrel, _, _, _, hmsg⟩
           exact ⟨hcur, hrel⟩
+        · rcases haccBranch with ⟨hacc, _, _⟩
+          rcases hacc with hacc | hacc <;> rw [hacc] at hop <;> cases hop
   · intro i
     cases hC : (s.locals i).chanC with
     | none =>
@@ -104,7 +106,7 @@ theorem serializationInv_of_core_channel (n : Nat)
         specialize hchanC i
         rw [hC] at hchanC
         rcases hchanC with hprobe | hrel
-        · rcases hprobe with ⟨tx, hcur, _, _, _, _, _, hwf⟩
+        · rcases hprobe with ⟨tx, hcur, _, _, _, _, _, hwf, _⟩
           have hopcode : msg.opcode = .probeAck ∨ msg.opcode = .probeAckData := by
             cases hwf with
             | inl hprobeAck =>

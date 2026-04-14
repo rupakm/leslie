@@ -1,4 +1,4 @@
-import Leslie.Examples.UtilityByzantine
+import Leslie.Action
 
 set_option linter.unnecessarySeqFocus false
 
@@ -355,6 +355,95 @@ theorem brb_inv_init (sender : Fin n) (val : Value) :
   · intro p v _ hvp ; simp [hlocal, LocalState.init] at hvp
   · intro v ⟨p, _, hvp⟩ ; simp [hlocal, LocalState.init] at hvp
 
+/-! ### Helper lemmas -/
+
+/-- A nodup sublist has bounded length. If every element of `l` appears
+    in `m` and `l` has no duplicates, then `l.length ≤ m.length`.
+    Used in `pigeonhole_filter` and `brb_agreement` to bound the number
+    of corrupted processes appearing in `finRange n`. -/
+theorem nodup_sub_length {α : Type} [DecidableEq α]
+    {l m : List α} (hnd : l.Nodup) (hsub : ∀ x ∈ l, x ∈ m) :
+    l.length ≤ m.length := by
+  induction l generalizing m with
+  | nil => simp
+  | cons a t ih =>
+    have ⟨hat, hnd_t⟩ := List.nodup_cons.mp hnd
+    have ha := hsub a (List.mem_cons.mpr (.inl rfl))
+    have h1 := ih hnd_t fun x hx =>
+      (List.mem_erase_of_ne (show x ≠ a from fun h => hat (h ▸ hx))).mpr
+        (hsub x (List.mem_cons.mpr (.inr hx)))
+    have h2 := List.length_erase_of_mem ha
+    have : m.length ≥ 1 := by cases m with | nil => simp at ha | cons => simp
+    simp [List.length_cons] ; omega
+
+
+/-- `List.finRange n` has no duplicates.
+    Basis for all counting arguments over process indices. -/
+theorem finRange_nodup : ∀ n, (List.finRange n).Nodup := by
+  intro n ; induction n with
+  | zero => simp [List.finRange]
+  | succ n ih =>
+    rw [List.finRange_succ, List.nodup_cons]
+    exact ⟨by simp [List.mem_map] ; exact fun _ => Fin.succ_ne_zero _,
+      ih.map Fin.succ fun a b hab heq =>
+        hab (by simp [Fin.ext_iff, Fin.val_succ] at heq ; exact Fin.ext heq)⟩
+
+/-- Monotonicity: if P implies Q pointwise then |filter P| ≤ |filter Q|.
+    Used in `recv.vote` to show `countVoteRecv` is monotone
+    when `voteRecv` gains a new entry. -/
+theorem filter_length_mono {α : Type} (P Q : α → Bool) (l : List α)
+    (h : ∀ x, P x = true → Q x = true) :
+    (l.filter P).length ≤ (l.filter Q).length := by
+  induction l with
+  | nil => simp
+  | cons a t ih =>
+    simp only [List.filter_cons]
+    cases hpa : P a <;> cases hqa : Q a <;> simp_all <;> omega
+
+/-- |filter (P ∧ Q)| ≤ |filter Q|: a conjunctive filter is bounded
+    by either conjunct alone.
+    Follows from `List.filter_filter` and `List.filter_sublist`. -/
+theorem filter_and_le {α : Type} (P Q : α → Bool) (l : List α) :
+    (l.filter (fun x => P x && Q x)).length ≤ (l.filter Q).length := by
+  rw [← List.filter_filter] ; exact List.filter_sublist.length_le
+
+/-- |filter P| = |filter (P ∧ Q)| + |filter (P ∧ ¬Q)|: decompose
+    a filter into two disjoint parts.
+    Core lemma for the quorum intersection arguments in both
+    validity (echo counting) and agreement (vote counting). -/
+theorem filter_split {α : Type} [DecidableEq α] (P Q : α → Bool) (l : List α) :
+    (l.filter P).length =
+    (l.filter (fun x => P x && Q x)).length +
+    (l.filter (fun x => P x && !Q x)).length := by
+  induction l with
+  | nil => simp
+  | cons a t ih =>
+    simp only [List.filter_cons]
+    cases P a <;> cases Q a <;> simp <;> omega
+
+/-- Pigeonhole: if |{r | P r}| > |corrupted|, some r satisfies P
+    and is not corrupted. Uses `filter_split` + `filter_and_le` to
+    decompose the filter and extract a correct witness via
+    `List.exists_mem_of_length_pos`. -/
+theorem pigeonhole_filter (P : Fin n → Bool) (corrupted : List (Fin n))
+    (hgt : corrupted.length < ((List.finRange n).filter P).length) :
+    ∃ q, P q = true ∧ q ∉ corrupted := by
+  let Q : Fin n → Bool := fun x => decide (x ∈ corrupted)
+  have hsplit := filter_split P Q (List.finRange n)
+  have hle : ((List.finRange n).filter (fun x => P x && Q x)).length ≤
+      corrupted.length := by
+    calc ((List.finRange n).filter (fun x => P x && Q x)).length
+        ≤ ((List.finRange n).filter Q).length := filter_and_le P Q _
+      _ ≤ corrupted.length := by
+          apply nodup_sub_length ((finRange_nodup n).sublist List.filter_sublist)
+          intro x hx ; simp [Q, List.mem_filter] at hx ; exact hx
+  obtain ⟨q, hq⟩ := List.exists_mem_of_length_pos (by omega :
+    0 < ((List.finRange n).filter (fun x => P x && !Q x)).length)
+  have ⟨_, hq2⟩ := List.mem_filter.mp hq
+  simp only [Q, Bool.and_eq_true, Bool.not_eq_true'] at hq2
+  exact ⟨q, hq2.1, fun h => by simp [h] at hq2⟩
+
+
 /-! ### Invariant preservation
 
     We prove `brb_inv_step` by case analysis on the action. For each action,
@@ -377,7 +466,7 @@ private theorem echo_quorum_val {n : Nat} {Value : Type} [DecidableEq Value]
     (hloc : ∀ q, isCorrect n Value s q → local_consistent n Value val (s.local_ q))
     (hgt : s.corrupted.length < countEchoRecv n Value (s.local_ p) v) :
     v = val := by
-  obtain ⟨q, hqecho, hqcorr⟩ := pigeonhole_filter
+  obtain ⟨q, hqecho, hqcorr⟩ := pigeonhole_filter n
     ((s.local_ p).echoRecv · v) s.corrupted hgt
   have := hetrace q p v hqcorr hqecho
   exact (hloc q hqcorr).2.2.1 v this
@@ -390,14 +479,16 @@ private theorem vote_quorum_val {n : Nat} {Value : Type} [DecidableEq Value]
     (hloc : ∀ q, isCorrect n Value s q → local_consistent n Value val (s.local_ q))
     (hgt : s.corrupted.length < countVoteRecv n Value (s.local_ p) v) :
     v = val := by
-  obtain ⟨q, hqvote, hqcorr⟩ := pigeonhole_filter
+  obtain ⟨q, hqvote, hqcorr⟩ := pigeonhole_filter n
     ((s.local_ p).voteRecv · v) s.corrupted hgt
   exact (hloc q hqcorr).2.2.2.1 v (hvtrace p q v hqcorr hqvote)
 
 -- Proof: by contradiction. Two echo quorums of size n-f give n-f-c correct echoes each.
 -- Since echoed : Option (at most one value per process), the disjoint sets sum to 2(n-f-c),
 -- but three-way bound with corrupted gives n ≤ 2f+c ≤ 3f, contradicting n > 3f.
-/-- Echo quorum intersection: wrapper around the abstract lemma in UtilityByzantine. -/
+/-- Echo quorum intersection: two values can't both have ≥ n−f echo
+    sources when n > 3f and each correct process echoes at most one value.
+    If p1 received n−f echos for v and p2 received n−f echos for w, then v = w. -/
 private theorem echo_quorum_intersection {n : Nat} {Value : Type} [DecidableEq Value]
     {f : Nat} (hn : n > 3 * f)
     (s : State n Value) (p1 p2 : Fin n) (v w : Value)
@@ -406,11 +497,81 @@ private theorem echo_quorum_intersection {n : Nat} {Value : Type} [DecidableEq V
       (s.local_ q).echoRecv p v = true → (s.local_ p).echoed = some v)
     (hv : countEchoRecv n Value (s.local_ p1) v ≥ echoThreshold n f)
     (hw : countEchoRecv n Value (s.local_ p2) w ≥ echoThreshold n f) :
-    v = w :=
-  _root_.echo_quorum_intersection hn v w p1 p2
-    (fun p q w => (s.local_ p).echoRecv q w)
-    (fun p => (s.local_ p).echoed)
-    s.corrupted hbudget hetrace hv hw
+    v = w := by
+  by_contra hvw
+  simp only [echoThreshold] at hv hw
+  -- Step 1: From n-f echo sources for v at p1, extract ≥ n-f-c correct with echoed = some v.
+  -- echoRecv sources split into correct + corrupted. Correct ones have echoed = some v (hetrace).
+  -- count(echoRecv · v, correct) ≥ countEchoRecv - corrupted ≥ n-f-c
+  -- Each correct echoRecv source r has echoed r = some v (by hetrace).
+  -- So: count(echoed = some v, correct) ≥ count(echoRecv · v, correct) ≥ n-f-c.
+  -- Helper: correct echoRecv sources for val at proc have echoed = some val
+  have echo_mono := fun (proc : Fin n) (val : Value) =>
+    filter_length_mono
+      (fun r => (s.local_ proc).echoRecv r val && !decide (r ∈ s.corrupted))
+      (fun r => decide (r ∉ s.corrupted) && decide ((s.local_ r).echoed = some val))
+      (List.finRange n)
+      (fun r hr => by
+        rw [Bool.and_eq_true, Bool.not_eq_true', decide_eq_false_iff_not] at hr
+        rw [Bool.and_eq_true, decide_eq_true_eq, decide_eq_true_eq]
+        exact ⟨hr.2, hetrace r proc val hr.2 hr.1⟩)
+  -- cc = distinct corrupted count (≤ corrupted.length ≤ f)
+  let cc := ((List.finRange n).filter (fun r => decide (r ∈ s.corrupted))).length
+  have hcc_le : cc ≤ f :=
+    Nat.le_trans
+      (nodup_sub_length ((finRange_nodup n).sublist List.filter_sublist)
+        (fun x hx => by simp [List.mem_filter] at hx ; exact hx))
+      hbudget
+  -- hcount_v: correct echoed v ≥ n - f - cc (using cc, not corrupted.length)
+  have hcount_v : ((List.finRange n).filter (fun r =>
+      decide (r ∉ s.corrupted) && decide ((s.local_ r).echoed = some v))).length
+      ≥ n - f - cc := by
+    apply Nat.le_trans _ (echo_mono p1 v)
+    -- correct echoRecv sources ≥ total echoRecv - corrupted echoRecv ≥ (n-f) - cc
+    have hsplit := filter_split ((s.local_ p1).echoRecv · v)
+      (fun r => decide (r ∈ s.corrupted)) (List.finRange n)
+    have hle := filter_and_le ((s.local_ p1).echoRecv · v)
+      (fun r => decide (r ∈ s.corrupted)) (List.finRange n)
+    simp only [countEchoRecv] at hv ; omega
+  have hcount_w : ((List.finRange n).filter (fun r =>
+      decide (r ∉ s.corrupted) && decide ((s.local_ r).echoed = some w))).length
+      ≥ n - f - cc := by
+    apply Nat.le_trans _ (echo_mono p2 w)
+    have hsplit := filter_split ((s.local_ p2).echoRecv · w)
+      (fun r => decide (r ∈ s.corrupted)) (List.finRange n)
+    have hle := filter_and_le ((s.local_ p2).echoRecv · w)
+      (fun r => decide (r ∈ s.corrupted)) (List.finRange n)
+    simp only [countEchoRecv] at hw ; omega
+  -- Step 3: Three-way bound. correct-echoed-v + correct-echoed-w + corrupted ≤ n.
+  -- Disjoint because echoed : Option (at most one value per process).
+  have h3 : ∀ (l : List (Fin n)),
+      (l.filter (fun r => decide (r ∉ s.corrupted) && decide ((s.local_ r).echoed = some v))).length +
+      (l.filter (fun r => decide (r ∉ s.corrupted) && decide ((s.local_ r).echoed = some w))).length +
+      (l.filter (fun r => decide (r ∈ s.corrupted))).length
+      ≤ l.length := by
+    intro l ; induction l with
+    | nil => simp
+    | cons a t ih =>
+      simp only [List.filter_cons, List.length_cons]
+      split <;> split <;> split <;> simp_all
+      all_goals first
+        | omega
+  have h3way := h3 (List.finRange n)
+  have hlen : (List.finRange n).length = n := List.length_finRange
+  -- Convert Nat subtraction to addition: count ≥ n - f - c means count + f + c ≥ n
+  -- (since n > 3f ≥ f + c, no underflow).
+  -- Convert ≥ with Nat subtraction to addition form for omega
+  have hcv_add : n ≤ ((List.finRange n).filter (fun r =>
+    decide (r ∉ s.corrupted) && decide ((s.local_ r).echoed = some v))).length
+    + f + s.corrupted.length := by omega
+  have hcw_add : n ≤ ((List.finRange n).filter (fun r =>
+    decide (r ∉ s.corrupted) && decide ((s.local_ r).echoed = some w))).length
+    + f + s.corrupted.length := by omega
+  -- h3way: cv + cw + cc ≤ n. hcorr_le: cc ≤ c ≤ f.
+  -- cv + f + c ≥ n and cw + f + c ≥ n and cv + cw + cc ≤ n and cc ≤ f and c ≤ f
+  -- → cv ≥ n - f - c, cw ≥ n - f - c → cv + cw ≥ 2(n-f-c) = 2n-2f-2c
+  -- → 2n-2f-2c + cc ≤ n → n ≤ 2f + 2c - cc ≤ 2f + c ≤ 3f. Contradiction.
+  omega
 
 set_option maxHeartbeats 400000 in
 theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
@@ -720,9 +881,9 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
                     _ < n - f := by omega
                     _ ≤ _ := hecho_w
                 -- Pigeonhole: correct process r1 echoed v, correct r2 echoed vq
-                obtain ⟨r1, hr1_echo, hr1_corr⟩ := pigeonhole_filter
+                obtain ⟨r1, hr1_echo, hr1_corr⟩ := pigeonhole_filter n
                   ((s.local_ src).echoRecv · v) s.corrupted hgt_v
-                obtain ⟨r2, hr2_echo, hr2_corr⟩ := pigeonhole_filter
+                obtain ⟨r2, hr2_echo, hr2_corr⟩ := pigeonhole_filter n
                   ((s.local_ q).echoRecv · vq) s.corrupted hgt_w
                 -- Echo trace: r1.echoed = some v, r2.echoed = some vq
                 have hr1_echoed := hetrace r1 src v hr1_corr hr1_echo
@@ -733,7 +894,7 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
                   calc s.corrupted.length ≤ f := hbudget
                     _ < f + 1 := by omega
                     _ ≤ _ := hvote_w
-                obtain ⟨r, hr_vote, hr_corr⟩ := pigeonhole_filter
+                obtain ⟨r, hr_vote, hr_corr⟩ := pigeonhole_filter n
                   ((s.local_ q).voteRecv · vq) s.corrupted hgt_w
                 have hr_voted := hvtrace q r vq hr_corr hr_vote
                 -- r voted vq (old). By hecho_back, r has echo or vote backing for vq.
@@ -761,7 +922,7 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
                   calc s.corrupted.length ≤ f := hbudget
                     _ < f + 1 := by omega
                     _ ≤ _ := hvote_w
-                obtain ⟨r, hr_vote, hr_corr⟩ := pigeonhole_filter
+                obtain ⟨r, hr_vote, hr_corr⟩ := pigeonhole_filter n
                   ((s.local_ p).voteRecv · vp) s.corrupted hgt_w
                 have hr_voted := hvtrace p r vp hr_corr hr_vote
                 rcases hecho_back r vp hr_corr hr_voted with hecho_r | hvote_r
@@ -776,7 +937,7 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
               calc s.corrupted.length ≤ f := hbudget
                 _ < f + 1 := by omega
                 _ ≤ _ := hvote_count
-            obtain ⟨r, hr_vote, hr_corr⟩ := pigeonhole_filter
+            obtain ⟨r, hr_vote, hr_corr⟩ := pigeonhole_filter n
               ((s.local_ src).voteRecv · v) s.corrupted hgt
             -- r voted v in old state (via vote trace)
             have hr_voted := hvtrace src r v hr_corr hr_vote
@@ -847,7 +1008,7 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
                 calc s.corrupted.length ≤ f := hbudget
                   _ < f + 1 := by omega
                   _ ≤ _ := hvote_count
-              obtain ⟨r, hr_vote, hr_corr⟩ := pigeonhole_filter
+              obtain ⟨r, hr_vote, hr_corr⟩ := pigeonhole_filter n
                 ((s.local_ src).voteRecv · v) s.corrupted hgt
               have hr_voted := hvtrace src r v hr_corr hr_vote
               obtain ⟨q, hq⟩ := hecho_wit w ⟨r, hr_corr, hwv ▸ hr_voted⟩
@@ -1298,7 +1459,7 @@ theorem brb_agreement (sender : Fin n) (val : Value) (hn : n > 3 * f) :
     calc (exec.drop k e 0).corrupted.length ≤ f := hbudget
       _ < n - f := by omega
       _ ≤ _ := hvp
-  obtain ⟨rp, hrp_vote, hrp_corr⟩ := pigeonhole_filter
+  obtain ⟨rp, hrp_vote, hrp_corr⟩ := pigeonhole_filter n
     ((exec.drop k e 0).local_ p |>.voteRecv · vp) (exec.drop k e 0).corrupted hgt_p
   -- Similarly for q and vq.
   have hvq := hvotes q vq hretq
@@ -1307,7 +1468,7 @@ theorem brb_agreement (sender : Fin n) (val : Value) (hn : n > 3 * f) :
     calc (exec.drop k e 0).corrupted.length ≤ f := hbudget
       _ < n - f := by omega
       _ ≤ _ := hvq
-  obtain ⟨rq, hrq_vote, hrq_corr⟩ := pigeonhole_filter
+  obtain ⟨rq, hrq_vote, hrq_corr⟩ := pigeonhole_filter n
     ((exec.drop k e 0).local_ q |>.voteRecv · vq) (exec.drop k e 0).corrupted hgt_q
   -- rp voted vp and rq voted vq (via vote trace). By vote agreement, vp = vq.
   have hrp_voted := hvtrace p rp vp hrp_corr hrp_vote

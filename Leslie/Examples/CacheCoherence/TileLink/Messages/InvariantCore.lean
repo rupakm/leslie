@@ -38,8 +38,15 @@ def txnCoreInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
       (tx.phase = .grantReady → ∀ j : Fin n, tx.probesRemaining j.1 = false) ∧
       (tx.phase = .grantPendingAck → ∀ j : Fin n, tx.probesRemaining j.1 = false)
 
+structure CoreInv (n : Nat) (s : SymState HomeState NodeState n) : Prop where
+  lineWF : lineWFInv n s
+  dir : dirInv n s
+  pending : pendingInv n s
+  txnCore : txnCoreInv n s
+
+-- Keep `coreInv` as a def alias so existing call sites still compile.
 def coreInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
-  lineWFInv n s ∧ dirInv n s ∧ pendingInv n s ∧ txnCoreInv n s
+  CoreInv n s
 
 theorem init_lineWFInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → lineWFInv n s := by
@@ -73,7 +80,38 @@ theorem init_txnCoreInv (n : Nat) :
 theorem init_coreInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → coreInv n s := by
   intro s hinit
-  exact ⟨init_lineWFInv n s hinit, init_dirInv n s hinit,
-    init_pendingInv n s hinit, init_txnCoreInv n s hinit⟩
+  exact { lineWF := init_lineWFInv n s hinit
+        , dir := init_dirInv n s hinit
+        , pending := init_pendingInv n s hinit
+        , txnCore := init_txnCoreInv n s hinit }
+
+def probeSnapshotLine (tx : ManagerTxn) (node : NodeState) (i : Fin n) : CacheLine :=
+  if tx.probesNeeded i.1 then
+    if tx.probesRemaining i.1 = true ∧ node.chanC = none then
+      tx.preLines i.1
+    else
+      probedLine (tx.preLines i.1) (probeCapOfResult tx.resultPerm)
+  else
+    tx.preLines i.1
+
+def txnSnapshotLine (tx : ManagerTxn) (node : NodeState) (i : Fin n) : CacheLine :=
+  if tx.phase = .grantPendingAck ∧ tx.requester = i.1 then
+    if node.chanE = none then
+      tx.preLines i.1
+    else
+      grantLine (tx.preLines i.1) tx
+  else
+    probeSnapshotLine tx node i
+
+def txnLineInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
+  match s.shared.currentTxn with
+  | none => True
+  | some tx => ∀ i : Fin n, (s.locals i).line = txnSnapshotLine tx (s.locals i) i
+
+theorem init_txnLineInv (n : Nat) :
+    ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → txnLineInv n s := by
+  intro s hinit
+  rcases hinit with ⟨⟨_, _, htxn, _, _, _⟩, _⟩
+  simp [txnLineInv, htxn]
 
 end TileLink.Messages

@@ -474,8 +474,7 @@ theorem validity
     -- e(t) →[next] e(t+1)
     have hstep : (otr_spec n).toSpec.next (e t) (e (t + 1)) := by
       have := hnext t
-      simp [action_pred, exec.drop] at this
-      rwa [Nat.add_comm] at this
+      simpa [action_pred, exec.drop] using this
     -- e(t) →[next] e(t+1) means ∃ ho, comm ∧ round_step
     obtain ⟨ho, _, hround⟩ := hstep
     -- p's value at t+1 was some sender r's value at t
@@ -511,8 +510,7 @@ theorem decided_from_initial
       intro p v hdec
       have hstep : (otr_spec n).toSpec.next (e t) (e (t + 1)) := by
         have := hnext t
-        simp [action_pred, exec.drop] at this
-        rwa [Nat.add_comm] at this
+        simpa [action_pred, exec.drop] using this
       obtain ⟨ho, _, _, hlocals⟩ := hstep
       have hp := hlocals p
       simp only at hp

@@ -36,6 +36,11 @@ import «Leslie».Examples.LastVotingPhased
 import «Leslie».Examples.CASCounterRefinement
 import «Leslie».Examples.SnapshotRefinement
 import «Leslie».Examples.Peterson
+import «Leslie».Examples.CounterLiveness
+import «Leslie».Examples.PetersonLiveness
+import «Leslie».Examples.AllGatherLiveness
+import «Leslie».Examples.BallotLeaderLiveness
+import «Leslie».Examples.KVStoreLiveness
 import «Leslie».Examples.ChandyLamportSnapshot
 import «Leslie».SymShared
 import «Leslie».EnvAbstraction
@@ -46,6 +51,8 @@ import «Leslie».Examples.CacheCoherence.GermanSimple
 import «Leslie».Examples.CacheCoherence.GermanMessages.Theorem
 import «Leslie».Examples.CacheCoherence.TileLink.Common
 import «Leslie».Examples.CacheCoherence.TileLink.Atomic.Theorem
+import «Leslie».Examples.Combinators.Basic
+import «Leslie».Examples.Combinators.ThresholdConsensus
 -- import «Leslie».Rust.CoreSemantics
 -- import «Leslie».Rust.RuntimeSemantics
 -- import «Leslie».Rust.Examples.BallotLeaderPhased

@@ -217,7 +217,7 @@ theorem SymSharedSpec.forall_from_focus (spec : SymSharedSpec)
   intro e hsafety k
   -- Goal is: (state_pred (fun s => ∀ i, P s.shared (s.locals i))) (e.drop k)
   -- Which reduces to: ∀ i, P (e (0 + k)).shared ((e (0 + k)).locals i)
-  show (fun s => ∀ i, P s.shared (s.locals i)) (e (0 + k))
+  show (fun s => ∀ i, P s.shared (s.locals i)) (e k)
   intro i
   -- Build the swap permutation that swaps 0 and i
   let π := Perm.swap0 i
@@ -236,7 +236,7 @@ theorem SymSharedSpec.forall_from_focus (spec : SymSharedSpec)
   -- And e' (0 + k).locals 0 = (e (0 + k)).locals (π.inv 0) = (e (0 + k)).locals i
   -- Therefore h0' gives us P (e (0 + k)).shared ((e (0 + k)).locals i)
   -- We need to show these are definitionally equal or provide the conversion
-  change P ((e (0 + k)).perm π).shared (((e (0 + k)).perm π).locals (0 : Fin n)) at h0'
+  change P ((e k).perm π).shared (((e k).perm π).locals (0 : Fin n)) at h0'
   rw [SymState.perm] at h0'
   simp only [Function.comp] at h0'
   -- h0' : P (e (0+k)).shared ((e (0+k)).locals (π.inv 0))
