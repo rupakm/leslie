@@ -38,8 +38,15 @@ def txnCoreInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
       (tx.phase = .grantReady → ∀ j : Fin n, tx.probesRemaining j.1 = false) ∧
       (tx.phase = .grantPendingAck → ∀ j : Fin n, tx.probesRemaining j.1 = false)
 
+structure CoreInv (n : Nat) (s : SymState HomeState NodeState n) : Prop where
+  lineWF : lineWFInv n s
+  dir : dirInv n s
+  pending : pendingInv n s
+  txnCore : txnCoreInv n s
+
+-- Keep `coreInv` as a def alias so existing call sites still compile.
 def coreInv (n : Nat) (s : SymState HomeState NodeState n) : Prop :=
-  lineWFInv n s ∧ dirInv n s ∧ pendingInv n s ∧ txnCoreInv n s
+  CoreInv n s
 
 theorem init_lineWFInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → lineWFInv n s := by
@@ -73,8 +80,10 @@ theorem init_txnCoreInv (n : Nat) :
 theorem init_coreInv (n : Nat) :
     ∀ s : SymState HomeState NodeState n, (tlMessages.toSpec n).init s → coreInv n s := by
   intro s hinit
-  exact ⟨init_lineWFInv n s hinit, init_dirInv n s hinit,
-    init_pendingInv n s hinit, init_txnCoreInv n s hinit⟩
+  exact { lineWF := init_lineWFInv n s hinit
+        , dir := init_dirInv n s hinit
+        , pending := init_pendingInv n s hinit
+        , txnCore := init_txnCoreInv n s hinit }
 
 def probeSnapshotLine (tx : ManagerTxn) (node : NodeState) (i : Fin n) : CacheLine :=
   if tx.probesNeeded i.1 then

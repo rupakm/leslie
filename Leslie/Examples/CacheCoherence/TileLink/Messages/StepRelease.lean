@@ -94,9 +94,12 @@ theorem coreInv_preserved_sendRelease (n : Nat)
     (s s' : SymState HomeState NodeState n) (hinv : coreInv n s)
     {i : Fin n} {param : PruneReportParam} (hstep : SendRelease s s' i param) :
     coreInv n s' := by
-  rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
+  have hlineWF := hinv.lineWF
+  have hdir := hinv.dir
+  have hpending := hinv.pending
+  have htxn := hinv.txnCore
   rcases hstep with ⟨hcur, hgrant, hrel, _, hA, hB, hC, hD, hE, _, _, _, _, _, _, rfl⟩
-  refine ⟨?_, ?_, ?_, ?_⟩
+  refine { lineWF := ?_, dir := ?_, pending := ?_, txnCore := ?_ }
   · intro j
     by_cases hji : j = i
     · subst j
@@ -117,9 +120,12 @@ theorem coreInv_preserved_sendReleaseData (n : Nat)
     (s s' : SymState HomeState NodeState n) (hinv : coreInv n s)
     {i : Fin n} {param : PruneReportParam} (hstep : SendReleaseData s s' i param) :
     coreInv n s' := by
-  rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
+  have hlineWF := hinv.lineWF
+  have hdir := hinv.dir
+  have hpending := hinv.pending
+  have htxn := hinv.txnCore
   rcases hstep with ⟨hcur, hgrant, hrel, _, hA, hB, hC, hD, hE, _, _, _, _, _, _, rfl⟩
-  refine ⟨?_, ?_, ?_, ?_⟩
+  refine { lineWF := ?_, dir := ?_, pending := ?_, txnCore := ?_ }
   · intro j
     by_cases hji : j = i
     · subst j
@@ -232,9 +238,12 @@ theorem coreInv_preserved_recvReleaseAtManager (n : Nat)
     (s s' : SymState HomeState NodeState n) (hinv : coreInv n s)
     {i : Fin n} (hstep : RecvReleaseAtManager s s' i) :
     coreInv n s' := by
-  rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
+  have hlineWF := hinv.lineWF
+  have hdir := hinv.dir
+  have hpending := hinv.pending
+  have htxn := hinv.txnCore
   rcases hstep with ⟨msg, param, hcur, hgrant, hrel, hflight, hC, hsrc, hwf, hparam, hperm, hD, rfl⟩
-  refine ⟨?_, ?_, ?_, ?_⟩
+  refine { lineWF := ?_, dir := ?_, pending := ?_, txnCore := ?_ }
   · intro j
     simpa [recvReleaseState_line] using hlineWF j
   · intro j hCnone
@@ -303,9 +312,12 @@ theorem coreInv_preserved_recvReleaseAckAtMaster (n : Nat)
     (s s' : SymState HomeState NodeState n) (hinv : coreInv n s)
     {i : Fin n} (hstep : RecvReleaseAckAtMaster s s' i) :
     coreInv n s' := by
-  rcases hinv with ⟨hlineWF, hdir, hpending, htxn⟩
+  have hlineWF := hinv.lineWF
+  have hdir := hinv.dir
+  have hpending := hinv.pending
+  have htxn := hinv.txnCore
   rcases hstep with ⟨msg, hcur, hgrant, hrel, hflight, hD, hmsg, rfl⟩
-  refine ⟨?_, ?_, ?_, ?_⟩
+  refine { lineWF := ?_, dir := ?_, pending := ?_, txnCore := ?_ }
   · intro j
     simpa [recvReleaseAckState_line] using hlineWF j
   · intro j hCnone
@@ -439,10 +451,13 @@ theorem fullInv_preserved_with_release (n : Nat)
   | .store v =>
       rcases hstep with ⟨hcur, hgrant, hrel, _, hperm, hA, hB, hC, hD, hE, hSrc, hFlight, hs'⟩
       subst hs'
-      rcases hcore with ⟨hlineWF, hdir, hpending, htxn⟩
+      have hlineWF := hcore.lineWF
+      have hdir := hcore.dir
+      have hpending := hcore.pending
+      have htxn := hcore.txnCore
       rcases hchan with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
       have hcore' : coreInv n { shared := s.shared, locals := setFn s.locals i (storeLocal (s.locals i) v) } := by
-        refine ⟨?_, ?_, ?_, ?_⟩
+        refine { lineWF := ?_, dir := ?_, pending := ?_, txnCore := ?_ }
         · -- lineWFInv
           intro j
           by_cases hji : j = i
@@ -489,11 +504,14 @@ theorem fullInv_preserved_with_release (n : Nat)
       exact ⟨hcore, hchan, serializationInv_of_core_channel _ _ hcore hchan⟩
   | .uncachedGet source =>
       rcases hstep with ⟨hcur, hgrant, hrel, hA, hB, hC, hD, hE, hSrc, hFlight, hs'eq⟩
-      rcases hcore with ⟨hlineWF, hdir, hpending, htxn⟩
+      have hlineWF := hcore.lineWF
+      have hdir := hcore.dir
+      have hpending := hcore.pending
+      have htxn := hcore.txnCore
       rcases hchan with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
       have hcore' : coreInv n s' := by
         rw [hs'eq]
-        refine ⟨?_, ?_, ?_, ?_⟩
+        refine { lineWF := ?_, dir := ?_, pending := ?_, txnCore := ?_ }
         · intro j; by_cases hji : j = i
           · subst j; simpa [setFn] using hlineWF i
           · simpa [setFn, hji] using hlineWF j
@@ -523,11 +541,14 @@ theorem fullInv_preserved_with_release (n : Nat)
       exact ⟨hcore', hchan', serializationInv_of_core_channel _ _ hcore' hchan'⟩
   | .uncachedPut source v =>
       rcases hstep with ⟨hcur, hgrant, hrel, _hallN, hA, hB, hC, hD, hE, hSrc, hFlight, hs'eq⟩
-      rcases hcore with ⟨hlineWF, hdir, hpending, htxn⟩
+      have hlineWF := hcore.lineWF
+      have hdir := hcore.dir
+      have hpending := hcore.pending
+      have htxn := hcore.txnCore
       rcases hchan with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
       have hcore' : coreInv n s' := by
         rw [hs'eq]
-        refine ⟨?_, ?_, ?_, ?_⟩
+        refine { lineWF := ?_, dir := ?_, pending := ?_, txnCore := ?_ }
         · intro j; by_cases hji : j = i
           · subst j; simpa [setFn] using hlineWF i
           · simpa [setFn, hji] using hlineWF j
@@ -557,11 +578,14 @@ theorem fullInv_preserved_with_release (n : Nat)
       exact ⟨hcore', hchan', serializationInv_of_core_channel _ _ hcore' hchan'⟩
   | .recvUncachedAtManager =>
       rcases hstep with ⟨hcur, hgrant, hrel, msg, hA, hop, hs'eq⟩
-      rcases hcore with ⟨hlineWF, hdir, hpending, htxn⟩
+      have hlineWF := hcore.lineWF
+      have hdir := hcore.dir
+      have hpending := hcore.pending
+      have htxn := hcore.txnCore
       rcases hchan with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
       have hcore' : coreInv n s' := by
         rw [hs'eq]
-        refine ⟨?_, ?_, ?_, ?_⟩
+        refine { lineWF := ?_, dir := ?_, pending := ?_, txnCore := ?_ }
         · intro j; by_cases hji : j = i
           · subst j; simpa [setFn] using hlineWF i
           · simpa [setFn, hji] using hlineWF j
@@ -621,11 +645,14 @@ theorem fullInv_preserved_with_release (n : Nat)
       exact ⟨hcore', hchan', serializationInv_of_core_channel _ _ hcore' hchan'⟩
   | .recvAccessAckAtMaster =>
       rcases hstep with ⟨msg, hD, hop, hs'eq⟩
-      rcases hcore with ⟨hlineWF, hdir, hpending, htxn⟩
+      have hlineWF := hcore.lineWF
+      have hdir := hcore.dir
+      have hpending := hcore.pending
+      have htxn := hcore.txnCore
       rcases hchan with ⟨hchanA, hchanB, hchanC, hchanD, hchanE⟩
       have hcore' : coreInv n s' := by
         rw [hs'eq]
-        refine ⟨?_, ?_, ?_, ?_⟩
+        refine { lineWF := ?_, dir := ?_, pending := ?_, txnCore := ?_ }
         · intro j; by_cases hji : j = i
           · subst j; simpa [setFn] using hlineWF i
           · simpa [setFn, hji] using hlineWF j

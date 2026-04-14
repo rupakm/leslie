@@ -400,21 +400,16 @@ private theorem paxos_inv_next_p2a {n m : Nat} {ballot : Fin m → Nat}
     by_cases hrp : r = p
     · subst hrp; simp [hg1] at hrprop
     · simp [setFn, hrp, hrprop]
-  · -- hD: got1b/prom unchanged
-    exact hinv.hD
-  · -- hE: acc/prom unchanged
-    exact hinv.hE
-  · -- hG: did2b/got1b/rep unchanged
-    exact hinv.hG
-  · -- hH: did2b/acc unchanged
-    exact hinv.hH
+  · exact hinv.hD  -- hD: got1b/prom unchanged
+  · exact hinv.hE  -- hE: acc/prom unchanged
+  · exact hinv.hG  -- hG: did2b/got1b/rep unchanged
+  · exact hinv.hH  -- hH: did2b/acc unchanged
   · -- hJ: prop only gains at p (= some v ≠ none); got1b unchanged
     intro q hq
     by_cases hqp : q = p
     · subst hqp; simp [setFn] at hq; exact hg2
     · simp [setFn, hqp] at hq; exact hinv.hJ q hq
-  · -- hRepBound: rep/got1b unchanged
-    exact hinv.hRepBound
+  · exact hinv.hRepBound  -- hRepBound: rep/got1b unchanged
   · -- hSafe
     intro q w hprop c hc
     simp only [setFn] at hprop
@@ -566,8 +561,7 @@ private theorem paxos_inv_next_p2b {n m : Nat} {ballot : Fin m → Nat}
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hacc)
       exact ⟨p, rfl, hp⟩
     · simp only [hj, ite_false] at hacc; exact hinv.hB j b w hacc
-  · -- hC: rep unchanged
-    exact hinv.hC
+  · exact hinv.hC  -- hC: rep unchanged
   · -- hD: got1b unchanged, prom i ↑ (doesn't hurt; got1b not changed)
     intro q j hgot
     show setFn s.prom i (ballot p) j ≥ ballot q
@@ -619,10 +613,8 @@ private theorem paxos_inv_next_p2b {n m : Nat} {ballot : Fin m → Nat}
         have hprom_b : s.prom j ≥ b := hinv.hE j b w hacc
         exact ⟨ballot p, v, by simp [setFn], by omega⟩
       · exact ⟨b, w, by simp only [setFn, hj, ite_false]; exact hacc, hge⟩
-  · -- hJ: got1b/prop unchanged
-    exact hinv.hJ
-  · -- hRepBound: rep/got1b unchanged
-    exact hinv.hRepBound
+  · exact hinv.hJ  -- hJ: got1b/prop unchanged
+  · exact hinv.hRepBound  -- hRepBound: rep/got1b unchanged
   · -- hSafe: old Q witnesses still work in new state.
     -- votedFor: did2b only gained (p,i). Old votes persist.
     -- wontVoteAt: prom ↑, and if a = i and ballot p = c: old prom i > c contradicts gate prom i ≤ ballot p = c.
