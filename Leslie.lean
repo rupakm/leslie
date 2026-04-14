@@ -33,6 +33,7 @@ import «Leslie».Examples.CutoffReasoning.MajorityBoundedUnrolling
 import «Leslie».Examples.CutoffReasoning.PhaseAbsorbingThreshold
 import «Leslie».Examples.SingleProposerPaxos
 import «Leslie».Examples.TwoProposerPaxos
+import «Leslie».Examples.MProposerPaxos
 import «Leslie».Examples.Paxos
 import «Leslie».Examples.KVStore
 import «Leslie».Examples.LeaseLock
