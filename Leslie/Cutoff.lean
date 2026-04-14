@@ -135,7 +135,7 @@ private theorem two_mem_le_sum {α : Type} (l : List α) (f : α → Nat) (x y :
       · have := ih hxl hyl hnd.2 ; omega
 
 /-- Sum distributes over pointwise addition. -/
-private theorem List.sum_map_add {β : Type} (l : List β) (g h : β → Nat) :
+theorem List.sum_map_add {β : Type} (l : List β) (g h : β → Nat) :
     (l.map fun x => g x + h x).sum = (l.map g).sum + (l.map h).sum := by
   induction l with
   | nil => simp
@@ -183,7 +183,7 @@ private theorem finRange_nodup (k : Nat) : (List.finRange k).Nodup := by
            nodup_map_succ _ ih⟩
 
 /-- Indicator sum over `finRange k`: exactly 1. -/
-private theorem fin_indicator (k : Nat) (c : Fin k) :
+theorem fin_indicator (k : Nat) (c : Fin k) :
     ((List.finRange k).map fun v => if v = c then 1 else (0 : Nat)).sum = 1 :=
   list_indicator_sum _ c (finRange_nodup k) (List.mem_finRange c)
 
