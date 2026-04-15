@@ -313,8 +313,7 @@ through `ConfigInv k + threshDetermined`.
 
 **Location:** `Leslie/Examples/Combinators/PhaseCounting.lean`,
 `Leslie/Examples/Paxos/BoundedSingleProposer.lean`,
-`Leslie/Examples/Paxos/BoundedTwoProposer.lean`,
-`Leslie/Examples/Paxos/BoundedMProposer.lean`.
+`Leslie/Examples/Paxos/BoundedPaxos.lean`.
 
 This is a second, structurally different cutoff framework that does not
 go through `cutoff_reliable` and does not suffer from the pigeonhole
@@ -401,9 +400,28 @@ computed bound:
 
 | File | Protocol | Phase counter bound |
 |---|---|---|
-| `BoundedSingleProposer.lean` | single-proposer Paxos (468 lines) | `2·n` |
-| `BoundedTwoProposer.lean` | two-proposer Paxos with ballot ordering (791 lines) | `4·n + 2` |
-| `BoundedMProposer.lean` | general m-proposer Paxos (648 lines) | `2·m·n + n + m` |
+| `BoundedSingleProposer.lean` | single-proposer Paxos-lite (468 lines) | `2·n` |
+| `BoundedPaxos.lean` | m-proposer real Paxos wrapping `Leslie/Examples/Paxos.lean` (436 lines) | `2·m·n + m` |
+
+**Note on BoundedPaxos.** This file wraps the existing faithful parameterized
+Paxos in `Leslie/Examples/Paxos.lean` (full state with `prom`, `acc`, `got1b`,
+`rep`, `prop`, `did2b`; real quorum-gated `p1b` / `p2a` / `p2b` actions;
+Lamport's `safeAt` as inductive invariant; `agreement` via quorum
+intersection) in a `PhaseCountingSystem`. The safety target
+`boundedPaxos_agreement` is derived directly from `PaxosTextbookN.agreement`
+via `paxos_inv_next` preservation, with no modification to the underlying
+Paxos file.
+
+**Historical note.** Earlier versions of this section also listed
+`BoundedTwoProposer.lean` and `BoundedMProposer.lean`. Those files used a
+"defer-rule shortcut": a side condition on `propose` forced non-primary
+proposers to adopt the primary proposer's value, sidestepping the quorum-based
+max-vote argument. This was sound but referenced proposer volatile state in
+the safety invariant, which precluded any fault-model extension (message loss,
+fail-stop crashes, fail-recover). `BoundedPaxos.lean` replaces both by wrapping
+the real, faithful Paxos model — no shortcut — so the phase-counting framework
+composes cleanly with the refinement / fault-model machinery in
+`PhaseCounting.lean`.
 
 Each counter counts structural slots per role (phase 1b per acceptor,
 phase 2b per acceptor, etc.) that can fire at most once. The bounded-
@@ -417,9 +435,8 @@ reference per-process ballot-tagged state. They are not expressible as
 counter argument is orthogonal to threshold views, so the pigeonhole
 collapse never enters.
 
-**Zero sorries, builds clean against `main` after PR #20.** See
-`BoundedTwoProposer.lean` for the non-trivial defer-gate model handling
-ballot races.
+**Zero sorries, builds clean.** See `BoundedPaxos.lean` for the faithful
+m-proposer instantiation with `PaxosInv`-based agreement derivation.
 
 ---
 
@@ -533,11 +550,10 @@ hand-rolled `OneThirdRuleCutoff` pattern.
 - `Leslie/Examples/Combinators/PhaseCounting.lean` — monotone-counter
   bounded-unrolling framework with refinement theorems for fault models.
 - `Leslie/Examples/Paxos/BoundedSingleProposer.lean` — single-proposer
-  Paxos instantiation, counter bound `2·n`.
-- `Leslie/Examples/Paxos/BoundedTwoProposer.lean` — two-proposer Paxos
-  instantiation with ballot ordering, counter bound `4·n + 2`.
-- `Leslie/Examples/Paxos/BoundedMProposer.lean` — general m-proposer
-  Paxos instantiation, counter bound `2·m·n + n + m`.
+  Paxos-lite instantiation, counter bound `2·n`.
+- `Leslie/Examples/Paxos/BoundedPaxos.lean` — m-proposer real Paxos
+  wrapping `Leslie/Examples/Paxos.lean`, counter bound `2·m·n + m`,
+  agreement derived from `PaxosTextbookN.agreement` via `PaxosInv`.
 
 ### Archived (for historical reference)
 
