@@ -556,3 +556,629 @@ theorem boundedPaxos_bound_tight_of_schedule {n m : Nat} (ballot : Fin m → Nat
     phaseCounter s = 2 * m * n + m := by
   have := boundedPaxos_trace_counter ballot h
   omega
+
+/-! ## Section 7: Explicit tightness schedule
+
+    We construct an explicit trace of length `2·m·n + m` from
+    `initialPaxos`. The schedule runs, for each proposer `k` (in ballot
+    order), the block `p1b k 0; p1b k 1; ...; p1b k (n-1); p2a k;
+    p2b k 0; ...; p2b k (n-1)`, contributing `2n + 1` steps per round.
+
+    For feasibility we need:
+    - `ballot` strictly monotone in the index (so each round's `p1b`
+      promises exceed all previously set promises, satisfying the
+      `prom i ≤ ballot k` gate);
+    - `n ≥ 1` (so the single-acceptor "majority" threshold is met after
+      the first `p1b`, enabling `p2a`);
+    - all rounds propose the same `initialValue`, chosen freely in round 0
+      and forced in subsequent rounds by the highest-vote constraint.
+-/
+
+/-- Previous-round acc payload threaded through the schedule. At the
+    start of round `k`, every acceptor has `acc i = prevAcc k`. -/
+def prevAcc (m : Nat) (ballot : Fin m → Nat) (k : Nat) : Option (Nat × Value) :=
+  match k with
+  | 0 => none
+  | k' + 1 => if h : k' < m then some (ballot ⟨k', h⟩, initialValue) else none
+
+/-- Previous-round prom value threaded through the schedule. -/
+def prevProm (m : Nat) (ballot : Fin m → Nat) (k : Nat) : Nat :=
+  match k with
+  | 0 => 0
+  | k' + 1 => if h : k' < m then ballot ⟨k', h⟩ else 0
+
+/-- The quiescent state reached after fully executing proposers
+    `0, 1, ..., k-1` in the tight schedule. -/
+def stateAfter (n m : Nat) (ballot : Fin m → Nat) (k : Nat) : PaxosState n m where
+  prom  := fun _ => prevProm m ballot k
+  acc   := fun _ => prevAcc m ballot k
+  got1b := fun q _ => decide (q.val < k)
+  did2b := fun q _ => decide (q.val < k)
+  rep   := fun q _ => if q.val < k then prevAcc m ballot q.val else none
+  prop  := fun q => if q.val < k then some initialValue else none
+
+/-- At `k = 0`, the quiescent schedule state is literally `initialPaxos`. -/
+theorem stateAfter_zero (n m : Nat) (ballot : Fin m → Nat) :
+    stateAfter n m ballot 0 = initialPaxos n m := by
+  unfold stateAfter initialPaxos prevAcc prevProm
+  ext <;> simp
+
+/-- State reached after running `p1b k ⟨0,_⟩, ..., p1b k ⟨j-1,_⟩`
+    starting from `stateAfter k`. Generalises `stateAfter k` with `j`
+    bits flipped in row `k` of `got1b`, `j` entries of `rep k`, and
+    `j` entries of `prom`. -/
+def afterP1bJ (n m : Nat) (ballot : Fin m → Nat) (k : Fin m) (j : Nat) :
+    PaxosState n m where
+  prom  := fun i => if i.val < j then ballot k else prevProm m ballot k.val
+  acc   := fun _ => prevAcc m ballot k.val
+  got1b := fun q i =>
+    if q = k then decide (i.val < j) else decide (q.val < k.val)
+  did2b := fun q _ => decide (q.val < k.val)
+  rep   := fun q i =>
+    if q = k then (if i.val < j then prevAcc m ballot k.val else none)
+    else if q.val < k.val then prevAcc m ballot q.val else none
+  prop  := fun q => if q.val < k.val then some initialValue else none
+
+/-- At `j = 0`, the p1b-loop intermediate state coincides with
+    `stateAfter k.val`. -/
+theorem afterP1bJ_zero (n m : Nat) (ballot : Fin m → Nat) (k : Fin m) :
+    afterP1bJ n m ballot k 0 = stateAfter n m ballot k.val := by
+  unfold afterP1bJ stateAfter
+  ext i <;> simp <;> (intros; rintro rfl; omega)
+
+/-- At `j = n`, after all `n` p1b actions from proposer `k`, the loop
+    state has all acceptors promised and reported to `k`. This is the
+    starting state for `p2a k`. -/
+def afterP1b (n m : Nat) (ballot : Fin m → Nat) (k : Fin m) : PaxosState n m :=
+  afterP1bJ n m ballot k n
+
+/-- State reached after running `p2a k` on `afterP1b k`, i.e. after the
+    proposer has written its choice of `initialValue`. -/
+def afterP2a (n m : Nat) (ballot : Fin m → Nat) (k : Fin m) : PaxosState n m :=
+  { afterP1b n m ballot k with prop := setFn (afterP1b n m ballot k).prop k (some initialValue) }
+
+/-- State reached after running `j` p2b actions from proposer `k`, on
+    top of `afterP2a k`. -/
+def afterP2bJ (n m : Nat) (ballot : Fin m → Nat) (k : Fin m) (j : Nat) :
+    PaxosState n m where
+  prom  := fun _ => ballot k
+  acc   := fun i =>
+    if i.val < j then some (ballot k, initialValue) else prevAcc m ballot k.val
+  got1b := fun q _ =>
+    if q = k then true else decide (q.val < k.val)
+  did2b := fun q i =>
+    if q = k then decide (i.val < j) else decide (q.val < k.val)
+  rep   := fun q i =>
+    if q = k then prevAcc m ballot k.val
+    else if q.val < k.val then prevAcc m ballot q.val else none
+  prop  := fun q =>
+    if q = k then some initialValue
+    else if q.val < k.val then some initialValue else none
+
+/-- Alias: the state after `p2a k`, expressed with all p1b-loop state
+    already materialised, matches `afterP2bJ k 0`. -/
+theorem afterP2a_eq_afterP2bJ_zero (n m : Nat) (ballot : Fin m → Nat)
+    (k : Fin m) :
+    afterP2a n m ballot k = afterP2bJ n m ballot k 0 := by
+  apply PaxosState.ext
+  · -- prom: both ballot k (n is irrelevant since (x:Nat) < n always)
+    funext x
+    show (if (x : Nat) < n then ballot k else prevProm m ballot k.val) = ballot k
+    simp [x.isLt]
+  · -- acc
+    funext x
+    show prevAcc m ballot k.val =
+         (if (x : Nat) < 0 then some (ballot k, initialValue) else prevAcc m ballot k.val)
+    simp
+  · -- got1b
+    funext q i
+    show (if q = k then decide ((i : Nat) < n) else decide (q.val < k.val)) =
+         (if q = k then true else decide (q.val < k.val))
+    by_cases hqk : q = k
+    · subst hqk; simp [i.isLt]
+    · simp [hqk]
+  · -- rep
+    funext q i
+    show (if q = k then (if (i : Nat) < n then prevAcc m ballot k.val else none)
+          else if q.val < k.val then prevAcc m ballot q.val else none) =
+         (if q = k then prevAcc m ballot k.val
+          else if q.val < k.val then prevAcc m ballot q.val else none)
+    by_cases hqk : q = k
+    · subst hqk; simp [i.isLt]
+    · simp [hqk]
+  · -- prop
+    funext q
+    show (setFn (fun q : Fin m => if q.val < k.val then some initialValue else none) k
+            (some initialValue)) q =
+         (if q = k then some initialValue
+          else if q.val < k.val then some initialValue else none)
+    simp only [setFn]
+  · -- did2b
+    funext q i
+    show decide (q.val < k.val) =
+         (if q = k then decide ((i : Nat) < 0) else decide (q.val < k.val))
+    by_cases hqk : q = k
+    · subst hqk; simp
+    · simp [hqk]
+
+/-- Helper: `prevProm m ballot (k.val + 1) = ballot k`. -/
+private theorem prevProm_succ {m : Nat} (ballot : Fin m → Nat) (k : Fin m) :
+    prevProm m ballot (k.val + 1) = ballot k := by
+  show (if h : k.val < m then ballot ⟨k.val, h⟩ else 0) = ballot k
+  simp [k.isLt]
+
+/-- Helper: `prevAcc m ballot (k.val + 1) = some (ballot k, initialValue)`. -/
+private theorem prevAcc_succ {m : Nat} (ballot : Fin m → Nat) (k : Fin m) :
+    prevAcc m ballot (k.val + 1) = some (ballot k, initialValue) := by
+  show (if h : k.val < m then some (ballot ⟨k.val, h⟩, initialValue) else none)
+       = some (ballot k, initialValue)
+  simp [k.isLt]
+
+/-- A proposer `q ≠ k` with `q.val < k.val + 1` must satisfy `q.val < k.val`. -/
+private theorem lt_of_lt_succ_ne {m : Nat} {q k : Fin m}
+    (hlt : q.val < k.val + 1) (hqk : q ≠ k) : q.val < k.val := by
+  rcases Nat.lt_succ_iff_lt_or_eq.mp hlt with h | h
+  · exact h
+  · exact absurd (Fin.ext h) hqk
+
+theorem afterP2bJ_n_eq_stateAfter_succ (n m : Nat) (ballot : Fin m → Nat)
+    (k : Fin m) :
+    afterP2bJ n m ballot k n = stateAfter n m ballot (k.val + 1) := by
+  apply PaxosState.ext
+  · funext x
+    show ballot k = prevProm m ballot (k.val + 1)
+    rw [prevProm_succ]
+  · funext x
+    show (if (x : Nat) < n then some (ballot k, initialValue) else prevAcc m ballot k.val)
+         = prevAcc m ballot (k.val + 1)
+    rw [prevAcc_succ]
+    simp [x.isLt]
+  · funext q i
+    show (if q = k then true else decide (q.val < k.val)) = decide (q.val < k.val + 1)
+    by_cases hqk : q = k
+    · subst hqk; simp
+    · simp [hqk]
+      constructor
+      · intro h; exact Nat.lt_succ_of_lt h
+      · intro h; exact lt_of_lt_succ_ne h hqk
+  · funext q i
+    show (if q = k then prevAcc m ballot k.val
+          else if q.val < k.val then prevAcc m ballot q.val else none)
+         = (if q.val < k.val + 1 then prevAcc m ballot q.val else none)
+    by_cases hqk : q = k
+    · subst hqk
+      simp [Nat.lt_succ_self]
+    · simp [hqk]
+      by_cases hlt : q.val < k.val
+      · simp [hlt, Nat.lt_succ_of_lt hlt]
+      · have hnlt : ¬ q.val < k.val + 1 := fun h => hlt (lt_of_lt_succ_ne h hqk)
+        simp [hlt, hnlt]
+  · funext q
+    show (if q = k then some initialValue
+          else if q.val < k.val then some initialValue else none)
+         = (if q.val < k.val + 1 then some initialValue else none)
+    by_cases hqk : q = k
+    · subst hqk
+      simp [Nat.lt_succ_self]
+    · simp [hqk]
+      by_cases hlt : q.val < k.val
+      · simp [hlt, Nat.lt_succ_of_lt hlt]
+      · have hnlt : ¬ q.val < k.val + 1 := fun h => hlt (lt_of_lt_succ_ne h hqk)
+        simp [hlt, hnlt]
+  · funext q i
+    show (if q = k then decide ((i : Nat) < n) else decide (q.val < k.val))
+         = decide (q.val < k.val + 1)
+    by_cases hqk : q = k
+    · subst hqk; simp [i.isLt, Nat.lt_succ_self]
+    · simp [hqk]
+      constructor
+      · intro h; exact Nat.lt_succ_of_lt h
+      · intro h; exact lt_of_lt_succ_ne h hqk
+
+/-! ### Single-step lemmas: each action extends the schedule state -/
+
+/-- Monotonicity consequence: `prevProm m ballot k.val ≤ ballot k`. -/
+private theorem prevProm_le_ballot {m : Nat} (ballot : Fin m → Nat)
+    (h_mono : ∀ i j : Fin m, i.val < j.val → ballot i < ballot j) (k : Fin m) :
+    prevProm m ballot k.val ≤ ballot k := by
+  unfold prevProm
+  cases hk : k.val with
+  | zero => simp
+  | succ k' =>
+    have hk'lt : k' < m := by
+      have : k.val < m := k.isLt
+      omega
+    simp [hk'lt]
+    have hlt : (⟨k', hk'lt⟩ : Fin m).val < k.val := by
+      show k' < k.val; omega
+    exact Nat.le_of_lt (h_mono _ _ hlt)
+
+/-- Step lemma: applying `p1b k ⟨j, hj⟩` at `afterP1bJ k j` produces
+    `afterP1bJ k (j + 1)`, provided `j < n`. -/
+theorem afterP1bJ_step {n m : Nat} (ballot : Fin m → Nat)
+    (h_mono : ∀ i j : Fin m, i.val < j.val → ballot i < ballot j)
+    (k : Fin m) (j : Nat) (hj : j < n) :
+    paxosStep ballot (afterP1bJ n m ballot k j) (afterP1bJ n m ballot k (j + 1))
+      (PaxosAction.p1b k ⟨j, hj⟩) := by
+  unfold paxosStep
+  simp only [GatedAction.fires]
+  dsimp only [paxos]
+  refine ⟨⟨?_, ?_⟩, ?_⟩
+  · -- gate: got1b k ⟨j, hj⟩ = false
+    show (if k = k then decide (j < j) else _) = false
+    simp [Nat.lt_irrefl]
+  · -- gate: prom ⟨j, hj⟩ ≤ ballot k
+    show (if j < j then ballot k else prevProm m ballot k.val) ≤ ballot k
+    simp [Nat.lt_irrefl]
+    exact prevProm_le_ballot ballot h_mono k
+  · -- transition: afterP1bJ k (j+1) = { afterP1bJ k j with prom := ..., got1b := ..., rep := ... }
+    -- We prove this by PaxosState.ext, showing each field matches.
+    -- Fields acc, prop, did2b are unchanged and match definitionally.
+    show afterP1bJ n m ballot k (j + 1) =
+      { afterP1bJ n m ballot k j with
+          prom := setFn (afterP1bJ n m ballot k j).prom ⟨j, hj⟩ (ballot k)
+          got1b := setFn (afterP1bJ n m ballot k j).got1b k
+            (setFn ((afterP1bJ n m ballot k j).got1b k) ⟨j, hj⟩ true)
+          rep := setFn (afterP1bJ n m ballot k j).rep k
+            (setFn ((afterP1bJ n m ballot k j).rep k) ⟨j, hj⟩
+              ((afterP1bJ n m ballot k j).acc ⟨j, hj⟩)) }
+    apply PaxosState.ext
+    · -- prom
+      funext i
+      show (if (i : Nat) < j + 1 then ballot k else prevProm m ballot k.val)
+           = setFn (fun i : Fin n => if i.val < j then ballot k else prevProm m ballot k.val)
+               ⟨j, hj⟩ (ballot k) i
+      simp only [setFn]
+      by_cases hij : i = ⟨j, hj⟩
+      · subst hij; simp [Nat.lt_succ_self]
+      · have hne : i.val ≠ j := fun h => hij (Fin.ext h)
+        by_cases hlt : i.val < j
+        · simp [hij, hlt, Nat.lt_succ_of_lt hlt]
+        · have hnlt : ¬ i.val < j + 1 := fun h => hne (Nat.eq_of_lt_succ_of_not_lt h hlt)
+          simp [hij, hlt, hnlt]
+    · rfl
+    · -- got1b
+      funext q i
+      simp only [setFn, afterP1bJ]
+      by_cases hqk : q = k
+      · subst hqk
+        simp
+        by_cases hij : i = ⟨j, hj⟩
+        · subst hij; simp [Nat.lt_succ_self]
+        · have hne : i.val ≠ j := fun h => hij (Fin.ext h)
+          by_cases hlt : i.val < j
+          · simp [hij, hlt, Nat.lt_succ_of_lt hlt]
+          · have hnlt : ¬ i.val < j + 1 := fun h => hne (Nat.eq_of_lt_succ_of_not_lt h hlt)
+            simp [hij, hlt, hnlt]
+      · simp [hqk]
+    · -- rep
+      funext q i
+      simp only [setFn, afterP1bJ]
+      by_cases hqk : q = k
+      · subst hqk
+        simp
+        by_cases hij : i = ⟨j, hj⟩
+        · subst hij; simp [Nat.lt_succ_self]
+        · have hne : i.val ≠ j := fun h => hij (Fin.ext h)
+          by_cases hlt : i.val < j
+          · simp [hij, hlt, Nat.lt_succ_of_lt hlt]
+          · have hnlt : ¬ i.val < j + 1 := fun h => hne (Nat.eq_of_lt_succ_of_not_lt h hlt)
+            simp [hij, hlt, hnlt]
+      · simp [hqk]
+    · rfl
+    · rfl
+
+/-- `majority` of the constant `true` function holds when `n ≥ 1`. -/
+private theorem majority_all_true {n : Nat} (hn : 1 ≤ n) :
+    majority (fun _ : Fin n => true) = true := by
+  unfold majority countTrue
+  have hlen : ((List.finRange n).filter (fun _ : Fin n => true)).length = n := by
+    have : (List.finRange n).filter (fun _ : Fin n => true) = List.finRange n := by
+      induction List.finRange n with
+      | nil => rfl
+      | cons x xs ih => simp [ih]
+    rw [this, List.length_finRange]
+  simp [hlen, decide_eq_true_eq]
+  omega
+
+/-- Step lemma for p2a: applying `p2a k` at `afterP1b k = afterP1bJ k n`
+    produces `afterP2a k`. -/
+theorem afterP1b_step_p2a {n m : Nat} (ballot : Fin m → Nat) (hn : 1 ≤ n) (k : Fin m) :
+    paxosStep ballot (afterP1b n m ballot k) (afterP2a n m ballot k)
+      (PaxosAction.p2a k) := by
+  unfold paxosStep
+  simp only [GatedAction.fires]
+  dsimp only [paxos]
+  refine ⟨⟨?_, ?_⟩, ?_⟩
+  · -- gate: prop k = none
+    show (if k.val < k.val then some initialValue else none) = none
+    simp
+  · -- gate: majority (got1b k) = true
+    show majority (fun i : Fin n =>
+      if k = k then decide ((i : Nat) < n) else decide (k.val < k.val)) = true
+    have hsimp : (fun i : Fin n =>
+        if k = k then decide ((i : Nat) < n) else decide (k.val < k.val))
+        = (fun _ : Fin n => true) := by
+      funext i; simp [i.isLt]
+    rw [hsimp]
+    exact majority_all_true hn
+  · -- transition
+    refine ⟨initialValue, rfl, ?_⟩
+    -- hconstr: for every i, b, w with got1b k i = true (always) and rep k i = some (b, w),
+    -- if b is max among such reports, then initialValue = w.
+    intro i b w _hgot hrep _hmax
+    -- At afterP1b k, rep k i = prevAcc m ballot k.val
+    have hrep_eq : (afterP1b n m ballot k).rep k i = prevAcc m ballot k.val := by
+      show (if k = k then (if (i : Nat) < n then prevAcc m ballot k.val else none) else _)
+           = prevAcc m ballot k.val
+      simp [i.isLt]
+    rw [hrep_eq] at hrep
+    -- Case on k.val
+    cases hkv : k.val with
+    | zero =>
+      rw [hkv] at hrep
+      unfold prevAcc at hrep
+      exact absurd hrep (by simp)
+    | succ k' =>
+      rw [hkv] at hrep
+      unfold prevAcc at hrep
+      have hk'lt : k' < m := by
+        have : k.val < m := k.isLt; omega
+      simp only [hk'lt, ↓reduceDIte] at hrep
+      have heq : (ballot ⟨k', hk'lt⟩, initialValue) = (b, w) := Option.some.inj hrep
+      exact (Prod.mk.inj heq).2
+
+/-- Step lemma for p2b: applying `p2b k ⟨j, hj⟩` at `afterP2bJ k j`
+    produces `afterP2bJ k (j + 1)`, provided `j < n`. -/
+theorem afterP2bJ_step {n m : Nat} (ballot : Fin m → Nat)
+    (k : Fin m) (j : Nat) (hj : j < n) :
+    paxosStep ballot (afterP2bJ n m ballot k j) (afterP2bJ n m ballot k (j + 1))
+      (PaxosAction.p2b k ⟨j, hj⟩) := by
+  unfold paxosStep
+  simp only [GatedAction.fires]
+  dsimp only [paxos]
+  refine ⟨⟨?_, ?_⟩, initialValue, ?_, ?_⟩
+  · -- gate: did2b k ⟨j, hj⟩ = false
+    show (if k = k then decide (j < j) else _) = false
+    simp [Nat.lt_irrefl]
+  · -- gate: prom ⟨j, hj⟩ ≤ ballot k
+    show ballot k ≤ ballot k
+    exact Nat.le_refl _
+  · -- prop k = some initialValue
+    show (if k = k then some initialValue else _) = some initialValue
+    simp
+  · -- transition: afterP2bJ k (j+1) = { afterP2bJ k j with prom, acc, did2b updated }
+    show afterP2bJ n m ballot k (j + 1) =
+      { afterP2bJ n m ballot k j with
+          prom := setFn (afterP2bJ n m ballot k j).prom ⟨j, hj⟩ (ballot k)
+          acc := setFn (afterP2bJ n m ballot k j).acc ⟨j, hj⟩ (some (ballot k, initialValue))
+          did2b := setFn (afterP2bJ n m ballot k j).did2b k
+            (setFn ((afterP2bJ n m ballot k j).did2b k) ⟨j, hj⟩ true) }
+    apply PaxosState.ext
+    · -- prom: both ballot k
+      funext i
+      show ballot k = setFn (fun _ : Fin n => ballot k) ⟨j, hj⟩ (ballot k) i
+      simp [setFn]
+    · -- acc
+      funext i
+      show (if (i : Nat) < j + 1 then some (ballot k, initialValue)
+            else prevAcc m ballot k.val)
+           = setFn (fun i : Fin n =>
+               if (i : Nat) < j then some (ballot k, initialValue)
+               else prevAcc m ballot k.val)
+             ⟨j, hj⟩ (some (ballot k, initialValue)) i
+      simp only [setFn]
+      by_cases hij : i = ⟨j, hj⟩
+      · subst hij; simp [Nat.lt_succ_self]
+      · have hne : i.val ≠ j := fun h => hij (Fin.ext h)
+        by_cases hlt : i.val < j
+        · simp [hij, hlt, Nat.lt_succ_of_lt hlt]
+        · have hnlt : ¬ i.val < j + 1 := fun h => hne (Nat.eq_of_lt_succ_of_not_lt h hlt)
+          simp [hij, hlt, hnlt]
+    · rfl
+    · rfl
+    · rfl
+    · -- did2b
+      funext q i
+      simp only [setFn, afterP2bJ]
+      by_cases hqk : q = k
+      · subst hqk
+        simp
+        by_cases hij : i = ⟨j, hj⟩
+        · subst hij; simp [Nat.lt_succ_self]
+        · have hne : i.val ≠ j := fun h => hij (Fin.ext h)
+          by_cases hlt : i.val < j
+          · simp [hij, hlt, Nat.lt_succ_of_lt hlt]
+          · have hnlt : ¬ i.val < j + 1 := fun h => hne (Nat.eq_of_lt_succ_of_not_lt h hlt)
+            simp [hij, hlt, hnlt]
+      · simp [hqk]
+
+/-! ### Loop lemmas: bundling inner p1b and p2b loops -/
+
+/-- The list `[p1b k ⟨j, hj⟩, p1b k ⟨j+1, _⟩, ..., p1b k ⟨n-1, _⟩]`. -/
+def p1bTail {n m : Nat} (k : Fin m) : (j : Nat) → j ≤ n → List (PaxosAction n m)
+  | j, hjn =>
+    if hlt : j < n then
+      PaxosAction.p1b k ⟨j, hlt⟩ :: p1bTail k (j + 1) hlt
+    else
+      []
+  termination_by j _ => n - j
+
+/-- The list `[p2b k ⟨j, hj⟩, ..., p2b k ⟨n-1, _⟩]`. -/
+def p2bTail {n m : Nat} (k : Fin m) : (j : Nat) → j ≤ n → List (PaxosAction n m)
+  | j, hjn =>
+    if hlt : j < n then
+      PaxosAction.p2b k ⟨j, hlt⟩ :: p2bTail k (j + 1) hlt
+    else
+      []
+  termination_by j _ => n - j
+
+theorem p1bTail_length {n m : Nat} (k : Fin m) :
+    ∀ (j : Nat) (hjn : j ≤ n), (p1bTail k j hjn).length = n - j
+  | j, hjn => by
+    unfold p1bTail
+    by_cases hlt : j < n
+    · simp [hlt, p1bTail_length k (j + 1) hlt]
+      omega
+    · simp [hlt]
+      omega
+  termination_by j _ => n - j
+
+theorem p2bTail_length {n m : Nat} (k : Fin m) :
+    ∀ (j : Nat) (hjn : j ≤ n), (p2bTail k j hjn).length = n - j
+  | j, hjn => by
+    unfold p2bTail
+    by_cases hlt : j < n
+    · simp [hlt, p2bTail_length k (j + 1) hlt]
+      omega
+    · simp [hlt]
+      omega
+  termination_by j _ => n - j
+
+/-- Loop lemma: running `p1bTail k j` from `afterP1bJ k j` reaches `afterP1bJ k n`. -/
+theorem stepsFrom_p1bTail {n m : Nat} (ballot : Fin m → Nat)
+    (h_mono : ∀ i j : Fin m, i.val < j.val → ballot i < ballot j)
+    (k : Fin m) :
+    ∀ (j : Nat) (hjn : j ≤ n),
+      PhaseCounting.StepsFrom (boundedPaxos n m ballot)
+        (afterP1bJ n m ballot k j) (p1bTail k j hjn) (afterP1bJ n m ballot k n)
+  | j, hjn => by
+    unfold p1bTail
+    by_cases hlt : j < n
+    · simp only [hlt, dif_pos]
+      have hstep := afterP1bJ_step ballot h_mono k j hlt
+      have hrest := stepsFrom_p1bTail ballot h_mono k (j + 1) hlt
+      exact PhaseCounting.StepsFrom.cons _ _ hstep hrest
+    · simp only [hlt, dif_neg, not_false_eq_true]
+      have hjn' : j = n := by omega
+      subst hjn'
+      exact PhaseCounting.StepsFrom.nil _
+  termination_by j _ => n - j
+
+/-- Loop lemma: running `p2bTail k j` from `afterP2bJ k j` reaches `afterP2bJ k n`. -/
+theorem stepsFrom_p2bTail {n m : Nat} (ballot : Fin m → Nat) (k : Fin m) :
+    ∀ (j : Nat) (hjn : j ≤ n),
+      PhaseCounting.StepsFrom (boundedPaxos n m ballot)
+        (afterP2bJ n m ballot k j) (p2bTail k j hjn) (afterP2bJ n m ballot k n)
+  | j, hjn => by
+    unfold p2bTail
+    by_cases hlt : j < n
+    · simp only [hlt, dif_pos]
+      have hstep := afterP2bJ_step ballot k j hlt
+      have hrest := stepsFrom_p2bTail ballot k (j + 1) hlt
+      exact PhaseCounting.StepsFrom.cons _ _ hstep hrest
+    · simp only [hlt, dif_neg, not_false_eq_true]
+      have hjn' : j = n := by omega
+      subst hjn'
+      exact PhaseCounting.StepsFrom.nil _
+  termination_by j _ => n - j
+
+/-! ### Round schedule: `2n + 1` actions for one proposer -/
+
+/-- Schedule of actions for one full round of proposer `k`. -/
+def roundSchedule {n m : Nat} (k : Fin m) : List (PaxosAction n m) :=
+  p1bTail (n := n) k 0 (Nat.zero_le _) ++
+  [PaxosAction.p2a k] ++
+  p2bTail (n := n) k 0 (Nat.zero_le _)
+
+theorem roundSchedule_length {n m : Nat} (k : Fin m) :
+    (@roundSchedule n m k).length = 2 * n + 1 := by
+  unfold roundSchedule
+  rw [List.length_append, List.length_append, List.length_singleton]
+  rw [p1bTail_length, p2bTail_length]
+  omega
+
+/-- Round lemma: running `roundSchedule k` from `stateAfter k.val` reaches
+    `stateAfter (k.val + 1)`. -/
+theorem stepsFrom_round {n m : Nat} (ballot : Fin m → Nat)
+    (h_mono : ∀ i j : Fin m, i.val < j.val → ballot i < ballot j)
+    (hn : 1 ≤ n) (k : Fin m) :
+    PhaseCounting.StepsFrom (boundedPaxos n m ballot)
+      (stateAfter n m ballot k.val) (@roundSchedule n m k)
+      (stateAfter n m ballot (k.val + 1)) := by
+  unfold roundSchedule
+  have h1 : PhaseCounting.StepsFrom (boundedPaxos n m ballot)
+      (stateAfter n m ballot k.val) (p1bTail (n := n) k 0 (Nat.zero_le _))
+      (afterP1b n m ballot k) := by
+    rw [← afterP1bJ_zero n m ballot k]
+    exact stepsFrom_p1bTail ballot h_mono k 0 (Nat.zero_le _)
+  have h2 : PhaseCounting.StepsFrom (boundedPaxos n m ballot)
+      (afterP1b n m ballot k) [PaxosAction.p2a k] (afterP2a n m ballot k) :=
+    PhaseCounting.StepsFrom.cons _ _ (afterP1b_step_p2a ballot hn k)
+      (PhaseCounting.StepsFrom.nil _)
+  have h3 : PhaseCounting.StepsFrom (boundedPaxos n m ballot)
+      (afterP2a n m ballot k) (p2bTail (n := n) k 0 (Nat.zero_le _))
+      (stateAfter n m ballot (k.val + 1)) := by
+    rw [afterP2a_eq_afterP2bJ_zero n m ballot k, ← afterP2bJ_n_eq_stateAfter_succ n m ballot k]
+    exact stepsFrom_p2bTail ballot k 0 (Nat.zero_le _)
+  exact stepsFrom_append (stepsFrom_append h1 h2) h3
+
+/-! ### Outer induction: full schedule -/
+
+/-- Schedule of actions for the first `k` proposers (for `k ≤ m`). -/
+def tightSchedulePrefix (n m : Nat) : (k : Nat) → k ≤ m → List (PaxosAction n m)
+  | 0, _ => []
+  | k + 1, hk =>
+    tightSchedulePrefix n m k (Nat.le_of_succ_le hk) ++
+    @roundSchedule n m ⟨k, hk⟩
+
+theorem tightSchedulePrefix_length (n m : Nat) :
+    ∀ (k : Nat) (hk : k ≤ m),
+      (tightSchedulePrefix n m k hk).length = k * (2 * n + 1)
+  | 0, _ => by simp [tightSchedulePrefix]
+  | k + 1, hk => by
+    unfold tightSchedulePrefix
+    rw [List.length_append, tightSchedulePrefix_length n m k (Nat.le_of_succ_le hk),
+        roundSchedule_length, ← Nat.succ_mul]
+
+/-- Outer induction: running the first `k` round schedules from
+    `initialPaxos` reaches `stateAfter k`. -/
+theorem stepsFrom_tightSchedulePrefix {n m : Nat} (ballot : Fin m → Nat)
+    (h_mono : ∀ i j : Fin m, i.val < j.val → ballot i < ballot j) (hn : 1 ≤ n) :
+    ∀ (k : Nat) (hk : k ≤ m),
+      PhaseCounting.StepsFrom (boundedPaxos n m ballot)
+        (initialPaxos n m) (tightSchedulePrefix n m k hk) (stateAfter n m ballot k)
+  | 0, _ => by
+    unfold tightSchedulePrefix
+    rw [stateAfter_zero]
+    exact PhaseCounting.StepsFrom.nil _
+  | k + 1, hk => by
+    unfold tightSchedulePrefix
+    have hprev := stepsFrom_tightSchedulePrefix ballot h_mono hn k (Nat.le_of_succ_le hk)
+    have hround := stepsFrom_round ballot h_mono hn (⟨k, hk⟩ : Fin m)
+    exact stepsFrom_append hprev hround
+
+/-- The full tightness schedule: concatenation of all `m` round schedules. -/
+def tightSchedule (n m : Nat) : List (PaxosAction n m) :=
+  tightSchedulePrefix n m m (Nat.le_refl _)
+
+theorem tightSchedule_length (n m : Nat) :
+    (tightSchedule n m).length = 2 * m * n + m := by
+  unfold tightSchedule
+  rw [tightSchedulePrefix_length]
+  rw [Nat.mul_add, Nat.mul_one]
+  rw [show m * (2 * n) = 2 * m * n from by
+    rw [Nat.mul_comm m (2 * n), Nat.mul_assoc, Nat.mul_comm n m, ← Nat.mul_assoc]]
+
+/-- **Tightness schedule validity.** -/
+theorem tightSchedule_valid {n m : Nat} (ballot : Fin m → Nat)
+    (h_mono : ∀ i j : Fin m, i.val < j.val → ballot i < ballot j) (hn : 1 ≤ n) :
+    PhaseCounting.StepsFrom (boundedPaxos n m ballot)
+      (initialPaxos n m) (tightSchedule n m) (stateAfter n m ballot m) :=
+  stepsFrom_tightSchedulePrefix ballot h_mono hn m (Nat.le_refl _)
+
+/-- **Unconditional tightness of the phase-counter bound.** For every
+    strictly monotone `ballot` and `n ≥ 1`, there exists a reachable
+    state whose phase counter equals `2·m·n + m`. -/
+theorem boundedPaxos_bound_tight {n m : Nat} (ballot : Fin m → Nat)
+    (h_mono : ∀ i j : Fin m, i.val < j.val → ballot i < ballot j)
+    (hn : 1 ≤ n) :
+    ∃ s acts,
+      PhaseCounting.StepsFrom (boundedPaxos n m ballot) (initialPaxos n m) acts s ∧
+      acts.length = 2 * m * n + m ∧
+      phaseCounter s = 2 * m * n + m := by
+  refine ⟨stateAfter n m ballot m, tightSchedule n m, ?_, ?_, ?_⟩
+  · exact tightSchedule_valid ballot h_mono hn
+  · exact tightSchedule_length n m
+  · exact boundedPaxos_bound_tight_of_schedule ballot
+      (tightSchedule_valid ballot h_mono hn) (tightSchedule_length n m)
