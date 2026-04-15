@@ -53,7 +53,6 @@ import «Leslie».Examples.CacheCoherence.TileLink.Common
 import «Leslie».Examples.CacheCoherence.TileLink.Atomic.Theorem
 import «Leslie».Examples.Combinators.QuorumSystem
 import «Leslie».Examples.Combinators.PhaseCombinator
-import «Leslie».Examples.Combinators.TerminationCutoff
 -- import «Leslie».Rust.CoreSemantics
 -- import «Leslie».Rust.RuntimeSemantics
 -- import «Leslie».Rust.Examples.BallotLeaderPhased

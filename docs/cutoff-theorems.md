@@ -11,8 +11,8 @@ framework with per-protocol bounds for Raft / Multi-Paxos / VR / PBFT /
 HotStuff / ThresholdConsensus / FastPaxos. Both turned out to be hollow
 (see §8) and have been removed from mainline. The real cutoff content now
 lives in three places: `Leslie/Cutoff.lean` (safety, mathematically sound
-but narrow), `Leslie/Examples/Combinators/TerminationCutoff.lean`
-(liveness), and `Leslie/Examples/Combinators/PhaseCounting.lean` +
+but also contains the termination cutoff for liveness), and
+`Leslie/Examples/Combinators/PhaseCounting.lean` +
 `Leslie/Examples/Paxos/Bounded*Proposer.lean` (Paxos bounded unrolling
 via monotone phase counter).
 
@@ -155,9 +155,10 @@ being used as API surface, not as proof content.
   different cutoff framework (§5).
 - **Liveness.** Termination claims ("decides within `T` rounds") are
   about trace *trajectories*, which are dynamical and don't factor
-  through the threshView at a single state. `TerminationCutoff.lean`
-  (§3) uses the same `thresh_scaling_down` machinery to do real work
-  for termination, even though it doesn't for safety.
+  through the threshView at a single state. The `TLA.TerminationCutoff`
+  namespace in `Leslie/Cutoff.lean` (§3) uses the same
+  `thresh_scaling_down` machinery to do real work for termination,
+  even though it doesn't for safety.
 
 **Bottom line.** `cutoff_reliable` and `thresh_scaling_down` are correct
 and are load-bearing infrastructure for §3 (termination). For safety,
@@ -171,7 +172,7 @@ the framework and needs a different approach.
 
 ## 3. Termination cutoff
 
-**Location:** `Leslie/Examples/Combinators/TerminationCutoff.lean`.
+**Location:** `Leslie/Cutoff.lean` (namespace `TLA.TerminationCutoff`).
 
 This is the one file in mainline where `cutoff_reliable`'s machinery
 (`thresh_scaling_down`, `cutoffBound`) does substantive work. Termination
@@ -500,7 +501,7 @@ in this category and was removed in the same PR.
 | Cutoff kind | Bounds | Class of protocols | Where proved | Status |
 |---|---|---|---|---|
 | Symmetric threshold (§2) | `n ≤ K_nodes` | SymThreshAlg | `Leslie/Cutoff.lean` | ✅ Sound but narrow; pigeonhole-collapses for safety on small `k` |
-| Termination cutoff (§3) | `rounds ≤ T`, transfers across `n` | TV-deterministic SymThreshAlg | `Combinators/TerminationCutoff.lean` | ✅ Real dynamical work, OTR instantiated |
+| Termination cutoff (§3) | `rounds ≤ T`, transfers across `n` | TV-deterministic SymThreshAlg | `Leslie/Cutoff.lean` (`TLA.TerminationCutoff`) | ✅ Real dynamical work, OTR instantiated |
 | Hand-rolled safety (§4) | none (direct induction) | Extended-state SymThreshAlg with per-process decisions | `Examples/OneThirdRuleCutoff.lean` | ✅ The model for non-trivial safety |
 | Phase-counting bounded unrolling (§5) | `trace length ≤ bound(m, n)` | Systems with monotone phase counter | `Combinators/PhaseCounting.lean` + `Paxos/Bounded*Proposer.lean` | ✅ 3 Paxos instantiations (PR #20) |
 | Round cutoff (§6) | `rounds ≤ n·D + W` | Shift-invariant, window-local | Design preserved, not formalized | 🟡 On hold; no current target protocol |
@@ -523,11 +524,12 @@ hand-rolled `OneThirdRuleCutoff` pattern.
 
 - `Leslie/Cutoff.lean` — symmetric threshold cutoff (`cutoff_reliable`,
   `thresh_scaling_down`, `Config`, `threshView`, `ConfigInv`,
-  `threshDetermined`, `cutoffBound`, `otr_symthresh`, `majority_symthresh`).
+  `threshDetermined`, `cutoffBound`, `otr_symthresh`, `majority_symthresh`)
+  **plus** the termination cutoff under namespace `TLA.TerminationCutoff`
+  (`tvDeterministic`, `iterSucc_tv_eq`, `bounded_termination_cutoff`,
+  `isCollapsing`, `isIdentityBelowThreshold`, OTR instantiation).
 - `Leslie/Examples/OneThirdRuleCutoff.lean` — hand-rolled OTR safety
   under lossy HO with extended `Config 4 n` and `IsValidUnreliableSucc`.
-- `Leslie/Examples/Combinators/TerminationCutoff.lean` — termination
-  cutoff for TV-deterministic protocols.
 - `Leslie/Examples/Combinators/PhaseCounting.lean` — monotone-counter
   bounded-unrolling framework with refinement theorems for fault models.
 - `Leslie/Examples/Paxos/BoundedSingleProposer.lean` — single-proposer
