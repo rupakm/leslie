@@ -180,4 +180,160 @@ theorem phase_counting_bounded_unrolling (P : PhaseCountingSystem)
     have hlen : acts.length ≤ P.bound := stepsFrom_length_bounded hfrom
     exact hsmall acts hlen s hfrom
 
+/-! ## Section 5: Refinement — message loss, fail-stop crashes, any
+      restriction of the step relation
+
+    A *refinement* of a phase-counting system is one whose step relation
+    is a sub-relation of the original's. Operationally, a refinement models
+    environments that restrict which actions may fire: dropped messages
+    (certain actions never fire), fail-stop crashes (a given process's
+    actions stop firing from some point onward), fair schedulers
+    (adversarial action choices subject to fairness), etc.
+
+    The fundamental theorem of refinement: **every state reachable in the
+    refinement is reachable in the original.** Consequently, any safety
+    property proved at the original level automatically transfers to the
+    refinement. This formalizes the "monotonicity / subset" argument that
+    justifies proving Paxos (and other consensus) at the atomic-action
+    level and getting lossy and crash-safe variants for free.
+
+    **Scope.** This section covers only step-relation *restrictions*. It
+    does NOT cover fail-recover crashes (which would allow state loss,
+    an operation the framework's `step_mono` explicitly forbids because
+    it would let `phaseCounter` decrease), nor Byzantine faults (which
+    would admit transitions outside the original `step` relation
+    entirely). For fail-recover, the acceptor's persistent fields
+    (`promised`, `accepted`) would need to be stable-storage-modeled
+    explicitly — a substantial model extension. For Byzantine, the model
+    would need to be completely redesigned. Both are out of scope for
+    this framework. -/
+
+/-- A *refinement* of `P` by a restricted step relation. The refined
+    step must be a sub-relation of `P.step` (every refined transition is
+    a valid `P` transition). Everything else is inherited from `P`:
+    states, actions, initial state, phase counter, and bound.
+
+    The three `PhaseCountingSystem` obligations transfer automatically:
+    `init_zero` is identical, and both `step_mono` and `step_bounded`
+    follow from `P`'s versions applied to the containing step. -/
+def refined (P : PhaseCountingSystem)
+    (step' : P.State → P.State → P.Action → Prop)
+    (h_sub : ∀ s s' a, step' s s' a → P.step s s' a) :
+    PhaseCountingSystem where
+  State        := P.State
+  Action       := P.Action
+  step         := step'
+  init         := P.init
+  phaseCounter := P.phaseCounter
+  bound        := P.bound
+  init_zero    := P.init_zero
+  step_mono    := fun s s' a h => P.step_mono s s' a (h_sub s s' a h)
+  step_bounded := fun s s' a h => P.step_bounded s s' a (h_sub s s' a h)
+
+/-- **Reachability in any refinement is reachability in the original.**
+    This is the trivial monotonicity statement: if a state is reachable by
+    taking only a subset of the original steps, it is reachable by the
+    original step relation too.
+
+    Uses term-mode structural recursion rather than the `induction` tactic
+    because `Reachable` takes its `PhaseCountingSystem` as a parameter (not
+    an index), so `induction` cannot produce a motive that crosses the
+    refined and original systems. The direct recursion works because `hr`
+    is structurally smaller at each recursive call. -/
+theorem Reachable.of_refined
+    {P : PhaseCountingSystem}
+    {step' : P.State → P.State → P.Action → Prop}
+    (h_sub : ∀ s s' a, step' s s' a → P.step s s' a) :
+    ∀ {s : P.State}, Reachable (refined P step' h_sub) s → Reachable P s
+  | _, .init => Reachable.init
+  | _, .step a hr hstep =>
+      Reachable.step a (Reachable.of_refined h_sub hr) (h_sub _ _ _ hstep)
+
+/-- **Safety transfer under refinement.** If `Safe` holds for every state
+    reachable in `P`, then `Safe` holds for every state reachable in any
+    refinement of `P`.
+
+    Operational reading: once agreement is proved for atomic-action Paxos
+    (our Paxos files), it automatically holds for every Paxos execution
+    under arbitrary message loss, arbitrary fair/unfair scheduling, and
+    fail-stop crashes — because any of these restrictions produces a
+    refinement of the atomic model. -/
+theorem safeAll_of_refined
+    {P : PhaseCountingSystem}
+    {step' : P.State → P.State → P.Action → Prop}
+    (h_sub : ∀ s s' a, step' s s' a → P.step s s' a)
+    {Safe : P.State → Prop}
+    (h : safeAll P Safe) :
+    safeAll (refined P step' h_sub) Safe := by
+  intro s hr
+  exact h s (Reachable.of_refined h_sub hr)
+
+/-- **Bounded-unrolling transfers under refinement.** A corollary combining
+    `phase_counting_bounded_unrolling` with `safeAll_of_refined`: if the
+    abstract cutoff holds for `P`, then a BMC-bounded safety check on
+    `P` (which is what the Paxos files verify at `n ≤ bound`) establishes
+    safety for every refinement of `P`.
+
+    In other words: the bounded-unrolling procedure is sound not just for
+    the atomic model but for every environment that restricts the step
+    relation — including any reasonable formal model of message loss and
+    fail-stop crashes. -/
+theorem safeUpTo_transfers_to_refinement
+    {P : PhaseCountingSystem}
+    {step' : P.State → P.State → P.Action → Prop}
+    (h_sub : ∀ s s' a, step' s s' a → P.step s s' a)
+    {Safe : P.State → Prop}
+    (h : safeUpTo P Safe P.bound) :
+    safeAll (refined P step' h_sub) Safe := by
+  have hall : safeAll P Safe := (phase_counting_bounded_unrolling P Safe).mpr h
+  exact safeAll_of_refined h_sub hall
+
+/-! ### Illustrative refinements (no new proof content; documentation only)
+
+    These are not used anywhere — they're `def`s that concretely describe
+    how "message loss" and "fail-stop crashes" look as refinements of a
+    phase-counting system, so readers can see how the abstract theorem
+    applies. The actual verification is handled by `refined` +
+    `safeAll_of_refined` for any user-chosen `step'`. -/
+
+/-- **Message-loss refinement.** Each action has an environment-controlled
+    "deliverable" predicate `deliverable : State → Action → Bool`.  An
+    action fires only if the environment permits it.  Any realistic
+    lossy-channel semantics (drop arbitrary messages, drop arbitrary
+    percentages, drop messages only to certain receivers, etc.) factors
+    through such a predicate. -/
+def withLossyDelivery (P : PhaseCountingSystem)
+    (deliverable : P.State → P.Action → Bool) : PhaseCountingSystem :=
+  refined P
+    (fun s s' a => P.step s s' a ∧ deliverable s a = true)
+    (fun _ _ _ h => h.1)
+
+/-- **Fail-stop refinement.** A set of "crashed" process-identifiers,
+    possibly expanding over time, filters which actions may fire: once a
+    process is in the crashed set, none of its actions fire.  Here we
+    model this as a predicate `canAct : State → Action → Bool` that the
+    environment controls. -/
+def withFailStop (P : PhaseCountingSystem)
+    (canAct : P.State → P.Action → Bool) : PhaseCountingSystem :=
+  refined P
+    (fun s s' a => P.step s s' a ∧ canAct s a = true)
+    (fun _ _ _ h => h.1)
+
+/-- Message loss and fail-stop crashes can be composed — the refinement
+    of a refinement is itself a refinement. This follows by chasing
+    `h_sub` through the two layers and applying `safeAll_of_refined`
+    twice.
+
+    This shows the bounded-unrolling result survives **both** lossy
+    communication **and** fail-stop crashes simultaneously, so users
+    need not choose one or the other when justifying the framework's
+    applicability to real fault models. -/
+theorem withLossyDelivery_withFailStop_safe
+    (P : PhaseCountingSystem)
+    (deliverable canAct : P.State → P.Action → Bool)
+    {Safe : P.State → Prop}
+    (h : safeAll P Safe) :
+    safeAll (withLossyDelivery (withFailStop P canAct) deliverable) Safe :=
+  safeAll_of_refined _ (safeAll_of_refined _ h)
+
 end PhaseCounting
