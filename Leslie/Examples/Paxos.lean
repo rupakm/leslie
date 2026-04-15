@@ -190,7 +190,7 @@ structure PaxosInv {n m : Nat} (ballot : Fin m → Nat) (s : PaxosState n m) : P
        ∃ b w, s.rep q i = some (b, w) ∧ b ≥ ballot p
   hH : ∀ p i, s.did2b p i = true → ∃ b v, s.acc i = some (b, v) ∧ b ≥ ballot p
   hJ : ∀ q, s.prop q ≠ none → majority (s.got1b q) = true
-  hRepBound : ∀ q i b w, s.got1b q i = true → s.rep q i = some (b, w) → b ≤ ballot q
+  hF : ∀ q i b v, s.rep q i = some (b, v) → b ≤ ballot q
   hSafe : ∀ q v, s.prop q = some v → safeAt ballot s v (ballot q)
 
 def paxos_inv {n m : Nat} (ballot : Fin m → Nat) (s : PaxosState n m) : Prop :=
@@ -259,7 +259,7 @@ theorem paxos_inv_init {n m : Nat} (ballot : Fin m → Nat) :
     hG := by intro p _ i hi; simp [hdid p i] at hi
     hH := by intro p i hi; simp [hdid p i] at hi
     hJ := by intro q hq; simp [hprop q] at hq
-    hRepBound := by intro q i _ _ hgi; simp [hgot q i] at hgi
+    hF := by intro q i _ _ hri; simp [hrep q i] at hri
     hSafe := by intro q _ hq; simp [hprop q] at hq
   }
 
@@ -317,18 +317,18 @@ private theorem paxos_inv_next_p1b {n m : Nat} {ballot : Fin m → Nat}
     · subst hq'; simp [setFn]
       exact majority_setFn_true_of_majority _ i (hinv.hJ q hq)
     · simp [setFn, hq']; exact hinv.hJ q hq
-  · -- hRepBound: new rep p i = acc i; for (q,j) ≠ (p,i) use old
-    intro q j b w hgot hrep
+  · -- hF: new rep p i = acc i; for (q,j) ≠ (p,i) unchanged (unguarded version)
+    intro q j b w hrep
     by_cases hq : q = p
     · subst hq; by_cases hj : j = i
-      · subst hj; simp [setFn] at hgot hrep
-        -- rep q j = acc j. By hE: prom j ≥ b. Gate: prom j ≤ ballot q.
+      · subst hj; simp [setFn] at hrep
+        -- rep p i = acc i. Use hE (prom i ≥ b) + gate (prom i ≤ ballot p).
         have := hinv.hE j b w hrep
         omega
-      · simp [setFn, hj] at hgot hrep
-        exact hinv.hRepBound q j b w hgot hrep
-    · simp [setFn, hq] at hgot hrep
-      exact hinv.hRepBound q j b w hgot hrep
+      · simp [setFn, hj] at hrep
+        exact hinv.hF q j b w hrep
+    · simp [setFn, hq] at hrep
+      exact hinv.hF q j b w hrep
   · -- hSafe: did2b/prop unchanged, prom ↑ → old Q still works
     intro q v hprop c hc
     obtain ⟨Q, hQmaj, hQprop⟩ := hinv.hSafe q v hprop c hc
@@ -409,7 +409,7 @@ private theorem paxos_inv_next_p2a {n m : Nat} {ballot : Fin m → Nat}
     by_cases hqp : q = p
     · subst hqp; simp [setFn] at hq; exact hg2
     · simp [setFn, hqp] at hq; exact hinv.hJ q hq
-  · exact hinv.hRepBound  -- hRepBound: rep/got1b unchanged
+  · exact hinv.hF  -- hF: rep unchanged
   · -- hSafe
     intro q w hprop c hc
     simp only [setFn] at hprop
@@ -439,7 +439,7 @@ private theorem paxos_inv_next_p2a {n m : Nat} {ballot : Fin m → Nat}
           intro j ⟨hgj, b, w, hrj⟩
           show f j ≤ ballot q
           simp only [f, hrj]
-          exact hinv.hRepBound q j b w hgj hrj
+          exact hinv.hF q j b w hrj
         obtain ⟨amax, ⟨hgot_max, bmax, wmax, hrep_max⟩, hmax_all⟩ :=
           fin_exists_max f (fun j => s.got1b q j = true ∧ ∃ b w, s.rep q j = some (b, w))
             (ballot q) hfbound a₀ hPa₀
@@ -456,7 +456,7 @@ private theorem paxos_inv_next_p2a {n m : Nat} {ballot : Fin m → Nat}
         have hbmax_lt : bmax < ballot q := by
           by_contra h
           have hbmax_ge : bmax ≥ ballot q := Nat.not_lt.mp h
-          have hbmax_le : bmax ≤ ballot q := hinv.hRepBound q amax bmax wmax hgot_max hrep_max
+          have hbmax_le : bmax ≤ ballot q := hinv.hF q amax bmax wmax hrep_max
           have hbmax_eq : bmax = ballot q := Nat.le_antisymm hbmax_le hbmax_ge
           have : tmax = q := h_inj (htbal ▸ hbmax_eq)
           subst this
@@ -614,7 +614,7 @@ private theorem paxos_inv_next_p2b {n m : Nat} {ballot : Fin m → Nat}
         exact ⟨ballot p, v, by simp [setFn], by omega⟩
       · exact ⟨b, w, by simp only [setFn, hj, ite_false]; exact hacc, hge⟩
   · exact hinv.hJ  -- hJ: got1b/prop unchanged
-  · exact hinv.hRepBound  -- hRepBound: rep/got1b unchanged
+  · exact hinv.hF  -- hF: rep unchanged
   · -- hSafe: old Q witnesses still work in new state.
     -- votedFor: did2b only gained (p,i). Old votes persist.
     -- wontVoteAt: prom ↑, and if a = i and ballot p = c: old prom i > c contradicts gate prom i ≤ ballot p = c.
