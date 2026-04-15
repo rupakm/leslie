@@ -1,7 +1,4 @@
 import Batteries.Data.List.Lemmas
-import Leslie.Examples.SingleProposerPaxos
-import Leslie.Examples.TwoProposerPaxos
-import Leslie.Examples.MProposerPaxos
 
 /-! # Phase-Counting Threshold Protocols (abstract framework)
 
@@ -27,15 +24,11 @@ import Leslie.Examples.MProposerPaxos
     ### Concrete instances
 
     The three Paxos files on branch `feat/paxos-bounded-unrolling` are
-    all phase-counting:
+    all phase-counting. Each instantiates this framework locally:
 
       * `SingleProposerPaxos.lean` — counter ≤ `2 * n`
       * `TwoProposerPaxos.lean`    — counter ≤ `4 * n + 2`
       * `MProposerPaxos.lean`      — counter ≤ `2 * m * n + n + m`
-
-    They already derive their own bounded-unrolling theorems. This file
-    extracts the common proof once and reinstantiates it at the bottom,
-    recovering equivalents of their main theorems through the framework.
 
     Core Lean 4 + Batteries only; no Mathlib.
 -/
@@ -186,106 +179,5 @@ theorem phase_counting_bounded_unrolling (P : PhaseCountingSystem)
     obtain ⟨acts, hfrom⟩ := (reachable_iff_stepsFrom P s).mp hreach
     have hlen : acts.length ≤ P.bound := stepsFrom_length_bounded hfrom
     exact hsmall acts hlen s hfrom
-
-/-! ## Section 5: Instantiation for the three Paxos variants
-
-    The three Paxos files define their own `Reachable` and `StepsFrom`
-    inductive types, so we cannot literally share them. But we can build
-    a `PhaseCountingSystem` pointing at each file's `step`, `init`,
-    `phaseCounter`, and bound, then observe that the abstract
-    `phase_counting_bounded_unrolling` theorem produces an iff over the
-    **abstract** `Reachable`/`StepsFrom` — which is logically equivalent
-    to each file's own bounded-unrolling theorem.
-
-    This demonstrates the framework is reusable without touching the
-    existing files. A future refactor could replace each file's
-    `Reachable`/`StepsFrom`/`bounded_unrolling` with a thin wrapper
-    around `PhaseCountingSystem`. -/
-
-/-! ### Single-proposer Paxos (m = 1) -/
-
-/-- Package single-proposer Paxos as a phase-counting system (one per
-    choice of proposer value `v`). -/
-def singleProposerSystem (n : Nat) (v : SingleProposerPaxos.Val) :
-    PhaseCountingSystem where
-  State        := SingleProposerPaxos.PaxosState n
-  Action       := SingleProposerPaxos.Action n
-  step         := SingleProposerPaxos.step
-  init         := SingleProposerPaxos.initialState n v
-  phaseCounter := SingleProposerPaxos.phaseCounter
-  bound        := 2 * n
-  init_zero    := SingleProposerPaxos.phaseCounter_initialState n v
-  step_mono    := by
-    intro s s' a hstep
-    have := SingleProposerPaxos.phaseCounter_monotone s s' a hstep
-    omega
-  step_bounded := by
-    intro s s' _ _
-    exact SingleProposerPaxos.phaseCounter_bounded s'
-
-/-- Abstract bounded-unrolling specialized to single-proposer Paxos. -/
-theorem singleProposer_bounded_unrolling_via_framework
-    (n : Nat) (v : SingleProposerPaxos.Val)
-    (Safe : SingleProposerPaxos.PaxosState n → Prop) :
-    safeAll  (singleProposerSystem n v) Safe ↔
-    safeUpTo (singleProposerSystem n v) Safe (2 * n) :=
-  phase_counting_bounded_unrolling (singleProposerSystem n v) Safe
-
-/-! ### Two-proposer Paxos -/
-
-/-- Package two-proposer Paxos as a phase-counting system. -/
-def twoProposerSystem (n : Nat) : PhaseCountingSystem where
-  State        := TwoProposerPaxos.PaxosState n
-  Action       := TwoProposerPaxos.Action n
-  step         := TwoProposerPaxos.step
-  init         := TwoProposerPaxos.initialState n
-  phaseCounter := TwoProposerPaxos.phaseCounter
-  bound        := 4 * n + 2
-  init_zero    := TwoProposerPaxos.phaseCounter_initialState n
-  step_mono    := by
-    intro s s' a hstep
-    have := TwoProposerPaxos.phaseCounter_monotone s s' a hstep
-    omega
-  step_bounded := by
-    intro s s' _ _
-    exact TwoProposerPaxos.phaseCounter_bounded s'
-
-/-- Abstract bounded-unrolling specialized to two-proposer Paxos. -/
-theorem twoProposer_bounded_unrolling_via_framework (n : Nat)
-    (Safe : TwoProposerPaxos.PaxosState n → Prop) :
-    safeAll  (twoProposerSystem n) Safe ↔
-    safeUpTo (twoProposerSystem n) Safe (4 * n + 2) :=
-  phase_counting_bounded_unrolling (twoProposerSystem n) Safe
-
-/-! ### m-proposer Paxos -/
-
-/-- Package m-proposer Paxos as a phase-counting system. -/
-def mProposerSystem (n m : Nat) : PhaseCountingSystem where
-  State        := MProposerPaxos.PaxosState n m
-  Action       := MProposerPaxos.Action n m
-  step         := MProposerPaxos.step
-  init         := MProposerPaxos.initialState n m
-  phaseCounter := MProposerPaxos.phaseCounter
-  bound        := 2 * m * n + n + m
-  init_zero    := MProposerPaxos.phaseCounter_initialState n m
-  step_mono    := by
-    intro s s' a hstep
-    have := MProposerPaxos.phaseCounter_monotone s s' a hstep
-    omega
-  step_bounded := by
-    intro s s' _ hstep
-    have hb := MProposerPaxos.phaseCounter_bounded s'
-    -- `phaseCounter_bounded` gives `≤ (2*m+1)*n + m`; we normalize to
-    -- `2*m*n + n + m` for presentation.
-    have hrw : (2 * m + 1) * n + m = 2 * m * n + n + m := by
-      rw [Nat.add_mul, Nat.one_mul]
-    omega
-
-/-- Abstract bounded-unrolling specialized to m-proposer Paxos. -/
-theorem mProposer_bounded_unrolling_via_framework (n m : Nat)
-    (Safe : MProposerPaxos.PaxosState n m → Prop) :
-    safeAll  (mProposerSystem n m) Safe ↔
-    safeUpTo (mProposerSystem n m) Safe (2 * m * n + n + m) :=
-  phase_counting_bounded_unrolling (mProposerSystem n m) Safe
 
 end PhaseCounting

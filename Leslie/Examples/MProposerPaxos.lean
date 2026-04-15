@@ -1,4 +1,5 @@
 import Batteries.Data.List.Lemmas
+import Leslie.Examples.Combinators.PhaseCountingThreshold
 
 /-! # m-Proposer Paxos: Bounded-Unrolling Feasibility Test
 
@@ -375,62 +376,27 @@ theorem phaseCounter_monotone {n m : Nat} (s s' : PaxosState n m) (a : Action n 
       have h := phaseCounter_accept s s' p i hstep
       omega
 
-/-! ## Section 4: Traces and diameter bound -/
+/-! ## Section 4: Phase-counting framework instantiation -/
 
-inductive StepsFrom {n m : Nat} :
-    PaxosState n m → List (Action n m) → PaxosState n m → Prop where
-  | nil  : ∀ s, StepsFrom s [] s
-  | cons : ∀ {s s' s'' : PaxosState n m} (a : Action n m) (acts : List (Action n m)),
-             step s s' a → StepsFrom s' acts s'' → StepsFrom s (a :: acts) s''
-
-theorem phaseCounter_after_steps {n m : Nat}
-    {s s'' : PaxosState n m} {acts : List (Action n m)}
-    (hs : StepsFrom s acts s'') :
-    phaseCounter s'' ≥ phaseCounter s + acts.length := by
-  induction hs with
-  | nil s => simp
-  | @cons s₁ s₂ s₃ a acts hstep _ ih =>
-    have h1 := phaseCounter_monotone s₁ s₂ a hstep
-    simp [List.length_cons]
+/-- Package m-proposer Paxos as a `PhaseCountingSystem`. -/
+def mProposerSystem (n m : Nat) : PhaseCounting.PhaseCountingSystem where
+  State        := PaxosState n m
+  Action       := Action n m
+  step         := step
+  init         := initialState n m
+  phaseCounter := phaseCounter
+  bound        := 2 * m * n + n + m
+  init_zero    := phaseCounter_initialState n m
+  step_mono    := by
+    intro s s' a hstep
+    have := phaseCounter_monotone s s' a hstep
     omega
-
-theorem phaseCounter_fires_finitely_often {n m : Nat} (s s' : PaxosState n m)
-    (acts : List (Action n m)) (hs : StepsFrom s acts s') :
-    acts.length ≤ (2 * m + 1) * n + m - phaseCounter s := by
-  have hafter := phaseCounter_after_steps hs
-  have hbnd := phaseCounter_bounded s'
-  omega
-
-theorem StepsFrom.snoc {n m : Nat} {p q r : PaxosState n m} {as : List (Action n m)}
-    (b : Action n m) (hpq : StepsFrom p as q) (hqr : step q r b) :
-    StepsFrom p (as ++ [b]) r := by
-  induction hpq with
-  | nil s => exact StepsFrom.cons b [] hqr (StepsFrom.nil _)
-  | @cons s₁ s₂ s₃ x xs hx _ ih => exact StepsFrom.cons x (xs ++ [b]) hx (ih hqr)
-
-theorem stepsFrom_preserves_reachable {n m : Nat} {s₀ s : PaxosState n m}
-    {acts : List (Action n m)} (h : StepsFrom s₀ acts s) (h₀ : Reachable s₀) :
-    Reachable s := by
-  induction h with
-  | nil s => exact h₀
-  | @cons s₁ s₂ s₃ a acts hstep _ ih =>
-    exact ih (Reachable.step a h₀ hstep)
-
-theorem stepsFrom_to_reachable {n m : Nat} {acts : List (Action n m)}
-    {s : PaxosState n m} (h : StepsFrom (initialState n m) acts s) : Reachable s :=
-  stepsFrom_preserves_reachable h Reachable.init
-
-theorem reachable_iff_stepsFrom {n m : Nat} (s : PaxosState n m) :
-    Reachable s ↔ ∃ acts, StepsFrom (initialState n m) acts s := by
-  constructor
-  · intro h
-    induction h with
-    | init => exact ⟨[], StepsFrom.nil _⟩
-    | step a _ hstep ih =>
-      obtain ⟨acts, hfrom⟩ := ih
-      exact ⟨acts ++ [a], StepsFrom.snoc a hfrom hstep⟩
-  · rintro ⟨acts, hfrom⟩
-    exact stepsFrom_to_reachable hfrom
+  step_bounded := by
+    intro s s' _ _
+    have hb := phaseCounter_bounded s'
+    have hrw : (2 * m + 1) * n + m = 2 * m * n + n + m := by
+      rw [Nat.add_mul, Nat.one_mul]
+    omega
 
 /-! ## Section 5: Safety (agreement) -/
 
@@ -566,33 +532,59 @@ theorem agreement_reachable {n m : Nat} (s : PaxosState n m) (h : Reachable s) :
         exact safetyInv_preserved hreach' a hstep ih
   exact agreement_of_safetyInv s hinv
 
-/-! ## Section 6: Bounded-unrolling theorem -/
+/-! ## Section 6: Bounded-unrolling theorem (via abstract framework) -/
+
+/-- Adapter: local `Reachable s₀ → PhaseCounting.StepsFrom sys s₀ acts s
+    → local Reachable s`, by structural recursion on `acts`. -/
+private theorem reachable_of_stepsFrom {n m : Nat} :
+    ∀ (acts : List (Action n m)) {s₀ s : PaxosState n m},
+      Reachable s₀ →
+      PhaseCounting.StepsFrom (mProposerSystem n m) s₀ acts s →
+      Reachable s
+  | [], _, _, hr₀, h => by
+    match h with
+    | PhaseCounting.StepsFrom.nil _ => exact hr₀
+  | a :: as, _, _, hr₀, h => by
+    match h with
+    | PhaseCounting.StepsFrom.cons _ _ hstep htail =>
+      exact reachable_of_stepsFrom as (Reachable.step a hr₀ hstep) htail
+
+theorem reachable_iff_framework {n m : Nat} (s : PaxosState n m) :
+    Reachable s ↔ PhaseCounting.Reachable (mProposerSystem n m) s := by
+  constructor
+  · intro h
+    induction h with
+    | init => exact PhaseCounting.Reachable.init
+    | step a _ hstep ih =>
+      exact PhaseCounting.Reachable.step (P := mProposerSystem n m) a ih hstep
+  · intro hr
+    obtain ⟨acts, hfrom⟩ :=
+      (PhaseCounting.reachable_iff_stepsFrom (mProposerSystem n m) s).mp hr
+    exact reachable_of_stepsFrom acts Reachable.init hfrom
 
 def safeUpTo (n m : Nat) (k : Nat) : Prop :=
   ∀ acts : List (Action n m), acts.length ≤ k →
-    ∀ s', StepsFrom (initialState n m) acts s' → agreement s'
+    ∀ s', PhaseCounting.StepsFrom (mProposerSystem n m) (initialState n m) acts s' →
+      agreement s'
 
 def safeAll (n m : Nat) : Prop :=
   ∀ s : PaxosState n m, Reachable s → agreement s
 
 /-- **Main theorem: m-proposer Paxos bounded unrolling.** Safety of all
     reachable states is equivalent to safety of states reachable within
-    `2 * m * n + n + m` steps from the initial state. -/
+    `2 * m * n + n + m` steps from the initial state. Derived from the
+    abstract `phase_counting_bounded_unrolling` via `mProposerSystem`. -/
 theorem m_proposer_bounded_unrolling (n m : Nat) :
     safeAll n m ↔ safeUpTo n m (2 * m * n + n + m) := by
+  have hiff :=
+    PhaseCounting.phase_counting_bounded_unrolling (mProposerSystem n m)
+      (fun s => agreement s)
   constructor
-  · intro hall acts _ s' hfrom
+  · intro hall acts hlen s' hfrom
     apply hall
-    exact (reachable_iff_stepsFrom s').mpr ⟨acts, hfrom⟩
+    refine (reachable_iff_framework s').mpr ?_
+    exact PhaseCounting.stepsFrom_preserves_reachable hfrom PhaseCounting.Reachable.init
   · intro _ s hreach
-    obtain ⟨acts, hfrom⟩ := (reachable_iff_stepsFrom s).mp hreach
-    have hlen : acts.length ≤ 2 * m * n + n + m := by
-      have h := phaseCounter_fires_finitely_often _ _ _ hfrom
-      have h0 : phaseCounter (initialState n m) = 0 :=
-        phaseCounter_initialState n m
-      have hbnd : (2 * m + 1) * n + m = 2 * m * n + n + m := by
-        rw [Nat.add_mul, Nat.one_mul]
-      omega
     exact agreement_reachable s hreach
 
 /-! ## Section 7: Sanity checks -/

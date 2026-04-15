@@ -1,4 +1,5 @@
 import Batteries.Data.List.Lemmas
+import Leslie.Examples.Combinators.PhaseCountingThreshold
 
 /-! # Two-Proposer Paxos: Bounded-Unrolling Feasibility Test
 
@@ -450,61 +451,24 @@ theorem phaseCounter_monotone {n : Nat} (s s' : PaxosState n) (a : Action n)
       have h := phaseCounter_accept s s' p i hstep
       omega
 
-/-! ## Section 4: Traces and diameter bound -/
+/-! ## Section 4: Phase-counting framework instantiation -/
 
-inductive StepsFrom {n : Nat} : PaxosState n → List (Action n) → PaxosState n → Prop where
-  | nil  : ∀ s, StepsFrom s [] s
-  | cons : ∀ {s s' s'' : PaxosState n} (a : Action n) (acts : List (Action n)),
-             step s s' a → StepsFrom s' acts s'' → StepsFrom s (a :: acts) s''
-
-theorem phaseCounter_after_steps {n : Nat}
-    {s s'' : PaxosState n} {acts : List (Action n)}
-    (hs : StepsFrom s acts s'') :
-    phaseCounter s'' ≥ phaseCounter s + acts.length := by
-  induction hs with
-  | nil s => simp
-  | @cons s₁ s₂ s₃ a acts hstep _ ih =>
-    have h1 := phaseCounter_monotone s₁ s₂ a hstep
-    simp [List.length_cons]
+/-- Package two-proposer Paxos as a `PhaseCountingSystem`. -/
+def twoProposerSystem (n : Nat) : PhaseCounting.PhaseCountingSystem where
+  State        := PaxosState n
+  Action       := Action n
+  step         := step
+  init         := initialState n
+  phaseCounter := phaseCounter
+  bound        := 4 * n + 2
+  init_zero    := phaseCounter_initialState n
+  step_mono    := by
+    intro s s' a hstep
+    have := phaseCounter_monotone s s' a hstep
     omega
-
-theorem phaseCounter_fires_finitely_often {n : Nat} (s s' : PaxosState n)
-    (acts : List (Action n)) (hs : StepsFrom s acts s') :
-    acts.length ≤ 4 * n + 2 - phaseCounter s := by
-  have hafter := phaseCounter_after_steps hs
-  have hbnd := phaseCounter_bounded s'
-  omega
-
-theorem StepsFrom.snoc {n : Nat} {p q r : PaxosState n} {as : List (Action n)}
-    (b : Action n) (hpq : StepsFrom p as q) (hqr : step q r b) :
-    StepsFrom p (as ++ [b]) r := by
-  induction hpq with
-  | nil s => exact StepsFrom.cons b [] hqr (StepsFrom.nil _)
-  | @cons s₁ s₂ s₃ x xs hx _ ih => exact StepsFrom.cons x (xs ++ [b]) hx (ih hqr)
-
-theorem stepsFrom_preserves_reachable {n : Nat} {s₀ s : PaxosState n}
-    {acts : List (Action n)} (h : StepsFrom s₀ acts s) (h₀ : Reachable s₀) :
-    Reachable s := by
-  induction h with
-  | nil s => exact h₀
-  | @cons s₁ s₂ s₃ a acts hstep _ ih =>
-    exact ih (Reachable.step a h₀ hstep)
-
-theorem stepsFrom_to_reachable {n : Nat} {acts : List (Action n)}
-    {s : PaxosState n} (h : StepsFrom (initialState n) acts s) : Reachable s :=
-  stepsFrom_preserves_reachable h Reachable.init
-
-theorem reachable_iff_stepsFrom {n : Nat} (s : PaxosState n) :
-    Reachable s ↔ ∃ acts, StepsFrom (initialState n) acts s := by
-  constructor
-  · intro h
-    induction h with
-    | init => exact ⟨[], StepsFrom.nil _⟩
-    | step a _ hstep ih =>
-      obtain ⟨acts, hfrom⟩ := ih
-      exact ⟨acts ++ [a], StepsFrom.snoc a hfrom hstep⟩
-  · rintro ⟨acts, hfrom⟩
-    exact stepsFrom_to_reachable hfrom
+  step_bounded := by
+    intro s s' _ _
+    exact phaseCounter_bounded s'
 
 /-! ## Section 5: Safety (agreement)
 
@@ -707,35 +671,56 @@ theorem agreement_reachable {n : Nat} (s : PaxosState n) (h : Reachable s) :
         exact safetyInv_preserved hreach' a hstep ih
   exact agreement_of_safetyInv s hinv
 
-/-! ## Section 6: Bounded-unrolling theorem -/
+/-! ## Section 6: Bounded-unrolling theorem (via abstract framework) -/
+
+/-- Adapter: walking a framework `StepsFrom` for `twoProposerSystem n`
+    folds local `Reachable` along the trace. -/
+private theorem reachable_of_stepsFrom {n : Nat} :
+    ∀ (acts : List (Action n)) {s₀ s : PaxosState n},
+      Reachable s₀ →
+      PhaseCounting.StepsFrom (twoProposerSystem n) s₀ acts s →
+      Reachable s
+  | [], _, _, hr₀, h => by
+    match h with
+    | PhaseCounting.StepsFrom.nil _ => exact hr₀
+  | a :: as, _, _, hr₀, h => by
+    match h with
+    | PhaseCounting.StepsFrom.cons _ _ hstep htail =>
+      exact reachable_of_stepsFrom as (Reachable.step a hr₀ hstep) htail
+
+theorem reachable_iff_framework {n : Nat} (s : PaxosState n) :
+    Reachable s ↔ PhaseCounting.Reachable (twoProposerSystem n) s := by
+  constructor
+  · intro h
+    induction h with
+    | init => exact PhaseCounting.Reachable.init
+    | step a _ hstep ih =>
+      exact PhaseCounting.Reachable.step (P := twoProposerSystem n) a ih hstep
+  · intro hr
+    obtain ⟨acts, hfrom⟩ :=
+      (PhaseCounting.reachable_iff_stepsFrom (twoProposerSystem n) s).mp hr
+    exact reachable_of_stepsFrom acts Reachable.init hfrom
 
 def safeUpTo (n : Nat) (k : Nat) : Prop :=
   ∀ acts : List (Action n), acts.length ≤ k →
-    ∀ s', StepsFrom (initialState n) acts s' → agreement s'
+    ∀ s', PhaseCounting.StepsFrom (twoProposerSystem n) (initialState n) acts s' →
+      agreement s'
 
 def safeAll (n : Nat) : Prop :=
   ∀ s : PaxosState n, Reachable s → agreement s
 
 /-- **Main theorem: Two-proposer Paxos bounded unrolling.** Safety of all
     reachable states is equivalent to safety of all states reachable
-    within `4 * n + 2` steps from the canonical initial state. -/
+    within `4 * n + 2` steps from the canonical initial state. Derived
+    from the abstract `phase_counting_bounded_unrolling`. -/
 theorem two_proposer_bounded_unrolling (n : Nat) :
     safeAll n ↔ safeUpTo n (4 * n + 2) := by
   constructor
   · intro hall acts _ s' hfrom
     apply hall
-    exact (reachable_iff_stepsFrom s').mpr ⟨acts, hfrom⟩
+    refine (reachable_iff_framework s').mpr ?_
+    exact PhaseCounting.stepsFrom_preserves_reachable hfrom PhaseCounting.Reachable.init
   · intro _ s hreach
-    -- We always have the full safety invariant proof available, but the
-    -- bounded-unrolling direction specifically uses the phase counter.
-    obtain ⟨acts, hfrom⟩ := (reachable_iff_stepsFrom s).mp hreach
-    have hlen : acts.length ≤ 4 * n + 2 := by
-      have h := phaseCounter_fires_finitely_often _ _ _ hfrom
-      have h0 : phaseCounter (initialState n) = 0 :=
-        phaseCounter_initialState n
-      omega
-    -- We conclude via the (fully proven, modulo the two safety sorries)
-    -- `agreement_reachable` path.
     exact agreement_reachable s hreach
 
 /-! ## Section 7: Sanity checks -/
