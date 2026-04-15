@@ -5,12 +5,70 @@ import Leslie.Examples.Combinators.PhaseCountingThreshold
 
     A follow-on to `SingleProposerPaxos.lean`.  Two proposers with fixed
     ballots `b₀ < b₁`, `n` acceptors, one slot, binary value space.
-    Safety is non-trivial (agreement across two independent proposers)
-    and the progress argument needs a lexicographic measure because
-    `prepare p₁ i` can fire *after* `prepare p₀ i`, re-enabling the
-    acceptor's promised flag for a higher ballot.
 
-    This file proves:
+    ## ⚠ Scope — READ THIS FIRST
+
+    **This file does NOT mechanize real two-proposer Paxos.**  It proves
+    the bounded-unrolling theorem on a *restricted* model that replaces
+    Paxos's promise-quorum + max-vote safety argument with a
+    deterministic "defer rule": whichever proposer acts second must
+    simply copy the value the first proposer chose.
+
+    Concretely, the `.propose p v` step (§Section 1 below) contains the
+    conjunct
+
+        ∀ w, (s.proposers 0).proposed = some w → p = 1 → v = w
+        ∀ w, (s.proposers 1).proposed = some w → p = 0 → v = w
+
+    instead of real Paxos's
+
+        ∃ Q, majority Q ∧ ∀ i ∈ Q, i has promised to p ∧
+        (∀ c < p.ballot, hSafe-style max-vote constraint)
+
+    The defer rule is a **sound strengthening** of real Paxos (it admits
+    strictly fewer behaviors), but it completely sidesteps the
+    quorum-intersection reasoning that makes real Paxos verification
+    hard.  In particular:
+
+    * No `promise quorum` is tracked.
+    * No witness for `SafeAt(v, p)` is carried through the invariant.
+    * The `hcon` / `hconstr` constraint from Paxos's `p2a` is absent.
+    * `values_agree` becomes step-inductive without any `hSafe`-like
+      field, because the defer rule forces it directly.
+
+    **What this file DOES demonstrate:**
+
+    * The bounded-unrolling *framework* (phase counter + diameter bound
+      + `safeAll ↔ safeUpTo` iff) applies cleanly to a Paxos-shaped
+      ballot-ordered protocol.
+    * The per-acceptor phase counter `promiseLevel ∈ {0, 1, 2}` handles
+      higher-ballot promise upgrades without a lexicographic measure.
+    * The framework scales from single-proposer to two-proposer without
+      structural changes — only the counter arithmetic and safety
+      invariant differ.
+
+    **What this file DOES NOT demonstrate:**
+
+    * Real Paxos safety via quorum intersection.
+    * Non-trivial `hSafe`/`hC`/`hG` max-vote reasoning.
+    * Any property of Paxos that depends on the timing of promises
+      interleaved with accepts.
+
+    A future file mechanizing real quorum-gated Paxos with a proper
+    `hSafe`-style invariant would be ~1000+ additional lines and is
+    deferred.  See `docs/cutoff-theorems.md` §5.13 for the obstacles and
+    §5.13.4 for the tractable subproblem ladder.
+
+    ## Historical note
+
+    An earlier version of this file had NO cross-proposer ordering gate
+    (not even the defer rule) and was discovered to be unsound during
+    sorry discharge: a concrete 6-step counterexample at `n = 2` proves
+    `agreement` is false without the gate.  The defer rule was added in
+    commit 3 of PR #18 to close the sorry.  The counterexample and its
+    resolution are the reason for the strong scope note above.
+
+    ## Theorem summary
 
     * **Phase counting**: every action strictly increases a per-acceptor
       phase in `{0, 1, 2, 3, 4}` plus a per-proposer phase in `{0, 1}`.
@@ -18,12 +76,9 @@ import Leslie.Examples.Combinators.PhaseCountingThreshold
       `initialState` has length ≤ `4 * n + 2`.
     * **Bounded unrolling**: safety of *all* reachable states is
       equivalent to safety of states reachable in ≤ `4 * n + 2` steps.
-
-    The **safety invariant** (agreement) is proved in full (zero sorries)
-    using a two-proposer specialization of the Paxos max-vote rule: the
-    second proposer to act must copy the first proposer's value.  This
-    makes `values_agree` trivially inductive without carrying a witness
-    quorum through the invariant.
+    * **Safety (restricted)**: `agreement_reachable` holds for all
+      reachable states of the *defer-gated* model.  See scope note above
+      for what this does and does not entail.
 
     Core Lean 4 only; no Mathlib. -/
 

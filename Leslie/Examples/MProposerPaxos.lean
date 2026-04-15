@@ -6,15 +6,63 @@ import Leslie.Examples.Combinators.PhaseCountingThreshold
     Generalization of `TwoProposerPaxos.lean` to an arbitrary number of
     proposers `m`.  Single-decree, binary value space, `n` acceptors.
 
-    The progress measure is a per-acceptor phase in `{0, ..., 2m + 1}`
-    plus a per-proposer phase in `{0, 1}`.  The global sum is bounded
-    by `(2 * m + 1) * n + m = 2 * m * n + n + m`, so any trace from
-    `initialState` has length at most `2 * m * n + n + m`.
+    ## ⚠ Scope — READ THIS FIRST
 
-    Safety is proved using the same "defer gate" shortcut as in the
-    two-proposer case, generalized: when a proposer acts, it must copy
-    the value of *any* other proposer that has already proposed.  This
-    makes `values_agree` trivially inductive.
+    **This file does NOT mechanize real m-proposer Paxos.**  It inherits
+    `TwoProposerPaxos.lean`'s "defer gate" simplification generalized
+    to `m` proposers: when a proposer acts via `.propose p v`, it must
+    copy the value of *any* other proposer that has already proposed.
+
+    Concretely, the `.propose p v` step (§Section 1 below) contains the
+    conjunct
+
+        ∀ q w, q ≠ p → (s.proposers q).proposed = some w → v = w
+
+    instead of real Paxos's promise-quorum + max-vote rule.  The defer
+    rule is a **sound strengthening** of real Paxos (it admits strictly
+    fewer behaviors), but it completely sidesteps the quorum-intersection
+    reasoning that makes real Paxos verification hard.  In particular:
+
+    * No `promise quorum` is tracked.
+    * No witness for `SafeAt(v, p)` is carried through the invariant.
+    * The `hcon` / `hconstr` constraint from Paxos's `p2a` is absent.
+    * `values_agree` becomes step-inductive without any `hSafe`-like
+      field, because the defer rule forces it directly.
+
+    **What this file DOES demonstrate:**
+
+    * The bounded-unrolling framework (phase counter + diameter bound
+      + `safeAll ↔ safeUpTo` iff) scales cleanly from single-proposer to
+      general `m` with no structural changes.
+    * The per-acceptor phase counter `promiseLevel ∈ {0, ..., m}` absorbs
+      higher-ballot promise upgrades uniformly in `m`.
+    * Diameter bound `2 * m * n + n + m` is `O(mn)`, matching the hand
+      proof in `docs/cutoff-theorems.md` §5.13.3.
+
+    **What this file DOES NOT demonstrate:**
+
+    * Real Paxos safety via quorum intersection.
+    * Any property of real Paxos's `hSafe`/`hC`/`hG` max-vote reasoning.
+    * Non-trivial interleaving between promises and accepts.
+
+    A future file mechanizing real quorum-gated m-proposer Paxos with a
+    proper `hSafe`-style invariant would be substantially more work and
+    is deferred.  See `docs/cutoff-theorems.md` §5.13 for the obstacles
+    and §5.13.4 for the tractable subproblem ladder.
+
+    ## Theorem summary
+
+    * **Phase counting**: every action strictly increases a per-acceptor
+      phase in `{0, ..., 2 * m + 1}` plus a per-proposer phase in
+      `{0, 1}`.  The global sum is bounded by `(2 * m + 1) * n + m =
+      2 * m * n + n + m`, so any trace from `initialState` has length
+      at most `2 * m * n + n + m`.
+    * **Bounded unrolling**: safety of *all* reachable states is
+      equivalent to safety of states reachable in ≤ `2 * m * n + n + m`
+      steps.
+    * **Safety (restricted)**: `agreement_reachable` holds for all
+      reachable states of the *defer-gated* model.  See scope note
+      above for what this does and does not entail.
 
     Core Lean 4 only; no Mathlib. -/
 
