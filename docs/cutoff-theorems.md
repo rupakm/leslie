@@ -567,7 +567,8 @@ execute it. To actually check safety at n ≤ K, two paths exist:
    space size.
 
 Neither is ideal: (1) requires human insight; (2) requires a stateful
-model checker and is not trivially parallelizable.
+model checker, is not trivially parallelizable, and the state space
+can explode even at small `n`.
 
 **Target: stateless bounded model checking.** Enumerate a finite set of
 symbolic initial configurations, and from each one run straight-line
@@ -582,18 +583,55 @@ here is a bound proved from the protocol structure.
 
 ### 5.2 The safety diameter
 
-For a finite transition system `T` with safety property `I`, define:
+For a transition system `T` with initial-state predicate `Init`,
+transition relation `→`, and safety property `I`, define:
 
-> **Safety diameter `D_I(T)`:** the smallest `d` such that if `I` holds
-> on all prefixes of length `≤ d` from every reachable state, then
-> `I` holds everywhere.
+> **Safety diameter `D_I(T)`:**
+>
+> - If `T ⊨ □I` (safety holds): `D_I(T) = 0`.
+> - Otherwise, the smallest `d` such that every reachable violating
+>   state has an `Init`-to-violation trace of length `≤ d`. Formally:
+>   `d := sup { k | ∃ s₀ ∈ Init, ∃ s with ¬I s, ∃ π : s₀ →^k s,
+>                   k is minimal over such π }`.
 
-Equivalently, the smallest `d` such that every invariant violation has
-a witness trace of length `≤ d` from some reachable state.
+**Operational reading.** `D_I(T)` is exactly the bound at which
+straight-line BMC becomes **sound and complete** for the safety
+question. Running BMC from every `Init` state to depth `d`:
 
-This is weaker than the full diameter of `T` — longer traces can't
-introduce new violations if shorter ones didn't. Bounded-unrolling
-verification needs the safety diameter, not the full diameter.
+- If `d ≥ D_I(T)` and BMC finds no violation, there is none at any
+  depth: `T ⊨ □I`. (Completeness.)
+- If `d ≥ D_I(T)` and BMC finds a violation, the violation is
+  reachable: `T ⊭ □I`. (Soundness is trivial; it's the *threshold*
+  `D_I(T)` that guarantees completeness.)
+
+**Why the starting set matters: `Init`, not "reachable".** An earlier
+draft of this section wrote "from every reachable state" instead of
+"from every initial state". With "reachable", the definition is
+vacuous: if `I` is not an invariant, some reachable state `s` satisfies
+`¬I s`, and the length-0 prefix from `s` (namely `{s}` itself) already
+violates `I`, so the premise "`I` holds on all depth-`d` prefixes from
+every reachable state" is false at `d = 0`, making the implication
+vacuously true. Under that wording, `d = 0` always works and
+`D_I(T) = 0` for every system. The safety diameter must be measured
+from the *designated starting set* (initial states), not from the
+closed-under-reachability set, to be non-trivial.
+
+This is still weaker than the full diameter of `T` — longer traces
+can't introduce new violations if shorter ones didn't. Bounded-unrolling
+verification needs the safety diameter from `Init`, not the full
+diameter from arbitrary starting states.
+
+**Equivalently (for practitioners):** `D_I(T)` is the length of the
+*shortest counterexample trace* from any initial state to a violating
+state, or `0` if no such trace exists.
+
+**Relationship to §5.5's "canonical initial configurations".** The
+safety diameter is measured from the set `Init`. In §5.5 and later,
+"canonical initial configurations" means: a finite set `Γ ⊆ Init`
+(one representative per symmetry class) that covers `Init` up to a
+known equivalence preserving reachability and `I`. Verifying safety
+by running BMC from each canonical `γ ∈ Γ` up to depth `D_I(T)` is
+equivalent to running it from every `Init` state.
 
 ### 5.3 OTR: phase structure and dynamics
 
@@ -653,6 +691,15 @@ realizing the full `⌈n/3⌉ - 1` bound.
 **At the existing node cutoff `n = K = 7`:** `D ≤ 2`.
 
 ### 5.5 Canonical initial configurations
+
+As defined in §5.2, the safety diameter is measured from the set of
+**initial states** `Init`, not from arbitrary reachable states. To
+apply the bounded-unrolling procedure we need to enumerate a
+representative finite subset `Γ ⊆ Init` — the *canonical initial
+configurations* — that covers `Init` up to a reachability-and-`I`
+preserving equivalence. For OTR, the equivalence is the `v0 ↔ v1`
+value-renaming symmetry (plus the trivial round-counter / decision
+initialization).
 
 For OTR at `n = 7, k = 2`, the set of distinct initial configurations
 (modulo round counter and decision state) is parameterized by the
