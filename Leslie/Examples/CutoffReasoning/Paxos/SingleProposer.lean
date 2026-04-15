@@ -1,5 +1,5 @@
 import Batteries.Data.List.Lemmas
-import Leslie.Examples.Combinators.PhaseCountingThreshold
+import Leslie.Examples.CutoffReasoning.PhaseCountingThreshold
 
 /-! # Single-Proposer Paxos: Bounded-Unrolling Feasibility Test
 
