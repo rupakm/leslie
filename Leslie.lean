@@ -28,6 +28,9 @@ import «Leslie».Examples.VRViewChange
 import «Leslie».Cutoff
 import «Leslie».Examples.OneThirdRuleCutoff
 import «Leslie».Examples.Paxos
+import «Leslie».Examples.Paxos.BoundedSingleProposer
+import «Leslie».Examples.Paxos.BoundedTwoProposer
+import «Leslie».Examples.Paxos.BoundedMProposer
 import «Leslie».Examples.KVStore
 import «Leslie».Examples.LeaseLock
 import «Leslie».Simulate
@@ -53,6 +56,7 @@ import «Leslie».Examples.CacheCoherence.TileLink.Common
 import «Leslie».Examples.CacheCoherence.TileLink.Atomic.Theorem
 import «Leslie».Examples.Combinators.Basic
 import «Leslie».Examples.Combinators.ThresholdConsensus
+import «Leslie».Examples.Combinators.PhaseCounting
 -- import «Leslie».Rust.CoreSemantics
 -- import «Leslie».Rust.RuntimeSemantics
 -- import «Leslie».Rust.Examples.BallotLeaderPhased
