@@ -1,5 +1,5 @@
 import Leslie.Cutoff
-import Leslie.Examples.Combinators.ConfigRoundBridge
+import Leslie.Examples.CutoffReasoning.ConfigRoundBridge
 
 /-! ## Phase-Absorbing Threshold Protocols (abstract framework)
 

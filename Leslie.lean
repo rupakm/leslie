@@ -27,8 +27,10 @@ import «Leslie».Examples.BenOr
 import «Leslie».Examples.VRViewChange
 import «Leslie».Cutoff
 import «Leslie».Examples.OneThirdRuleCutoff
-import «Leslie».Examples.OneThirdRuleBoundedUnrolling
-import «Leslie».Examples.MajorityBoundedUnrolling
+import «Leslie».Examples.CutoffReasoning.ConfigRoundBridge
+import «Leslie».Examples.CutoffReasoning.OneThirdRuleBoundedUnrolling
+import «Leslie».Examples.CutoffReasoning.MajorityBoundedUnrolling
+import «Leslie».Examples.CutoffReasoning.PhaseAbsorbingThreshold
 import «Leslie».Examples.Paxos
 import «Leslie».Examples.KVStore
 import «Leslie».Examples.LeaseLock
@@ -54,8 +56,6 @@ import «Leslie».Examples.CacheCoherence.GermanMessages.Theorem
 import «Leslie».Examples.CacheCoherence.TileLink.Common
 import «Leslie».Examples.CacheCoherence.TileLink.Atomic.Theorem
 import «Leslie».Examples.Combinators.Basic
-import «Leslie».Examples.Combinators.ConfigRoundBridge
-import «Leslie».Examples.Combinators.PhaseAbsorbingThreshold
 import «Leslie».Examples.Combinators.ThresholdConsensus
 -- import «Leslie».Rust.CoreSemantics
 -- import «Leslie».Rust.RuntimeSemantics
