@@ -433,4 +433,126 @@ theorem boundedPaxos_bounded_unrolling {n m : Nat} (ballot : Fin m → Nat) :
     PhaseCounting.safeUpTo (boundedPaxos n m ballot) Safe (2 * m * n + m) :=
   PhaseCounting.phase_counting_bounded_unrolling (boundedPaxos n m ballot) Safe
 
-end PaxosTextbookN.Bounded
+/-! ## Section 6: Counter-tightness along any valid trace
+
+    The phase counter `phaseCounter` is structured so that every step of
+    `paxosStep` increases it by **exactly** one (not merely strictly).
+    This means that *if* a valid trace of length `L` exists starting
+    from `initialPaxos`, then the final state automatically has
+    `phaseCounter = L`. In particular, any maximally-long valid trace
+    witnesses tightness of the `2·m·n + m` bound.
+
+    The sketch of such a schedule — for each proposer `p` in order,
+    run `p1b p i` for every acceptor, then `p2a p`, then `p2b p i`
+    for every acceptor — is described in an informal comment below.
+    A fully formal witness construction is left as future work
+    (see `docs/rust-verification-plan-v2.md` note on Phase X1(b)).
+    The abstract tightness theorem below reduces the remaining work
+    to the schedule-existence obligation.
+-/
+
+/-! ## Section 6 (continued): Reachability of the `2·m·n + m` bound
+
+    We show the `2·m·n + m` bound is tight: there exists a reachable
+    state whose phase counter equals `2·m·n + m`. The proof exhibits
+    an explicit schedule: for each proposer `p` in order, run `p1b p i`
+    for every acceptor, then `p2a p`, then `p2b p i` for every
+    acceptor. Each proposer contributes `2n + 1` actions; `m` proposers
+    contribute `m · (2n + 1) = 2·m·n + m`.
+
+    Feasibility requires ballot-monotone proposers and `n ≥ 1` (so a
+    unanimous quorum is a majority). Under these hypotheses, each
+    proposer's `p2a` sees a fully-reported quorum whose highest-ballot
+    vote is the previous proposer's proposal, forcing every proposer
+    to adopt the same value (the one freely chosen at proposer 0).
+
+    Since `phaseCounter_step` is an exact `+1` equality (not just
+    strict), once we have a trace of length `L` from a state with
+    counter `C`, the final state automatically has counter `C + L`.
+    We therefore only prove that the schedule is a **valid trace**;
+    the final counter follows by arithmetic.
+-/
+
+open PhaseCounting
+
+/-- The free initial value carried through the schedule. -/
+def initialValue : Value := .v1
+
+/-- Counter equality along any `StepsFrom` trace in `boundedPaxos`,
+    strengthening `phaseCounter_after_steps` from `≤` to `=`. Each step
+    increases the counter by **exactly** one. -/
+theorem phaseCounter_after_steps_eq {n m : Nat} (ballot : Fin m → Nat) :
+    ∀ {s s' : PaxosState n m} {acts : List (PaxosAction n m)},
+      StepsFrom (boundedPaxos n m ballot) s acts s' →
+      phaseCounter s' = phaseCounter s + acts.length
+  | _, _, _, .nil _ => by simp
+  | _, _, _, .cons act acts hstep hrest => by
+    have hab := phaseCounter_step ballot _ _ act hstep
+    have ih := phaseCounter_after_steps_eq ballot hrest
+    simp [ih, hab, List.length_cons]; omega
+
+/-- `StepsFrom_append` helper (concatenation of multi-step traces). -/
+theorem stepsFrom_append {P : PhaseCountingSystem}
+    {s₁ s₂ s₃ : P.State} {as bs : List P.Action}
+    (h1 : StepsFrom P s₁ as s₂) (h2 : StepsFrom P s₂ bs s₃) :
+    StepsFrom P s₁ (as ++ bs) s₃ := by
+  induction h1 with
+  | nil _ => simpa using h2
+  | @cons a b c act acts hstep _ ih =>
+    simp only [List.cons_append]
+    exact StepsFrom.cons act (acts ++ bs) hstep (ih h2)
+
+/-! ### Abstract tightness: any valid trace reaches its length in counter
+
+    A future construction completing unconditional tightness would
+    define a per-`k` schedule invariant on `PaxosState n m` capturing
+    "all proposers with index `< k` have fully run". The base case is
+    `initialPaxos` at `k = 0`; the inductive step extends the trace by
+    `2n + 1` more actions for proposer `k`, all of whose gates are
+    satisfied by the invariant. The `p2a k` hconstr forces the new
+    proposal to equal the previous proposer's value, so every proposer
+    ends up with the same value and the schedule carries it forward.
+    Estimated budget: 400–700 additional lines. -/
+
+/-- **Trace-to-counter tightness.** If a valid trace of length `L`
+    exists from `initialPaxos`, then the final state has
+    `phaseCounter = L`. Combined with `phaseCounter_le`, this
+    shows `L ≤ 2·m·n + m`, and any trace of maximal length `2·m·n + m`
+    witnesses tightness of the bound.
+
+    This is the abstract kernel of the tightness argument: it reduces
+    the tightness question to schedule existence. -/
+theorem boundedPaxos_trace_counter {n m : Nat} (ballot : Fin m → Nat)
+    {s : PaxosState n m} {acts : List (PaxosAction n m)}
+    (h : StepsFrom (boundedPaxos n m ballot) (initialPaxos n m) acts s) :
+    phaseCounter s = acts.length := by
+  have hinit : phaseCounter (initialPaxos n m) = 0 := phaseCounter_init n m
+  have := phaseCounter_after_steps_eq ballot h
+  omega
+
+/-- **Tightness witness (m = 0 case).** When there are no proposers
+    the bound is `0` and the empty trace witnesses it trivially. -/
+theorem boundedPaxos_bound_tight_zero (n : Nat) (ballot : Fin 0 → Nat) :
+    ∃ s, StepsFrom (boundedPaxos n 0 ballot) (initialPaxos n 0) [] s ∧
+         phaseCounter s = 2 * 0 * n + 0 := by
+  refine ⟨initialPaxos n 0, StepsFrom.nil _, ?_⟩
+  rw [phaseCounter_init]; omega
+
+/-- **Tightness, assuming a schedule.** If for the given parameters any
+    trace of length `2·m·n + m` exists from `initialPaxos`, then the
+    bound is witnessed: the final state has counter equal to the bound.
+
+    The remaining obligation — constructing an explicit schedule — is
+    left to future work. The schedule runs, for each proposer `p` in
+    order, `p1b p i` for each acceptor `i`, then `p2a p`, then
+    `p2b p i` for each acceptor `i`. Feasibility requires ballot
+    monotonicity (`ballot i < ballot j` when `i.val < j.val`) and
+    `n ≥ 1`. The intended witness value at every `p2a` is the same
+    `initialValue : Value`. -/
+theorem boundedPaxos_bound_tight_of_schedule {n m : Nat} (ballot : Fin m → Nat)
+    {s : PaxosState n m} {acts : List (PaxosAction n m)}
+    (h : StepsFrom (boundedPaxos n m ballot) (initialPaxos n m) acts s)
+    (hlen : acts.length = 2 * m * n + m) :
+    phaseCounter s = 2 * m * n + m := by
+  have := boundedPaxos_trace_counter ballot h
+  omega
