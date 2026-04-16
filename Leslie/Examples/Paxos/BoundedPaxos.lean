@@ -1248,3 +1248,204 @@ theorem boundedPaxos_bound_tight {n m : Nat} (ballot : Fin m → Nat)
   · exact tightSchedule_length n m
   · exact boundedPaxos_bound_tight_of_schedule ballot
       (tightSchedule_valid ballot h_mono hn) (tightSchedule_length n m)
+/-! # Proposer crash/recover for atomic single-decree Paxos
+
+    This file adds a **proposer crash** action to the atomic Paxos model
+    (`Leslie.Examples.Paxos`) and proves that safety (agreement) is preserved.
+
+    ## Crash action
+
+    A proposer `c` may crash provided `prop c = none` — i.e., it has not yet
+    committed to a value (Phase 2a has not fired). The crash resets the
+    proposer's volatile Phase 1 state:
+
+      - `got1b c` is reset to all-false,
+      - `rep c` is reset to all-none.
+
+    All other state (acceptor fields `prom`, `acc`; other proposers' fields;
+    the crashed proposer's `prop` and `did2b`) is left unchanged.
+
+    ## Why this guard is necessary
+
+    The invariant field `hJ : ∀ q, prop q ≠ none → majority (got1b q)` links
+    `prop` to `got1b`. Resetting `got1b c` while `prop c ≠ none` would break
+    `hJ`. And resetting `prop c` to `none` (to dodge `hJ`) would break `hB`
+    and `hSafe`, whose existential conclusions witness proposers with matching
+    `prop`. The guard `prop c = none` is thus the strongest crash that
+    preserves the 10-field `PaxosInv`.
+
+    Under this guard, the invariant implies `did2b c i = false` for all `i`
+    (by `hA`), so all fields referencing `did2b c` are vacuously preserved.
+
+    ## What this models
+
+    A proposer that crashes during Phase 1 — after collecting some Phase 1b
+    responses but before choosing a value. On recovery it can restart Phase 1
+    from scratch. This is a standard failure mode in Paxos deployments.
+
+    No Mathlib. No sorries.
+-/
+
+open TLA
+
+namespace PaxosTextbookN.Crash
+
+open PaxosTextbookN
+
+/-! ## Section 1: Crash action definition -/
+
+/-- The post-crash state for proposer `c`: `got1b c` and `rep c` are reset;
+    everything else is unchanged. -/
+def crashState {n m : Nat} (c : Fin m) (s : PaxosState n m) : PaxosState n m :=
+  { s with
+    got1b := setFn s.got1b c (fun _ => false)
+    rep := setFn s.rep c (fun _ => none) }
+
+/-- A proposer crash fires when the proposer has not yet proposed. -/
+def crashFires {n m : Nat} (c : Fin m) (s s' : PaxosState n m) : Prop :=
+  s.prop c = none ∧ s' = crashState c s
+
+/-! ## Section 2: Invariant preservation under crash -/
+
+/-- Key observation: under the invariant with `prop c = none`, the proposer `c`
+    has `did2b c i = false` for all acceptors `i`. -/
+theorem did2b_false_of_prop_none {n m : Nat} {ballot : Fin m → Nat}
+    {s : PaxosState n m} (hinv : PaxosInv ballot s) (c : Fin m)
+    (hprop : s.prop c = none) : ∀ i, s.did2b c i = false := by
+  intro i
+  by_contra h
+  have h' : s.did2b c i = true := by
+    cases hb : s.did2b c i <;> simp_all
+  have := hinv.hA c i h'
+  exact this hprop
+
+/-- Crash preserves the Paxos invariant. -/
+theorem paxos_inv_crash {n m : Nat} {ballot : Fin m → Nat}
+    (s : PaxosState n m) (c : Fin m)
+    (hinv : PaxosInv ballot s)
+    (hprop : s.prop c = none) :
+    PaxosInv ballot (crashState c s) := by
+  have hdid : ∀ i, s.did2b c i = false := did2b_false_of_prop_none hinv c hprop
+  unfold crashState
+  exact {
+    hA := by
+      intro p i hdi
+      simp only at hdi
+      exact hinv.hA p i hdi
+    hB := by
+      intro i b v hacc
+      simp only at hacc
+      exact hinv.hB i b v hacc
+    hC := by
+      intro q i b v hrep
+      simp only at hrep
+      by_cases hqc : q = c
+      · subst hqc; simp [setFn] at hrep
+      · have : setFn s.rep c (fun _ => none) q = s.rep q := by simp [setFn, hqc]
+        rw [this] at hrep
+        exact hinv.hC q i b v hrep
+    hD := by
+      intro p i hgot
+      simp only at hgot
+      by_cases hpc : p = c
+      · subst hpc; simp [setFn] at hgot
+      · have : setFn s.got1b c (fun _ => false) p = s.got1b p := by simp [setFn, hpc]
+        rw [this] at hgot
+        exact hinv.hD p i hgot
+    hE := by
+      intro i b v hacc
+      simp only at hacc
+      exact hinv.hE i b v hacc
+    hG := by
+      intro p q i hdi hgot hlt
+      simp only at hdi hgot
+      -- did2b is unchanged, so if p = c, did2b c i = false → contradiction
+      by_cases hpc : p = c
+      · subst hpc; simp [hdid i] at hdi
+      · -- got1b: if q = c, got1b c is reset → false → contradiction
+        by_cases hqc : q = c
+        · subst hqc; simp [setFn] at hgot
+        · have hg : s.got1b q i = true := by
+            have : setFn s.got1b c (fun _ => false) q = s.got1b q := by simp [setFn, hqc]
+            rw [this] at hgot; exact hgot
+          obtain ⟨b, w, hrep, hge⟩ := hinv.hG p q i hdi hg hlt
+          refine ⟨b, w, ?_, hge⟩
+          show (setFn s.rep c (fun _ => none)) q i = some (b, w)
+          simp [setFn, hqc]; exact hrep
+    hH := by
+      intro p i hdi
+      simp only at hdi
+      by_cases hpc : p = c
+      · subst hpc; simp [hdid i] at hdi
+      · exact hinv.hH p i hdi
+    hJ := by
+      intro q hq
+      simp only at hq
+      by_cases hqc : q = c
+      · subst hqc; exact absurd hprop hq
+      · have hmaj := hinv.hJ q hq
+        -- majority (got1b q) where got1b is modified only at c ≠ q
+        have : setFn s.got1b c (fun _ => false) q = s.got1b q := by simp [setFn, hqc]
+        show majority (setFn s.got1b c (fun _ => false) q) = true
+        rw [this]; exact hmaj
+    hF := by
+      intro q i b v hrep
+      simp only at hrep
+      by_cases hqc : q = c
+      · subst hqc; simp [setFn] at hrep
+      · have : setFn s.rep c (fun _ => none) q = s.rep q := by simp [setFn, hqc]
+        rw [this] at hrep
+        exact hinv.hF q i b v hrep
+    hSafe := by
+      intro q v hpq c' hc
+      simp only at hpq
+      exact hinv.hSafe q v hpq c' hc
+    hL := by
+      intro i b v hv; exact hinv.hL i b v hv
+    hK := by
+      intro i b v hv; exact hinv.hK i b v hv
+    hN := by
+      intro p i hdi; exact hinv.hN p i hdi
+    hAcc := by
+      intro i b v hacc; exact hinv.hAcc i b v hacc
+    hM := by
+      intro q i b v hrep
+      by_cases hqc : q = c
+      · subst hqc; simp [setFn] at hrep
+      · simp only [setFn, hqc, ite_false] at hrep
+        exact hinv.hM q i b v hrep
+    hVotDid := by
+      intro i b v hv; exact hinv.hVotDid i b v hv
+  }
+
+/-! ## Section 3: Extended reachability with crash -/
+
+/-- Extended reachable states: normal Paxos steps or proposer crashes. -/
+inductive ExtendedReachable {n m : Nat} (ballot : Fin m → Nat) :
+    PaxosState n m → Prop where
+  | init : ∀ s, (paxos n m ballot).init s → ExtendedReachable ballot s
+  | step : ∀ {s s'}, ExtendedReachable ballot s →
+      (∃ a, ((paxos n m ballot).actions a).fires s s') →
+      ExtendedReachable ballot s'
+  | crash : ∀ {s s'} (c : Fin m), ExtendedReachable ballot s →
+      crashFires c s s' → ExtendedReachable ballot s'
+
+/-- Every extended-reachable state satisfies the Paxos invariant. -/
+theorem paxosInv_of_extendedReachable {n m : Nat} {ballot : Fin m → Nat}
+    (h_inj : Function.Injective ballot) :
+    ∀ {s : PaxosState n m}, ExtendedReachable ballot s → PaxosInv ballot s
+  | _, .init s hinit => paxos_inv_init ballot s hinit
+  | _, .step hr hstep =>
+      paxos_inv_next h_inj _ _ (paxosInv_of_extendedReachable h_inj hr) hstep
+  | _, .crash c hr ⟨hprop, rfl⟩ =>
+      paxos_inv_crash _ c (paxosInv_of_extendedReachable h_inj hr) hprop
+
+/-- Agreement holds for all extended-reachable states. -/
+theorem extended_agreement {n m : Nat} {ballot : Fin m → Nat}
+    (h_inj : Function.Injective ballot)
+    {s : PaxosState n m} (hr : ExtendedReachable ballot s) :
+    ∀ p q, majority (s.did2b p) = true → majority (s.did2b q) = true →
+    s.prop p = s.prop q :=
+  agreement h_inj (paxosInv_of_extendedReachable h_inj hr)
+
+end PaxosTextbookN.Crash
