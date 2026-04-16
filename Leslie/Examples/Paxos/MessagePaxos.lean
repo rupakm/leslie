@@ -372,6 +372,22 @@ structure MsgPaxosInv {n m : Nat} (ballot : Fin m → Nat)
   hSentSafe : ∀ a b v, s.sentAccept a b = some v → safeAt s v b
   /-- Every `accept` message in the network carries a safe value. -/
   hNetSafe : ∀ p b v tgt, (Msg.accept p b v, tgt) ∈ s.network → safeAt s v b
+  /-- Every `promise` message's prior field matches `sentAccept`. -/
+  hNetPromisePrior : ∀ a p b b' v' tgt,
+      (Msg.promise a p b (some (b', v')), tgt) ∈ s.network →
+      s.sentAccept a b' = some v'
+  /-- If acceptor `a` has voted, its `acc` field stores the highest-ballot
+      vote. Equivalently: any vote in `sentAccept` is at or below the `acc`
+      ballot. -/
+  hAccMax : ∀ a c v,
+      s.sentAccept a c = some v →
+      ∃ b' v', (s.acceptors a).acc = some (b', v') ∧ b' ≥ c
+  /-- No votes between the reported prior ballot and the promise ballot. -/
+  hNetPromiseNoVoteAbove : ∀ a p b prior tgt,
+      (Msg.promise a p b prior, tgt) ∈ s.network →
+      ∀ c, c < b →
+      (match prior with | none => True | some (b', _) => c > b') →
+      s.sentAccept a c = none
 
 /-! ### Preservation -/
 
@@ -383,10 +399,9 @@ theorem msg_paxos_inv_init : MsgPaxosInv ballot (initialMsgPaxos n m) := by
     hAccSent := ?_, hAccProm := ?_, hSentProm := ?_, hSentBallot := ?_,
     hNetPrepare := ?_, hNetAccept := ?_, hNetAccepted := ?_,
     hNetPromise := ?_, hSentUnique := ?_, hAcceptValFun := ?_,
-    hSentAcceptNet := ?_, hSentSafe := ?_, hNetSafe := ?_ }
-  all_goals (intros; first
-    | (rename_i h; simp [initialMsgPaxos, initAcceptor] at h)
-    | simp [initialMsgPaxos] at *)
+    hSentAcceptNet := ?_, hSentSafe := ?_, hNetSafe := ?_,
+    hNetPromisePrior := ?_, hAccMax := ?_, hNetPromiseNoVoteAbove := ?_ }
+  all_goals (intros; simp_all [initialMsgPaxos, initAcceptor])
 
 private theorem inv_sendPrepare {s : MsgPaxosState n m} (p : Fin m)
     (h : MsgPaxosInv ballot s) :
@@ -401,7 +416,8 @@ private theorem inv_sendPrepare {s : MsgPaxosState n m} (p : Fin m)
   refine { h with
     hNetPrepare := ?_, hNetAccept := ?_, hNetAccepted := ?_,
     hNetPromise := ?_, hAcceptValFun := ?_, hSentAcceptNet := ?_,
-    hSentSafe := h.hSentSafe, hNetSafe := ?_ }
+    hSentSafe := h.hSentSafe, hNetSafe := ?_, hNetPromisePrior := ?_,
+    hNetPromiseNoVoteAbove := ?_ }
   · intro q b tgt hin
     rcases List.mem_append.mp hin with h1 | h2
     · exact h.hNetPrepare q b tgt h1
@@ -447,6 +463,18 @@ private theorem inv_sendPrepare {s : MsgPaxosState n m} (p : Fin m)
     · exact h.hNetSafe q b v tgt h1
     · obtain ⟨_, ha'⟩ := hnet _ h1
       simp only [Prod.mk.injEq] at ha'; exact absurd ha'.1 (by simp)
+  · -- hNetPromisePrior: new messages are prepare, not promise
+    intro a' q b' b'' v' tgt hin
+    rcases List.mem_append.mp hin with h1 | h1
+    · exact h.hNetPromisePrior a' q b' b'' v' tgt h1
+    · obtain ⟨_, ha'⟩ := hnet _ h1
+      simp only [Prod.mk.injEq] at ha'; exact absurd ha'.1 (by simp)
+  · -- hNetPromiseNoVoteAbove: new messages are prepare, not promise
+    intro a' q b' prior tgt hin c hcb' hc
+    rcases List.mem_append.mp hin with h1 | h1
+    · exact h.hNetPromiseNoVoteAbove a' q b' prior tgt h1 c hcb' hc
+    · obtain ⟨_, ha'⟩ := hnet _ h1
+      simp only [Prod.mk.injEq] at ha'; exact absurd ha'.1 (by simp)
 
 private theorem inv_dropMsg {s : MsgPaxosState n m} (idx : Nat)
     (h : MsgPaxosInv ballot s) :
@@ -454,7 +482,8 @@ private theorem inv_dropMsg {s : MsgPaxosState n m} (idx : Nat)
   refine { h with
     hNetPrepare := ?_, hNetAccept := ?_, hNetAccepted := ?_,
     hNetPromise := ?_, hAcceptValFun := ?_, hSentAcceptNet := ?_,
-    hSentSafe := h.hSentSafe, hNetSafe := ?_ }
+    hSentSafe := h.hSentSafe, hNetSafe := ?_, hNetPromisePrior := ?_,
+    hNetPromiseNoVoteAbove := ?_ }
   · intro q b tgt hin; exact h.hNetPrepare q b tgt (mem_removeAt hin)
   · intro q b v tgt hin; exact h.hNetAccept q b v tgt (mem_removeAt hin)
   · intro a q b v tgt hin; exact h.hNetAccepted a q b v tgt (mem_removeAt hin)
@@ -465,6 +494,10 @@ private theorem inv_dropMsg {s : MsgPaxosState n m} (idx : Nat)
   · intro a b v hsa q' v' tgt' hin
     exact h.hSentAcceptNet a b v hsa q' v' tgt' (mem_removeAt hin)
   · intro q b v tgt hin; exact h.hNetSafe q b v tgt (mem_removeAt hin)
+  · intro a' q b' b'' v' tgt hin
+    exact h.hNetPromisePrior a' q b' b'' v' tgt (mem_removeAt hin)
+  · intro a' q b' prior tgt hin c hcb' hc
+    exact h.hNetPromiseNoVoteAbove a' q b' prior tgt (mem_removeAt hin) c hcb' hc
 
 /-- Generic frame lemma: a state with only `proposers` changed inherits
     the invariant. The invariant never mentions `proposers`. -/
@@ -478,7 +511,10 @@ private theorem inv_proposer_frame {s : MsgPaxosState n m}
     hNetAccept := h.hNetAccept, hNetAccepted := h.hNetAccepted,
     hNetPromise := h.hNetPromise, hSentUnique := h.hSentUnique,
     hAcceptValFun := h.hAcceptValFun, hSentAcceptNet := h.hSentAcceptNet,
-    hSentSafe := h.hSentSafe, hNetSafe := h.hNetSafe }
+    hSentSafe := h.hSentSafe, hNetSafe := h.hNetSafe,
+    hNetPromisePrior := h.hNetPromisePrior,
+    hAccMax := h.hAccMax,
+    hNetPromiseNoVoteAbove := h.hNetPromiseNoVoteAbove }
 
 private theorem inv_crashProposer {s : MsgPaxosState n m} (p : Fin m)
     (ps' : ProposerState n) (h : MsgPaxosInv ballot s) :
@@ -510,6 +546,11 @@ private theorem inv_crashAcceptor {s : MsgPaxosState n m} (a : Fin n)
   hSentAcceptNet := fun a' b v hsa p' v' tgt' hm =>
     h.hSentAcceptNet a' b v hsa p' v' tgt' (hsub _ hm)
   hNetSafe := fun p b v tgt hm => h.hNetSafe p b v tgt (hsub _ hm)
+  hNetPromisePrior := fun a' p b b' v' tgt hm =>
+    h.hNetPromisePrior a' p b b' v' tgt (hsub _ hm)
+  hAccMax := h.hAccMax
+  hNetPromiseNoVoteAbove := fun a' p b prior tgt hm c hcb hc =>
+    h.hNetPromiseNoVoteAbove a' p b prior tgt (hsub _ hm) c hcb hc
 }
 
 private theorem inv_decidePropose {s : MsgPaxosState n m} (p : Fin m) (v : Value)
@@ -554,7 +595,8 @@ private theorem inv_recvPrepare {s : MsgPaxosState n m} (a : Fin n) (p : Fin m)
     hNetPrepare := ?_, hNetAccept := ?_, hNetAccepted := ?_,
     hNetPromise := ?_, hSentUnique := h.hSentUnique,
     hAcceptValFun := ?_, hSentAcceptNet := ?_,
-    hSentSafe := ?_, hNetSafe := ?_ }
+    hSentSafe := ?_, hNetSafe := ?_, hNetPromisePrior := ?_,
+    hAccMax := ?_, hNetPromiseNoVoteAbove := ?_ }
   · intro a' b' v' hacc
     by_cases hae : a = a'
     · subst hae; simp [setAcceptor] at hacc; exact h.hAccSent a b' v' hacc
@@ -648,6 +690,52 @@ private theorem inv_recvPrepare {s : MsgPaxosState n m} (a : Fin n) (p : Fin m)
       by_cases hae : a = a''
       · subst hae; simp [setAcceptor]; omega
       · simp [setAcceptor, hae])
+  · -- hNetPromisePrior: old promises via h.hNetPromisePrior; new promise's prior
+    -- is `(s.acceptors a).acc`, which is linked to sentAccept by hAccSent.
+    intro a' q b' b'' v' tgt hin
+    rcases List.mem_append.mp hin with h1 | h1
+    · exact h.hNetPromisePrior a' q b' b'' v' tgt (mem_removeAt h1)
+    · rcases List.mem_singleton.mp h1 with heq
+      simp only [Prod.mk.injEq] at heq
+      obtain ⟨hmsg, _⟩ := heq
+      injection hmsg with h_a _h_p _h_b h_prior
+      subst h_a
+      -- h_prior : some (b'', v') = (s.acceptors a').acc
+      exact h.hAccSent a' b'' v' h_prior.symm
+  · -- hAccMax: prom raised, acc unchanged for a; other acceptors unchanged
+    intro a' c v' hsa
+    obtain ⟨b'', v'', hacc, hge⟩ := h.hAccMax a' c v' hsa
+    by_cases hae : a = a'
+    · subst hae
+      exact ⟨b'', v'', by simp [setAcceptor, hacc], hge⟩
+    · exact ⟨b'', v'', by simp [setAcceptor, hae, hacc], hge⟩
+  · -- hNetPromiseNoVoteAbove: old promises from removeAt; new promise uses hAccMax.
+    intro a' q b' prior tgt hin c hcb' hc
+    rcases List.mem_append.mp hin with h1 | h1
+    · exact h.hNetPromiseNoVoteAbove a' q b' prior tgt (mem_removeAt h1) c hcb' hc
+    · -- New promise: prior = (s.acceptors a').acc, b' = b (since recvPrepare
+      -- doesn't change sentAccept, the goal is about s.sentAccept)
+      rcases List.mem_singleton.mp h1 with heq
+      simp only [Prod.mk.injEq] at heq
+      obtain ⟨hmsg, _⟩ := heq
+      injection hmsg with h_a _h_p h_b h_prior
+      subst h_a; subst h_b
+      -- prior = (s.acceptors a').acc. Use hAccMax to show sentAccept a' c = none.
+      -- sentAccept is unchanged in this transition.
+      -- sentAccept is unchanged in recvPrepare. Use hAccMax on old state.
+      cases h_eq : s.sentAccept a' c with
+      | none => rfl
+      | some v' =>
+        exfalso
+        obtain ⟨b'', v'', hacc, hge⟩ := h.hAccMax a' c v' h_eq
+        cases prior with
+        | none =>
+          rw [← h_prior] at hacc; simp at hacc
+        | some bv =>
+          obtain ⟨bp, vp⟩ := bv
+          rw [← h_prior] at hacc
+          have : bp = b'' := by rcases hacc with ⟨⟩; rfl
+          subst this; simp at hc; omega
 
 private theorem inv_sendAccept {s : MsgPaxosState n m} (p : Fin m) (b : Nat)
     (v : Value) (hbp : ballot p = b)
@@ -666,7 +754,8 @@ private theorem inv_sendAccept {s : MsgPaxosState n m} (p : Fin m) (b : Nat)
   refine { h with
     hNetPrepare := ?_, hNetAccept := ?_, hNetAccepted := ?_,
     hNetPromise := ?_, hAcceptValFun := ?_, hSentAcceptNet := ?_,
-    hSentSafe := h.hSentSafe, hNetSafe := ?_ }
+    hSentSafe := h.hSentSafe, hNetSafe := ?_, hNetPromisePrior := ?_,
+    hAccMax := h.hAccMax, hNetPromiseNoVoteAbove := ?_ }
   · intro q b' tgt hin
     rcases List.mem_append.mp hin with h1 | h1
     · exact h.hNetPrepare q b' tgt h1
@@ -729,6 +818,18 @@ private theorem inv_sendAccept {s : MsgPaxosState n m} (p : Fin m) (b : Nat)
       simp only [Prod.mk.injEq] at ha'
       injection ha'.1 with _ hb hv
       subst hb; subst hv; exact hGateSafe
+  · -- hNetPromisePrior: new messages are accept, not promise
+    intro a' q b' b'' v' tgt hin
+    rcases List.mem_append.mp hin with h1 | h1
+    · exact h.hNetPromisePrior a' q b' b'' v' tgt h1
+    · obtain ⟨_, ha'⟩ := hnet _ h1
+      simp only [Prod.mk.injEq] at ha'; exact absurd ha'.1 (by simp)
+  · -- hNetPromiseNoVoteAbove: new messages are accept, not promise
+    intro a' q b' prior tgt hin c hcb' hc
+    rcases List.mem_append.mp hin with h1 | h1
+    · exact h.hNetPromiseNoVoteAbove a' q b' prior tgt h1 c hcb' hc
+    · obtain ⟨_, ha'⟩ := hnet _ h1
+      simp only [Prod.mk.injEq] at ha'; exact absurd ha'.1 (by simp)
 
 /-! The hard case: `recvAccept`. Acceptor `a` consumes an `accept p b v`
     message. We re-establish every invariant clause using `hAcceptValFun`
@@ -751,7 +852,8 @@ private theorem inv_recvAccept {s : MsgPaxosState n m} (a : Fin n) (p : Fin m)
     hNetPrepare := ?_, hNetAccept := ?_, hNetAccepted := ?_,
     hNetPromise := ?_, hSentUnique := ?_,
     hAcceptValFun := ?_, hSentAcceptNet := ?_,
-    hSentSafe := ?_, hNetSafe := ?_ }
+    hSentSafe := ?_, hNetSafe := ?_, hNetPromisePrior := ?_,
+    hAccMax := ?_, hNetPromiseNoVoteAbove := ?_ }
   · -- hAccSent: new acc (b,v) at a, ghost sentAccept a b = some v
     intro a' b' v' hacc
     by_cases hae : a = a'
@@ -966,6 +1068,57 @@ private theorem inv_recvAccept {s : MsgPaxosState n m} (a : Fin n) (p : Fin m)
       · exact mem_removeAt hx
       · rcases List.mem_singleton.mp hx with heq; exact absurd heq (by simp)
     exact safeAt_mono_recvAccept (h.hNetSafe q b' v' tgt hin') hprom_mono hcompat
+  · -- hNetPromisePrior: new message is `accepted` (not promise). Old promises from
+    -- removeAt survive; their prior entries in sentAccept are preserved by setSent monotonicity.
+    intro a' q b' b'' v' tgt hin
+    rcases List.mem_append.mp hin with h1 | h1
+    · -- Old promise survived removeAt
+      have := h.hNetPromisePrior a' q b' b'' v' tgt (mem_removeAt h1)
+      simp only [setSent]
+      by_cases hc : a' = a ∧ b'' = b
+      · obtain ⟨ha', hb''⟩ := hc
+        rw [ha', hb''] at this
+        rw [if_pos ⟨ha', hb''⟩]
+        congr 1; exact (h.hSentAcceptNet a b v' this p v (Target.acc a) hMem).symm
+      · rw [if_neg hc]; exact this
+    · -- New message is `accepted`, not `promise`
+      rcases List.mem_singleton.mp h1 with heq
+      exact absurd heq (by simp)
+  · -- hAccMax: new acc = (b, v) at a, new sentAccept extends with (a, b, v)
+    intro a' c v' hsa
+    simp only [setSent] at hsa
+    by_cases hc : a' = a ∧ c = b
+    · -- New entry: a' = a, c = b, v' = v
+      obtain ⟨ha', hcb⟩ := hc; subst ha'; subst hcb
+      exact ⟨c, v, by simp [setAcceptor], Nat.le_refl c⟩
+    · -- Old entry
+      rw [if_neg hc] at hsa
+      obtain ⟨b'', v'', hacc, hge⟩ := h.hAccMax a' c v' hsa
+      by_cases hae : a = a'
+      · subst hae
+        have hge' : b ≥ c := by
+          have := h.hAccProm a b'' v'' hacc; omega
+        refine ⟨b, v, ?_, hge'⟩
+        simp [setAcceptor]
+      · refine ⟨b'', v'', ?_, hge⟩
+        simp [setAcceptor, hae, hacc]
+  · -- hNetPromiseNoVoteAbove: surviving promises + setSent monotonicity
+    intro a' q b' prior tgt hin c hcb' hc
+    have hin_orig : (Msg.promise a' q b' prior, tgt) ∈ s.network := by
+      rcases List.mem_append.mp hin with hx | hx
+      · exact mem_removeAt hx
+      · rcases List.mem_singleton.mp hx with heq; exact absurd heq (by simp)
+    have hold := h.hNetPromiseNoVoteAbove a' q b' prior tgt hin_orig c hcb' hc
+    simp only [setSent]
+    by_cases hc2 : a' = a ∧ c = b
+    · -- New sentAccept entry at (a, b). But c < b' ≤ promise ballot.
+      -- And hNetPromise says prom a' ≥ b'. Also hProm says prom a ≤ b.
+      -- If a' = a: b ≥ prom a ≥ b' (from hNetPromise). But c < b'. So c < b' ≤ b.
+      -- And c = b from hc2. So c = b ≤ c < b'. Then b < b'. But also b ≥ b'. Contradiction.
+      obtain ⟨ha', hcb⟩ := hc2; subst ha'; subst hcb
+      obtain ⟨_, hprom_ge⟩ := h.hNetPromise a' q b' prior tgt hin_orig
+      omega
+    · rw [if_neg hc2]; exact hold
 
 end Preservation
 
@@ -1088,4 +1241,334 @@ theorem cross_ballot_agreement {n m : Nat} {ballot : Fin m → Nat}
       subst hbeq
       exact hinv.hSentUnique i j b v v' hiv hjv
 
-end MessagePaxos
+/-! ### Promise-validity invariant and `sendAccept` gate derivation
+
+    `PromiseInv` links proposer-local `promisesReceived` data back to stable
+    state. It lives outside `MsgPaxosInv` because it references `proposers`
+    (volatile). Crash preservation is trivial: `crashProposer` resets
+    `promisesReceived` to `none`, making the hypothesis vacuously false. -/
+
+/-- If proposer `p` has received a promise from acceptor `a`, then:
+    (1) `a`'s promise is at least `ballot p`, and
+    (2) any reported prior vote is logged in `sentAccept`, and
+    (3) the acceptor has no vote between the reported prior ballot and `ballot p`. -/
+structure PromiseInv {n m : Nat} (ballot : Fin m → Nat)
+    (s : MsgPaxosState n m) : Prop where
+  hPromProm : ∀ p a prior,
+      (s.proposers p).promisesReceived a = some prior →
+      (s.acceptors a).prom ≥ ballot p
+  hPromPrior : ∀ p a b' v',
+      (s.proposers p).promisesReceived a = some (some (b', v')) →
+      s.sentAccept a b' = some v'
+  hPromNoVoteAbove : ∀ p a prior,
+      (s.proposers p).promisesReceived a = some prior →
+      ∀ c, c < ballot p →
+      (match prior with | none => True | some (b', _) => c > b') →
+      s.sentAccept a c = none
+
+theorem promise_inv_init {n m : Nat} {ballot : Fin m → Nat} :
+    PromiseInv ballot (initialMsgPaxos n m) where
+  hPromProm := by intro p a prior hp; simp [initialMsgPaxos, initProposer] at hp
+  hPromPrior := by intro p a b' v' hp; simp [initialMsgPaxos, initProposer] at hp
+  hPromNoVoteAbove := by intro p a prior hp; simp [initialMsgPaxos, initProposer] at hp
+
+section PromisePreservation
+variable {n m : Nat} {ballot : Fin m → Nat}
+
+/-- Helper: PromiseInv is preserved when only the network changes. -/
+private theorem promiseInv_net_frame {s : MsgPaxosState n m}
+    (h : PromiseInv ballot s) (net' : List (Msg n m × Target n m)) :
+    PromiseInv ballot { s with network := net' } :=
+  ⟨h.hPromProm, h.hPromPrior, h.hPromNoVoteAbove⟩
+
+private theorem promiseInv_recvPromise {s : MsgPaxosState n m} (p : Fin m)
+    (a : Fin n) (b : Nat) (prior : Option (Nat × Value)) (idx : Nat)
+    (hMem : (Msg.promise a p b prior, Target.prop p) ∈ s.network)
+    (hinv : MsgPaxosInv ballot s)
+    (h : PromiseInv ballot s) :
+    PromiseInv ballot
+      { s with
+        proposers := setProposer s.proposers p
+          { (s.proposers p) with
+            promisesReceived :=
+              fun q => if q = a then some prior else
+                       (s.proposers p).promisesReceived q }
+        network := removeAt s.network idx } := by
+  obtain ⟨hbp, hprom⟩ := hinv.hNetPromise a p b prior (Target.prop p) hMem
+  -- Helper: decode setProposer + if-then-else at (p', a')
+  have decode : ∀ p' a' prior', (setProposer s.proposers p
+      { (s.proposers p) with promisesReceived :=
+          fun q => if q = a then some prior else (s.proposers p).promisesReceived q }
+      p').promisesReceived a' = some prior' →
+      (p' = p ∧ a' = a ∧ prior' = prior) ∨
+      ((s.proposers p').promisesReceived a' = some prior') := by
+    intro p' a' prior' hp'
+    simp only [setProposer] at hp'
+    by_cases hpe : p' = p
+    · subst hpe; simp only [ite_true] at hp'
+      by_cases hae : a' = a
+      · subst hae; simp only [ite_true] at hp'
+        left; exact ⟨rfl, rfl, by rcases hp' with ⟨⟩; rfl⟩
+      · right; simp only [if_neg hae] at hp'; exact hp'
+    · right; simp only [if_neg hpe] at hp'; exact hp'
+  constructor
+  · -- hPromProm
+    intro p' a' prior' hp'
+    rcases decode p' a' prior' hp' with ⟨hp_eq, ha_eq, _⟩ | hold
+    · show (s.acceptors a').prom ≥ ballot p'
+      rw [ha_eq, hp_eq, hbp]; exact hprom
+    · exact h.hPromProm p' a' prior' hold
+  · -- hPromPrior
+    intro p' a' b' v' hp'
+    rcases decode p' a' (some (b', v')) hp' with ⟨_, ha_eq, hpr_eq⟩ | hold
+    · show s.sentAccept a' b' = some v'
+      rw [ha_eq]; exact hinv.hNetPromisePrior a p b b' v' (Target.prop p)
+        (by rw [hpr_eq]; exact hMem)
+    · exact h.hPromPrior p' a' b' v' hold
+  · -- hPromNoVoteAbove
+    intro p' a' prior' hp' c hcbp' hc
+    rcases decode p' a' prior' hp' with ⟨hp_eq, ha_eq, hpr_eq⟩ | hold
+    · show s.sentAccept a' c = none
+      rw [ha_eq]
+      rw [hpr_eq] at hc
+      exact hinv.hNetPromiseNoVoteAbove a p b prior (Target.prop p) hMem c
+        (by rw [hp_eq] at hcbp'; rw [hbp] at hcbp'; exact hcbp') hc
+    · exact h.hPromNoVoteAbove p' a' prior' hold c hcbp' hc
+
+/-- PromiseInv for proposer-only changes: proposed field doesn't affect promises. -/
+private theorem promiseInv_propose_frame {s : MsgPaxosState n m} (p : Fin m)
+    (f : ProposerState n → ProposerState n)
+    (hf : ∀ a, (f (s.proposers p)).promisesReceived a = (s.proposers p).promisesReceived a)
+    (h : PromiseInv ballot s) :
+    PromiseInv ballot
+      { s with proposers := setProposer s.proposers p (f (s.proposers p)) } := by
+  have decode : ∀ p' a' prior', (setProposer s.proposers p (f (s.proposers p))
+      p').promisesReceived a' = some prior' →
+      ((s.proposers p').promisesReceived a' = some prior') := by
+    intro p' a' prior' hp'
+    simp only [setProposer] at hp'
+    by_cases hpe : p' = p
+    · subst hpe; simp only [ite_true] at hp'; rw [hf] at hp'; exact hp'
+    · simp only [if_neg hpe] at hp'; exact hp'
+  constructor
+  · intro p' a prior hp'; exact h.hPromProm p' a prior (decode p' a prior hp')
+  · intro p' a b' v' hp'; exact h.hPromPrior p' a b' v' (decode p' a _ hp')
+  · intro p' a prior hp' c hcbp' hc
+    exact h.hPromNoVoteAbove p' a prior (decode p' a prior hp') c hcbp' hc
+
+private theorem promiseInv_recvAccept {s : MsgPaxosState n m} (a : Fin n)
+    (p : Fin m) (b : Nat) (v : Value) (idx : Nat)
+    (hMem : (Msg.accept p b v, Target.acc a) ∈ s.network)
+    (hProm : (s.acceptors a).prom ≤ b)
+    (hBallot : ballot p = b)
+    (hinv : MsgPaxosInv ballot s)
+    (h : PromiseInv ballot s) :
+    PromiseInv ballot
+      { s with
+        acceptors := setAcceptor s.acceptors a { prom := b, acc := some (b, v) }
+        sentAccept := setSent s.sentAccept a b v
+        network := (removeAt s.network idx) ++
+          [(Msg.accepted a p b v, Target.prop p)] } := by
+  constructor
+  · -- hPromProm: prom only increases
+    intro p' a' prior hp'
+    have := h.hPromProm p' a' prior hp'
+    by_cases hae : a = a'
+    · subst hae; simp only [setAcceptor, ite_true]; omega
+    · simp only [setAcceptor, if_neg hae]; exact this
+  · -- hPromPrior: sentAccept only grows
+    intro p' a' b' v' hp'
+    have := h.hPromPrior p' a' b' v' hp'
+    simp only [setSent]
+    by_cases hc : a' = a ∧ b' = b
+    · obtain ⟨ha', hb'⟩ := hc; rw [ha', hb'] at this
+      rw [if_pos ⟨ha', hb'⟩]
+      congr 1; exact (hinv.hSentAcceptNet a b v' this p v (Target.acc a) hMem).symm
+    · rw [if_neg hc]; exact this
+  · -- hPromNoVoteAbove: sentAccept only grows, new entry at ballot b ≥ ballot p'
+    intro p' a' prior hp' c hcbp' hc
+    have hold := h.hPromNoVoteAbove p' a' prior hp' c hcbp' hc
+    simp only [setSent]
+    by_cases hc2 : a' = a ∧ c = b
+    · -- New entry at (a, b). We have c < ballot p'. And ballot p = b.
+      -- From hPromProm, prom a' ≥ ballot p'. If a' = a, prom a ≥ ballot p'.
+      -- But c = b and hProm : prom a ≤ b. So ballot p' ≤ prom a ≤ b = c.
+      -- But c < ballot p'. Contradiction.
+      obtain ⟨ha', hcb⟩ := hc2; subst ha'; subst hcb
+      -- After subst: a' is the acceptor, c is the ballot. Goal: some v = none (contradiction)
+      -- hPromProm gives prom a' ≥ ballot p', but hProm gives prom a' ≤ c < ballot p'
+      have hge := h.hPromProm p' a' prior hp'
+      omega
+    · rw [if_neg hc2]; exact hold
+
+private theorem promiseInv_recvPrepare {s : MsgPaxosState n m} (a : Fin n)
+    (p : Fin m) (b : Nat) (idx : Nat)
+    (hProm : (s.acceptors a).prom < b)
+    (h : PromiseInv ballot s) :
+    PromiseInv ballot
+      { s with
+        acceptors := setAcceptor s.acceptors a
+          { (s.acceptors a) with prom := b }
+        network := (removeAt s.network idx) ++
+          [(Msg.promise a p b (s.acceptors a).acc, Target.prop p)] } := by
+  constructor
+  · intro p' a' prior hp'
+    have := h.hPromProm p' a' prior hp'
+    by_cases hae : a = a'
+    · subst hae; simp only [setAcceptor, ite_true]; omega
+    · simp only [setAcceptor, if_neg hae]; exact this
+  · intro p' a' b' v' hp'
+    exact h.hPromPrior p' a' b' v' hp'
+  · intro p' a' prior hp' c hcbp' hc
+    exact h.hPromNoVoteAbove p' a' prior hp' c hcbp' hc
+
+private theorem promiseInv_crashProposer {s : MsgPaxosState n m} (p : Fin m)
+    (h : PromiseInv ballot s) :
+    let ps' : ProposerState n := { (s.proposers p) with promisesReceived := fun _ => none }
+    PromiseInv ballot
+      { s with proposers := setProposer s.proposers p ps' } := by
+  constructor
+  · intro p' a prior hp'
+    simp only [setProposer] at hp'
+    by_cases hpe : p' = p
+    · subst hpe; simp at hp'
+    · simp [hpe] at hp'; exact h.hPromProm p' a prior hp'
+  · intro p' a b' v' hp'
+    simp only [setProposer] at hp'
+    by_cases hpe : p' = p
+    · subst hpe; simp at hp'
+    · simp [hpe] at hp'; exact h.hPromPrior p' a b' v' hp'
+  · intro p' a prior hp' c hcbp' hc
+    simp only [setProposer] at hp'
+    by_cases hpe : p' = p
+    · subst hpe; simp at hp'
+    · simp [hpe] at hp'; exact h.hPromNoVoteAbove p' a prior hp' c hcbp' hc
+
+end PromisePreservation
+
+theorem promise_inv_reachable {n m : Nat} {ballot : Fin m → Nat}
+    {s : MsgPaxosState n m} (hreach : Reachable ballot s) :
+    PromiseInv ballot s := by
+  induction hreach with
+  | init => exact promise_inv_init
+  | step _hr hstep ih =>
+    have hinv_pre := msg_paxos_inv_reachable _hr
+    cases hstep with
+    | sendPrepare p => exact promiseInv_net_frame ih _
+    | recvPrepare _ p b idx hMem hProm =>
+      exact promiseInv_recvPrepare _ p b idx hProm ih
+    | recvPromise p a b prior idx hMem =>
+      exact promiseInv_recvPromise p a b prior idx hMem hinv_pre ih
+    | decidePropose p v =>
+      exact promiseInv_propose_frame p (fun ps => { ps with proposed := some v })
+        (fun _ => rfl) ih
+    | sendAccept p b v _ _ _ _ =>
+      exact promiseInv_net_frame ih _
+    | recvAccept a p b v idx hMem hProm hBallot =>
+      exact promiseInv_recvAccept a p b v idx hMem hProm hBallot hinv_pre ih
+    | dropMsg idx => exact promiseInv_net_frame ih _
+    | crashProposer p ps' hps =>
+      subst hps; exact promiseInv_crashProposer p ih
+    | crashAcceptor a =>
+      exact promiseInv_net_frame ih _
+
+/-! ### `sendAccept` gate derivation
+
+    A proposer that has collected a majority of promise responses and picks
+    a value via max-vote automatically satisfies the `safeAt` gate.
+
+    The proof splits ballots `c < b` into three ranges relative to `b_max`,
+    the highest prior-vote ballot in the promise quorum:
+
+    - `b_max < c < b`: all quorum members have `sentAccept a c = none`
+      (by `hPromNoVoteAbove`), so the right disjunct (promised-past) works.
+    - `c = b_max`: by max-vote, `v = v_max`; the voter has
+      `sentAccept a c = some v`; non-voters use the right disjunct.
+    - `c < b_max`: the vote at `b_max` was safe at `b_max`
+      (by `hSentSafe`), which provides a quorum for `c`. -/
+
+/-- The `safeAt` gate for `sendAccept` is derivable from a proposer's promise
+    majority, the max-vote value, and the fact that `b_max` is the highest prior.
+    The caller supplies `b_max`, `v_max`, and the maximality + witness evidence. -/
+theorem sendAccept_gate_safeAt {n m : Nat} {ballot : Fin m → Nat}
+    {s : MsgPaxosState n m}
+    (hinv : MsgPaxosInv ballot s) (hpinv : PromiseInv ballot s)
+    (p : Fin m) (v : Value) (b : Nat)
+    (hbp : ballot p = b)
+    (hmaj : majority (fun a => decide ((s.proposers p).promisesReceived a ≠ none)) = true)
+    -- max-vote: caller provides the max prior ballot, its value, maximality evidence,
+    -- and either "no priors" or "v = v_max" witness.
+    (b_max : Nat)
+    (hmax_bound : ∀ a' b'' v'',
+        (s.proposers p).promisesReceived a' = some (some (b'', v'')) → b'' ≤ b_max)
+    (hmax_wit : (∀ a, ∀ prior, (s.proposers p).promisesReceived a = some prior →
+        prior = none) ∨
+        (∃ a_max v_max, (s.proposers p).promisesReceived a_max = some (some (b_max, v_max)) ∧
+         v = v_max)) :
+    safeAt s v b := by
+  intro c hcb
+  let Q : Fin n → Bool := fun a => decide ((s.proposers p).promisesReceived a ≠ none)
+  -- Handle the "all priors none" case: every quorum member has sentAccept = none
+  -- at all ballots < b, so use the right disjunct for everyone.
+  rcases hmax_wit with h_all_none | ⟨a_max, v_max, hpr_max, hveq⟩
+  · refine ⟨Q, hmaj, fun a ha => ?_⟩
+    have ha_some : (s.proposers p).promisesReceived a ≠ none := by
+      simpa [Q, decide_eq_true_eq] using ha
+    obtain ⟨prior, hprior⟩ := Option.ne_none_iff_exists'.mp ha_some
+    have hprom_a : (s.acceptors a).prom ≥ b := hbp ▸ hpinv.hPromProm p a prior hprior
+    have hpr_none : prior = none := h_all_none a prior hprior
+    right; constructor
+    · rw [hpr_none] at hprior
+      exact hpinv.hPromNoVoteAbove p a none hprior c (hbp ▸ hcb) trivial
+    · omega
+  · -- There is a max prior witness.
+    have hsa_max := hpinv.hPromPrior p a_max b_max v_max hpr_max
+    -- Case split: is c above all prior ballots, or at/below some?
+    by_cases h_above : c > b_max
+    · -- c > b_max: every quorum member's prior ballot is < c.
+      refine ⟨Q, hmaj, fun a ha => ?_⟩
+      have ha_some : (s.proposers p).promisesReceived a ≠ none := by
+        simpa [Q, decide_eq_true_eq] using ha
+      obtain ⟨prior, hprior⟩ := Option.ne_none_iff_exists'.mp ha_some
+      have hprom_a : (s.acceptors a).prom ≥ b := hbp ▸ hpinv.hPromProm p a prior hprior
+      right; constructor
+      · cases prior with
+        | none => exact hpinv.hPromNoVoteAbove p a none hprior c (hbp ▸ hcb) trivial
+        | some bv =>
+          obtain ⟨b', v'⟩ := bv
+          have : b' ≤ b_max := hmax_bound a b' v' hprior
+          exact hpinv.hPromNoVoteAbove p a (some (b', v')) hprior c (hbp ▸ hcb) (by omega)
+      · omega
+    · -- c ≤ b_max: use either the promise quorum or safeAt from the max vote
+      by_cases hc_eq : c = b_max
+      · -- c = b_max: use the promise quorum directly
+        refine ⟨Q, hmaj, fun a ha => ?_⟩
+        have ha_some : (s.proposers p).promisesReceived a ≠ none := by
+          simpa [Q, decide_eq_true_eq] using ha
+        obtain ⟨prior, hprior⟩ := Option.ne_none_iff_exists'.mp ha_some
+        have hprom_a : (s.acceptors a).prom ≥ b := hbp ▸ hpinv.hPromProm p a prior hprior
+        cases prior with
+        | none =>
+          right
+          exact ⟨hpinv.hPromNoVoteAbove p a none hprior c (hbp ▸ hcb) trivial, by omega⟩
+        | some bv =>
+          obtain ⟨bp, vp⟩ := bv
+          have hbp_le : bp ≤ b_max := hmax_bound a bp vp hprior
+          by_cases hcbp : c = bp
+          · left; rw [hveq, hcbp]
+            have hsa_a := hpinv.hPromPrior p a bp vp hprior
+            have hbp_eq_bmax : bp = b_max := by omega
+            rw [hbp_eq_bmax] at hsa_a ⊢
+            have hvp_eq := hinv.hSentUnique a a_max b_max vp v_max hsa_a hsa_max
+            rw [hvp_eq] at hsa_a; exact hsa_a
+          · right
+            exact ⟨hpinv.hPromNoVoteAbove p a (some (bp, vp)) hprior c (hbp ▸ hcb)
+                     (by omega), by omega⟩
+      · -- c < b_max: use safeAt from hSentSafe at b_max
+        have hc_lt : c < b_max := by omega
+        have hsafe_max := hinv.hSentSafe a_max b_max v_max hsa_max
+        obtain ⟨Q', hQ', hQ'a⟩ := hsafe_max c hc_lt
+        refine ⟨Q', hQ', fun a ha => ?_⟩
+        rcases hQ'a a ha with h_voted | h_none
+        · left; rw [hveq]; exact h_voted
+        · right; exact h_none
