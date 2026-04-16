@@ -151,6 +151,82 @@ theorem mem_removeAt {α} {l : List α} {idx : Nat} {x : α} :
 
 -- (no get? helper needed; we take `∈` directly in step premises)
 
+/-! ### Majority helpers (local, self-contained) -/
+
+def countTrue {n : Nat} (f : Fin n → Bool) : Nat :=
+  ((List.finRange n).filter fun i => f i).length
+
+def majority {n : Nat} (f : Fin n → Bool) : Bool :=
+  decide (countTrue f * 2 > n)
+
+theorem majority_overlap {n : Nat} {f g : Fin n → Bool}
+    (hf : majority f = true) (hg : majority g = true) :
+    ∃ i : Fin n, f i = true ∧ g i = true := by
+  by_contra h
+  have h_disj : ∀ x : Fin n, ¬(f x = true ∧ g x = true) := fun x hx => h ⟨x, hx⟩
+  have hle := TLA.filter_disjoint_length_le f g (List.finRange n) h_disj
+  have hf_count : countTrue f * 2 > n := by
+    unfold majority at hf; simpa [decide_eq_true_eq] using hf
+  have hg_count : countTrue g * 2 > n := by
+    unfold majority at hg; simpa [decide_eq_true_eq] using hg
+  unfold countTrue at hf_count hg_count
+  have hf' : (List.filter f (List.finRange n)).length * 2 > n := hf_count
+  have hg' : (List.filter g (List.finRange n)).length * 2 > n := hg_count
+  simp only [List.length_finRange] at hle
+  omega
+
+/-! ### Safety predicate for cross-ballot agreement -/
+
+/-- `safeAt s v b` means: for every ballot `c < b`, there exists a majority
+    quorum `Q` such that every member of `Q` either voted `v` at `c` or has
+    promised past `c` (and thus will never vote at `c`). -/
+def safeAt {n m : Nat} (s : MsgPaxosState n m) (v : Value) (b : Nat) : Prop :=
+  ∀ c, c < b → ∃ Q : Fin n → Bool, majority Q = true ∧
+    ∀ a, Q a = true →
+      s.sentAccept a c = some v ∨
+      (s.sentAccept a c = none ∧ (s.acceptors a).prom > c)
+
+/-- `safeAt` is monotone in `prom` (raising any acceptor's promise preserves it). -/
+theorem safeAt_mono_prom {n m : Nat} {s s' : MsgPaxosState n m} {v : Value} {b : Nat}
+    (hsafe : safeAt s v b)
+    (hnet : s'.sentAccept = s.sentAccept)
+    (hprom : ∀ a, (s'.acceptors a).prom ≥ (s.acceptors a).prom) :
+    safeAt s' v b := by
+  intro c hcb
+  obtain ⟨Q, hQ, hQa⟩ := hsafe c hcb
+  exact ⟨Q, hQ, fun a ha => by
+    rcases hQa a ha with h1 | ⟨h2, h3⟩
+    · left; rw [hnet]; exact h1
+    · right; rw [hnet]; exact ⟨h2, Nat.lt_of_lt_of_le h3 (hprom a)⟩⟩
+
+/-- `safeAt` is monotone under `recvAccept`: prom raised, sentAccept extended at
+    ballot `bNew` only. Requires `hcompat`: if overwriting at `(a₀, bNew)`,
+    the old value (if any) must match `v₀`. This holds from `hSentUnique`. -/
+theorem safeAt_mono_recvAccept {n m : Nat} {s : MsgPaxosState n m}
+    {v : Value} {b bNew : Nat} {a₀ : Fin n} {v₀ : Value}
+    (hsafe : safeAt s v b)
+    (hprom : ∀ a, (setAcceptor s.acceptors a₀
+      { prom := bNew, acc := some (bNew, v₀) } a).prom ≥ (s.acceptors a).prom)
+    (hcompat : ∀ a bx vx, s.sentAccept a bx = some vx →
+      setSent s.sentAccept a₀ bNew v₀ a bx = some vx) :
+    safeAt
+      { s with
+        acceptors := setAcceptor s.acceptors a₀ { prom := bNew, acc := some (bNew, v₀) }
+        sentAccept := setSent s.sentAccept a₀ bNew v₀ } v b := by
+  intro c hcb
+  obtain ⟨Q, hQ, hQa⟩ := hsafe c hcb
+  refine ⟨Q, hQ, fun a ha => ?_⟩
+  rcases hQa a ha with h1 | ⟨h2, h3⟩
+  · left; exact hcompat a c v h1
+  · right
+    constructor
+    · simp only [setSent]
+      by_cases hc : a = a₀ ∧ c = bNew
+      · obtain ⟨ha0, hcb0⟩ := hc; subst ha0; subst hcb0
+        have := hprom a; simp [setAcceptor] at this; omega
+      · rw [if_neg hc]; exact h2
+    · exact Nat.lt_of_lt_of_le h3 (hprom a)
+
 /-! ### Step relation
 
     Design notes:
@@ -201,6 +277,7 @@ inductive Step {n m : Nat} (ballot : Fin m → Nat) :
       ballot p = b →
       (∀ p' v' tgt', (Msg.accept p' b v', tgt') ∈ s.network → v = v') →
       (∀ a v', s.sentAccept a b = some v' → v = v') →
+      safeAt s v b →
       Step ballot s (MsgAction.sendAccept p b v)
         { s with network := s.network ++ acceptBroadcast n m p b v }
   | recvAccept (s : MsgPaxosState n m) (a : Fin n) (p : Fin m) (b : Nat)
@@ -227,30 +304,6 @@ inductive Reachable {n m : Nat} (ballot : Fin m → Nat) :
     MsgPaxosState n m → Prop
   | init : Reachable ballot (initialMsgPaxos n m)
   | step {s a s'} : Reachable ballot s → Step ballot s a s' → Reachable ballot s'
-
-/-! ### Majority helpers (local, self-contained) -/
-
-def countTrue {n : Nat} (f : Fin n → Bool) : Nat :=
-  ((List.finRange n).filter fun i => f i).length
-
-def majority {n : Nat} (f : Fin n → Bool) : Bool :=
-  decide (countTrue f * 2 > n)
-
-theorem majority_overlap {n : Nat} {f g : Fin n → Bool}
-    (hf : majority f = true) (hg : majority g = true) :
-    ∃ i : Fin n, f i = true ∧ g i = true := by
-  by_contra h
-  have h_disj : ∀ x : Fin n, ¬(f x = true ∧ g x = true) := fun x hx => h ⟨x, hx⟩
-  have hle := TLA.filter_disjoint_length_le f g (List.finRange n) h_disj
-  have hf_count : countTrue f * 2 > n := by
-    unfold majority at hf; simpa [decide_eq_true_eq] using hf
-  have hg_count : countTrue g * 2 > n := by
-    unfold majority at hg; simpa [decide_eq_true_eq] using hg
-  unfold countTrue at hf_count hg_count
-  have hf' : (List.filter f (List.finRange n)).length * 2 > n := hf_count
-  have hg' : (List.filter g (List.finRange n)).length * 2 > n := hg_count
-  simp only [List.length_finRange] at hle
-  omega
 
 /-! ### Invariant
 
@@ -303,6 +356,10 @@ structure MsgPaxosInv {n m : Nat} (ballot : Fin m → Nat)
   hSentAcceptNet : ∀ a b v,
       s.sentAccept a b = some v →
       ∀ p' v' tgt', (Msg.accept p' b v', tgt') ∈ s.network → v = v'
+  /-- Every vote in `sentAccept` was safe at its ballot. -/
+  hSentSafe : ∀ a b v, s.sentAccept a b = some v → safeAt s v b
+  /-- Every `accept` message in the network carries a safe value. -/
+  hNetSafe : ∀ p b v tgt, (Msg.accept p b v, tgt) ∈ s.network → safeAt s v b
 
 /-! ### Preservation -/
 
@@ -314,7 +371,7 @@ theorem msg_paxos_inv_init : MsgPaxosInv ballot (initialMsgPaxos n m) := by
     hAccSent := ?_, hAccProm := ?_, hSentProm := ?_, hSentBallot := ?_,
     hNetPrepare := ?_, hNetAccept := ?_, hNetAccepted := ?_,
     hNetPromise := ?_, hSentUnique := ?_, hAcceptValFun := ?_,
-    hSentAcceptNet := ?_ }
+    hSentAcceptNet := ?_, hSentSafe := ?_, hNetSafe := ?_ }
   all_goals (intros; first
     | (rename_i h; simp [initialMsgPaxos, initAcceptor] at h)
     | simp [initialMsgPaxos] at *)
@@ -331,7 +388,8 @@ private theorem inv_sendPrepare {s : MsgPaxosState n m} (p : Fin m)
     exact ⟨a, ha.symm⟩
   refine { h with
     hNetPrepare := ?_, hNetAccept := ?_, hNetAccepted := ?_,
-    hNetPromise := ?_, hAcceptValFun := ?_, hSentAcceptNet := ?_ }
+    hNetPromise := ?_, hAcceptValFun := ?_, hSentAcceptNet := ?_,
+    hSentSafe := h.hSentSafe, hNetSafe := ?_ }
   · intro q b tgt hin
     rcases List.mem_append.mp hin with h1 | h2
     · exact h.hNetPrepare q b tgt h1
@@ -371,13 +429,20 @@ private theorem inv_sendPrepare {s : MsgPaxosState n m} (p : Fin m)
     · exact h.hSentAcceptNet a b v hsa q' v' tgt' hx
     · obtain ⟨_, ha'⟩ := hnet _ hx
       simp only [Prod.mk.injEq] at ha'; exact absurd ha'.1 (by simp)
+  · -- hNetSafe: new messages are prepare, not accept
+    intro q b v tgt hin
+    rcases List.mem_append.mp hin with h1 | h1
+    · exact h.hNetSafe q b v tgt h1
+    · obtain ⟨_, ha'⟩ := hnet _ h1
+      simp only [Prod.mk.injEq] at ha'; exact absurd ha'.1 (by simp)
 
 private theorem inv_dropMsg {s : MsgPaxosState n m} (idx : Nat)
     (h : MsgPaxosInv ballot s) :
     MsgPaxosInv ballot { s with network := removeAt s.network idx } := by
   refine { h with
     hNetPrepare := ?_, hNetAccept := ?_, hNetAccepted := ?_,
-    hNetPromise := ?_, hAcceptValFun := ?_, hSentAcceptNet := ?_ }
+    hNetPromise := ?_, hAcceptValFun := ?_, hSentAcceptNet := ?_,
+    hSentSafe := h.hSentSafe, hNetSafe := ?_ }
   · intro q b tgt hin; exact h.hNetPrepare q b tgt (mem_removeAt hin)
   · intro q b v tgt hin; exact h.hNetAccept q b v tgt (mem_removeAt hin)
   · intro a q b v tgt hin; exact h.hNetAccepted a q b v tgt (mem_removeAt hin)
@@ -387,6 +452,7 @@ private theorem inv_dropMsg {s : MsgPaxosState n m} (idx : Nat)
     exact h.hAcceptValFun q q' b v v' tgt tgt' (mem_removeAt h1) (mem_removeAt h2)
   · intro a b v hsa q' v' tgt' hin
     exact h.hSentAcceptNet a b v hsa q' v' tgt' (mem_removeAt hin)
+  · intro q b v tgt hin; exact h.hNetSafe q b v tgt (mem_removeAt hin)
 
 /-- Generic frame lemma: a state with only `proposers` changed inherits
     the invariant. The invariant never mentions `proposers`. -/
@@ -399,7 +465,8 @@ private theorem inv_proposer_frame {s : MsgPaxosState n m}
     hSentBallot := h.hSentBallot, hNetPrepare := h.hNetPrepare,
     hNetAccept := h.hNetAccept, hNetAccepted := h.hNetAccepted,
     hNetPromise := h.hNetPromise, hSentUnique := h.hSentUnique,
-    hAcceptValFun := h.hAcceptValFun, hSentAcceptNet := h.hSentAcceptNet }
+    hAcceptValFun := h.hAcceptValFun, hSentAcceptNet := h.hSentAcceptNet,
+    hSentSafe := h.hSentSafe, hNetSafe := h.hNetSafe }
 
 private theorem inv_crashProposer {s : MsgPaxosState n m} (p : Fin m)
     (ps' : ProposerState n) (h : MsgPaxosInv ballot s) :
@@ -448,7 +515,8 @@ private theorem inv_recvPrepare {s : MsgPaxosState n m} (a : Fin n) (p : Fin m)
     hAccSent := ?_, hAccProm := ?_, hSentProm := ?_, hSentBallot := h.hSentBallot,
     hNetPrepare := ?_, hNetAccept := ?_, hNetAccepted := ?_,
     hNetPromise := ?_, hSentUnique := h.hSentUnique,
-    hAcceptValFun := ?_, hSentAcceptNet := ?_ }
+    hAcceptValFun := ?_, hSentAcceptNet := ?_,
+    hSentSafe := ?_, hNetSafe := ?_ }
   · intro a' b' v' hacc
     by_cases hae : a = a'
     · subst hae; simp [setAcceptor] at hacc; exact h.hAccSent a b' v' hacc
@@ -524,11 +592,30 @@ private theorem inv_recvPrepare {s : MsgPaxosState n m} (a : Fin n) (p : Fin m)
     · exact h.hSentAcceptNet a' b' v hsa q' v' tgt' (mem_removeAt hx)
     · rcases List.mem_singleton.mp hx with heq
       exact absurd heq (by simp)
+  · -- hSentSafe: prom raised, sentAccept unchanged → safeAt monotone
+    intro a' b' v' hsa
+    have hsafe := h.hSentSafe a' b' v' hsa
+    exact safeAt_mono_prom hsafe rfl (fun a'' => by
+      by_cases hae : a = a''
+      · subst hae; simp [setAcceptor]; omega
+      · simp [setAcceptor, hae])
+  · -- hNetSafe: same monotonicity argument
+    intro q b' v' tgt hin
+    have hin' : (Msg.accept q b' v', tgt) ∈ s.network := by
+      rcases List.mem_append.mp hin with hx | hx
+      · exact mem_removeAt hx
+      · rcases List.mem_singleton.mp hx with heq; exact absurd heq (by simp)
+    have hsafe := h.hNetSafe q b' v' tgt hin'
+    exact safeAt_mono_prom hsafe rfl (fun a'' => by
+      by_cases hae : a = a''
+      · subst hae; simp [setAcceptor]; omega
+      · simp [setAcceptor, hae])
 
 private theorem inv_sendAccept {s : MsgPaxosState n m} (p : Fin m) (b : Nat)
     (v : Value) (hbp : ballot p = b)
     (hGateNet : ∀ p' v' tgt', (Msg.accept p' b v', tgt') ∈ s.network → v = v')
     (hGateSent : ∀ a v', s.sentAccept a b = some v' → v = v')
+    (hGateSafe : safeAt s v b)
     (h : MsgPaxosInv ballot s) :
     MsgPaxosInv ballot
       { s with network := s.network ++ acceptBroadcast n m p b v } := by
@@ -540,7 +627,8 @@ private theorem inv_sendAccept {s : MsgPaxosState n m} (p : Fin m) (b : Nat)
     exact ⟨a, ha.symm⟩
   refine { h with
     hNetPrepare := ?_, hNetAccept := ?_, hNetAccepted := ?_,
-    hNetPromise := ?_, hAcceptValFun := ?_, hSentAcceptNet := ?_ }
+    hNetPromise := ?_, hAcceptValFun := ?_, hSentAcceptNet := ?_,
+    hSentSafe := h.hSentSafe, hNetSafe := ?_ }
   · intro q b' tgt hin
     rcases List.mem_append.mp hin with h1 | h1
     · exact h.hNetPrepare q b' tgt h1
@@ -595,6 +683,14 @@ private theorem inv_sendAccept {s : MsgPaxosState n m} (p : Fin m) (b : Nat)
       injection ha'.1 with _ hb hv
       subst hb; subst hv
       exact (hGateSent a v' hsa).symm
+  · -- hNetSafe: old accepts are safe (from h.hNetSafe); new accepts carry hGateSafe
+    intro q b' v' tgt hin
+    rcases List.mem_append.mp hin with h1 | h1
+    · exact h.hNetSafe q b' v' tgt h1
+    · obtain ⟨a', ha'⟩ := hnet _ h1
+      simp only [Prod.mk.injEq] at ha'
+      injection ha'.1 with _ hb hv
+      subst hb; subst hv; exact hGateSafe
 
 /-! The hard case: `recvAccept`. Acceptor `a` consumes an `accept p b v`
     message. We re-establish every invariant clause using `hAcceptValFun`
@@ -616,7 +712,8 @@ private theorem inv_recvAccept {s : MsgPaxosState n m} (a : Fin n) (p : Fin m)
     hAccSent := ?_, hAccProm := ?_, hSentProm := ?_, hSentBallot := ?_,
     hNetPrepare := ?_, hNetAccept := ?_, hNetAccepted := ?_,
     hNetPromise := ?_, hSentUnique := ?_,
-    hAcceptValFun := ?_, hSentAcceptNet := ?_ }
+    hAcceptValFun := ?_, hSentAcceptNet := ?_,
+    hSentSafe := ?_, hNetSafe := ?_ }
   · -- hAccSent: new acc (b,v) at a, ghost sentAccept a b = some v
     intro a' b' v' hacc
     by_cases hae : a = a'
@@ -780,6 +877,57 @@ private theorem inv_recvAccept {s : MsgPaxosState n m} (a : Fin n) (p : Fin m)
       exact h.hAcceptValFun p q' b v v'' (Target.acc a) tgt' hMem this
     · rw [if_neg hc] at hsa
       exact h.hSentAcceptNet a' b' v' hsa q' v'' tgt' hin_orig
+  · -- hSentSafe: for old entries, use h.hSentSafe + monotonicity; for new entry,
+    -- use h.hNetSafe on the accept message + monotonicity.
+    have hprom_mono : ∀ a', (setAcceptor s.acceptors a { prom := b, acc := some (b, v) } a').prom
+        ≥ (s.acceptors a').prom := by
+      intro a'; by_cases hae : a = a'
+      · subst hae; simp [setAcceptor]; omega
+      · simp [setAcceptor, hae]
+    have hcompat : ∀ a₁ bx vx, s.sentAccept a₁ bx = some vx →
+        setSent s.sentAccept a b v a₁ bx = some vx := by
+      intro a₁ bx vx hold
+      simp only [setSent]
+      by_cases hc : a₁ = a ∧ bx = b
+      · obtain ⟨ha₁, hbx⟩ := hc
+        rw [ha₁, hbx] at hold
+        rw [if_pos ⟨ha₁, hbx⟩]
+        congr 1; exact (h.hSentAcceptNet a b vx hold p v (Target.acc a) hMem).symm
+      · rw [if_neg hc]; exact hold
+    intro a' b' v' hsa
+    simp only [setSent] at hsa
+    by_cases hc : a' = a ∧ b' = b
+    · -- New entry: sentAccept a b = some v
+      rw [if_pos hc] at hsa
+      have hveq : v' = v := by rcases hsa with ⟨⟩; rfl
+      obtain ⟨haeq, hbeq⟩ := hc
+      simp only [haeq, hbeq, hveq] at *
+      exact safeAt_mono_recvAccept (h.hNetSafe p b v (Target.acc a) hMem) hprom_mono hcompat
+    · -- Old entry
+      rw [if_neg hc] at hsa
+      exact safeAt_mono_recvAccept (h.hSentSafe a' b' v' hsa) hprom_mono hcompat
+  · -- hNetSafe: old accepts use h.hNetSafe + mono; new message is `accepted`, not `accept`
+    have hprom_mono : ∀ a', (setAcceptor s.acceptors a { prom := b, acc := some (b, v) } a').prom
+        ≥ (s.acceptors a').prom := by
+      intro a'; by_cases hae : a = a'
+      · subst hae; simp [setAcceptor]; omega
+      · simp [setAcceptor, hae]
+    have hcompat : ∀ a₁ bx vx, s.sentAccept a₁ bx = some vx →
+        setSent s.sentAccept a b v a₁ bx = some vx := by
+      intro a₁ bx vx hold
+      simp only [setSent]
+      by_cases hc : a₁ = a ∧ bx = b
+      · obtain ⟨ha₁, hbx⟩ := hc
+        rw [ha₁, hbx] at hold
+        rw [if_pos ⟨ha₁, hbx⟩]
+        congr 1; exact (h.hSentAcceptNet a b vx hold p v (Target.acc a) hMem).symm
+      · rw [if_neg hc]; exact hold
+    intro q b' v' tgt hin
+    have hin' : (Msg.accept q b' v', tgt) ∈ s.network := by
+      rcases List.mem_append.mp hin with hx | hx
+      · exact mem_removeAt hx
+      · rcases List.mem_singleton.mp hx with heq; exact absurd heq (by simp)
+    exact safeAt_mono_recvAccept (h.hNetSafe q b' v' tgt hin') hprom_mono hcompat
 
 end Preservation
 
@@ -823,8 +971,8 @@ theorem msg_paxos_inv_reachable {n m : Nat} {ballot : Fin m → Nat}
     | recvPromise p a b prior idx hMem =>
       exact inv_recvPromise p a b prior idx ih
     | decidePropose p v => exact inv_decidePropose p v ih
-    | sendAccept p b v hbp hGateNet hGateSent =>
-      exact inv_sendAccept p b v hbp hGateNet hGateSent ih
+    | sendAccept p b v hbp hGateNet hGateSent hGateSafe =>
+      exact inv_sendAccept p b v hbp hGateNet hGateSent hGateSafe ih
     | recvAccept a p b v idx hMem hProm hBallot =>
       exact inv_recvAccept a p b v idx hMem hProm hBallot ih
     | dropMsg idx => exact inv_dropMsg idx ih
@@ -841,5 +989,63 @@ theorem within_ballot_agreement {n m : Nat} {ballot : Fin m → Nat}
     (hv' : s.sentAccept a' b = some v') :
     v = v' :=
   (msg_paxos_inv_reachable hreach).hSentUnique a a' b v v' hv hv'
+
+/-! ### Cross-ballot agreement -/
+
+/-- If a value `v'` is safe at ballot `b'`, and a majority has accepted `v` at
+    some ballot `b < b'`, then `v' = v`. This is the core Lamport chain step:
+    the safeAt witness quorum overlaps the choosing quorum. -/
+theorem safeAt_chosen_agree {n m : Nat} {ballot : Fin m → Nat}
+    {s : MsgPaxosState n m} (hinv : MsgPaxosInv ballot s)
+    {v v' : Value} {b b' : Nat}
+    (hlt : b < b')
+    (hsafe : safeAt s v' b')
+    (hmaj : majority (fun a => decide (s.sentAccept a b = some v)) = true) :
+    v' = v := by
+  -- safeAt at ballot b gives a quorum Q
+  obtain ⟨Q, hQ, hQa⟩ := hsafe b hlt
+  -- The choosing quorum overlaps Q
+  obtain ⟨i, hi_Q, hi_chose⟩ := majority_overlap hQ hmaj
+  -- The overlap acceptor voted v at b
+  have hi_voted : s.sentAccept i b = some v := by
+    simpa [decide_eq_true_eq] using hi_chose
+  -- What does the safeAt quorum say about i?
+  rcases hQa i hi_Q with h_voted | ⟨h_none, _⟩
+  · -- i voted v' at b: by hSentUnique, v = v'
+    exact hinv.hSentUnique i i b v' v h_voted hi_voted
+  · -- i has sentAccept = none at b: contradicts hi_voted
+    exact absurd hi_voted (by rw [h_none]; exact fun h => nomatch h)
+
+/-- **Cross-ballot agreement (full agreement).** If value `v` is chosen
+    (majority-accepted) at ballot `b`, and value `v'` is chosen at ballot `b'`,
+    then `v = v'`. This holds regardless of whether `b = b'` or `b ≠ b'`. -/
+theorem cross_ballot_agreement {n m : Nat} {ballot : Fin m → Nat}
+    (h_inj : Function.Injective ballot)
+    {s : MsgPaxosState n m} (hreach : Reachable ballot s) :
+    ∀ b b' v v',
+      majority (fun a => decide (s.sentAccept a b = some v)) = true →
+      majority (fun a => decide (s.sentAccept a b' = some v')) = true →
+      v = v' := by
+  intro b b' v v' hmaj hmaj'
+  have hinv := msg_paxos_inv_reachable hreach
+  -- Get a witness vote for v at b and v' at b'
+  obtain ⟨i, _, hi⟩ := majority_overlap hmaj hmaj
+  have hiv : s.sentAccept i b = some v := by simpa [decide_eq_true_eq] using hi
+  obtain ⟨j, _, hj⟩ := majority_overlap hmaj' hmaj'
+  have hjv : s.sentAccept j b' = some v' := by simpa [decide_eq_true_eq] using hj
+  -- Get safeAt from the invariant
+  have hsafe_v := hinv.hSentSafe i b v hiv
+  have hsafe_v' := hinv.hSentSafe j b' v' hjv
+  -- Case split on b vs b'
+  rcases Nat.lt_or_ge b b' with hlt | hge
+  · -- b < b': v' is safe at b', choosing quorum at b forces v' = v
+    exact (safeAt_chosen_agree hinv hlt hsafe_v' hmaj).symm
+  · rcases Nat.lt_or_ge b' b with hlt' | hge'
+    · -- b' < b: v is safe at b, choosing quorum at b' forces v = v'
+      exact safeAt_chosen_agree hinv hlt' hsafe_v hmaj'
+    · -- b = b': within-ballot agreement
+      have hbeq : b = b' := Nat.le_antisymm hge' hge
+      subst hbeq
+      exact hinv.hSentUnique i j b v v' hiv hjv
 
 end MessagePaxos
