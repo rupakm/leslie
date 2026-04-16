@@ -103,8 +103,9 @@ inductive MsgAction (n m : Nat) where
   | decidePropose (p : Fin m) (v : Value)
   | sendAccept    (p : Fin m) (b : Nat) (v : Value)
   | recvAccept    (a : Fin n) (p : Fin m) (b : Nat) (v : Value)
-  | dropMsg       (idx : Nat)
-  | crashProposer (p : Fin m)
+  | dropMsg        (idx : Nat)
+  | crashProposer  (p : Fin m)
+  | crashAcceptor  (a : Fin n)
 
 /-! ### Helpers -/
 
@@ -299,6 +300,17 @@ inductive Step {n m : Nat} (ballot : Fin m → Nat) :
       (hps : ps' = { (s.proposers p) with promisesReceived := fun _ => none }) :
       Step ballot s (MsgAction.crashProposer p)
         { s with proposers := setProposer s.proposers p ps' }
+  /-- Acceptor crash: drops all network messages addressed to or from
+      acceptor `a`. Acceptor state (`prom`, `acc`) and `sentAccept`
+      are stable and unchanged — the acceptor can resume processing
+      new messages at any time (recovery is implicit). -/
+  | crashAcceptor (s : MsgPaxosState n m) (a : Fin n) :
+      Step ballot s (MsgAction.crashAcceptor a)
+        { s with network := s.network.filter fun (msg, tgt) =>
+            match msg with
+            | Msg.promise a' _ _ _ => decide (a' ≠ a) && (match tgt with | Target.acc a' => decide (a' ≠ a) | _ => true)
+            | Msg.accepted a' _ _ _ => decide (a' ≠ a) && (match tgt with | Target.acc a' => decide (a' ≠ a) | _ => true)
+            | _ => match tgt with | Target.acc a' => decide (a' ≠ a) | _ => true }
 
 inductive Reachable {n m : Nat} (ballot : Fin m → Nat) :
     MsgPaxosState n m → Prop
@@ -473,6 +485,32 @@ private theorem inv_crashProposer {s : MsgPaxosState n m} (p : Fin m)
     MsgPaxosInv ballot
       { s with proposers := setProposer s.proposers p ps' } :=
   inv_proposer_frame _ h
+
+/-- Acceptor crash filters the network. Any invariant over a subset of
+    the original network is preserved since surviving messages were
+    present in the original. Uses `inv_dropMsg` on each removed message
+    but stated directly as a filter for cleaner composition. -/
+private theorem inv_crashAcceptor {s : MsgPaxosState n m} (a : Fin n)
+    (h : MsgPaxosInv ballot s)
+    (net' : List (Msg n m × Target n m))
+    (hsub : ∀ x, x ∈ net' → x ∈ s.network) :
+    MsgPaxosInv ballot { s with network := net' } := {
+  hAccSent := h.hAccSent
+  hAccProm := h.hAccProm
+  hSentProm := h.hSentProm
+  hSentBallot := h.hSentBallot
+  hSentUnique := h.hSentUnique
+  hSentSafe := h.hSentSafe
+  hNetPrepare := fun p b tgt hm => h.hNetPrepare p b tgt (hsub _ hm)
+  hNetAccept := fun p b v tgt hm => h.hNetAccept p b v tgt (hsub _ hm)
+  hNetAccepted := fun a' p b v tgt hm => h.hNetAccepted a' p b v tgt (hsub _ hm)
+  hNetPromise := fun a' p b pr tgt hm => h.hNetPromise a' p b pr tgt (hsub _ hm)
+  hAcceptValFun := fun p1 p2 b v1 v2 t1 t2 h1 h2 =>
+    h.hAcceptValFun p1 p2 b v1 v2 t1 t2 (hsub _ h1) (hsub _ h2)
+  hSentAcceptNet := fun a' b v hsa p' v' tgt' hm =>
+    h.hSentAcceptNet a' b v hsa p' v' tgt' (hsub _ hm)
+  hNetSafe := fun p b v tgt hm => h.hNetSafe p b v tgt (hsub _ hm)
+}
 
 private theorem inv_decidePropose {s : MsgPaxosState n m} (p : Fin m) (v : Value)
     (h : MsgPaxosInv ballot s) :
@@ -978,6 +1016,8 @@ theorem msg_paxos_inv_reachable {n m : Nat} {ballot : Fin m → Nat}
     | dropMsg idx => exact inv_dropMsg idx ih
     | crashProposer p ps' hps =>
       subst hps; exact inv_crashProposer p _ ih
+    | crashAcceptor a =>
+      exact inv_crashAcceptor a ih _ (fun x hx => (List.mem_filter.mp hx).1)
 
 /-- **Within-ballot agreement** (partial agreement). Any two `sentAccept`
     entries at the same ballot agree on the value. This follows directly
