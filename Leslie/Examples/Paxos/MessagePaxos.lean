@@ -176,6 +176,17 @@ theorem majority_overlap {n : Nat} {f g : Fin n → Bool}
   simp only [List.length_finRange] at hle
   omega
 
+/-- Majority is monotone: if f implies g pointwise, and f is a majority,
+    then g is a majority. -/
+theorem majority_mono_prom {n : Nat} {f g : Fin n → Bool}
+    (hf : majority f = true)
+    (hmono : ∀ j, f j = true → g j = true) :
+    majority g = true := by
+  unfold majority countTrue at hf ⊢
+  simp only [decide_eq_true_eq] at hf ⊢
+  have hle := TLA.filter_length_mono (List.finRange n) (fun i => f i) (fun i => g i) hmono
+  omega
+
 /-! ### Safety predicate for cross-ballot agreement -/
 
 /-- `safeAt s v b` means: for every ballot `c < b`, there exists a majority
@@ -279,6 +290,7 @@ inductive Step {n m : Nat} (ballot : Fin m → Nat) :
       (∀ p' v' tgt', (Msg.accept p' b v', tgt') ∈ s.network → v = v') →
       (∀ a v', s.sentAccept a b = some v' → v = v') →
       safeAt s v b →
+      majority (fun j => decide ((s.acceptors j).prom ≥ b)) = true →
       Step ballot s (MsgAction.sendAccept p b v)
         { s with network := s.network ++ acceptBroadcast n m p b v }
   | recvAccept (s : MsgPaxosState n m) (a : Fin n) (p : Fin m) (b : Nat)
@@ -388,6 +400,11 @@ structure MsgPaxosInv {n m : Nat} (ballot : Fin m → Nat)
       ∀ c, c < b →
       (match prior with | none => True | some (b', _) => c > b') →
       s.sentAccept a c = none
+  /-- Every `accept` message in the network is backed by a majority of
+      acceptors whose promise is at least the ballot. -/
+  hNetAcceptProm : ∀ p b v tgt,
+      (Msg.accept p b v, tgt) ∈ s.network →
+      majority (fun j => decide ((s.acceptors j).prom ≥ b)) = true
 
 /-! ### Preservation -/
 
@@ -400,7 +417,8 @@ theorem msg_paxos_inv_init : MsgPaxosInv ballot (initialMsgPaxos n m) := by
     hNetPrepare := ?_, hNetAccept := ?_, hNetAccepted := ?_,
     hNetPromise := ?_, hSentUnique := ?_, hAcceptValFun := ?_,
     hSentAcceptNet := ?_, hSentSafe := ?_, hNetSafe := ?_,
-    hNetPromisePrior := ?_, hAccMax := ?_, hNetPromiseNoVoteAbove := ?_ }
+    hNetPromisePrior := ?_, hAccMax := ?_, hNetPromiseNoVoteAbove := ?_,
+    hNetAcceptProm := ?_ }
   all_goals (intros; simp_all [initialMsgPaxos, initAcceptor])
 
 private theorem inv_sendPrepare {s : MsgPaxosState n m} (p : Fin m)
@@ -417,7 +435,7 @@ private theorem inv_sendPrepare {s : MsgPaxosState n m} (p : Fin m)
     hNetPrepare := ?_, hNetAccept := ?_, hNetAccepted := ?_,
     hNetPromise := ?_, hAcceptValFun := ?_, hSentAcceptNet := ?_,
     hSentSafe := h.hSentSafe, hNetSafe := ?_, hNetPromisePrior := ?_,
-    hNetPromiseNoVoteAbove := ?_ }
+    hNetPromiseNoVoteAbove := ?_, hNetAcceptProm := ?_ }
   · intro q b tgt hin
     rcases List.mem_append.mp hin with h1 | h2
     · exact h.hNetPrepare q b tgt h1
@@ -475,6 +493,12 @@ private theorem inv_sendPrepare {s : MsgPaxosState n m} (p : Fin m)
     · exact h.hNetPromiseNoVoteAbove a' q b' prior tgt h1 c hcb' hc
     · obtain ⟨_, ha'⟩ := hnet _ h1
       simp only [Prod.mk.injEq] at ha'; exact absurd ha'.1 (by simp)
+  · -- hNetAcceptProm: new messages are prepare, not accept
+    intro q b v tgt hin
+    rcases List.mem_append.mp hin with h1 | h1
+    · exact h.hNetAcceptProm q b v tgt h1
+    · obtain ⟨_, ha'⟩ := hnet _ h1
+      simp only [Prod.mk.injEq] at ha'; exact absurd ha'.1 (by simp)
 
 private theorem inv_dropMsg {s : MsgPaxosState n m} (idx : Nat)
     (h : MsgPaxosInv ballot s) :
@@ -483,7 +507,7 @@ private theorem inv_dropMsg {s : MsgPaxosState n m} (idx : Nat)
     hNetPrepare := ?_, hNetAccept := ?_, hNetAccepted := ?_,
     hNetPromise := ?_, hAcceptValFun := ?_, hSentAcceptNet := ?_,
     hSentSafe := h.hSentSafe, hNetSafe := ?_, hNetPromisePrior := ?_,
-    hNetPromiseNoVoteAbove := ?_ }
+    hNetPromiseNoVoteAbove := ?_, hNetAcceptProm := ?_ }
   · intro q b tgt hin; exact h.hNetPrepare q b tgt (mem_removeAt hin)
   · intro q b v tgt hin; exact h.hNetAccept q b v tgt (mem_removeAt hin)
   · intro a q b v tgt hin; exact h.hNetAccepted a q b v tgt (mem_removeAt hin)
@@ -498,6 +522,7 @@ private theorem inv_dropMsg {s : MsgPaxosState n m} (idx : Nat)
     exact h.hNetPromisePrior a' q b' b'' v' tgt (mem_removeAt hin)
   · intro a' q b' prior tgt hin c hcb' hc
     exact h.hNetPromiseNoVoteAbove a' q b' prior tgt (mem_removeAt hin) c hcb' hc
+  · intro q b v tgt hin; exact h.hNetAcceptProm q b v tgt (mem_removeAt hin)
 
 /-- Generic frame lemma: a state with only `proposers` changed inherits
     the invariant. The invariant never mentions `proposers`. -/
@@ -514,7 +539,8 @@ private theorem inv_proposer_frame {s : MsgPaxosState n m}
     hSentSafe := h.hSentSafe, hNetSafe := h.hNetSafe,
     hNetPromisePrior := h.hNetPromisePrior,
     hAccMax := h.hAccMax,
-    hNetPromiseNoVoteAbove := h.hNetPromiseNoVoteAbove }
+    hNetPromiseNoVoteAbove := h.hNetPromiseNoVoteAbove,
+    hNetAcceptProm := h.hNetAcceptProm }
 
 private theorem inv_crashProposer {s : MsgPaxosState n m} (p : Fin m)
     (ps' : ProposerState n) (h : MsgPaxosInv ballot s) :
@@ -551,6 +577,7 @@ private theorem inv_crashAcceptor {s : MsgPaxosState n m} (a : Fin n)
   hAccMax := h.hAccMax
   hNetPromiseNoVoteAbove := fun a' p b prior tgt hm c hcb hc =>
     h.hNetPromiseNoVoteAbove a' p b prior tgt (hsub _ hm) c hcb hc
+  hNetAcceptProm := fun p b v tgt hm => h.hNetAcceptProm p b v tgt (hsub _ hm)
 }
 
 private theorem inv_decidePropose {s : MsgPaxosState n m} (p : Fin m) (v : Value)
@@ -596,7 +623,7 @@ private theorem inv_recvPrepare {s : MsgPaxosState n m} (a : Fin n) (p : Fin m)
     hNetPromise := ?_, hSentUnique := h.hSentUnique,
     hAcceptValFun := ?_, hSentAcceptNet := ?_,
     hSentSafe := ?_, hNetSafe := ?_, hNetPromisePrior := ?_,
-    hAccMax := ?_, hNetPromiseNoVoteAbove := ?_ }
+    hAccMax := ?_, hNetPromiseNoVoteAbove := ?_, hNetAcceptProm := ?_ }
   · intro a' b' v' hacc
     by_cases hae : a = a'
     · subst hae; simp [setAcceptor] at hacc; exact h.hAccSent a b' v' hacc
@@ -736,12 +763,29 @@ private theorem inv_recvPrepare {s : MsgPaxosState n m} (a : Fin n) (p : Fin m)
           rw [← h_prior] at hacc
           have : bp = b'' := by rcases hacc with ⟨⟩; rfl
           subst this; simp at hc; omega
+  · -- hNetAcceptProm: accept msgs survive via removeAt; prom only increases
+    intro q b' v' tgt hin
+    have hin_orig : (Msg.accept q b' v', tgt) ∈ s.network := by
+      rcases List.mem_append.mp hin with hx | hx
+      · exact mem_removeAt hx
+      · rcases List.mem_singleton.mp hx with heq; exact absurd heq (by simp)
+    have hmaj_old := h.hNetAcceptProm q b' v' tgt hin_orig
+    -- Show that the new majority predicate is pointwise ≥ old
+    show majority (fun j => decide ((setAcceptor s.acceptors a
+        { (s.acceptors a) with prom := b } j).prom ≥ b')) = true
+    exact majority_mono_prom hmaj_old (by
+      intro j hj; simp only [decide_eq_true_eq] at hj ⊢
+      simp only [setAcceptor]
+      by_cases hae : a = j
+      · subst hae; simp; omega
+      · simp [hae]; exact hj)
 
 private theorem inv_sendAccept {s : MsgPaxosState n m} (p : Fin m) (b : Nat)
     (v : Value) (hbp : ballot p = b)
     (hGateNet : ∀ p' v' tgt', (Msg.accept p' b v', tgt') ∈ s.network → v = v')
     (hGateSent : ∀ a v', s.sentAccept a b = some v' → v = v')
     (hGateSafe : safeAt s v b)
+    (hGateMaj : majority (fun j => decide ((s.acceptors j).prom ≥ b)) = true)
     (h : MsgPaxosInv ballot s) :
     MsgPaxosInv ballot
       { s with network := s.network ++ acceptBroadcast n m p b v } := by
@@ -755,7 +799,8 @@ private theorem inv_sendAccept {s : MsgPaxosState n m} (p : Fin m) (b : Nat)
     hNetPrepare := ?_, hNetAccept := ?_, hNetAccepted := ?_,
     hNetPromise := ?_, hAcceptValFun := ?_, hSentAcceptNet := ?_,
     hSentSafe := h.hSentSafe, hNetSafe := ?_, hNetPromisePrior := ?_,
-    hAccMax := h.hAccMax, hNetPromiseNoVoteAbove := ?_ }
+    hAccMax := h.hAccMax, hNetPromiseNoVoteAbove := ?_,
+    hNetAcceptProm := ?_ }
   · intro q b' tgt hin
     rcases List.mem_append.mp hin with h1 | h1
     · exact h.hNetPrepare q b' tgt h1
@@ -830,6 +875,14 @@ private theorem inv_sendAccept {s : MsgPaxosState n m} (p : Fin m) (b : Nat)
     · exact h.hNetPromiseNoVoteAbove a' q b' prior tgt h1 c hcb' hc
     · obtain ⟨_, ha'⟩ := hnet _ h1
       simp only [Prod.mk.injEq] at ha'; exact absurd ha'.1 (by simp)
+  · -- hNetAcceptProm: old accepts use h.hNetAcceptProm; new accepts use hGateMaj
+    intro q b' v' tgt hin
+    rcases List.mem_append.mp hin with h1 | h1
+    · exact h.hNetAcceptProm q b' v' tgt h1
+    · obtain ⟨a', ha'⟩ := hnet _ h1
+      simp only [Prod.mk.injEq] at ha'
+      injection ha'.1 with _ hb _
+      subst hb; exact hGateMaj
 
 /-! The hard case: `recvAccept`. Acceptor `a` consumes an `accept p b v`
     message. We re-establish every invariant clause using `hAcceptValFun`
@@ -853,7 +906,8 @@ private theorem inv_recvAccept {s : MsgPaxosState n m} (a : Fin n) (p : Fin m)
     hNetPromise := ?_, hSentUnique := ?_,
     hAcceptValFun := ?_, hSentAcceptNet := ?_,
     hSentSafe := ?_, hNetSafe := ?_, hNetPromisePrior := ?_,
-    hAccMax := ?_, hNetPromiseNoVoteAbove := ?_ }
+    hAccMax := ?_, hNetPromiseNoVoteAbove := ?_,
+    hNetAcceptProm := ?_ }
   · -- hAccSent: new acc (b,v) at a, ghost sentAccept a b = some v
     intro a' b' v' hacc
     by_cases hae : a = a'
@@ -1119,6 +1173,21 @@ private theorem inv_recvAccept {s : MsgPaxosState n m} (a : Fin n) (p : Fin m)
       obtain ⟨_, hprom_ge⟩ := h.hNetPromise a' q b' prior tgt hin_orig
       omega
     · rw [if_neg hc2]; exact hold
+  · -- hNetAcceptProm: accept msgs survive via removeAt; prom only increases
+    intro q b' v' tgt hin
+    have hin_orig : (Msg.accept q b' v', tgt) ∈ s.network := by
+      rcases List.mem_append.mp hin with hx | hx
+      · exact mem_removeAt hx
+      · rcases List.mem_singleton.mp hx with heq; exact absurd heq (by simp)
+    have hmaj_old := h.hNetAcceptProm q b' v' tgt hin_orig
+    show majority (fun j => decide ((setAcceptor s.acceptors a
+        { prom := b, acc := some (b, v) } j).prom ≥ b')) = true
+    exact majority_mono_prom hmaj_old (by
+      intro j hj; simp only [decide_eq_true_eq] at hj ⊢
+      simp only [setAcceptor]
+      by_cases hja : a = j
+      · subst hja; simp; omega
+      · simp [hja]; exact hj)
 
 end Preservation
 
@@ -1162,8 +1231,8 @@ theorem msg_paxos_inv_reachable {n m : Nat} {ballot : Fin m → Nat}
     | recvPromise p a b prior idx hMem =>
       exact inv_recvPromise p a b prior idx ih
     | decidePropose p v => exact inv_decidePropose p v ih
-    | sendAccept p b v hbp hGateNet hGateSent hGateSafe =>
-      exact inv_sendAccept p b v hbp hGateNet hGateSent hGateSafe ih
+    | sendAccept p b v hbp hGateNet hGateSent hGateSafe hGateMaj =>
+      exact inv_sendAccept p b v hbp hGateNet hGateSent hGateSafe hGateMaj ih
     | recvAccept a p b v idx hMem hProm hBallot =>
       exact inv_recvAccept a p b v idx hMem hProm hBallot ih
     | dropMsg idx => exact inv_dropMsg idx ih
@@ -1462,7 +1531,7 @@ theorem promise_inv_reachable {n m : Nat} {ballot : Fin m → Nat}
     | decidePropose p v =>
       exact promiseInv_propose_frame p (fun ps => { ps with proposed := some v })
         (fun _ => rfl) ih
-    | sendAccept p b v _ _ _ _ =>
+    | sendAccept p b v _ _ _ _ _ =>
       exact promiseInv_net_frame ih _
     | recvAccept a p b v idx hMem hProm hBallot =>
       exact promiseInv_recvAccept a p b v idx hMem hProm hBallot hinv_pre ih
