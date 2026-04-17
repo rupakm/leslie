@@ -378,14 +378,10 @@ theorem multi_p1b_p2a_p2b_star {n m : Nat} {ballot : Fin m → Nat}
     -- After raising prom[a] to b, a majority of acceptors have got1b p = true.
     (h_majority : PaxosTextbookN.majority
       (fun j => if j = a then true else as.got1b p j) = true)
-    -- The value v satisfies the p2a max-vote constraint in the post-multi_p1b state.
-    (h_value_ok : ∀ i bw w,
-      (if i = a then true else as.got1b p i) = true →
-      (if i = a ∧ as.got1b p a = false then as.acc a else as.rep p i) = some (bw, w) →
-      (∀ j bw' w', (if j = a then true else as.got1b p j) = true →
-        (if j = a ∧ as.got1b p a = false then as.acc a else as.rep p j) = some (bw', w') →
-        bw' ≤ bw) →
-      v = w) :
+    -- The value v is safe at ballot p (Lamport's safeAt predicate).
+    -- This replaces the old max-vote constraint: safeAt is the specification-level
+    -- requirement, while max-vote is one implementation that implies safeAt.
+    (h_safe_v : PaxosTextbookN.safeAt ballot as v (ballot p)) :
     Star (atomicSpec n m ballot).next as
       { prom := setFn as.prom a (ballot p)
         acc := setFn as.acc a (some (ballot p, v))
@@ -431,43 +427,26 @@ theorem multi_p1b_p2a_p2b_star {n m : Nat} {ballot : Fin m → Nat}
     rw [hgot1b_conv]; exact h_majority
   -- Helper: convert between (x = a ∧ ballot p ≤ b ∧ P) and (x = a ∧ P)
   have hbpb : ballot p ≤ b := h_ballot ▸ Nat.le_refl _
-  have h_p2a_constraint : ∀ i bw w, S1.got1b p i = true → S1.rep p i = some (bw, w) →
-      (∀ j bw' w', S1.got1b p j = true → S1.rep p j = some (bw', w') → bw' ≤ bw) → v = w := by
-    intro i bw w hgot hrep hmax
-    -- got1b in S1: if i = a ∧ ballot p ≤ b then true else as.got1b p i
-    -- Since ballot p ≤ b, this simplifies to: if i = a then true else as.got1b p i
-    -- rep in S1: if i = a ∧ ballot p ≤ b ∧ as.got1b p a = false then as.acc a else as.rep p i
-    -- Since ballot p ≤ b, simplifies to: if i = a ∧ as.got1b p a = false then as.acc a else as.rep p i
-    apply h_value_ok i bw w
-    · -- got1b conversion
-      change (if i = a ∧ ballot p ≤ b then true else as.got1b p i) = true at hgot
-      by_cases hia : i = a
-      · rw [if_pos hia]
-      · rw [if_neg hia]; rw [if_neg (show ¬(i = a ∧ _) from fun ⟨h, _⟩ => hia h)] at hgot; exact hgot
-    · -- rep conversion
-      change (if i = a ∧ ballot p ≤ b ∧ as.got1b p a = false then as.acc a else as.rep p i) =
-        some (bw, w) at hrep
-      by_cases hia : i = a
-      · by_cases hg : as.got1b p a = false
-        · rw [if_pos ⟨hia, hg⟩]; rw [if_pos ⟨hia, hbpb, hg⟩] at hrep; exact hrep
-        · rw [if_neg (fun ⟨_, h⟩ => hg h)]; rw [if_neg (fun ⟨_, _, h⟩ => hg h)] at hrep; exact hrep
-      · rw [if_neg (fun ⟨h, _⟩ => hia h)]; rw [if_neg (fun ⟨h, _⟩ => hia h)] at hrep; exact hrep
-    · -- hmax conversion
-      intro j bw' w' hgj hrj
-      apply hmax j bw' w'
-      · change (if j = a ∧ ballot p ≤ b then true else as.got1b p j) = true
-        by_cases hja : j = a
-        · rw [if_pos ⟨hja, hbpb⟩]
-        · rw [if_neg (fun ⟨h, _⟩ => hja h)]; rw [if_neg hja] at hgj; exact hgj
-      · change (if j = a ∧ ballot p ≤ b ∧ as.got1b p a = false then as.acc a else as.rep p j) =
-          some (bw', w')
-        by_cases hja : j = a
-        · by_cases hg : as.got1b p a = false
-          · rw [if_pos ⟨hja, hbpb, hg⟩]; rw [if_pos ⟨hja, hg⟩] at hrj; exact hrj
-          · rw [if_neg (fun ⟨_, _, h⟩ => hg h)]; rw [if_neg (fun ⟨_, h⟩ => hg h)] at hrj; exact hrj
-        · rw [if_neg (fun ⟨h, _⟩ => hja h)]; rw [if_neg (fun ⟨h, _⟩ => hja h)] at hrj; exact hrj
+  -- safeAt in the pre-state transfers to S1 (multi_p1b only changes prom/got1b/rep, not did2b/prop/acc)
+  -- and safeAt depends on votedFor (did2b, prop) and wontVoteAt (did2b, prom).
+  -- prom only increased (from as.prom a to b); wontVoteAt is monotone in prom.
+  -- votedFor is unchanged (did2b, prop unchanged by multi_p1b).
+  -- So safeAt in as implies safeAt in S1.
+  have h_p2a_safe_S1 : PaxosTextbookN.safeAt ballot S1 v (ballot p) := by
+    intro c hc
+    obtain ⟨Q, hQmaj, hQprop⟩ := h_safe_v c hc
+    refine ⟨Q, hQmaj, fun j hj => ?_⟩
+    rcases hQprop j hj with ⟨r, hrb, hdr, hrv⟩ | ⟨hnv, hprom⟩
+    · exact Or.inl ⟨r, hrb, hdr, hrv⟩  -- votedFor: did2b/prop unchanged in S1
+    · -- wontVoteAt: prom only increased, so prom > c still holds
+      right; refine ⟨hnv, ?_⟩
+      show S1.prom j > c
+      by_cases hja : j = a
+      · simp [S1, hja]; omega
+      · simp [S1, hja]; exact hprom
+  -- (h_p2a_constraint removed — p2a now uses safeAt instead of max-vote)
   have h_p2a : (atomicSpec n m ballot).next S1 S2 :=
-    ⟨.p2a p, ⟨h_p2a_gate1, h_p2a_gate2⟩, v, rfl, h_p2a_constraint⟩
+    ⟨.p2a p, ⟨h_p2a_gate1, h_p2a_gate2⟩, v, rfl, h_p2a_safe_S1⟩
   -- Phase 3: p2b step on S2
   have h_p2b_gate1 : S2.did2b p a = false := h_did2b_false
   have h_p2b_gate2 : S2.prom a ≤ ballot p := by
@@ -847,62 +826,34 @@ noncomputable def paxosSimulation {n m : Nat} (ballot : Fin m → Nat)
                 show PaxosTextbookN.majority _ = true
                 change MessagePaxos.majority _ = true
                 exact MessagePaxos.majority_mono_prom hmaj hmono)
-              (by -- h_value_ok: The p2a max-vote constraint.
-                --
-                -- WHAT THIS ASKS: Given the abstract post-multi_p1b state where
-                -- got1b p i = true ↔ prom i ≥ ballot p, show that the concrete
-                -- value `vmap v` matches the max-ballot report among all got1b
-                -- entries for proposer p.
-                --
-                -- WHY IT IS UNPROVABLE WITH THE CURRENT `got1b_iff` SimRel:
-                --
-                -- The biconditional `got1b p i ↔ prom i ≥ ballot p` eagerly
-                -- fires abstract p1b for ALL proposers whenever prom increases
-                -- (at recvPrepare). This means the abstract p2a constraint sees
-                -- reports (rep entries) from acceptors whose promises the concrete
-                -- proposer p never actually received. The proposer chose its value
-                -- based on `promisesReceived` (a subset), but the abstract sees
-                -- the full got1b superset, whose max-ballot report may differ.
-                --
-                -- Counterexample (3 acceptors, 2 proposers, ballot=[1,2]):
-                -- 1. All promise at 1. p0 sends accept(1,"red"). a0 accepts.
-                -- 2. a1,a2 promise at 2. p1 sees no prior votes → picks "blue".
-                -- 3. a0 promises at 2 → abstract p1b(p1,a0) fires eagerly,
-                --    rep[p1][a0] = (1,"red").
-                -- 4. a0 recvAccept(2,"blue") → abstract p2a(p1) fires. The
-                --    max-ballot got1b report is (1,"red") from a0, but the
-                --    concrete value is "blue". Mismatch.
-                --
-                -- REQUIRED FIX (future work):
-                --
-                -- Replace `got1b_iff` with a one-directional SimRel field:
-                --   got1b_prom : ∀ p i, got1b p i = true → prom i ≥ ballot p
-                -- and fire p1b at `recvPromise` (when the proposer actually
-                -- receives the promise), not at `recvPrepare`. Fire p2a at
-                -- `decidePropose` (when `proposed` is first set and the proposer
-                -- has a majority of promisesReceived).
-                --
-                -- At decidePropose time:
-                -- - majority(got1b p) holds because got1b ⊇ promisesReceived
-                --   (each recvPromise was preceded by a recvPrepare → p1b).
-                -- - The max-vote from got1b matches promisesReceived because
-                --   got1b entries = exactly the received promises (no in-transit
-                --   or eagerly-fired entries).
-                --
-                -- Subtlety: firing p1b at recvPromise requires decoupling
-                -- abstract prom from concrete prom (use prom_le instead of
-                -- prom_eq), since recvPrepare raises concrete prom without a
-                -- corresponding abstract step. This introduces ordering issues
-                -- when promises arrive out of ballot order (a higher-ballot p1b
-                -- may block a lower-ballot p1b's gate). The solution is to
-                -- stutter on stale promises (where abstract prom already exceeds
-                -- the promise's ballot) and track got1b only for non-stale ones.
-                --
-                -- The resulting proof of h_value_ok at decidePropose would
-                -- follow from PromiseInv: each got1b entry's rep matches the
-                -- corresponding promisesReceived entry, so the abstract max-vote
-                -- equals the concrete max-vote used by decidePropose.
-                sorry)
+              (by -- h_safe_v: derive atomic safeAt from message-level ProposedSafeInv
+                -- Get message-level safeAt from MsgPaxosInv.hNetSafe
+                have hmsg_safe : MessagePaxos.safeAt ms v b :=
+                  hinvI.hNetSafe p b v _ hMem
+                -- Translate to atomic safeAt
+                intro c hc
+                obtain ⟨Q, hQmaj, hQprop⟩ := hmsg_safe c (hBallot ▸ hc)
+                refine ⟨Q, ?_, fun j hj => ?_⟩
+                · -- majority: MessagePaxos.majority = PaxosTextbookN.majority
+                  change MessagePaxos.majority Q = true; exact hQmaj
+                · rcases hQprop j hj with hvoted | ⟨hnone, hprom⟩
+                  · -- sentAccept j c = some v → votedFor
+                    left
+                    obtain ⟨r, hrb⟩ := hinvI.hSentBallot j c v hvoted
+                    refine ⟨r, hrb, ?_, ?_⟩
+                    · -- did2b r j = true
+                      rw [hR.did2b_eq]; simp [hrb, hvoted]
+                    · -- prop r = some (vmap v)
+                      exact hR.prop_some r j v (hrb ▸ hvoted)
+                  · -- sentAccept j c = none ∧ prom > c → wontVoteAt
+                    right
+                    constructor
+                    · -- ∀ r, ballot r = c → did2b r j ≠ true
+                      intro r hrb hdid
+                      rw [hR.did2b_eq] at hdid
+                      simp [hrb, hnone] at hdid
+                    · -- prom j > c
+                      rw [hR.prom_eq]; exact hprom)
           case simrel =>
             -- SimRel for the B2 case: abstract state has multi_p1b + p2a + p2b updates
             constructor

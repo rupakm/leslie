@@ -105,6 +105,33 @@ theorem majority_overlap {n : Nat} {f g : Fin n → Bool}
   simp only [List.length_finRange] at hle
   omega
 
+/-! ### SafeAt predicate (Lamport)
+
+    `votedFor a c v`: acceptor `a` voted for value `v` at ballot `c`.
+    `wontVoteAt a c`: acceptor `a` has not voted at ballot `c` and never will
+    (because its promise exceeds `c`).
+    `safeAt v b`: for every ballot `c < b`, there is a quorum where each
+    member either voted for `v` at `c`, or will never vote at `c`.
+
+    SafeAt is monotone: votes and promises only increase, strengthening both
+    disjuncts. This makes it an inductive invariant.
+
+    Defined before the spec because `p2a` references `safeAt` in its
+    transition constraint. -/
+
+def votedFor {n m : Nat} (ballot : Fin m → Nat) (s : PaxosState n m)
+    (a : Fin n) (c : Nat) (v : Value) : Prop :=
+  ∃ p, ballot p = c ∧ s.did2b p a = true ∧ s.prop p = some v
+
+def wontVoteAt {n m : Nat} (ballot : Fin m → Nat) (s : PaxosState n m)
+    (a : Fin n) (c : Nat) : Prop :=
+  (∀ p, ballot p = c → s.did2b p a ≠ true) ∧ s.prom a > c
+
+def safeAt {n m : Nat} (ballot : Fin m → Nat) (s : PaxosState n m)
+    (v : Value) (b : Nat) : Prop :=
+  ∀ c, c < b → ∃ Q : Fin n → Bool, majority Q = true ∧
+    ∀ a, Q a = true → votedFor ballot s a c v ∨ wontVoteAt ballot s a c
+
 /-! ### Paxos Specification -/
 
 def paxos (n m : Nat) (ballot : Fin m → Nat) : ActionSpec (PaxosState n m) (PaxosAction n m) where
@@ -129,10 +156,14 @@ def paxos (n m : Nat) (ballot : Fin m → Nat) : ActionSpec (PaxosState n m) (Pa
         transition := fun s s' =>
           ∃ v,
             s' = { s with prop := setFn s.prop p (some v) } ∧
-            -- Paxos constraint: adopt value from highest-ballot report in quorum
-            (∀ i b w, s.got1b p i = true → s.rep p i = some (b, w) →
-              (∀ j b' w', s.got1b p j = true → s.rep p j = some (b', w') → b' ≤ b) →
-              v = w)
+            -- Safety constraint: the chosen value must be safe at this ballot.
+            -- This generalizes the max-vote rule (which implies safeAt) to any
+            -- value satisfying Lamport's safety predicate. The max-vote rule is
+            -- one implementation; safeAt is the specification-level requirement.
+            -- This relaxation enables forward simulation from the message-passing
+            -- model, where the proposer's local information may differ from the
+            -- global got1b/rep state.
+            safeAt ballot s v (ballot p)
       }
     | .p2b p i => {
         gate := fun s => s.did2b p i = false ∧ s.prom i ≤ ballot p
@@ -143,30 +174,6 @@ def paxos (n m : Nat) (ballot : Fin m → Nat) : ActionSpec (PaxosState n m) (Pa
               acc := setFn s.acc i (some (ballot p, v))
               did2b := setFn s.did2b p (setFn (s.did2b p) i true) }
       }
-
-/-! ### SafeAt predicate (Lamport)
-
-    `votedFor a c v`: acceptor `a` voted for value `v` at ballot `c`.
-    `wontVoteAt a c`: acceptor `a` has not voted at ballot `c` and never will
-    (because its promise exceeds `c`).
-    `safeAt v b`: for every ballot `c < b`, there is a quorum where each
-    member either voted for `v` at `c`, or will never vote at `c`.
-
-    SafeAt is monotone: votes and promises only increase, strengthening both
-    disjuncts. This makes it an inductive invariant. -/
-
-def votedFor {n m : Nat} (ballot : Fin m → Nat) (s : PaxosState n m)
-    (a : Fin n) (c : Nat) (v : Value) : Prop :=
-  ∃ p, ballot p = c ∧ s.did2b p a = true ∧ s.prop p = some v
-
-def wontVoteAt {n m : Nat} (ballot : Fin m → Nat) (s : PaxosState n m)
-    (a : Fin n) (c : Nat) : Prop :=
-  (∀ p, ballot p = c → s.did2b p a ≠ true) ∧ s.prom a > c
-
-def safeAt {n m : Nat} (ballot : Fin m → Nat) (s : PaxosState n m)
-    (v : Value) (b : Nat) : Prop :=
-  ∀ c, c < b → ∃ Q : Fin n → Bool, majority Q = true ∧
-    ∀ a, Q a = true → votedFor ballot s a c v ∨ wontVoteAt ballot s a c
 
 /-! ### Protocol Invariant
 
@@ -370,15 +377,12 @@ private theorem fin_exists_max {n : Nat} (f : Fin n → Nat) (P : Fin n → Prop
       exact ih j hPj this
 
 private theorem paxos_inv_next_p2a {n m : Nat} {ballot : Fin m → Nat}
-    (h_inj : Function.Injective ballot)
+    (_h_inj : Function.Injective ballot)
     (s : PaxosState n m) (p : Fin m) (v : Value)
     (hinv : PaxosInv ballot s)
     (hg1 : s.prop p = none)
     (hg2 : majority (s.got1b p) = true)
-    (hconstr : ∀ (i : Fin n) (b : Nat) (w : Value),
-        s.got1b p i = true → s.rep p i = some (b, w) →
-        (∀ (j : Fin n) (b' : Nat) (w' : Value), s.got1b p j = true → s.rep p j = some (b', w') → b' ≤ b) →
-        v = w) :
+    (hsafe_v : safeAt ballot s v (ballot p)) :
     PaxosInv ballot { s with prop := setFn s.prop p (some v) } := by
   apply PaxosInv.mk
   · -- hA: did2b unchanged, prop only gains (setFn adds some v at p)
@@ -410,113 +414,25 @@ private theorem paxos_inv_next_p2a {n m : Nat} {ballot : Fin m → Nat}
     · subst hqp; simp [setFn] at hq; exact hg2
     · simp [setFn, hqp] at hq; exact hinv.hJ q hq
   · exact hinv.hF  -- hF: rep unchanged
-  · -- hSafe
+  · -- hSafe: safeAt is given directly as the transition constraint for q = p.
+    -- For q ≠ p: prop unchanged, old hSafe carries over.
+    -- In both cases, safeAt transfers because p2a only changes prop, and
+    -- safeAt depends on did2b/prop/prom which are stable (votedFor references
+    -- prop, but did2b p = false for all acceptors so votedFor through p is empty).
     intro q w hprop c hc
     simp only [setFn] at hprop
     by_cases hqp : q = p
     · subst hqp
       simp only [ite_true] at hprop
       obtain ⟨rfl⟩ : w = v := Option.some.inj hprop.symm
-      -- safeAt ballot (s with prop := setFn s.prop q (some v)) v (ballot q)
-      -- For each c < ballot q, find a witness quorum
-      -- Use classical reasoning to case-split on whether anyone in got1b q voted at c
-      by_cases hexvote : ∃ a : Fin n, s.got1b q a = true ∧
-          ∃ r : Fin m, ballot r = c ∧ s.did2b r a = true
-      · -- Someone in the quorum voted at c; need max report ballot argument.
-        -- Step 1: Extract witness from hexvote
-        obtain ⟨a₀, hgot₀, r₀, hrbal₀, hdid₀⟩ := hexvote
-        -- Step 2: hG gives a report at a₀ with ballot ≥ c
-        have hgt₀ : ballot q > ballot r₀ := hrbal₀ ▸ hc
-        obtain ⟨b₀, w₀, hrep₀, hge₀⟩ := hinv.hG r₀ q a₀ hdid₀ hgot₀ hgt₀
-        -- Step 3: Find the max report in q's quorum
-        -- Define: P j ≡ got1b q j = true ∧ ∃ b w, rep q j = some (b, w)
-        -- f j = the ballot of the report at j (or 0)
-        let f : Fin n → Nat := fun j => match s.rep q j with | some (b, _) => b | none => 0
-        have hPa₀ : s.got1b q a₀ = true ∧ ∃ b w, s.rep q a₀ = some (b, w) :=
-          ⟨hgot₀, b₀, w₀, hrep₀⟩
-        have hfbound : ∀ j, (s.got1b q j = true ∧ ∃ b w, s.rep q j = some (b, w)) →
-            f j ≤ ballot q := by
-          intro j ⟨hgj, b, w, hrj⟩
-          show f j ≤ ballot q
-          simp only [f, hrj]
-          exact hinv.hF q j b w hrj
-        obtain ⟨amax, ⟨hgot_max, bmax, wmax, hrep_max⟩, hmax_all⟩ :=
-          fin_exists_max f (fun j => s.got1b q j = true ∧ ∃ b w, s.rep q j = some (b, w))
-            (ballot q) hfbound a₀ hPa₀
-        -- Step 4: By hconstr, v = wmax
-        have hv_eq : v = wmax := by
-          apply hconstr amax bmax wmax hgot_max hrep_max
-          intro j b' w' hgotj hrepj
-          have := hmax_all j ⟨hgotj, b', w', hrepj⟩
-          simp only [f, hrep_max, hrepj] at this
-          exact this
-        -- Step 5: By hC, there exists tmax with ballot tmax = bmax, prop tmax = some wmax
-        obtain ⟨tmax, htbal, htprop⟩ := hinv.hC q amax bmax wmax hrep_max
-        -- Step 6: bmax < ballot q
-        have hbmax_lt : bmax < ballot q := by
-          by_contra h
-          have hbmax_ge : bmax ≥ ballot q := Nat.not_lt.mp h
-          have hbmax_le : bmax ≤ ballot q := hinv.hF q amax bmax wmax hrep_max
-          have hbmax_eq : bmax = ballot q := Nat.le_antisymm hbmax_le hbmax_ge
-          have : tmax = q := h_inj (htbal ▸ hbmax_eq)
-          subst this
-          simp [hg1] at htprop
-        -- bmax ≥ c (since bmax ≥ b₀ ≥ c)
-        have hbmax_ge_b₀ : bmax ≥ b₀ := by
-          have := hmax_all a₀ hPa₀
-          simp only [f, hrep_max, hrep₀] at this
-          omega
-        have hbmax_ge_c : bmax ≥ c := by omega
-        -- Step 7: Case split on bmax = c vs bmax > c
-        by_cases hbc : bmax = c
-        · -- Case bmax = c: tmax is the unique proposer at ballot c
-          -- By injectivity: tmax = r₀ (since ballot tmax = bmax = c = ballot r₀)
-          have htmax_eq : tmax = r₀ := h_inj (by omega)
-          -- prop tmax = some wmax, so prop r₀ = some wmax
-          rw [htmax_eq] at htprop
-          -- Use Q = got1b q
-          refine ⟨s.got1b q, hg2, fun a ha => ?_⟩
-          -- For each a in got1b q: either voted at c or wontVoteAt
-          by_cases hvoted : ∃ r, ballot r = c ∧ s.did2b r a = true
-          · -- a voted at c: show votedFor a c v
-            left
-            obtain ⟨r, hrb, hdr⟩ := hvoted
-            -- r is unique at ballot c: r = r₀
-            have hr_eq : r = r₀ := h_inj (by omega)
-            rw [hr_eq] at hdr
-            refine ⟨r₀, hrbal₀, hdr, ?_⟩
-            -- prop r₀ in post-state: setFn s.prop q (some v)
-            -- r₀ ≠ q since ballot r₀ = c < ballot q
-            have hr₀_ne_q : r₀ ≠ q := by intro heq; subst heq; omega
-            simp [setFn, hr₀_ne_q]
-            -- need s.prop r₀ = some v: htprop says some wmax, hv_eq says v = wmax
-            rw [hv_eq]; exact htprop
-          · -- a didn't vote at c: wontVoteAt
-            right
-            refine ⟨fun r hrb hdr => hvoted ⟨r, hrb, hdr⟩, ?_⟩
-            exact Nat.lt_of_lt_of_le hc (hinv.hD q a ha)
-        · -- Case bmax > c: c < bmax
-          have hc_lt_bmax : c < bmax := by omega
-          -- From pre-state hSafe for tmax: safeAt wmax bmax
-          obtain ⟨Qt, hQtmaj, hQtprop⟩ := hinv.hSafe tmax wmax htprop c (htbal ▸ hc_lt_bmax)
-          -- Qt works in post-state too; goal needs v not wmax, but hv_eq : v = wmax
-          refine ⟨Qt, hQtmaj, fun a ha => ?_⟩
-          rcases hQtprop a ha with ⟨r, hrb, hdr, hrv⟩ | ⟨hnv, hprom⟩
-          · -- votedFor wmax in pre-state → votedFor v in post-state
-            -- prop only changed at q. For r with ballot r = c: r ≠ q (c < ballot q)
-            left
-            have hr_ne_q : r ≠ q := by intro heq; subst heq; omega
-            -- hrv : s.prop r = some wmax, need setFn s.prop q (some v) r = some v
-            refine ⟨r, hrb, hdr, ?_⟩
-            simp [setFn, hr_ne_q]
-            rw [hv_eq]; exact hrv
-          · -- wontVoteAt: did2b/prom unchanged
-            exact Or.inr ⟨hnv, hprom⟩
-      · -- No one in got1b q voted at c: use Q = got1b q, all wontVoteAt
-        refine ⟨s.got1b q, hg2, fun a ha => ?_⟩
-        right
-        exact ⟨fun r hrb hdid => hexvote ⟨a, ha, r, hrb, hdid⟩,
-               Nat.lt_of_lt_of_le hc (hinv.hD q a ha)⟩
+      -- safeAt given directly; transfer to post-state (only prop changed)
+      obtain ⟨Q, hQmaj, hQprop⟩ := hsafe_v c hc
+      refine ⟨Q, hQmaj, fun a ha => ?_⟩
+      rcases hQprop a ha with ⟨r, hrb, hdr, hrv⟩ | ⟨hnv, hprom⟩
+      · -- votedFor: r ≠ q since did2b r a = true → prop r ≠ none, but prop q = none
+        have hrq : r ≠ q := fun h => by subst h; exact absurd hrv (by simp [hg1])
+        exact Or.inl ⟨r, hrb, hdr, by simp [setFn, hrq, hrv]⟩
+      · exact Or.inr ⟨hnv, hprom⟩
     · -- q ≠ p: prop q unchanged (setFn s.prop p (some v) q = s.prop q)
       simp only [hqp, ite_false] at hprop
       obtain ⟨Q, hQmaj, hQprop⟩ := hinv.hSafe q w hprop c hc
