@@ -544,7 +544,7 @@ noncomputable def paxosSimulation {n m : Nat} (ballot : Fin m → Nat)
     | crashAcceptor a =>
       exact ⟨as, .refl, ⟨hR.prom_eq, hR.acc_eq, hR.did2b_eq, hR.prop_none,
         hR.prop_some, hR.got1b_iff, hR.rep_none, hR.rep_dom, hR.rep_acc, hR.rep_sent⟩⟩
-    | sendAccept p b v hbp hGateNet hGateSent hGateSafe hGateMaj =>
+    | sendAccept p b v hbp hGateNet hGateSent hGateSafe hGateMaj hGateMaxVote =>
       exact ⟨as, .refl, ⟨hR.prom_eq, hR.acc_eq, hR.did2b_eq, hR.prop_none,
         hR.prop_some, hR.got1b_iff, hR.rep_none, hR.rep_dom, hR.rep_acc, hR.rep_sent⟩⟩
     -- ── Non-stutter cases ──────────────────────────────────────
@@ -840,17 +840,24 @@ noncomputable def paxosSimulation {n m : Nat} (ballot : Fin m → Nat)
                 show PaxosTextbookN.majority _ = true
                 change MessagePaxos.majority _ = true
                 exact MessagePaxos.majority_mono_prom hmaj hmono)
-              (by -- h_value_ok: v satisfies max-vote constraint
-                -- Goal: if i has the highest-ballot report (bw, w) among the quorum,
-                -- then vmap v = w. From rep_sent/acc_to_sent_lemma, w = vmap w' where
-                -- ms.sentAccept i bw = some w'. From hNetSafe, safeAt ms v b.
-                -- Proof sketch: by safeAt at c = bw < b, get majority Q. If any Q
-                -- member voted at bw, they voted v, so v = w' by hSentUnique. If no Q
-                -- member voted at bw, all Q members promised past bw. By majority
-                -- overlap with the reports quorum, some Q member is in the quorum with
-                -- report at ballot < bw. This requires a strong induction on b - bw,
-                -- which is the core Paxos max-vote safety argument.
-                -- Requires a helper: safeAt_max_vote_value, a dedicated Paxos safety lemma.
+              (by -- h_value_ok: UNPROVABLE with current SimRel.
+                --
+                -- The `got1b_iff` relation maps `got1b p i ↔ prom i ≥ ballot p`,
+                -- which eagerly fires abstract p1b for ALL proposers when prom
+                -- increases (recvPrepare). This means the abstract p2a constraint
+                -- sees reports from acceptors whose promises the concrete proposer
+                -- never received.
+                --
+                -- Counterexample (3 acceptors, 2 proposers, ballot=[1,2]):
+                -- 1. All promise at 1. p0 sends accept(1,"red"). a0 accepts "red".
+                -- 2. a1,a2 promise at 2. p1 sees no prior votes → sends accept(2,"blue").
+                -- 3. a0 promises at 2 → abstract p1b(p1,a0) fires, rep = (1,"red").
+                -- 4. a0 recvAccept(2,"blue") → abstract p2a(p1) picks max report =
+                --    "red", but concrete value is "blue". Mismatch.
+                --
+                -- FIX: Redesign SimRel to fire p2a at recvPromise (when the proposer
+                -- actually collects a majority) instead of at recvAccept. This ensures
+                -- the abstract p2a only sees reports from actually-received promises.
                 sorry)
           case simrel =>
             -- SimRel for the B2 case: abstract state has multi_p1b + p2a + p2b updates

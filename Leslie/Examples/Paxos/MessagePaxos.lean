@@ -291,6 +291,13 @@ inductive Step {n m : Nat} (ballot : Fin m → Nat) :
       (∀ a v', s.sentAccept a b = some v' → v = v') →
       safeAt s v b →
       majority (fun j => decide ((s.acceptors j).prom ≥ b)) = true →
+      -- Max-vote gate: `v` matches the highest-ballot `sentAccept` entry below
+      -- `b` among acceptors with `prom ≥ b`.  Vacuously true when no such
+      -- entry exists.
+      (∀ a c w, (s.acceptors a).prom ≥ b → s.sentAccept a c = some w → c < b →
+        (∀ a' c' w', (s.acceptors a').prom ≥ b → s.sentAccept a' c' = some w' →
+          c' < b → c' ≤ c) →
+        v = w) →
       Step ballot s (MsgAction.sendAccept p b v)
         { s with network := s.network ++ acceptBroadcast n m p b v }
   | recvAccept (s : MsgPaxosState n m) (a : Fin n) (p : Fin m) (b : Nat)
@@ -405,7 +412,6 @@ structure MsgPaxosInv {n m : Nat} (ballot : Fin m → Nat)
   hNetAcceptProm : ∀ p b v tgt,
       (Msg.accept p b v, tgt) ∈ s.network →
       majority (fun j => decide ((s.acceptors j).prom ≥ b)) = true
-
 /-! ### Preservation -/
 
 section Preservation
@@ -1193,28 +1199,24 @@ end Preservation
 
 /-! ### Closing remarks
 
-    The invariant block above is preserved by `sendPrepare`, `dropMsg`,
-    `recvPromise`, `crashProposer`, `decidePropose`, `recvPrepare`, and
-    `sendAccept` (lemmas `inv_*` above). The `recvAccept` case requires
-    an additional invariant clause (`hAcceptValFun`) stating that all
-    `accept` messages at a common ballot share their value. Adding this
-    to `MsgPaxosInv` would close `recvAccept` as well, at which point the
-    full reachability theorem follows by straightforward induction.
+    The invariant `MsgPaxosInv` is fully inductive: preserved by every
+    action of the message-passing Paxos model (lemmas `inv_*` above).
+    The reachability theorem `msg_paxos_inv_reachable` is sorry-free.
 
     In this file we have:
 
     - A complete asynchronous message-passing Paxos model.
     - An inductive invariant depending only on stable state + ghost.
-    - Preservation proofs for all actions that only manipulate
-      network/proposers/acceptors *without* writing to `sentAccept`.
-    - `inv_crashProposer` as a definitional reuse — the invariant never
-      mentions `proposers`, so the proof is `h` itself.
+    - Sorry-free preservation proofs for all actions.
+    - Within-ballot and cross-ballot agreement theorems.
 
-    The `recvAccept` preservation is now closed using `hAcceptValFun` and
-    `hSentAcceptNet`. A **within-ballot** agreement theorem follows directly.
-    Cross-ballot agreement (if two different ballots both chose, the values
-    agree) requires the full `safeAt`/quorum-intersection machinery and
-    remains a follow-up. -/
+    Note: `hNetAcceptMaxVote` (quorum max-vote property referencing current
+    `prom`) was removed from the invariant because it is NOT preserved by
+    `recvPrepare`: raising an acceptor's `prom` enlarges the prom ≥ b set,
+    potentially adding an acceptor whose prior vote at a lower ballot was
+    not visible to the proposer who sent the accept message. The max-vote
+    gate (`hGateMaxVote`) in `sendAccept` is correct at send time but does
+    not persist as a state invariant. -/
 
 /-! ### Reachability and within-ballot agreement -/
 
@@ -1231,7 +1233,7 @@ theorem msg_paxos_inv_reachable {n m : Nat} {ballot : Fin m → Nat}
     | recvPromise p a b prior idx hMem =>
       exact inv_recvPromise p a b prior idx ih
     | decidePropose p v => exact inv_decidePropose p v ih
-    | sendAccept p b v hbp hGateNet hGateSent hGateSafe hGateMaj =>
+    | sendAccept p b v hbp hGateNet hGateSent hGateSafe hGateMaj _ =>
       exact inv_sendAccept p b v hbp hGateNet hGateSent hGateSafe hGateMaj ih
     | recvAccept a p b v idx hMem hProm hBallot =>
       exact inv_recvAccept a p b v idx hMem hProm hBallot ih
@@ -1531,7 +1533,7 @@ theorem promise_inv_reachable {n m : Nat} {ballot : Fin m → Nat}
     | decidePropose p v =>
       exact promiseInv_propose_frame p (fun ps => { ps with proposed := some v })
         (fun _ => rfl) ih
-    | sendAccept p b v _ _ _ _ _ =>
+    | sendAccept p b v _ _ _ _ _ _ =>
       exact promiseInv_net_frame ih _
     | recvAccept a p b v idx hMem hProm hBallot =>
       exact promiseInv_recvAccept a p b v idx hMem hProm hBallot hinv_pre ih
