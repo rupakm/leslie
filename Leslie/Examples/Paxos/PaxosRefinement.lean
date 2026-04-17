@@ -7,7 +7,7 @@ import Leslie.Examples.Paxos.MsgPaxosConsensus
     Proves a forward simulation from the message-passing Paxos model
     (`MessagePaxos.lean`) to the atomic Paxos model (`Paxos.lean`).
 
-    The simulation uses the **abstract-ahead** pattern:
+    **Current design (abstract-ahead, 1 sorry):**
     - `recvPrepare(a, p, b)` → fires atomic `p1b` for ALL proposers p'
       with `ballot p'` in `(old_prom, b]`, in increasing ballot order.
       This maintains the biconditional `got1b p' a ↔ prom a ≥ ballot p'`.
@@ -18,6 +18,13 @@ import Leslie.Examples.Paxos.MsgPaxosConsensus
     Uses `SimulationRelInv` with `Reachable` as the concrete invariant.
     Requires ballots to be positive (`∀ p, ballot p > 0`) so that the
     initial abstract state (all-zeros) satisfies `got1b_iff`.
+
+    **Remaining sorry:** The p2a max-vote constraint (`h_value_ok`) in the
+    B2 case of `recvAccept`. The `got1b_iff` biconditional eagerly fires
+    p1b for proposers whose promises the concrete proposer never received,
+    causing the abstract max-vote to diverge from the concrete one. See the
+    detailed comment at the sorry site for a proposed redesign that fires
+    p1b at `recvPromise` and p2a at `decidePropose` to close this gap.
 -/
 
 open TLA
@@ -840,24 +847,61 @@ noncomputable def paxosSimulation {n m : Nat} (ballot : Fin m → Nat)
                 show PaxosTextbookN.majority _ = true
                 change MessagePaxos.majority _ = true
                 exact MessagePaxos.majority_mono_prom hmaj hmono)
-              (by -- h_value_ok: UNPROVABLE with current SimRel.
+              (by -- h_value_ok: The p2a max-vote constraint.
                 --
-                -- The `got1b_iff` relation maps `got1b p i ↔ prom i ≥ ballot p`,
-                -- which eagerly fires abstract p1b for ALL proposers when prom
-                -- increases (recvPrepare). This means the abstract p2a constraint
-                -- sees reports from acceptors whose promises the concrete proposer
-                -- never received.
+                -- WHAT THIS ASKS: Given the abstract post-multi_p1b state where
+                -- got1b p i = true ↔ prom i ≥ ballot p, show that the concrete
+                -- value `vmap v` matches the max-ballot report among all got1b
+                -- entries for proposer p.
+                --
+                -- WHY IT IS UNPROVABLE WITH THE CURRENT `got1b_iff` SimRel:
+                --
+                -- The biconditional `got1b p i ↔ prom i ≥ ballot p` eagerly
+                -- fires abstract p1b for ALL proposers whenever prom increases
+                -- (at recvPrepare). This means the abstract p2a constraint sees
+                -- reports (rep entries) from acceptors whose promises the concrete
+                -- proposer p never actually received. The proposer chose its value
+                -- based on `promisesReceived` (a subset), but the abstract sees
+                -- the full got1b superset, whose max-ballot report may differ.
                 --
                 -- Counterexample (3 acceptors, 2 proposers, ballot=[1,2]):
-                -- 1. All promise at 1. p0 sends accept(1,"red"). a0 accepts "red".
-                -- 2. a1,a2 promise at 2. p1 sees no prior votes → sends accept(2,"blue").
-                -- 3. a0 promises at 2 → abstract p1b(p1,a0) fires, rep = (1,"red").
-                -- 4. a0 recvAccept(2,"blue") → abstract p2a(p1) picks max report =
-                --    "red", but concrete value is "blue". Mismatch.
+                -- 1. All promise at 1. p0 sends accept(1,"red"). a0 accepts.
+                -- 2. a1,a2 promise at 2. p1 sees no prior votes → picks "blue".
+                -- 3. a0 promises at 2 → abstract p1b(p1,a0) fires eagerly,
+                --    rep[p1][a0] = (1,"red").
+                -- 4. a0 recvAccept(2,"blue") → abstract p2a(p1) fires. The
+                --    max-ballot got1b report is (1,"red") from a0, but the
+                --    concrete value is "blue". Mismatch.
                 --
-                -- FIX: Redesign SimRel to fire p2a at recvPromise (when the proposer
-                -- actually collects a majority) instead of at recvAccept. This ensures
-                -- the abstract p2a only sees reports from actually-received promises.
+                -- REQUIRED FIX (future work):
+                --
+                -- Replace `got1b_iff` with a one-directional SimRel field:
+                --   got1b_prom : ∀ p i, got1b p i = true → prom i ≥ ballot p
+                -- and fire p1b at `recvPromise` (when the proposer actually
+                -- receives the promise), not at `recvPrepare`. Fire p2a at
+                -- `decidePropose` (when `proposed` is first set and the proposer
+                -- has a majority of promisesReceived).
+                --
+                -- At decidePropose time:
+                -- - majority(got1b p) holds because got1b ⊇ promisesReceived
+                --   (each recvPromise was preceded by a recvPrepare → p1b).
+                -- - The max-vote from got1b matches promisesReceived because
+                --   got1b entries = exactly the received promises (no in-transit
+                --   or eagerly-fired entries).
+                --
+                -- Subtlety: firing p1b at recvPromise requires decoupling
+                -- abstract prom from concrete prom (use prom_le instead of
+                -- prom_eq), since recvPrepare raises concrete prom without a
+                -- corresponding abstract step. This introduces ordering issues
+                -- when promises arrive out of ballot order (a higher-ballot p1b
+                -- may block a lower-ballot p1b's gate). The solution is to
+                -- stutter on stale promises (where abstract prom already exceeds
+                -- the promise's ballot) and track got1b only for non-stale ones.
+                --
+                -- The resulting proof of h_value_ok at decidePropose would
+                -- follow from PromiseInv: each got1b entry's rep matches the
+                -- corresponding promisesReceived entry, so the abstract max-vote
+                -- equals the concrete max-vote used by decidePropose.
                 sorry)
           case simrel =>
             -- SimRel for the B2 case: abstract state has multi_p1b + p2a + p2b updates
