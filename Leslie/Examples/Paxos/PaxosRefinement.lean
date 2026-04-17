@@ -539,7 +539,7 @@ noncomputable def paxosSimulation {n m : Nat} (ballot : Fin m → Nat)
     | recvPromise p a b prior idx hMem =>
       exact ⟨as, .refl, ⟨hR.prom_eq, hR.acc_eq, hR.did2b_eq, hR.prop_none,
         hR.prop_some, hR.got1b_iff, hR.rep_none, hR.rep_dom, hR.rep_acc, hR.rep_sent⟩⟩
-    | decidePropose p v _ _ _ _ _ =>
+    | decidePropose p v _ _ _ _ =>
       exact ⟨as, .refl, ⟨hR.prom_eq, hR.acc_eq, hR.did2b_eq, hR.prop_none,
         hR.prop_some, hR.got1b_iff, hR.rep_none, hR.rep_dom, hR.rep_acc, hR.rep_sent⟩⟩
     | dropMsg idx =>
@@ -551,7 +551,7 @@ noncomputable def paxosSimulation {n m : Nat} (ballot : Fin m → Nat)
     | crashAcceptor a =>
       exact ⟨as, .refl, ⟨hR.prom_eq, hR.acc_eq, hR.did2b_eq, hR.prop_none,
         hR.prop_some, hR.got1b_iff, hR.rep_none, hR.rep_dom, hR.rep_acc, hR.rep_sent⟩⟩
-    | sendAccept p b v hbp hProposed _ _ =>
+    | sendAccept p b v hbp hProposed =>
       exact ⟨as, .refl, ⟨hR.prom_eq, hR.acc_eq, hR.did2b_eq, hR.prop_none,
         hR.prop_some, hR.got1b_iff, hR.rep_none, hR.rep_dom, hR.rep_acc, hR.rep_sent⟩⟩
     -- ── Non-stutter cases ──────────────────────────────────────

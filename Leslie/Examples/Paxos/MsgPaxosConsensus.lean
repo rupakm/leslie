@@ -183,8 +183,8 @@ theorem sentAccept_mono_step {s s' : MsgPaxosState n m} {act : MsgAction n m}
   | sendPrepare _ => exact h
   | recvPrepare _ _ _ _ _ _ => exact h
   | recvPromise _ _ _ _ _ _ => exact h
-  | decidePropose _ _ _ _ _ _ _ => exact h
-  | sendAccept _ _ _ _ _ _ _ => exact h
+  | decidePropose _ _ _ _ _ _ => exact h
+  | sendAccept _ _ _ _ _ => exact h
   | recvAccept a₀ _ b₀ v₀ _ hMem _ _ =>
     simp only [setSent]
     by_cases hc : i = a₀ ∧ c = b₀
@@ -216,8 +216,8 @@ private theorem sentAccept_eq_of_non_recvAccept {s s' : MsgPaxosState n m}
   | sendPrepare _ => rfl
   | recvPrepare _ _ _ _ _ _ => rfl
   | recvPromise _ _ _ _ _ _ => rfl
-  | decidePropose _ _ _ _ _ _ _ => rfl
-  | sendAccept _ _ _ _ _ _ _ => rfl
+  | decidePropose _ _ _ _ _ _ => rfl
+  | sendAccept _ _ _ _ _ => rfl
   | recvAccept a p b v _ _ _ _ => exact absurd rfl (h_not_recv a p b v)
   | dropMsg _ => rfl
   | crashProposer _ => rfl

@@ -10,23 +10,30 @@ import Leslie.Gadgets.SetFn
     ### Design goal
 
     The central design principle is that the **safety invariant is stated
-    purely over stable state** — acceptor fields, network, and a monotonic
-    ghost `sentAccept` — and never mentions proposer volatile state. This
-    makes the `crashProposer` action trivially safe: it only touches
-    proposer-local fields that the invariant ignores.
+    purely over stable state** — acceptor fields, network, and two monotonic
+    ghost fields (`sentAccept`, `everProposed`) — and never mentions proposer
+    volatile state. This makes the `crashProposer` action trivially safe: it
+    only touches proposer-local fields that the invariant ignores.
 
     The invariant itself is a collection of structural properties about
-    messages in the network, the acceptor's stable state, and the ghost
-    `sentAccept` log. The full Lamport `safeAt` chain is **not** stated here
-    as part of the inductive invariant — that decomposition lives in
+    messages in the network, the acceptor's stable state, and the ghost logs.
+    The full Lamport `safeAt` chain is **not** stated here as part of the
+    inductive invariant — that decomposition lives in
     `Leslie.Examples.Paxos` (atomic model) and is load-bearing on proposer
     state, which this file deliberately avoids.
+
+    The `decidePropose` and `sendAccept` gates are local:
+    - `decidePropose` checks `everProposed p = none ∨ everProposed p = some v`
+      (a ghost-local gate) instead of scanning the network or sentAccept.
+    - `sendAccept` requires only `proposed = some v` (proposer-local); the
+      network/sentAccept consistency is derived from `ProposedSafeInv`.
 
     Instead, this file delivers:
     1. A complete asynchronous operational model with send/receive/drop and
        proposer crash.
     2. An inductive invariant (`MsgPaxosInv`) that is preserved by every
-       action and depends only on `acceptors`, `network`, `sentAccept`.
+       action and depends only on `acceptors`, `network`, `sentAccept`,
+       and `everProposed`.
     3. `crashProposer` preservation is, by construction, trivial —
        `inv_crashProposer` is a direct reuse of the precondition.
     4. A `noTwoAcceptsPerBallot` agreement theorem: within one ballot, all
@@ -87,12 +94,18 @@ structure MsgPaxosState (n m : Nat) where
   /-- Ghost monotonic log: `sentAccept a b = some v` iff acceptor `a` has
       ever sent an `accepted _ _ b v` message. Never cleared. -/
   sentAccept : Fin n → Nat → Option Value
+  /-- Ghost stable log: `everProposed p = some v` iff proposer `p` has
+      ever called `decidePropose` with value `v`. Never cleared (stable
+      like sentAccept). Ensures all accept messages at the same ballot
+      carry the same value. -/
+  everProposed : Fin m → Option Value
 
 def initialMsgPaxos (n m : Nat) : MsgPaxosState n m where
-  acceptors  := fun _ => initAcceptor
-  proposers  := fun _ => initProposer n
-  network    := []
-  sentAccept := fun _ _ => none
+  acceptors    := fun _ => initAcceptor
+  proposers    := fun _ => initProposer n
+  network      := []
+  sentAccept   := fun _ _ => none
+  everProposed := fun _ => none
 
 /-! ### Actions -/
 
@@ -289,21 +302,16 @@ inductive Step {n m : Nat} (ballot : Fin m → Nat) :
       (∀ a c w, (s.proposers p).promisesReceived a = some (some (c, w)) →
         (∀ a' c' w', (s.proposers p).promisesReceived a' = some (some (c', w')) → c' ≤ c) →
         v = w) →
-      -- Network consistency: v agrees with any existing accept at this ballot
-      (∀ p' v' tgt', (Msg.accept p' (ballot p) v', tgt') ∈ s.network → v = v') →
-      -- Ghost consistency: v agrees with any sentAccept entries at this ballot
-      (∀ a v', s.sentAccept a (ballot p) = some v' → v = v') →
+      -- Ghost: consistent with any previous decision at this ballot
+      (s.everProposed p = none ∨ s.everProposed p = some v) →
       Step ballot s (MsgAction.decidePropose p v)
         { s with
           proposers := setProposer s.proposers p
-            { (s.proposers p) with proposed := some v } }
+            { (s.proposers p) with proposed := some v }
+          everProposed := fun q => if q = p then some v else s.everProposed q }
   | sendAccept (s : MsgPaxosState n m) (p : Fin m) (b : Nat) (v : Value) :
       ballot p = b →
       (s.proposers p).proposed = some v →
-      -- Network consistency: v agrees with any existing accept at this ballot
-      (∀ p' v' tgt', (Msg.accept p' b v', tgt') ∈ s.network → v = v') →
-      -- Ghost consistency: v agrees with any sentAccept entries at this ballot
-      (∀ a v', s.sentAccept a b = some v' → v = v') →
       Step ballot s (MsgAction.sendAccept p b v)
         { s with network := s.network ++ acceptBroadcast n m p b v }
   | recvAccept (s : MsgPaxosState n m) (a : Fin n) (p : Fin m) (b : Nat)
@@ -416,6 +424,14 @@ structure MsgPaxosInv {n m : Nat} (ballot : Fin m → Nat)
   hNetAcceptProm : ∀ p b v tgt,
       (Msg.accept p b v, tgt) ∈ s.network →
       majority (fun j => decide ((s.acceptors j).prom ≥ b)) = true
+  /-- Every `accept` message in the network at proposer `p`'s ballot
+      is consistent with `everProposed p`. -/
+  hEverProposedNet : ∀ p b v tgt,
+      (Msg.accept p b v, tgt) ∈ s.network → s.everProposed p = some v
+  /-- Every `sentAccept` entry at a proposer's ballot is consistent
+      with `everProposed`. -/
+  hEverProposedSent : ∀ p a v,
+      s.sentAccept a (ballot p) = some v → s.everProposed p = some v
 /-! ### Preservation -/
 
 section Preservation
@@ -428,7 +444,7 @@ theorem msg_paxos_inv_init : MsgPaxosInv ballot (initialMsgPaxos n m) := by
     hNetPromise := ?_, hSentUnique := ?_, hAcceptValFun := ?_,
     hSentAcceptNet := ?_, hSentSafe := ?_, hNetSafe := ?_,
     hNetPromisePrior := ?_, hAccMax := ?_, hNetPromiseNoVoteAbove := ?_,
-    hNetAcceptProm := ?_ }
+    hNetAcceptProm := ?_, hEverProposedNet := ?_, hEverProposedSent := ?_ }
   all_goals (intros; simp_all [initialMsgPaxos, initAcceptor])
 
 private theorem inv_sendPrepare {s : MsgPaxosState n m} (p : Fin m)
@@ -445,7 +461,8 @@ private theorem inv_sendPrepare {s : MsgPaxosState n m} (p : Fin m)
     hNetPrepare := ?_, hNetAccept := ?_, hNetAccepted := ?_,
     hNetPromise := ?_, hAcceptValFun := ?_, hSentAcceptNet := ?_,
     hSentSafe := h.hSentSafe, hNetSafe := ?_, hNetPromisePrior := ?_,
-    hNetPromiseNoVoteAbove := ?_, hNetAcceptProm := ?_ }
+    hNetPromiseNoVoteAbove := ?_, hNetAcceptProm := ?_,
+    hEverProposedNet := ?_, hEverProposedSent := h.hEverProposedSent }
   · intro q b tgt hin
     rcases List.mem_append.mp hin with h1 | h2
     · exact h.hNetPrepare q b tgt h1
@@ -509,6 +526,12 @@ private theorem inv_sendPrepare {s : MsgPaxosState n m} (p : Fin m)
     · exact h.hNetAcceptProm q b v tgt h1
     · obtain ⟨_, ha'⟩ := hnet _ h1
       simp only [Prod.mk.injEq] at ha'; exact absurd ha'.1 (by simp)
+  · -- hEverProposedNet: new messages are prepare, not accept
+    intro q b v tgt hin
+    rcases List.mem_append.mp hin with h1 | h1
+    · exact h.hEverProposedNet q b v tgt h1
+    · obtain ⟨_, ha'⟩ := hnet _ h1
+      simp only [Prod.mk.injEq] at ha'; exact absurd ha'.1 (by simp)
 
 private theorem inv_dropMsg {s : MsgPaxosState n m} (idx : Nat)
     (h : MsgPaxosInv ballot s) :
@@ -517,7 +540,8 @@ private theorem inv_dropMsg {s : MsgPaxosState n m} (idx : Nat)
     hNetPrepare := ?_, hNetAccept := ?_, hNetAccepted := ?_,
     hNetPromise := ?_, hAcceptValFun := ?_, hSentAcceptNet := ?_,
     hSentSafe := h.hSentSafe, hNetSafe := ?_, hNetPromisePrior := ?_,
-    hNetPromiseNoVoteAbove := ?_, hNetAcceptProm := ?_ }
+    hNetPromiseNoVoteAbove := ?_, hNetAcceptProm := ?_,
+    hEverProposedNet := ?_ }
   · intro q b tgt hin; exact h.hNetPrepare q b tgt (mem_removeAt hin)
   · intro q b v tgt hin; exact h.hNetAccept q b v tgt (mem_removeAt hin)
   · intro a q b v tgt hin; exact h.hNetAccepted a q b v tgt (mem_removeAt hin)
@@ -533,6 +557,7 @@ private theorem inv_dropMsg {s : MsgPaxosState n m} (idx : Nat)
   · intro a' q b' prior tgt hin c hcb' hc
     exact h.hNetPromiseNoVoteAbove a' q b' prior tgt (mem_removeAt hin) c hcb' hc
   · intro q b v tgt hin; exact h.hNetAcceptProm q b v tgt (mem_removeAt hin)
+  · intro q b v tgt hin; exact h.hEverProposedNet q b v tgt (mem_removeAt hin)
 
 /-- Generic frame lemma: a state with only `proposers` changed inherits
     the invariant. The invariant never mentions `proposers`. -/
@@ -550,7 +575,9 @@ private theorem inv_proposer_frame {s : MsgPaxosState n m}
     hNetPromisePrior := h.hNetPromisePrior,
     hAccMax := h.hAccMax,
     hNetPromiseNoVoteAbove := h.hNetPromiseNoVoteAbove,
-    hNetAcceptProm := h.hNetAcceptProm }
+    hNetAcceptProm := h.hNetAcceptProm,
+    hEverProposedNet := h.hEverProposedNet,
+    hEverProposedSent := h.hEverProposedSent }
 
 private theorem inv_crashProposer {s : MsgPaxosState n m} (p : Fin m)
     (h : MsgPaxosInv ballot s) :
@@ -588,14 +615,48 @@ private theorem inv_crashAcceptor {s : MsgPaxosState n m} (a : Fin n)
   hNetPromiseNoVoteAbove := fun a' p b prior tgt hm c hcb hc =>
     h.hNetPromiseNoVoteAbove a' p b prior tgt (hsub _ hm) c hcb hc
   hNetAcceptProm := fun p b v tgt hm => h.hNetAcceptProm p b v tgt (hsub _ hm)
+  hEverProposedNet := fun p b v tgt hm => h.hEverProposedNet p b v tgt (hsub _ hm)
+  hEverProposedSent := h.hEverProposedSent
 }
 
 private theorem inv_decidePropose {s : MsgPaxosState n m} (p : Fin m) (v : Value)
+    (hEverGate : s.everProposed p = none ∨ s.everProposed p = some v)
     (h : MsgPaxosInv ballot s) :
-    let ps' : ProposerState n := { (s.proposers p) with proposed := some v }
     MsgPaxosInv ballot
-      { s with proposers := setProposer s.proposers p ps' } :=
-  inv_proposer_frame _ h
+      { s with
+        proposers := setProposer s.proposers p
+          { (s.proposers p) with proposed := some v }
+        everProposed := fun q => if q = p then some v else s.everProposed q } := by
+  refine {
+    hAccSent := h.hAccSent, hAccProm := h.hAccProm, hSentProm := h.hSentProm,
+    hSentBallot := h.hSentBallot, hNetPrepare := h.hNetPrepare,
+    hNetAccept := h.hNetAccept, hNetAccepted := h.hNetAccepted,
+    hNetPromise := h.hNetPromise, hSentUnique := h.hSentUnique,
+    hAcceptValFun := h.hAcceptValFun, hSentAcceptNet := h.hSentAcceptNet,
+    hSentSafe := h.hSentSafe, hNetSafe := h.hNetSafe,
+    hNetPromisePrior := h.hNetPromisePrior,
+    hAccMax := h.hAccMax,
+    hNetPromiseNoVoteAbove := h.hNetPromiseNoVoteAbove,
+    hNetAcceptProm := h.hNetAcceptProm,
+    hEverProposedNet := ?_, hEverProposedSent := ?_ }
+  · -- hEverProposedNet: everProposed q updated only for q = p; accept msgs unchanged
+    intro q b' v' tgt hin
+    by_cases hqp : q = p
+    · subst hqp; simp
+      have hep := h.hEverProposedNet q b' v' tgt hin
+      rcases hEverGate with hnone | hsome
+      · rw [hnone] at hep; exact absurd hep (by simp)
+      · rw [hsome] at hep; exact Option.some.inj hep
+    · simp [hqp]; exact h.hEverProposedNet q b' v' tgt hin
+  · -- hEverProposedSent: sentAccept unchanged, everProposed extended
+    intro q a v' hsa
+    by_cases hqp : q = p
+    · subst hqp; simp
+      have := h.hEverProposedSent q a v' hsa
+      rcases hEverGate with hnone | hsome
+      · rw [hnone] at this; exact absurd this (by simp)
+      · rw [hsome] at this; exact Option.some.inj this
+    · simp [hqp]; exact h.hEverProposedSent q a v' hsa
 
 /-- `recvPromise` updates `proposers` (volatile) and shrinks `network`. -/
 private theorem inv_recvPromise {s : MsgPaxosState n m} (p : Fin m) (a : Fin n)
@@ -633,7 +694,8 @@ private theorem inv_recvPrepare {s : MsgPaxosState n m} (a : Fin n) (p : Fin m)
     hNetPromise := ?_, hSentUnique := h.hSentUnique,
     hAcceptValFun := ?_, hSentAcceptNet := ?_,
     hSentSafe := ?_, hNetSafe := ?_, hNetPromisePrior := ?_,
-    hAccMax := ?_, hNetPromiseNoVoteAbove := ?_, hNetAcceptProm := ?_ }
+    hAccMax := ?_, hNetPromiseNoVoteAbove := ?_, hNetAcceptProm := ?_,
+    hEverProposedNet := ?_, hEverProposedSent := h.hEverProposedSent }
   · intro a' b' v' hacc
     by_cases hae : a = a'
     · subst hae; simp [setAcceptor] at hacc; exact h.hAccSent a b' v' hacc
@@ -789,6 +851,11 @@ private theorem inv_recvPrepare {s : MsgPaxosState n m} (a : Fin n) (p : Fin m)
       by_cases hae : a = j
       · subst hae; simp; omega
       · simp [hae]; exact hj)
+  · -- hEverProposedNet: new message is promise (not accept); old accepts from removeAt
+    intro q b' v' tgt hin
+    rcases List.mem_append.mp hin with h1 | h1
+    · exact h.hEverProposedNet q b' v' tgt (mem_removeAt h1)
+    · rcases List.mem_singleton.mp h1 with heq; exact absurd heq (by simp)
 
 private theorem inv_sendAccept {s : MsgPaxosState n m} (p : Fin m) (b : Nat)
     (v : Value) (hbp : ballot p = b)
@@ -796,6 +863,7 @@ private theorem inv_sendAccept {s : MsgPaxosState n m} (p : Fin m) (b : Nat)
     (hGateSent : ∀ a v', s.sentAccept a b = some v' → v = v')
     (hGateSafe : safeAt s v b)
     (hGateMaj : majority (fun j => decide ((s.acceptors j).prom ≥ b)) = true)
+    (hGateEver : s.everProposed p = some v)
     (h : MsgPaxosInv ballot s) :
     MsgPaxosInv ballot
       { s with network := s.network ++ acceptBroadcast n m p b v } := by
@@ -810,7 +878,7 @@ private theorem inv_sendAccept {s : MsgPaxosState n m} (p : Fin m) (b : Nat)
     hNetPromise := ?_, hAcceptValFun := ?_, hSentAcceptNet := ?_,
     hSentSafe := h.hSentSafe, hNetSafe := ?_, hNetPromisePrior := ?_,
     hAccMax := h.hAccMax, hNetPromiseNoVoteAbove := ?_,
-    hNetAcceptProm := ?_ }
+    hNetAcceptProm := ?_, hEverProposedNet := ?_, hEverProposedSent := h.hEverProposedSent }
   · intro q b' tgt hin
     rcases List.mem_append.mp hin with h1 | h1
     · exact h.hNetPrepare q b' tgt h1
@@ -893,12 +961,22 @@ private theorem inv_sendAccept {s : MsgPaxosState n m} (p : Fin m) (b : Nat)
       simp only [Prod.mk.injEq] at ha'
       injection ha'.1 with _ hb _
       subst hb; exact hGateMaj
+  · -- hEverProposedNet: old accepts from h.hEverProposedNet; new accepts carry (p, b, v)
+    intro q b' v' tgt hin
+    rcases List.mem_append.mp hin with h1 | h1
+    · exact h.hEverProposedNet q b' v' tgt h1
+    · obtain ⟨a', ha'⟩ := hnet _ h1
+      simp only [Prod.mk.injEq] at ha'
+      injection ha'.1 with hpq hb hv
+      subst hpq; subst hb; subst hv; exact hGateEver
 
 /-! The hard case: `recvAccept`. Acceptor `a` consumes an `accept p b v`
     message. We re-establish every invariant clause using `hAcceptValFun`
     and `hSentAcceptNet` to resolve the cross-acceptor uniqueness obligation. -/
 
-private theorem inv_recvAccept {s : MsgPaxosState n m} (a : Fin n) (p : Fin m)
+private theorem inv_recvAccept {s : MsgPaxosState n m}
+    (h_inj : Function.Injective ballot)
+    (a : Fin n) (p : Fin m)
     (b : Nat) (v : Value) (idx : Nat)
     (hMem : (Msg.accept p b v, Target.acc a) ∈ s.network)
     (hProm : (s.acceptors a).prom ≤ b)
@@ -917,7 +995,7 @@ private theorem inv_recvAccept {s : MsgPaxosState n m} (a : Fin n) (p : Fin m)
     hAcceptValFun := ?_, hSentAcceptNet := ?_,
     hSentSafe := ?_, hNetSafe := ?_, hNetPromisePrior := ?_,
     hAccMax := ?_, hNetPromiseNoVoteAbove := ?_,
-    hNetAcceptProm := ?_ }
+    hNetAcceptProm := ?_, hEverProposedNet := ?_, hEverProposedSent := ?_ }
   · -- hAccSent: new acc (b,v) at a, ghost sentAccept a b = some v
     intro a' b' v' hacc
     by_cases hae : a = a'
@@ -1198,6 +1276,25 @@ private theorem inv_recvAccept {s : MsgPaxosState n m} (a : Fin n) (p : Fin m)
       by_cases hja : a = j
       · subst hja; simp; omega
       · simp [hja]; exact hj)
+  · -- hEverProposedNet: everProposed unchanged; old accepts from removeAt; new msg is accepted
+    intro q b' v' tgt hin
+    rcases List.mem_append.mp hin with h1 | h1
+    · exact h.hEverProposedNet q b' v' tgt (mem_removeAt h1)
+    · rcases List.mem_singleton.mp h1 with heq; exact absurd heq (by simp)
+  · -- hEverProposedSent: sentAccept grows with (a, b, v); everProposed unchanged
+    intro q a' v' hsa
+    simp only [setSent] at hsa
+    by_cases hc : a' = a ∧ (ballot q) = b
+    · obtain ⟨ha', hbq⟩ := hc
+      rw [ha', if_pos ⟨rfl, hbq⟩] at hsa
+      have hveq : v' = v := by rcases hsa with ⟨⟩; rfl
+      rw [hveq]
+      -- ballot q = b = ballot p, so by injectivity q = p
+      have hep := h.hEverProposedNet p b v (Target.acc a) hMem
+      have hqp : q = p := h_inj (hbq.trans hBallot.symm)
+      subst hqp; exact hep
+    · rw [if_neg (by intro ⟨h1, h2⟩; exact hc ⟨h1, h2⟩)] at hsa
+      exact h.hEverProposedSent q a' v' hsa
 
 end Preservation
 
@@ -1206,8 +1303,9 @@ end Preservation
     The invariant `MsgPaxosInv` is fully inductive: preserved by every
     action of the message-passing Paxos model (lemmas `inv_*` above).
     The reachability theorem `msg_paxos_inv_reachable` (under ballot
-    injectivity) is sorry-free: `ProposedSafeInv` preservation uses
-    network/ghost consistency gates on `decidePropose` and `sendAccept`.
+    injectivity) is sorry-free: `ProposedSafeInv` preservation uses the
+    local `everProposed` ghost gate on `decidePropose`, and derives
+    network/sentAccept consistency for `sendAccept` from `ProposedSafeInv`.
 
     In this file we have:
 
@@ -1288,6 +1386,12 @@ variable {n m : Nat} {ballot : Fin m → Nat}
 private theorem promiseInv_net_frame {s : MsgPaxosState n m}
     (h : PromiseInv ballot s) (net' : List (Msg n m × Target n m)) :
     PromiseInv ballot { s with network := net' } :=
+  ⟨h.hPromProm, h.hPromPrior, h.hPromNoVoteAbove⟩
+
+/-- Helper: PromiseInv is preserved when only `everProposed` changes. -/
+private theorem promiseInv_ever_frame {s : MsgPaxosState n m}
+    (h : PromiseInv ballot s) (ep : Fin m → Option Value) :
+    PromiseInv ballot { s with everProposed := ep } :=
   ⟨h.hPromProm, h.hPromPrior, h.hPromNoVoteAbove⟩
 
 private theorem promiseInv_recvPromise {s : MsgPaxosState n m} (p : Fin m)
@@ -1471,6 +1575,9 @@ structure ProposedSafeInv {n m : Nat} (ballot : Fin m → Nat)
   /-- When proposed is set, a majority of acceptors have prom ≥ ballot. -/
   hProposedProm : ∀ p, (s.proposers p).proposed ≠ none →
       majority (fun j => decide ((s.acceptors j).prom ≥ ballot p)) = true
+  /-- When proposed is set, `everProposed` records the same value. -/
+  hProposedEver : ∀ p v, (s.proposers p).proposed = some v →
+      s.everProposed p = some v
 
 theorem proposedSafe_inv_init {n m : Nat} {ballot : Fin m → Nat} :
     ProposedSafeInv ballot (initialMsgPaxos n m) where
@@ -1478,6 +1585,7 @@ theorem proposedSafe_inv_init {n m : Nat} {ballot : Fin m → Nat} :
   hProposedSent := by intro p v hp; simp [initialMsgPaxos, initProposer] at hp
   hProposedSafe := by intro p v hp; simp [initialMsgPaxos, initProposer] at hp
   hProposedProm := by intro p hp; simp [initialMsgPaxos, initProposer] at hp
+  hProposedEver := by intro p v hp; simp [initialMsgPaxos, initProposer] at hp
 
 /-! ### `sendAccept` gate derivation
 
@@ -1584,7 +1692,7 @@ private theorem proposedSafeInv_sendPrepare {s : MsgPaxosState n m} (p : Fin m)
       ∃ a, x = (Msg.prepare p (ballot p), Target.acc a) := by
     intro x hx; unfold prepareBroadcast at hx
     rcases List.mem_map.mp hx with ⟨a, _, ha⟩; exact ⟨a, ha.symm⟩
-  refine ⟨?_, h.hProposedSent, h.hProposedSafe, h.hProposedProm⟩
+  refine ⟨?_, h.hProposedSent, h.hProposedSafe, h.hProposedProm, h.hProposedEver⟩
   intro p' v' hp' q' v'' tgt' hin
   rcases List.mem_append.mp hin with h1 | h1
   · exact h.hProposedNet p' v' hp' q' v'' tgt' h1
@@ -1625,6 +1733,7 @@ private theorem proposedSafeInv_recvPrepare {s : MsgPaxosState n m}
       by_cases hae : a = j
       · subst hae; simp; omega
       · simp [hae]; exact hj)
+  · exact h.hProposedEver
 
 /-- ProposedSafeInv for recvPromise: proposers change, network shrinks. -/
 private theorem proposedSafeInv_recvPromise {s : MsgPaxosState n m}
@@ -1670,6 +1779,12 @@ private theorem proposedSafeInv_recvPromise {s : MsgPaxosState n m}
     by_cases hpe : p' = p
     · subst hpe; simp only [ite_true] at hp'; exact h.hProposedProm p' hp'
     · simp only [if_neg hpe] at hp'; exact h.hProposedProm p' hp'
+  · -- hProposedEver
+    intro p' v' hp'
+    simp only [setProposer] at hp'
+    by_cases hpe : p' = p
+    · subst hpe; simp only [ite_true] at hp'; exact h.hProposedEver p' v' hp'
+    · simp only [if_neg hpe] at hp'; exact h.hProposedEver p' v' hp'
 
 /-- Among finitely many optional prior ballots, find the one with maximum ballot.
     Returns the acceptor, ballot, and value of the maximum, plus a bound proof. -/
@@ -1759,7 +1874,8 @@ private theorem proposedSafeInv_decidePropose {s : MsgPaxosState n m}
     (h : ProposedSafeInv ballot s) :
     ProposedSafeInv ballot { s with
       proposers := setProposer s.proposers p
-        ⟨(s.proposers p).promisesReceived, some v⟩ } := by
+        ⟨(s.proposers p).promisesReceived, some v⟩
+      everProposed := fun q => if q = p then some v else s.everProposed q } := by
   constructor
   · -- hProposedNet: network unchanged; for p, need to show v agrees with existing accepts
     intro p' v' hp' q' v'' tgt' hin
@@ -1784,27 +1900,19 @@ private theorem proposedSafeInv_decidePropose {s : MsgPaxosState n m}
       exact hSentGate a v'' hsa
     · simp only [if_neg hpe] at hp'
       exact h.hProposedSent p' v' hp'
-  · -- hProposedSafe: safeAt only references acceptors + sentAccept (not proposers)
+  · -- hProposedSafe: safeAt only references acceptors + sentAccept (not proposers/everProposed)
     intro p' v' hp'
     simp only [setProposer] at hp'
     by_cases hpe : p' = p
     · subst hpe; simp only [ite_true] at hp'
       have hveq : v' = v := by rcases hp' with ⟨⟩; rfl
       subst hveq
-      -- safeAt only references sentAccept and acceptors (not proposers),
-      -- so safeAt on the post-state equals safeAt on s.
-      -- After subst, the proposer is p' and value is v'.
       suffices safeAt s v' (ballot p') by exact this
-      -- Extract b_max evidence for sendAccept_gate_safeAt
       by_cases h_all : ∀ a prior, (s.proposers p').promisesReceived a = some prior →
           prior = none
-      · -- All priors are none: any value is safe
-        exact sendAccept_gate_safeAt hinv hpinv p' v' (ballot p') rfl hmaj
+      · exact sendAccept_gate_safeAt hinv hpinv p' v' (ballot p') rfl hmaj
           0 (fun _ _ _ hx => by have := h_all _ _ hx; simp at this) (Or.inl h_all)
-      · -- Some prior exists: find the maximum
-        -- h_all : ¬(∀ a prior, received a = some prior → prior = none)
-        -- So there exists a with received a = some (some (b₀, v₀))
-        have ⟨a₀, b₀, v₀, hpr₀⟩ : ∃ a b₀ v₀,
+      · have ⟨a₀, b₀, v₀, hpr₀⟩ : ∃ a b₀ v₀,
             (s.proposers p').promisesReceived a = some (some (b₀, v₀)) := by
           by_contra hall
           apply h_all; intro a prior hpr
@@ -1815,7 +1923,7 @@ private theorem proposedSafeInv_decidePropose {s : MsgPaxosState n m}
         exact proposedSafeInv_decidePropose_safeAt hinv hpinv p' v' hmaj hmaxvote
           a₀ b₀ v₀ hpr₀
     · simp only [if_neg hpe] at hp'
-      show safeAt { s with proposers := _ } v' (ballot p')
+      show safeAt { s with proposers := _, everProposed := _ } v' (ballot p')
       unfold safeAt; intro c hcb
       have := h.hProposedSafe p' v' hp'
       exact (this c hcb)
@@ -1831,6 +1939,15 @@ private theorem proposedSafeInv_decidePropose {s : MsgPaxosState n m}
         omega)
     · simp only [if_neg hpe] at hp'
       exact h.hProposedProm p' hp'
+  · -- hProposedEver: for p, proposed = some v and everProposed p = some v; others unchanged
+    intro p' v' hp'
+    simp only [setProposer] at hp'
+    by_cases hpe : p' = p
+    · subst hpe; simp only [ite_true] at hp'
+      have : v' = v := by rcases hp' with ⟨⟩; rfl
+      subst this; simp
+    · simp only [if_neg hpe] at hp'
+      simp [hpe]; exact h.hProposedEver p' v' hp'
 
 /-- ProposedSafeInv for sendAccept: network grows with accepts, proposed unchanged.
     Requires ballot injectivity: two proposers with the same ballot must be equal.
@@ -1871,6 +1988,7 @@ private theorem proposedSafeInv_sendAccept {s : MsgPaxosState n m}
   · exact h.hProposedSent
   · exact h.hProposedSafe
   · exact h.hProposedProm
+  · exact h.hProposedEver
 
 /-- ProposedSafeInv for recvAccept. -/
 private theorem proposedSafeInv_recvAccept {s : MsgPaxosState n m}
@@ -1928,13 +2046,14 @@ private theorem proposedSafeInv_recvAccept {s : MsgPaxosState n m}
     exact majority_mono_prom (h.hProposedProm p' hp') (by
       intro j hj; simp only [decide_eq_true_eq] at hj ⊢
       exact Nat.le_trans hj (hprom_mono j))
+  · exact h.hProposedEver
 
 /-- ProposedSafeInv for dropMsg: network shrinks. -/
 private theorem proposedSafeInv_dropMsg {s : MsgPaxosState n m} (idx : Nat)
     (h : ProposedSafeInv ballot s) :
     ProposedSafeInv ballot { s with network := removeAt s.network idx } :=
   ⟨fun p v hp q' v' tgt' hin => h.hProposedNet p v hp q' v' tgt' (mem_removeAt hin),
-   h.hProposedSent, h.hProposedSafe, h.hProposedProm⟩
+   h.hProposedSent, h.hProposedSafe, h.hProposedProm, h.hProposedEver⟩
 
 /-- ProposedSafeInv for crashProposer: proposed reset to none, vacuously true. -/
 private theorem proposedSafeInv_crashProposer {s : MsgPaxosState n m} (p : Fin m)
@@ -1958,6 +2077,10 @@ private theorem proposedSafeInv_crashProposer {s : MsgPaxosState n m} (p : Fin m
     by_cases hpe : p' = p
     · subst hpe; simp [initProposer] at hp'
     · simp [hpe] at hp'; exact h.hProposedProm p' hp'
+  · intro p' v' hp'; simp only [setProposer] at hp'
+    by_cases hpe : p' = p
+    · subst hpe; simp [initProposer] at hp'
+    · simp [hpe] at hp'; exact h.hProposedEver p' v' hp'
 
 /-- ProposedSafeInv for crashAcceptor: network filtered (subset). -/
 private theorem proposedSafeInv_crashAcceptor {s : MsgPaxosState n m} (a : Fin n)
@@ -1966,7 +2089,7 @@ private theorem proposedSafeInv_crashAcceptor {s : MsgPaxosState n m} (a : Fin n
     (h : ProposedSafeInv ballot s) :
     ProposedSafeInv ballot { s with network := net' } :=
   ⟨fun p v hp q' v' tgt' hin => h.hProposedNet p v hp q' v' tgt' (hsub _ hin),
-   h.hProposedSent, h.hProposedSafe, h.hProposedProm⟩
+   h.hProposedSent, h.hProposedSafe, h.hProposedProm, h.hProposedEver⟩
 
 end ProposedSafePreservation
 
@@ -1993,12 +2116,35 @@ private theorem combined_inv_reachable {n m : Nat} {ballot : Fin m → Nat}
       exact ⟨inv_recvPromise p a b prior idx ih_inv,
              promiseInv_recvPromise p a b prior idx hMem ih_inv ih_pinv,
              proposedSafeInv_recvPromise p a b prior idx ih_psi⟩
-    | decidePropose p v hmaj hprop hmaxvote hNetGate hSentGate' =>
-      exact ⟨inv_decidePropose p v ih_inv,
-             promiseInv_propose_frame p (fun ps => { ps with proposed := some v })
-               (fun _ => rfl) ih_pinv,
-             proposedSafeInv_decidePropose p v hmaj hprop hmaxvote hNetGate hSentGate' ih_inv ih_pinv ih_psi⟩
-    | sendAccept p b v hbp hProposed hNetGate hSentGate =>
+    | decidePropose p v hmaj hprop hmaxvote hEverGate =>
+      exact ⟨inv_decidePropose p v hEverGate ih_inv,
+             promiseInv_ever_frame (promiseInv_propose_frame p
+               (fun ps => { ps with proposed := some v })
+               (fun _ => rfl) ih_pinv) _,
+             proposedSafeInv_decidePropose p v hmaj hprop hmaxvote
+               (by -- derive network gate from everProposed
+                   intro p' v' tgt' hin
+                   have hep := ih_inv.hEverProposedNet p' (ballot p) v' tgt' hin
+                   have hbp' := ih_inv.hNetAccept p' (ballot p) v' tgt' hin
+                   -- accept at ballot p by p': ballot p' = ballot p, so by inj p' = p
+                   -- everProposed p = some v' from hep (after rewriting p' = p)
+                   -- But we need v = v'. From hEverGate and hep.
+                   -- hNetAccept: ballot p' = ballot p. By inj: p' = p. So hep: everProposed p = some v'.
+                   -- hEverGate: everProposed p = none ∨ everProposed p = some v.
+                   -- If none: contradicts hep. If some v: some v = some v' → v = v'.
+                   have hp'p : p' = p := h_inj hbp'
+                   subst hp'p
+                   rcases hEverGate with hnone | hsome
+                   · rw [hnone] at hep; exact absurd hep (by simp)
+                   · rw [hsome] at hep; exact Option.some.inj hep)
+               (by -- derive sentAccept gate from everProposed
+                   intro a v' hsa
+                   have hep := ih_inv.hEverProposedSent p a v' hsa
+                   rcases hEverGate with hnone | hsome
+                   · rw [hnone] at hep; exact absurd hep (by simp)
+                   · rw [hsome] at hep; exact Option.some.inj hep)
+               ih_inv ih_pinv ih_psi⟩
+    | sendAccept p b v hbp hProposed =>
       -- Derive the old gates from ProposedSafeInv (ih_psi is about the pre-state)
       exact ⟨inv_sendAccept p b v hbp
                (by rw [← hbp]; exact ih_psi.hProposedNet p v hProposed)
@@ -2006,11 +2152,16 @@ private theorem combined_inv_reachable {n m : Nat} {ballot : Fin m → Nat}
                    exact ih_psi.hProposedSent p v hProposed a v' hsa)
                (by rw [← hbp]; exact ih_psi.hProposedSafe p v hProposed)
                (by rw [← hbp]; exact ih_psi.hProposedProm p (by rw [hProposed]; simp))
+               (by exact ih_psi.hProposedEver p v hProposed)
                ih_inv,
              promiseInv_net_frame ih_pinv _,
-             proposedSafeInv_sendAccept h_inj p b v hbp hProposed hNetGate hSentGate ih_inv ih_psi⟩
+             proposedSafeInv_sendAccept h_inj p b v hbp hProposed
+               (by rw [← hbp]; exact ih_psi.hProposedNet p v hProposed)
+               (by intro a v' hsa; rw [← hbp] at hsa
+                   exact ih_psi.hProposedSent p v hProposed a v' hsa)
+               ih_inv ih_psi⟩
     | recvAccept a p b v idx hMem hProm hBallot =>
-      exact ⟨inv_recvAccept a p b v idx hMem hProm hBallot ih_inv,
+      exact ⟨inv_recvAccept h_inj a p b v idx hMem hProm hBallot ih_inv,
              promiseInv_recvAccept a p b v idx hMem hProm hBallot ih_inv ih_pinv,
              proposedSafeInv_recvAccept a p b v idx hMem hProm hBallot ih_inv ih_psi⟩
     | dropMsg idx =>
