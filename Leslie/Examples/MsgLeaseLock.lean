@@ -9,6 +9,92 @@ import Leslie.Examples.LeaseLock
     send → process → receive. The forward simulation fires the atomic
     action at the server **processing** step. Client receive steps are
     stuttering steps where the concrete client catches up to the abstract.
+
+    ### Heartbeat extension (Track B of `ddb-lock-rs` plan)
+
+    Extended with `sendHeartbeatReq` / `processHeartbeat` / `recvHeartbeatResp`
+    so the model covers lease refresh. Heartbeats are **stuttering** w.r.t. the
+    atomic `LeaseLock` — they refresh the lease without rotating the fencing
+    token or changing holder / leaseActive / journal. Motivation: bridge-prep
+    for the Rust `ddb-lock-rs` client (sibling repo at
+    `/Users/rupak/Code/tla/ddb-lock-rs/`), whose `protocol::heartbeat` function
+    needs a Leslie-side counterpart for the Verus→Lean bridge.
+
+    ### Modeling caveat: three non-local gates
+
+    Three action gates in this model reference **global absence** of specific
+    message variants in `s.network`:
+
+    1. `processHeartbeat p token`: `(∀ t, Msg.acquireResp p t ∉ s.network) ∧
+       Msg.heartbeatResp p token ∉ s.network`
+    2. `recvReleaseResp p token`: `∀ t, Msg.heartbeatResp p t ∉ s.network`
+
+    These are **not node-local** — neither the server (for processHeartbeat)
+    nor the client (for recvReleaseResp) can observe, in a distributed system,
+    that no such message exists anywhere in the network. They can only inspect
+    their own inbox.
+
+    #### Why these gates are acceptable for synchronous-RPC implementations
+
+    The canonical implementation target is `ddb-lock-rs`, which uses
+    **synchronous RPC** with DynamoDB as a shared-state backend:
+
+    - Heartbeat is a single `storage.update_if(expect_rvn, owner, new_lock)`
+      call that returns `Ok` or `ConditionalCheckFailed` synchronously.
+    - There is no `heartbeatResp` message that lingers in any queue; the
+      response is the return value of the call.
+    - There is no `acquireResp` either — `protocol::acquire` returns a
+      `LockItem` directly to the caller.
+    - There is no client-side `believesLeader` flag that can go stale while
+      an "in flight" response sits around.
+
+    Under this synchronous-RPC specialization, every `send*Req → process* →
+    recv*Resp` triple collapses to an atomic RPC with no intermediate network
+    state. The three non-local gates above are therefore **vacuously true**:
+    by the time any subsequent action fires, the previous heartbeat or
+    acquire's `response in flight` doesn't exist (it was consumed
+    synchronously on return). Every `ddb-lock-rs` execution trace corresponds
+    to an interleaving of this model where these gates trivially hold.
+
+    So for the Rust implementation specifically, the non-local gates describe
+    a sound specialization — the proof here is stronger than Rust strictly
+    needs, but not wrong.
+
+    #### Plan for a realistic async model (future work)
+
+    For a fully asynchronous LeaseLock — where heartbeats can race, stale
+    responses linger, the network reorders, and implementations might be
+    built on unreliable pub/sub rather than DynamoDB — the three non-local
+    gates must be eliminated. Planned strategy:
+
+    - **B (transition-level filter)** for `recvReleaseResp`. Instead of
+      gating on "no heartbeatResp p in network", make the transition
+      additionally erase any pending `heartbeatResp p _` from the client's
+      own inbox as part of the recv step. Client filtering its own inbox
+      is node-local. Cost: ~10–15 proof updates in the `recvReleaseResp`
+      case of `msgNetInv_step` and in the corresponding `sim_step` case.
+
+    - **C (invariant derivation)** for the two `processHeartbeat` gates.
+      Add invariant clauses:
+
+          heartbeatReq_excl_acq  : heartbeatReq p t ∈ network →
+                                   ∀ t', acquireResp p t' ∉ network
+          heartbeatReq_excl_hbresp : heartbeatReq p t ∈ network →
+                                     ∀ t', heartbeatResp p t' ∉ network
+
+      These are preserved by all send/recv actions (they're monotone) and
+      by `processAcquire` (filters foreign `acqResp`) and `processHeartbeat`
+      (replaces exactly one `heartbeatReq` with one `heartbeatResp`).
+      Once these invariants hold, `processHeartbeat`'s gate can simply
+      consume the `heartbeatReq p token ∈ network` clause and use the
+      invariants to conclude no stale `acquireResp` or `heartbeatResp` is
+      around — dropping both non-local gate clauses.
+
+    **Reminder:** revisit this after the Verus→Lean bridge work for
+    `ddb-lock-rs` is complete. At that point, if we want to cover a second
+    (async) implementation — e.g., etcd- or Redis-backed — we need the
+    realistic model. See memory entry `async_leaselock_todo.md` in the
+    user's project memory.
 -/
 
 open TLA
