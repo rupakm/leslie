@@ -183,8 +183,8 @@ theorem sentAccept_mono_step {s s' : MsgPaxosState n m} {act : MsgAction n m}
   | sendPrepare _ => exact h
   | recvPrepare _ _ _ _ _ _ => exact h
   | recvPromise _ _ _ _ _ _ => exact h
-  | decidePropose _ _ _ _ _ => exact h
-  | sendAccept _ _ _ _ _ => exact h
+  | decidePropose _ _ _ _ _ _ _ => exact h
+  | sendAccept _ _ _ _ _ _ _ => exact h
   | recvAccept a₀ _ b₀ v₀ _ hMem _ _ =>
     simp only [setSent]
     by_cases hc : i = a₀ ∧ c = b₀
@@ -199,9 +199,10 @@ theorem sentAccept_mono_step {s s' : MsgPaxosState n m} {act : MsgAction n m}
 
 /-- `sentAccept` monotonicity from `Reachable`. -/
 theorem sentAccept_mono_reachable_step {s s' : MsgPaxosState n m}
+    (h_inj : Function.Injective ballot)
     (hreach : Reachable ballot s) {act : MsgAction n m} (hstep : Step ballot s act s') :
     ∀ i c w, s.sentAccept i c = some w → s'.sentAccept i c = some w :=
-  sentAccept_mono_step (msg_paxos_inv_reachable hreach) hstep
+  sentAccept_mono_step (msg_paxos_inv_reachable h_inj hreach) hstep
 
 /-! ### Step simulation -/
 
@@ -215,8 +216,8 @@ private theorem sentAccept_eq_of_non_recvAccept {s s' : MsgPaxosState n m}
   | sendPrepare _ => rfl
   | recvPrepare _ _ _ _ _ _ => rfl
   | recvPromise _ _ _ _ _ _ => rfl
-  | decidePropose _ _ _ _ _ => rfl
-  | sendAccept _ _ _ _ _ => rfl
+  | decidePropose _ _ _ _ _ _ _ => rfl
+  | sendAccept _ _ _ _ _ _ _ => rfl
   | recvAccept a p b v _ _ _ _ => exact absurd rfl (h_not_recv a p b v)
   | dropMsg _ => rfl
   | crashProposer _ => rfl
@@ -237,7 +238,7 @@ theorem msg_paxos_step_sim (h_inj : Function.Injective ballot)
       act = MsgAction.recvAccept a p b v
   · -- recvAccept: sentAccept grows
     obtain ⟨_, _, _, _, rfl⟩ := h_recv
-    have hmono := sentAccept_mono_reachable_step hreach hstep
+    have hmono := sentAccept_mono_reachable_step h_inj hreach hstep
     -- Case split on whether a value was already chosen
     by_cases h_already : msgFirstChosen ballot s = none
     · -- Not yet chosen

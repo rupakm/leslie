@@ -289,6 +289,10 @@ inductive Step {n m : Nat} (ballot : Fin m → Nat) :
       (∀ a c w, (s.proposers p).promisesReceived a = some (some (c, w)) →
         (∀ a' c' w', (s.proposers p).promisesReceived a' = some (some (c', w')) → c' ≤ c) →
         v = w) →
+      -- Network consistency: v agrees with any existing accept at this ballot
+      (∀ p' v' tgt', (Msg.accept p' (ballot p) v', tgt') ∈ s.network → v = v') →
+      -- Ghost consistency: v agrees with any sentAccept entries at this ballot
+      (∀ a v', s.sentAccept a (ballot p) = some v' → v = v') →
       Step ballot s (MsgAction.decidePropose p v)
         { s with
           proposers := setProposer s.proposers p
@@ -296,6 +300,10 @@ inductive Step {n m : Nat} (ballot : Fin m → Nat) :
   | sendAccept (s : MsgPaxosState n m) (p : Fin m) (b : Nat) (v : Value) :
       ballot p = b →
       (s.proposers p).proposed = some v →
+      -- Network consistency: v agrees with any existing accept at this ballot
+      (∀ p' v' tgt', (Msg.accept p' b v', tgt') ∈ s.network → v = v') →
+      -- Ghost consistency: v agrees with any sentAccept entries at this ballot
+      (∀ a v', s.sentAccept a b = some v' → v = v') →
       Step ballot s (MsgAction.sendAccept p b v)
         { s with network := s.network ++ acceptBroadcast n m p b v }
   | recvAccept (s : MsgPaxosState n m) (a : Fin n) (p : Fin m) (b : Nat)
@@ -1197,9 +1205,9 @@ end Preservation
 
     The invariant `MsgPaxosInv` is fully inductive: preserved by every
     action of the message-passing Paxos model (lemmas `inv_*` above).
-    The reachability theorem `msg_paxos_inv_reachable` depends on
-    `ProposedSafeInv` preservation, which has sorry's for the hard cases
-    (hProposedNet, hProposedSent, hProposedSafe at decidePropose time).
+    The reachability theorem `msg_paxos_inv_reachable` (under ballot
+    injectivity) is sorry-free: `ProposedSafeInv` preservation uses
+    network/ghost consistency gates on `decidePropose` and `sendAccept`.
 
     In this file we have:
 
@@ -1663,6 +1671,78 @@ private theorem proposedSafeInv_recvPromise {s : MsgPaxosState n m}
     · subst hpe; simp only [ite_true] at hp'; exact h.hProposedProm p' hp'
     · simp only [if_neg hpe] at hp'; exact h.hProposedProm p' hp'
 
+/-- Among finitely many optional prior ballots, find the one with maximum ballot.
+    Returns the acceptor, ballot, and value of the maximum, plus a bound proof. -/
+private theorem fin_max_prior {n : Nat}
+    {priors : Fin n → Option (Option (Nat × Value))}
+    {a₀ : Fin n} {b₀ : Nat} {v₀ : Value}
+    (hpr₀ : priors a₀ = some (some (b₀, v₀))) :
+    ∃ a_max c_max w_max,
+      priors a_max = some (some (c_max, w_max)) ∧
+      ∀ a' c' w', priors a' = some (some (c', w')) → c' ≤ c_max := by
+  -- Use List.finRange and induction to find the max
+  have key : ∀ (l : List (Fin n)) (cur_a : Fin n) (cur_c : Nat) (cur_w : Value),
+      priors cur_a = some (some (cur_c, cur_w)) →
+      ∃ a_max c_max w_max,
+        priors a_max = some (some (c_max, w_max)) ∧
+        cur_c ≤ c_max ∧
+        ∀ a' c' w', a' ∈ l → priors a' = some (some (c', w')) → c' ≤ c_max := by
+    intro l
+    induction l with
+    | nil => intro ca cc cw hca; exact ⟨ca, cc, cw, hca, Nat.le_refl _, fun _ _ _ h => nomatch h⟩
+    | cons x xs ih =>
+      intro ca cc cw hca
+      -- Check if x has a higher ballot
+      match hx : priors x with
+      | some (some (cx, wx)) =>
+        if hgt : cx > cc then
+          obtain ⟨am, cm, wm, hpm, hle, hbound⟩ := ih x cx wx hx
+          exact ⟨am, cm, wm, hpm, by omega,
+            fun a' c' w' hmem h' => by
+              rcases List.mem_cons.mp hmem with rfl | htl
+              · simp [hx] at h'; obtain ⟨hce, _⟩ := h'; subst hce; exact hle
+              · exact hbound a' c' w' htl h'⟩
+        else
+          obtain ⟨am, cm, wm, hpm, hle, hbound⟩ := ih ca cc cw hca
+          exact ⟨am, cm, wm, hpm, hle,
+            fun a' c' w' hmem h' => by
+              rcases List.mem_cons.mp hmem with rfl | htl
+              · simp [hx] at h'; obtain ⟨hce, _⟩ := h'; subst hce; omega
+              · exact hbound a' c' w' htl h'⟩
+      | some none =>
+        obtain ⟨am, cm, wm, hpm, hle, hbound⟩ := ih ca cc cw hca
+        exact ⟨am, cm, wm, hpm, hle,
+          fun a' c' w' hmem h' => by
+            rcases List.mem_cons.mp hmem with rfl | htl
+            · simp [hx] at h'
+            · exact hbound a' c' w' htl h'⟩
+      | none =>
+        obtain ⟨am, cm, wm, hpm, hle, hbound⟩ := ih ca cc cw hca
+        exact ⟨am, cm, wm, hpm, hle,
+          fun a' c' w' hmem h' => by
+            rcases List.mem_cons.mp hmem with rfl | htl
+            · simp [hx] at h'
+            · exact hbound a' c' w' htl h'⟩
+  obtain ⟨am, cm, wm, hpm, _, hbound⟩ := key (List.finRange n) a₀ b₀ v₀ hpr₀
+  exact ⟨am, cm, wm, hpm, fun a' c' w' h' => hbound a' c' w' (List.mem_finRange a') h'⟩
+
+/-- Helper: given a witness prior, find the max ballot among all priors and derive safeAt. -/
+private theorem proposedSafeInv_decidePropose_safeAt {s : MsgPaxosState n m}
+    (hinv : MsgPaxosInv ballot s) (hpinv : PromiseInv ballot s)
+    (p : Fin m) (v : Value)
+    (hmaj : majority (fun a => decide ((s.proposers p).promisesReceived a ≠ none)) = true)
+    (hmaxvote : ∀ a c w, (s.proposers p).promisesReceived a = some (some (c, w)) →
+      (∀ a' c' w', (s.proposers p).promisesReceived a' = some (some (c', w')) → c' ≤ c) →
+      v = w)
+    (a₀ : Fin n) (b₀ : Nat) (v₀ : Value)
+    (hpr₀ : (s.proposers p).promisesReceived a₀ = some (some (b₀, v₀))) :
+    safeAt s v (ballot p) := by
+  obtain ⟨a_max, c_max, w_max, hpr_max, hmax_bound⟩ :=
+    fin_max_prior (priors := (s.proposers p).promisesReceived) hpr₀
+  exact sendAccept_gate_safeAt hinv hpinv p v (ballot p) rfl hmaj
+    c_max hmax_bound
+    (Or.inr ⟨a_max, w_max, hpr_max, hmaxvote a_max c_max w_max hpr_max hmax_bound⟩)
+
 /-- ProposedSafeInv for decidePropose: the hard case. Need to derive safeAt etc.
     from PromiseInv + MsgPaxosInv + the decidePropose gates. -/
 private theorem proposedSafeInv_decidePropose {s : MsgPaxosState n m}
@@ -1672,6 +1752,8 @@ private theorem proposedSafeInv_decidePropose {s : MsgPaxosState n m}
     (hmaxvote : ∀ a c w, (s.proposers p).promisesReceived a = some (some (c, w)) →
       (∀ a' c' w', (s.proposers p).promisesReceived a' = some (some (c', w')) → c' ≤ c) →
       v = w)
+    (hNetGate : ∀ p' v' tgt', (Msg.accept p' (ballot p) v', tgt') ∈ s.network → v = v')
+    (hSentGate : ∀ a v', s.sentAccept a (ballot p) = some v' → v = v')
     (hinv : MsgPaxosInv ballot s)
     (hpinv : PromiseInv ballot s)
     (h : ProposedSafeInv ballot s) :
@@ -1686,26 +1768,8 @@ private theorem proposedSafeInv_decidePropose {s : MsgPaxosState n m}
     · subst hpe; simp only [ite_true] at hp'
       have : v' = v := by rcases hp' with ⟨⟩; rfl
       subst this
-      -- Need: v = v'' where (accept q' (ballot p') v'', tgt') ∈ s.network
-      -- From hAcceptValFun: all accepts at same ballot agree.
-      -- We need at least one accept at ballot p with value v, or derive v = v'' directly.
-      -- Actually, we need: v agrees with any accept at ballot p in the network.
-      -- This follows from: accept at ballot p came from sendAccept which requires proposed = some v.
-      -- But we're proving the invariant, so we need it from the invariant.
-      -- From hNetSafe: the accept is safe at ballot p. And safeAt for v at ballot p.
-      -- These two don't directly give v = v''.
-      -- From hSentAcceptNet + hNetAccept: if there's a sentAccept at ballot p, it agrees.
-      -- Actually we need the DIRECT fact that all accepts at ballot p carry the same value.
-      -- This is hAcceptValFun, but we need an existing accept to compare against.
-      -- We need to show v = v''. This is the crux: at decidePropose time,
-      -- we derive safeAt s v (ballot p). But existing accepts at ballot p could carry v''.
-      -- If v ≠ v'', that would be a problem. But:
-      -- Existing accepts at ballot p have value from some earlier sendAccept by the SAME or
-      -- DIFFERENT proposer with the same ballot.
-      -- With injective ballots, no two proposers share a ballot. Without injectivity, two
-      -- proposers could have the same ballot and different proposed values.
-      -- For now, sorry this case.
-      sorry
+      -- From the network gate: v agrees with all accept messages at ballot p
+      exact hNetGate q' v'' tgt' hin
     · simp only [if_neg hpe] at hp'
       exact h.hProposedNet p' v' hp' q' v'' tgt' hin
   · -- hProposedSent
@@ -1715,7 +1779,9 @@ private theorem proposedSafeInv_decidePropose {s : MsgPaxosState n m}
     · subst hpe; simp only [ite_true] at hp'
       have : v' = v := by rcases hp' with ⟨⟩; rfl
       subst this
-      sorry -- Same issue as above
+      -- From the ghost gate: v agrees with all sentAccept entries at ballot p
+      intro a v'' hsa
+      exact hSentGate a v'' hsa
     · simp only [if_neg hpe] at hp'
       exact h.hProposedSent p' v' hp'
   · -- hProposedSafe: safeAt only references acceptors + sentAccept (not proposers)
@@ -1723,13 +1789,31 @@ private theorem proposedSafeInv_decidePropose {s : MsgPaxosState n m}
     simp only [setProposer] at hp'
     by_cases hpe : p' = p
     · subst hpe; simp only [ite_true] at hp'
-      have : v' = v := by rcases hp' with ⟨⟩; rfl
-      subst this
-      -- safeAt on the new state = safeAt on s (only proposers changed)
-      show safeAt { s with proposers := _ } v' (ballot p')
-      unfold safeAt; intro c hcb
-      -- Derive safeAt on s, then transfer
-      sorry -- Needs sendAccept_gate_safeAt + b_max extraction
+      have hveq : v' = v := by rcases hp' with ⟨⟩; rfl
+      subst hveq
+      -- safeAt only references sentAccept and acceptors (not proposers),
+      -- so safeAt on the post-state equals safeAt on s.
+      -- After subst, the proposer is p' and value is v'.
+      suffices safeAt s v' (ballot p') by exact this
+      -- Extract b_max evidence for sendAccept_gate_safeAt
+      by_cases h_all : ∀ a prior, (s.proposers p').promisesReceived a = some prior →
+          prior = none
+      · -- All priors are none: any value is safe
+        exact sendAccept_gate_safeAt hinv hpinv p' v' (ballot p') rfl hmaj
+          0 (fun _ _ _ hx => by have := h_all _ _ hx; simp at this) (Or.inl h_all)
+      · -- Some prior exists: find the maximum
+        -- h_all : ¬(∀ a prior, received a = some prior → prior = none)
+        -- So there exists a with received a = some (some (b₀, v₀))
+        have ⟨a₀, b₀, v₀, hpr₀⟩ : ∃ a b₀ v₀,
+            (s.proposers p').promisesReceived a = some (some (b₀, v₀)) := by
+          by_contra hall
+          apply h_all; intro a prior hpr
+          by_contra hne
+          have ⟨bv, hbv⟩ := Option.ne_none_iff_exists'.mp hne
+          rw [hbv] at hpr; obtain ⟨b₀, v₀⟩ := bv
+          exact hall ⟨a, b₀, v₀, hpr⟩
+        exact proposedSafeInv_decidePropose_safeAt hinv hpinv p' v' hmaj hmaxvote
+          a₀ b₀ v₀ hpr₀
     · simp only [if_neg hpe] at hp'
       show safeAt { s with proposers := _ } v' (ballot p')
       unfold safeAt; intro c hcb
@@ -1748,11 +1832,17 @@ private theorem proposedSafeInv_decidePropose {s : MsgPaxosState n m}
     · simp only [if_neg hpe] at hp'
       exact h.hProposedProm p' hp'
 
-/-- ProposedSafeInv for sendAccept: network grows with accepts, proposed unchanged. -/
+/-- ProposedSafeInv for sendAccept: network grows with accepts, proposed unchanged.
+    Requires ballot injectivity: two proposers with the same ballot must be equal.
+    This ensures that the new accept at `ballot p` only conflicts with `proposed p`,
+    not with some other proposer `p'` that happens to share the same ballot. -/
 private theorem proposedSafeInv_sendAccept {s : MsgPaxosState n m}
+    (h_inj : Function.Injective ballot)
     (p : Fin m) (b : Nat) (v : Value)
     (hbp : ballot p = b)
     (hProposed : (s.proposers p).proposed = some v)
+    (hNetGate : ∀ p' v' tgt', (Msg.accept p' b v', tgt') ∈ s.network → v = v')
+    (hSentGate : ∀ a v', s.sentAccept a b = some v' → v = v')
     (hinv : MsgPaxosInv ballot s)
     (h : ProposedSafeInv ballot s) :
     ProposedSafeInv ballot
@@ -1768,53 +1858,16 @@ private theorem proposedSafeInv_sendAccept {s : MsgPaxosState n m}
     · exact h.hProposedNet p' v' hp' q' v'' tgt' h1
     · obtain ⟨_, ha'⟩ := hnet _ h1
       simp only [Prod.mk.injEq] at ha'
-      injection ha'.1 with hpq hb' hv'
-      subst hpq; subst hb'; subst hv'
-      -- New accept has proposer p, ballot b, value v
-      -- Need: v' = v where proposed p' = some v'
-      -- ballot q' = ballot p (= b). So ballot p' and ballot p may differ.
-      -- Actually the new message has ballot b = ballot p. So if ballot p' = ballot p,
-      -- then v' = v from ProposedSafeInv (both proposed at same ballot).
-      -- If ballot p' ≠ ballot p, then the accept at ballot p doesn't affect p'.
-      -- Wait, the accept is at ballot b = ballot p. The proposed is p' with ballot p'.
-      -- We need v' = v. This requires ballot p' = ballot p.
-      -- Actually the goal is: v' = v where the accept is at ballot p (not ballot p').
-      -- The condition is: (Msg.accept p (ballot p) v, tgt') ∈ network.
-      -- And proposed p' = some v'. We need v' = v, but this is only needed when
-      -- the accept's ballot = ballot p'. So if ballot p ≠ ballot p', no problem.
-      -- Actually looking at hProposedNet more carefully:
-      -- hProposedNet p' v' hp' q' v'' tgt' hin says:
-      -- proposed p' = some v' and accept q' (ballot p') v'' ∈ network → v' = v''
-      -- The new message is accept p b v at (ballot p). We need: if b = ballot p',
-      -- then v' = v. If b ≠ ballot p', the quantifier doesn't fire.
-      -- Hmm, the accept message has ballot b but hProposedNet filters by ballot p'.
-      -- Looking at the type: hProposedNet says
-      -- (Msg.accept p' (ballot p') v', tgt') ∈ network → v = v'
-      -- Wait no, let me re-read:
-      -- hProposedNet : ∀ p v, proposed p = some v → ∀ p' v' tgt',
-      --   (Msg.accept p' (ballot p) v', tgt') \in network -> v = v'
-      -- The ballot in the accept message filter is `ballot p` (the proposer with proposed).
-      -- The new message has ballot `b = ballot p`. So we need:
-      -- if ballot p' = ballot p, then this applies.
-      -- The new accept is (Msg.accept p (ballot p) v, tgt').
-      -- For the quantified proposer p', if ballot p' = ballot p then
-      -- (Msg.accept p (ballot p') v, tgt') is in network.
-      -- And we need proposed p' = some v' → v' = v.
-      -- If p' = p: v' = v trivially.
-      -- If p' ≠ p but ballot p' = ballot p: we need h.hProposedSafe or similar.
-      -- Actually we don't need this since the accept's ballot field is `b` not `ballot p'`.
-      -- Let me re-read the type signature more carefully.
-      -- `hProposedNet : ∀ p v, (s.proposers p).proposed = some v →
-      --     ∀ p' v' tgt', (Msg.accept p' (ballot p) v', tgt') ∈ s.network → v = v'`
-      -- So it's accept messages at `ballot p` (the proposer's ballot).
-      -- New message: (Msg.accept p b v, tgt) where b = ballot p.
-      -- For p' (the proposer with proposed = some v'):
-      -- The check is (Msg.accept q' (ballot p') v'', tgt') ∈ new_network.
-      -- The new message has ballot b = ballot p. So it's at ballot p' iff ballot p' = b = ballot p.
-      -- So we need: if ballot p' = ballot p, then v' = v.
-      -- This requires ballot injectivity or some other argument.
-      -- For now, sorry.
-      sorry
+      -- New accept: (Msg.accept p b v, tgt'). Need v' = v''.
+      -- ha'.1 : Msg.accept q' (ballot p') v'' = Msg.accept p b v
+      -- Extract: q' = p, ballot p' = b, v'' = v
+      have hq_eq := ha'.1
+      injection hq_eq with h1_p h2_b h3_v
+      -- h1_p : q' = p, h2_b : ballot p' = b, h3_v : v'' = v
+      -- By injectivity: ballot p' = b = ballot p → p' = p
+      have hp_eq : p' = p := h_inj (h2_b.trans hbp.symm)
+      subst hp_eq; subst h3_v
+      simp at hp'; rw [hProposed] at hp'; exact Option.some.inj hp'.symm
   · exact h.hProposedSent
   · exact h.hProposedSafe
   · exact h.hProposedProm
@@ -1920,6 +1973,7 @@ end ProposedSafePreservation
 /-! ### Reachability -/
 
 private theorem combined_inv_reachable {n m : Nat} {ballot : Fin m → Nat}
+    (h_inj : Function.Injective ballot)
     {s : MsgPaxosState n m} (hreach : Reachable ballot s) :
     MsgPaxosInv ballot s ∧ PromiseInv ballot s ∧ ProposedSafeInv ballot s := by
   induction hreach with
@@ -1939,12 +1993,12 @@ private theorem combined_inv_reachable {n m : Nat} {ballot : Fin m → Nat}
       exact ⟨inv_recvPromise p a b prior idx ih_inv,
              promiseInv_recvPromise p a b prior idx hMem ih_inv ih_pinv,
              proposedSafeInv_recvPromise p a b prior idx ih_psi⟩
-    | decidePropose p v hmaj hprop hmaxvote =>
+    | decidePropose p v hmaj hprop hmaxvote hNetGate hSentGate' =>
       exact ⟨inv_decidePropose p v ih_inv,
              promiseInv_propose_frame p (fun ps => { ps with proposed := some v })
                (fun _ => rfl) ih_pinv,
-             proposedSafeInv_decidePropose p v hmaj hprop hmaxvote ih_inv ih_pinv ih_psi⟩
-    | sendAccept p b v hbp hProposed =>
+             proposedSafeInv_decidePropose p v hmaj hprop hmaxvote hNetGate hSentGate' ih_inv ih_pinv ih_psi⟩
+    | sendAccept p b v hbp hProposed hNetGate hSentGate =>
       -- Derive the old gates from ProposedSafeInv (ih_psi is about the pre-state)
       exact ⟨inv_sendAccept p b v hbp
                (by rw [← hbp]; exact ih_psi.hProposedNet p v hProposed)
@@ -1954,7 +2008,7 @@ private theorem combined_inv_reachable {n m : Nat} {ballot : Fin m → Nat}
                (by rw [← hbp]; exact ih_psi.hProposedProm p (by rw [hProposed]; simp))
                ih_inv,
              promiseInv_net_frame ih_pinv _,
-             proposedSafeInv_sendAccept p b v hbp hProposed ih_inv ih_psi⟩
+             proposedSafeInv_sendAccept h_inj p b v hbp hProposed hNetGate hSentGate ih_inv ih_psi⟩
     | recvAccept a p b v idx hMem hProm hBallot =>
       exact ⟨inv_recvAccept a p b v idx hMem hProm hBallot ih_inv,
              promiseInv_recvAccept a p b v idx hMem hProm hBallot ih_inv ih_pinv,
@@ -1973,19 +2027,22 @@ private theorem combined_inv_reachable {n m : Nat} {ballot : Fin m → Nat}
              proposedSafeInv_crashAcceptor a _ (fun x hx => (List.mem_filter.mp hx).1) ih_psi⟩
 
 theorem msg_paxos_inv_reachable {n m : Nat} {ballot : Fin m → Nat}
+    (h_inj : Function.Injective ballot)
     {s : MsgPaxosState n m} (hreach : Reachable ballot s) :
     MsgPaxosInv ballot s :=
-  (combined_inv_reachable hreach).1
+  (combined_inv_reachable h_inj hreach).1
 
 theorem promise_inv_reachable {n m : Nat} {ballot : Fin m → Nat}
+    (h_inj : Function.Injective ballot)
     {s : MsgPaxosState n m} (hreach : Reachable ballot s) :
     PromiseInv ballot s :=
-  (combined_inv_reachable hreach).2.1
+  (combined_inv_reachable h_inj hreach).2.1
 
 theorem proposedSafe_inv_reachable {n m : Nat} {ballot : Fin m → Nat}
+    (h_inj : Function.Injective ballot)
     {s : MsgPaxosState n m} (hreach : Reachable ballot s) :
     ProposedSafeInv ballot s :=
-  (combined_inv_reachable hreach).2.2
+  (combined_inv_reachable h_inj hreach).2.2
 
 /-! ### Within-ballot and cross-ballot agreement -/
 
@@ -1993,12 +2050,13 @@ theorem proposedSafe_inv_reachable {n m : Nat} {ballot : Fin m → Nat}
     entries at the same ballot agree on the value. This follows directly
     from `hSentUnique`. Cross-ballot agreement is left to a follow-up. -/
 theorem within_ballot_agreement {n m : Nat} {ballot : Fin m → Nat}
+    (h_inj : Function.Injective ballot)
     {s : MsgPaxosState n m} (hreach : Reachable ballot s)
     {a a' : Fin n} {b : Nat} {v v' : Value}
     (hv : s.sentAccept a b = some v)
     (hv' : s.sentAccept a' b = some v') :
     v = v' :=
-  (msg_paxos_inv_reachable hreach).hSentUnique a a' b v v' hv hv'
+  (msg_paxos_inv_reachable h_inj hreach).hSentUnique a a' b v v' hv hv'
 
 /-- **Cross-ballot agreement (full agreement).** If value `v` is chosen
     (majority-accepted) at ballot `b`, and value `v'` is chosen at ballot `b'`,
@@ -2011,7 +2069,7 @@ theorem cross_ballot_agreement {n m : Nat} {ballot : Fin m → Nat}
       majority (fun a => decide (s.sentAccept a b' = some v')) = true →
       v = v' := by
   intro b b' v v' hmaj hmaj'
-  have hinv := msg_paxos_inv_reachable hreach
+  have hinv := msg_paxos_inv_reachable h_inj hreach
   -- Get a witness vote for v at b and v' at b'
   obtain ⟨i, _, hi⟩ := majority_overlap hmaj hmaj
   have hiv : s.sentAccept i b = some v := by simpa [decide_eq_true_eq] using hi

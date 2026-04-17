@@ -523,7 +523,7 @@ noncomputable def paxosSimulation {n m : Nat} (ballot : Fin m → Nat)
       · intro p i bw w h; simp at h
   step_sim := by
     intro ms ms' as hinv hR ⟨act, hstep⟩
-    have hinvI := MessagePaxos.msg_paxos_inv_reachable hinv
+    have hinvI := MessagePaxos.msg_paxos_inv_reachable h_inj hinv
     cases hstep with
     -- ── Stutter cases (acceptors/sentAccept unchanged) ─────────
     | sendPrepare p =>
@@ -532,7 +532,7 @@ noncomputable def paxosSimulation {n m : Nat} (ballot : Fin m → Nat)
     | recvPromise p a b prior idx hMem =>
       exact ⟨as, .refl, ⟨hR.prom_eq, hR.acc_eq, hR.did2b_eq, hR.prop_none,
         hR.prop_some, hR.got1b_iff, hR.rep_none, hR.rep_dom, hR.rep_acc, hR.rep_sent⟩⟩
-    | decidePropose p v _ _ _ =>
+    | decidePropose p v _ _ _ _ _ =>
       exact ⟨as, .refl, ⟨hR.prom_eq, hR.acc_eq, hR.did2b_eq, hR.prop_none,
         hR.prop_some, hR.got1b_iff, hR.rep_none, hR.rep_dom, hR.rep_acc, hR.rep_sent⟩⟩
     | dropMsg idx =>
@@ -544,7 +544,7 @@ noncomputable def paxosSimulation {n m : Nat} (ballot : Fin m → Nat)
     | crashAcceptor a =>
       exact ⟨as, .refl, ⟨hR.prom_eq, hR.acc_eq, hR.did2b_eq, hR.prop_none,
         hR.prop_some, hR.got1b_iff, hR.rep_none, hR.rep_dom, hR.rep_acc, hR.rep_sent⟩⟩
-    | sendAccept p b v hbp hProposed =>
+    | sendAccept p b v hbp hProposed _ _ =>
       exact ⟨as, .refl, ⟨hR.prom_eq, hR.acc_eq, hR.did2b_eq, hR.prop_none,
         hR.prop_some, hR.got1b_iff, hR.rep_none, hR.rep_dom, hR.rep_acc, hR.rep_sent⟩⟩
     -- ── Non-stutter cases ──────────────────────────────────────
