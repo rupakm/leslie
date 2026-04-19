@@ -31,6 +31,7 @@ import «Leslie».Examples.Paxos
 import «Leslie».Examples.Paxos.BoundedSingleProposer
 import «Leslie».Examples.Paxos.BoundedTwoProposer
 import «Leslie».Examples.Paxos.BoundedMProposer
+import «Leslie».Examples.Paxos.MessagePaxos
 import «Leslie».Examples.KVStore
 import «Leslie».Examples.LeaseLock
 import «Leslie».Simulate
