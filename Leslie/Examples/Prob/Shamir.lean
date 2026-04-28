@@ -70,14 +70,15 @@ independent of the secret `s`.
 Both sides reduce to `PMF.uniform (pts → F)` via `evals_uniform`. -/
 theorem shamir_secrecy_pts {F : Type*} [Field F] [Fintype F] [DecidableEq F]
     (t : ℕ) (s s' : F)
-    (pts : Finset F) (h_card : pts.card ≤ t) (h_nz : (0 : F) ∉ pts) :
+    (pts : Finset F) (h_card : pts.card ≤ t) (h_nz : (0 : F) ∉ pts)
+    (h_F : t + 1 ≤ Fintype.card F) :
     (Leslie.Prob.Polynomial.uniformWithFixedZero t s).map
         (fun f => fun (p : pts) => f.eval p.val)
       =
     (Leslie.Prob.Polynomial.uniformWithFixedZero t s').map
         (fun f => fun (p : pts) => f.eval p.val) := by
-  rw [Leslie.Prob.Polynomial.evals_uniform t s pts h_card h_nz,
-      Leslie.Prob.Polynomial.evals_uniform t s' pts h_card h_nz]
+  rw [Leslie.Prob.Polynomial.evals_uniform t s pts h_card h_nz h_F,
+      Leslie.Prob.Polynomial.evals_uniform t s' pts h_card h_nz h_F]
 
 /-! ## Shamir spec as a `ProbActionSpec`
 
@@ -164,6 +165,7 @@ Shamir, callers will supply an injective `partyPoint` anyway. -/
 theorem shamir_secrecy {t : ℕ}
     (partyPoint : Fin n → F)
     (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
     (C : Coalition n t) (s s' : F) :
     (Leslie.Prob.Polynomial.uniformWithFixedZero t s).map
         (fun f => fun (i : C.val) => some (f.eval (partyPoint i.val)))
@@ -197,7 +199,7 @@ theorem shamir_secrecy {t : ℕ}
     rfl
   rw [h_factor s, h_factor s']
   -- Inner equality is exactly `shamir_secrecy_pts`.
-  rw [shamir_secrecy_pts t s s' pts h_card h_nz]
+  rw [shamir_secrecy_pts t s s' pts h_card h_nz h_F]
 
 /-! ## State-level secrecy
 
@@ -215,6 +217,7 @@ the coalition view all participate. -/
 theorem shamir_secrecy_via_step {t : ℕ}
     (partyPoint : Fin n → F)
     (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
     (C : Coalition n t) (s s' : F)
     (initial : ShamirState F n)
     (h_init : ∀ i, initial.shares i = none) :
@@ -241,6 +244,6 @@ theorem shamir_secrecy_via_step {t : ℕ}
         = (Leslie.Prob.Polynomial.uniformWithFixedZero t s').map fun f =>
             { shares := fun i => some (f.eval (partyPoint i)) } from rfl]
   rw [PMF.map_comp, PMF.map_comp]
-  exact shamir_secrecy partyPoint h_nz_pp C s s'
+  exact shamir_secrecy partyPoint h_nz_pp h_F C s s'
 
 end Leslie.Examples.Prob.Shamir
