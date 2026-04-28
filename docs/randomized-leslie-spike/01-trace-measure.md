@@ -1,10 +1,16 @@
 # M0.1 — Trace measure decision document
 
-**Status.** In progress. Initial findings + recommendation; prototype
-deferred to follow-up.
+**Status.** Decision settled and prototype-validated.
 **Owner.** TBD.
-**Budget.** ~5 days (per implementation plan v2.1 §M0).
-**Blocks.** All M1 work; M0.3.
+**Budget.** ~5 days (per implementation plan v2.1 §M0). Actual:
+~0.5 days (decision research + prototype).
+**Blocks.** Unblocked: M1, M0.3.
+
+**Outcome.** Option A (Measure + Ionescu-Tulcea kernel trajectory) is
+adopted. Coin-flip prototype at `Leslie/Prob/Spike/CoinFlip.lean`
+builds green against Mathlib v4.27.0; the construction is direct from
+`Mathlib.Probability.Kernel.IonescuTulcea.Traj` with no shimming. See
+*Prototype-phase outcome* at the bottom of this document.
 
 ---
 
@@ -303,6 +309,100 @@ be patched to:
 
 If the prototype reveals a friction not anticipated here, this
 document is the place to record the finding and revise.
+
+## Prototype-phase outcome
+
+The coin-flip prototype at `Leslie/Prob/Spike/CoinFlip.lean` validates
+Option A end-to-end. Findings:
+
+### What worked first try
+
+1. **Mathlib v4.27.0 pin** matches `lean-toolchain` exactly. No
+   toolchain mismatch; `lake update mathlib` resolved transitively
+   (aesop coexists, plus standard Mathlib transitive deps:
+   batteries, Cli, importGraph, LeanSearchClient, plausible,
+   ProofWidgets, Qq).
+2. **`lake exe cache get`** populated 7270 prebuilt files (~5.9 GB).
+   The cache tool exits with code 1 on a missing
+   `~/.cache/mathlib/curl.cfg` cleanup attempt, but the artifacts
+   are fully unpacked — cosmetic exit-code bug, not a real failure.
+3. **`Kernel.trajMeasure`** accepts a constant kernel family
+   `(n : ℕ) → Kernel (Π i : Finset.Iic n, Bool) Bool` and produces
+   `Measure (Π n, Bool)` directly. No coercion or shim needed.
+4. **`IsProbabilityMeasure (coinTrace μ₀)`** is automatic — Mathlib
+   has the instance directly on `trajMeasure`.
+5. **`MeasurableSpace`** instances on `Bool` (`Bool.instMeasurableSpace`,
+   ambient) and `Π n, Bool` (`Pi.measurableSpace`, ambient) resolve
+   via instance synthesis without manual ascription.
+
+### What needed fixup
+
+1. `Iic n` in the `Kernel.traj` signature is **`Finset.Iic n`** (not
+   `Set.Iic n`). My initial draft assumed `Set.Iic` because the
+   docs source rendered ambiguously; the kernel signature requires
+   `Finset.Iic` to match `frestrictLe` and the projective-limit
+   machinery. Fixed in one line.
+2. The `AlmostDiamond` placeholder in the AST stub had a
+   malformed body (`∃ n, P x` where `n` was unused). Replaced with a
+   trivial `∀ᵐ x ∂μ, P x` — same shape as `AlmostBox` for the
+   prototype since the temporal-logic semantics land in M3 W1.
+
+### What's still `sorry`
+
+- **`coinTrace_marginal_succ_uniform`** — closing requires reasoning
+  about `(traj coinKernel 0).map (fun x ↦ x (n + 1))` for arbitrary
+  `n`. The base case `n = 0` reduces to `map_traj_succ_self`; the
+  inductive case requires `traj_map_frestrictLe` + projection. Not
+  difficult, but ~30–50 lines and not on M0.1's critical path.
+- **`CoinASTCertificate.sound`** — placeholder body. Real soundness
+  proof is M3 W1's `ASTCertificate.sound` against the Markov
+  filtration on `Π n, X n`, using `MeasureTheory.Martingale.Convergence`.
+
+Both are within the M0 sorry budget exception per implementation
+plan v2.1 §Conventions.
+
+### Build statistics
+
+- `lake update mathlib`: ~3 minutes (clone + dep resolution).
+- `lake exe cache get`: ~5 minutes (~5.9 GB, network-bound).
+- `lake build Leslie.Prob.Spike.CoinFlip`: 1.9 s (after cache
+  populated; first-time build of the prototype itself).
+- `lake build` (full project): green; existing 4 sorries unchanged
+  (Refinement.lean:382, Refinement.lean:469, LastVoting.lean:302,
+  LastVoting.lean:396 — pre-existing on `main`).
+- Prototype line count: 142 lines including doc-comments. **Within
+  the 150-line target; well below the 250-line "re-evaluate" trigger.**
+
+### Implications for the wider plan
+
+- **Design plan v2.1 §"Round-2 review findings" §1** can be marked
+  resolved. The "PMF can't host trace distributions" critique is
+  correct, but Mathlib's `Kernel.trajMeasure` provides the right
+  primitive directly. No shim, no fork, no upstream blocker.
+- **Design plan §"Discrete probability first"** should be softened
+  for v2.2: per-step PMF, trace-level Measure. This is a doc edit,
+  not a design change.
+- **M0.3 (AST soundness sanity)** is now near-trivial — Doob is in
+  Mathlib (arXiv 2212.05578), the trace type compiles, and the
+  filtration on `Π n, X n` is standard. Estimate revised from 2 days
+  to ~0.5 day.
+- **Mathlib build cost** for CI: cold = ~10 min cache fetch + 2 s
+  spike build. Warm = sub-second incremental. Within the
+  implementation plan v2.1's expectations.
+
+### Next steps (M0 closeout, post-M0.1)
+
+1. **M0.4** (CI regex fix) — independent, can run now.
+2. **M0.2** (parallel composition state model) — independent of
+   M0.1's outcome; can start.
+3. **M0.3** (AST soundness scaffolding) — much faster than budgeted
+   given M0.1's findings; ~0.5 day.
+4. **Design plan v2.1 → v2.2** type-signature sweep: replace
+   `PMF (Trace σ ι)` with `Measure (Π n, σ × Option ι)` (or
+   `Measure (Stream' (σ × Option ι))` after the `Pi`↔`Stream'`
+   bridge is established) throughout `Refinement`, `Coupling`,
+   `Liveness`, `Trace` sections of the design plan. Defer until M0.2
+   + M0.3 close, then do all three sweeps in one pass.
 
 ## References
 

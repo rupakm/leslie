@@ -858,6 +858,18 @@ The correct object is a measure on the cylinder σ-algebra over
 composition) from the per-step `PMF`s. M0.1 spike deliverable: settle
 the type and the construction in Lean against the M1 toolchain pin.
 
+> **Status (M0.1 outcome).** **Resolved.** Option A adopted:
+> per-step effects stay `PMF`; trace distributions are
+> `Measure (Π n, X n)` via `Mathlib.Probability.Kernel.IonescuTulcea.Traj`
+> (specifically `Kernel.trajMeasure`). Coin-flip prototype at
+> `Leslie/Prob/Spike/CoinFlip.lean` (142 lines) builds green against
+> Mathlib v4.27.0. No shimming required. Decision document and
+> prototype outcome:
+> `docs/randomized-leslie-spike/01-trace-measure.md`.
+> The full type-signature sweep across §"Refinement",
+> §"Coupling", §"Liveness", §"Trace" is deferred to v2.2 after M0.2
+> and M0.3 close.
+
 ### 2. AST soundness pulls in measure theory on day 1 of M3
 
 Doob's martingale convergence (load-bearing for `ASTCertificate.sound`,
