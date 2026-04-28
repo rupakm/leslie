@@ -1,17 +1,22 @@
-# Randomized Leslie: A Conservative Extension Plan (v2.1)
+# Randomized Leslie: A Conservative Extension Plan (v2.2)
 
 > **Revision history.** v1 (initial design); v2 addresses internal
 > review: explicit Mathlib subsection, `ProbActionSpec` shape aligned
 > with existing `ActionSpec`, reconciliation with existing
 > `Examples/BenOr.lean`, fairness encoding made consistent, M2.5
 > ElGamal replaced with statistical example, composition combinators
-> given type-level disjointness, conservativity claim narrowed and made
-> precise, AVSS certificate shape sketched, helper types defined.
-> v2.1 (this version) records round-2 review findings: see
-> *Round-2 review findings* below for three foundational technical
-> issues, a motivation gap, and a CI safety bug that must be resolved
-> in an M0 spike before M1 begins. Companion implementation plan v2.1
-> adds the M0 milestone.
+> given type-level disjointness, conservativity claim narrowed and
+> made precise, AVSS certificate shape sketched, helper types defined.
+> v2.1 records round-2 review findings: three foundational technical
+> issues, a motivation gap, and a CI safety bug, scheduled as a 2-week
+> M0 spike. v2.2 (this version) collapses M0 outcomes into the inline
+> signatures: trace distributions are `Measure (Π n, σ × Option ι)`
+> via `Kernel.trajMeasure` (M0.1), parallel composition is the
+> shared-state `parallelWithNet` shape (M0.2), AST soundness uses
+> Mathlib's `Submartingale.ae_tendsto_limitProcess` directly with a
+> ~50-line shim (M0.3), CI gate uses an allowlist (M0.4). The §M0
+> spike artifacts at `docs/randomized-leslie-spike/01–03-*.md` and
+> `Leslie/Prob/Spike/*.lean` back every claim with working Lean.
 
 ## Goals and constraints
 
@@ -86,12 +91,17 @@ The argument *for* taking it on at M1 (rather than incrementally):
    `ActionSpec → ProbActionSpec` sends each deterministic gated action
    to its Dirac counterpart. Conservativity is a precisely-stated
    claim, not a hand-wave (see *Conservativity, precisely*).
-2. **Discrete probability first.** Use Mathlib `PMF` (probability mass
-   functions) over countable state, not the full `MeasureTheory` stack.
-   AVSS, Shamir, common coin, and randomized BA all live in this
-   fragment. Defer measure-theoretic probability until a concrete
-   example demands it (the 2-D random walker is the boundary case;
-   see *Risk register*).
+2. **PMF for single steps, Measure for traces.** Per-step action
+   effects are Mathlib `PMF` (probability mass functions over
+   countable single-step branching — clean for AVSS, Shamir, common
+   coin, randomized BA). Trace distributions are
+   `MeasureTheory.Measure` on the cylinder σ-algebra, constructed
+   from the per-step `PMF`s via `ProbabilityTheory.Kernel.trajMeasure`
+   (Ionescu-Tulcea). The PMF/Measure boundary is "one step vs. many
+   steps." This was v2's "Discrete probability first" with the
+   measure-theoretic concession promoted explicitly: AST soundness
+   needs Doob's martingale convergence, which is measure-theoretic;
+   pretending otherwise was the v2 bug. M0.1 outcome.
 3. **Separate the three sources of "uncertainty"** at the type level:
    probabilistic choice (inside an action body), adversarial scheduling
    (which action fires next), and adversarial corruption (which parties
@@ -350,9 +360,14 @@ type-level enforcement. Here is the type-level distinction:
 ```lean
 -- Leslie/Prob/Refinement.lean
 -- Trace-level refinement: same shape as existing Refinement.lean,
--- lifted to PMFs.
-def Refines (Π : ProbActionSpec σ ι) (Σ : ProbActionSpec σ' ι') : Prop :=
-  ∀ A, ∃ A', traceDist Π A = (traceDist Σ A').map projectStuttering
+-- lifted to trace measures (Mathlib.MeasureTheory.Measure under
+-- the cylinder σ-algebra; v2.2 update from PMF-of-streams).
+def Refines (Π : ProbActionSpec σ ι) (Σ : ProbActionSpec σ' ι')
+            [MeasurableSpace σ] [MeasurableSpace ι]
+            [MeasurableSpace σ'] [MeasurableSpace ι'] : Prop :=
+  ∀ (μ₀ : Measure σ) [IsProbabilityMeasure μ₀] A,
+    ∃ (μ₀' : Measure σ') (_ : IsProbabilityMeasure μ₀') A',
+      Measure.map projectStuttering (traceDist Σ A' μ₀') = traceDist Π A μ₀
 notation Π " ⊑ₚ " Σ => Refines Π Σ
 
 -- Leslie/UC/Realize.lean
@@ -437,19 +452,30 @@ This is the standard MDP / adversarial-randomization encoding (see
 
 ```lean
 -- Leslie/Prob/Trace.lean
--- For any fixed (deterministic) adversary, a ProbActionSpec induces
--- a PMF over traces.
-def traceDist (Π : ProbActionSpec σ ι) (A : Adversary σ ι) :
-              PMF (Trace σ ι)
+-- For any fixed (deterministic) adversary and an initial-state
+-- distribution, a ProbActionSpec induces a probability measure over
+-- infinite-trace product space. Constructed via Ionescu-Tulcea kernel
+-- composition (`Mathlib.Probability.Kernel.IonescuTulcea.Traj.trajMeasure`).
+def traceDist (Π : ProbActionSpec σ ι) (A : Adversary σ ι)
+              [MeasurableSpace σ] [MeasurableSpace ι]
+              (μ₀ : Measure σ) [IsProbabilityMeasure μ₀] :
+              Measure (Π n : ℕ, σ × Option ι)
 ```
 
 The induction has the standard structure: at each step, the adversary
 picks an action or stutters; if it picks `i`, the action's effect PMF
-is sampled; the resulting state is concatenated to the trace prefix.
-**Decision: traces are infinite streams (always defined), with
-termination encoded as eventual stuttering at a terminal state.** This
-is what the v1 "open question" called *trace prefixes*; v2 makes it a
-decision, not a recommendation.
+is sampled (lifted to a one-step Markov kernel); Ionescu-Tulcea
+extends to a measure on the infinite product. **Decision: traces are
+infinite product elements `Π n : ℕ, σ × Option ι` (always defined),
+with termination encoded as eventual stuttering at a terminal state.**
+The `Stream'`/`Π n` distinction is glued by a small (~30-line)
+isomorphism in `Leslie/Prob/Trace.lean`.
+
+Note the additional `[MeasurableSpace σ] [MeasurableSpace ι]`
+typeclass requirements — these are the M0.1 cost of moving from
+PMF-on-streams (which doesn't exist) to Measure-on-product (which
+does, via Mathlib). For a finite-state `ProbActionSpec` they resolve
+trivially.
 
 ### Coupling — pRHL-style relational judgment
 
@@ -472,12 +498,17 @@ theorem coupling_bijection  : ...     -- the AVSS-secrecy workhorse
 theorem coupling_swap       : ...     -- eager-vs-lazy sampling
 theorem coupling_up_to_bad  : ...     -- fundamental lemma of game-playing
 
--- Two ProbActionSpecs related by R produce R-coupled trace distributions
+-- Two ProbActionSpecs related by R produce R-coupled trace
+-- distributions. Step-level couplings are PMF-flavored (good
+-- ergonomics for sampling-based reasoning); trace-level couplings
+-- are Measure-flavored (Mathlib's `Measure.prod` + projections).
+-- The bridge is `Kernel.traj`'s functoriality: a step-level PMF
+-- coupling lifts to a trace-level Measure coupling.
 def RelatedTraces (Π₁ : ProbActionSpec σ₁ ι₁) (Π₂ : ProbActionSpec σ₂ ι₂)
                   (R : σ₁ → σ₂ → Prop) : Prop := ...
 
 theorem RelatedTraces.view_eq (h : RelatedTraces Π₁ Π₂ R) ... :
-    (traceDist Π₁ _).map V = (traceDist Π₂ _).map V'
+    Measure.map V (traceDist Π₁ _ _) = Measure.map V' (traceDist Π₂ _ _)
 ```
 
 ### AST certificate — POPL 2025 + POPL 2026
@@ -502,7 +533,9 @@ structure ASTCertificate
                 ∑ s' ∈ supp(next Π s) with U s' < U s, prob s s' ≥ ε
 
 theorem ASTCertificate.sound :
-    ASTCertificate Π term → Π ⊨ ◇̃ term
+    ASTCertificate Π term →
+    ∀ (μ₀ : Measure σ) [IsProbabilityMeasure μ₀] (A : Adversary σ ι),
+      ∀ᵐ ω ∂(traceDist Π A μ₀), ∃ n, term (ω n).1
 ```
 
 ```lean
@@ -517,7 +550,9 @@ structure FairASTCertificate
 
 theorem FairASTCertificate.sound :
     FairASTCertificate Π F term →
-    ∀ A : FairAdversary σ ι F, traceDist Π A.toAdversary ⊨ ◇̃ term
+    ∀ (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+      (A : FairAdversary σ ι F),
+      ∀ᵐ ω ∂(traceDist Π A.toAdversary μ₀), ∃ n, term (ω n).1
 ```
 
 ### AVSS termination certificate — sketch
@@ -1028,3 +1063,18 @@ UC composition (Canetti, Hirt–Maurer), distributed protocols
 | Risk: Mathlib build | Added. |
 | Risk: 2DRW imports | Promoted from open question to risk. |
 | Timeline staffing  | Made explicit: estimates assume Leslie+Mathlib-fluent engineer; +40% to 2× for less-fluent staffing. |
+
+## Changes from v2.1
+
+| Topic | v2.2 update |
+|---|---|
+| Design principle 2 | "Discrete probability first" softened to "PMF for single steps, Measure for traces." Mathlib's measure-theoretic stack is no longer hidden — AST soundness needs Doob, which is measure-theoretic. M0.1 outcome. |
+| `traceDist` | Signature updated from `PMF (Trace σ ι)` (which doesn't exist for non-trivial state) to `Measure (Π n : ℕ, σ × Option ι)` via `ProbabilityTheory.Kernel.trajMeasure`. Adds `[MeasurableSpace σ] [MeasurableSpace ι]` requirements and an explicit initial-distribution argument `μ₀ : Measure σ`. M0.1 outcome. |
+| `Refines` (`⊑ₚ`) | Updated to quantify over an initial distribution `μ₀` and use `Measure.map` instead of `PMF`. Same shape, lifted to measures. |
+| `RelatedTraces.view_eq` | Trace-level coupling expressed as `Measure.map` equality; step-level coupling stays PMF-flavored. Bridge is `Kernel.traj`'s functoriality. |
+| `ASTCertificate.sound` / `FairASTCertificate.sound` | Conclusion expressed against `traceDist Π A μ₀` as `∀ᵐ ω, ∃ n, term (ω n).1`. The placeholder `□̃`/`◇̃` modal notation is replaced with the underlying measure-theoretic almost-everywhere quantifier; M3 W1 may reintroduce notation. |
+| `parallel` shape | Round-2 finding 3 status: shared-state product `σ₁ × σ_net × σ₂` adopted, network is its own `ProbActionSpec`. Disjoint-state `(σ₁ × σ₂)` rejected. Lean stub: `Leslie/Prob/Spike/ParallelShape.lean`. M0.2 outcome. |
+| §"Risk register" Mathlib martingale gap | Marked Resolved — Mathlib already has Doob; shim is ~50 lines, not 200. |
+| §"Round-2 review findings" | Each of findings 1, 2, 3 carries a "Status" box pointing at the resolved spike artifact. |
+| Spike artifact tree | New: `docs/randomized-leslie-spike/01-trace-measure.md`, `02-ast-soundness.md`, `03-parallel-state.md`; `Leslie/Prob/Spike/{CoinFlip,ASTSanity,ParallelShape}.lean`; `scripts/check-conservative.sh` + `.test.sh`; `.github/workflows/conservativity.yml`. |
+| Critical-path estimates | Unchanged: AVSS 18.5 weeks, async BA 27.5 weeks. M0 actual elapsed: <1 day vs. 2-week budget. |

@@ -1,6 +1,6 @@
-# Randomized Leslie: Implementation Plan (v2.1)
+# Randomized Leslie: Implementation Plan (v2.2)
 
-> Companion to `randomized-leslie-plan.md` v2.1. Where the design plan
+> Companion to `randomized-leslie-plan.md` v2.2. Where the design plan
 > answers *what* and *why*, this document answers *how* and *in what
 > order* — at the granularity of files, signatures, and weekly
 > checkpoints.
@@ -11,11 +11,15 @@
 > (not `BenOr.lean`), Wegman–Carter MAC replacing ElGamal, M3 entry
 > gate for the AVSS certificate stub, 2DRW fallback path, CI
 > conservatism script extended to ignore lakefile churn, staffing
-> assumption made explicit. v2.1 (this version) adds **Milestone 0**
-> (2-week pre-M1 spike) covering round-2 review findings: PMF vs.
-> measure for trace distributions, parallel-composition state model,
-> AST soundness scaffolding, and a CI regex fix. M0 must complete
-> before M1 W1 begins.
+> assumption made explicit. v2.1 added **Milestone 0** (2-week pre-M1
+> spike) covering round-2 review findings: PMF vs. measure for trace
+> distributions, parallel-composition state model, AST soundness
+> scaffolding, and a CI regex fix. **v2.2 (this version)** records M0
+> *closure*: all four M0 tasks complete with working Lean artifacts;
+> M1 estimate carries forward unchanged; design-plan signatures
+> updated inline; CI workflow wired. M0 actual elapsed: <1 day vs.
+> 2-week budget, primarily because Mathlib already has Ionescu-Tulcea
+> (arXiv 2506.18616) and Doob (arXiv 2212.05578).
 
 This document covers M1 in full detail, M2 / M2.5 in moderate detail,
 and M3+ in skeleton form. The detail tapers deliberately: design
@@ -1135,3 +1139,19 @@ not start M0 with a Mathlib-novice.)
 The v2.1 changes are *additive* with respect to v2: no M1–M5 task is
 dropped or restructured; M0 is inserted upstream and the timeline
 table shifts by 2 weeks.
+
+## Changes from v2.1 (i.e., what v2.2 adds)
+
+| Topic | v2.2 update |
+|---|---|
+| M0 status | All four tasks DONE with working Lean artifacts. Critical-path estimates carried forward unchanged (AVSS: 18.5 weeks, async BA: 27.5 weeks). M0 actual elapsed: <1 day. |
+| §"Branch & repository setup" | CI script shown inline switched to allowlist (M0.4 outcome). |
+| §M0.1 (trace measure) | Marked DONE; outcome: Option A (Measure + Ionescu-Tulcea via `Kernel.trajMeasure`). Mathlib v4.27.0 already has `Mathlib.Probability.Kernel.IonescuTulcea.Traj`; ~150-line coin-flip prototype validates end-to-end. |
+| §M0.2 (parallel state) | Marked DONE; outcome: shared-state product `σ₁ × σ_net × σ₂` with the network as its own `ProbActionSpec`. Lean shape stub at `Leslie/Prob/Spike/ParallelShape.lean` (0 sorry, 0 warning). |
+| §M0.3 (AST soundness) | Marked DONE; outcome: Mathlib gap is ~50 lines (not 200). `Submartingale.ae_tendsto_limitProcess` is in `Mathlib.Probability.Martingale.Convergence`. AST stub at `Leslie/Prob/Spike/ASTSanity.lean`. |
+| §M0.4 (CI regex) | Marked DONE; outcome: allowlist-based check at `scripts/check-conservative.sh` with 33-case test suite. Wired into CI via `.github/workflows/conservativity.yml`. |
+| Spike artifact tree | New `docs/randomized-leslie-spike/01–03-*.md` (decision documents) and `Leslie/Prob/Spike/{CoinFlip,ASTSanity,ParallelShape}.lean` (Lean stubs). All artifacts cross-referenced from the round-2 status notes in the design plan. |
+| Design plan signatures | `traceDist`, `Refines`, `RelatedTraces.view_eq`, `ASTCertificate.sound`, `FairASTCertificate.sound` — all updated to use `Measure (Π n : ℕ, σ × Option ι)` instead of v2's invalid `PMF (Trace σ ι)`. Added `[MeasurableSpace σ] [MeasurableSpace ι]` typeclass requirements. |
+
+The v2.2 changes are signatures-only: no milestone restructuring, no
+task add/drop, no timeline shift.
