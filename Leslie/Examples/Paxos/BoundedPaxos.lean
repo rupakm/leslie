@@ -946,31 +946,41 @@ theorem afterP1b_step_p2a {n m : Nat} (ballot : Fin m → Nat) (hn : 1 ≤ n) (k
       funext i; simp [i.isLt]
     rw [hsimp]
     exact majority_all_true hn
-  · -- transition
+  · -- transition: ∃ v, s' = setFn-prop ∧ safeAt ballot s v (ballot k).
+    -- Pick v = initialValue. State equality is rfl (afterP2a is exactly this setFn).
+    -- safeAt: pick the full quorum (everyone), then for each acceptor, case-split on
+    -- whether some earlier proposer (round < k) used ballot c.
     refine ⟨initialValue, rfl, ?_⟩
-    -- hconstr: for every i, b, w with got1b k i = true (always) and rep k i = some (b, w),
-    -- if b is max among such reports, then initialValue = w.
-    intro i b w _hgot hrep _hmax
-    -- At afterP1b k, rep k i = prevAcc m ballot k.val
-    have hrep_eq : (afterP1b n m ballot k).rep k i = prevAcc m ballot k.val := by
-      show (if k = k then (if (i : Nat) < n then prevAcc m ballot k.val else none) else _)
-           = prevAcc m ballot k.val
-      simp [i.isLt]
-    rw [hrep_eq] at hrep
-    -- Case on k.val
-    cases hkv : k.val with
-    | zero =>
-      rw [hkv] at hrep
-      unfold prevAcc at hrep
-      exact absurd hrep (by simp)
-    | succ k' =>
-      rw [hkv] at hrep
-      unfold prevAcc at hrep
-      have hk'lt : k' < m := by
-        have : k.val < m := k.isLt; omega
-      simp only [hk'lt, ↓reduceDIte] at hrep
-      have heq : (ballot ⟨k', hk'lt⟩, initialValue) = (b, w) := Option.some.inj hrep
-      exact (Prod.mk.inj heq).2
+    intro c hc
+    refine ⟨fun _ => true, majority_all_true hn, ?_⟩
+    intro a _
+    -- did2b q a = decide (q.val < k.val) at afterP1b
+    -- prop q   = some initialValue iff q.val < k.val
+    -- prom a   = ballot k (afterP1b sets prom for all i.val < n; i.val < n always)
+    have hpromA : (afterP1b n m ballot k).prom a = ballot k := by
+      show (if a.val < n then ballot k else _) = ballot k
+      simp [a.isLt]
+    by_cases hex : ∃ p : Fin m, ballot p = c ∧ p.val < k.val
+    · -- votedFor: pick that p; did2b p a follows from p.val < k.val
+      obtain ⟨p, hbp, hpk⟩ := hex
+      left
+      refine ⟨p, hbp, ?_, ?_⟩
+      · show decide (p.val < k.val) = true
+        exact decide_eq_true hpk
+      · show (if p.val < k.val then some initialValue else none) = some initialValue
+        simp [hpk]
+    · -- wontVoteAt: no proposer with ballot c voted before k; prom a = ballot k > c
+      right
+      refine ⟨?_, ?_⟩
+      · intro p hbp
+        -- Goal: s.did2b p a ≠ true ⇔ decide (p.val < k.val) ≠ true
+        -- From hex (negated): no p has ballot p = c ∧ p.val < k.val. Combined with
+        -- hbp : ballot p = c, we get ¬ (p.val < k.val).
+        intro hd
+        have hpk : p.val < k.val := by
+          show p.val < k.val; exact decide_eq_true_iff.mp hd
+        exact hex ⟨p, hbp, hpk⟩
+      · rw [hpromA]; exact hc
 
 /-- Step lemma for p2b: applying `p2b k ⟨j, hj⟩` at `afterP2bJ k j`
     produces `afterP2bJ k (j + 1)`, provided `j < n`. -/
