@@ -899,6 +899,19 @@ product cannot model. M0.2 spike deliverable: specify the shared-state
 model (likely `σ₁ × σ_net × σ₂` with each side guarded on its half
 plus the network as its own `ProbActionSpec`).
 
+> **Status (M0.2 outcome).** **Resolved.** Shared-state product
+> adopted: state is `σ₁ × σ_net × σ₂` with the network as its own
+> `ProbActionSpec`; composition is action-set disjoint union
+> (`ι₁ ⊕ ι_net ⊕ ι₂`) over a genuinely shared `σ_net`. This is the
+> Hirt-Maurer async UC shape. Decision document and Lean shape stub
+> (zero sorry):
+> - `docs/randomized-leslie-spike/03-parallel-state.md`
+> - `Leslie/Prob/Spike/ParallelShape.lean` (~150 lines including
+>   `AsyncNet`, `composedStep`, two-party message-exchange demo)
+>
+> Promotion to `Leslie/Prob/Action.lean` and definition of
+> `AsyncNet` for AVSS/coin/BA scheduled for M2 W1.
+
 ### 4. Motivation gap — POPL 2025 (V, U) rule justification
 
 The plan's headline justification for the (V, U) rule is AVSS, but

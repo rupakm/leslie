@@ -195,7 +195,7 @@ inherit the bug.
 plan v2.1 updated to reference the chosen approach. If the answer is
 (A), update v2's "Discrete probability first" framing.
 
-### Task M0.2 — Parallel composition state model (~3 days)
+### Task M0.2 — Parallel composition state model (~3 days) — DONE
 
 **Question.** What is the state type of `Π₁ ∥ Π₂` for protocols that
 share a network?
@@ -207,21 +207,37 @@ rewires shared interfaces. Disjoint-state product cannot model
 either. AVSS, common coin, and async BA all require this question
 answered.
 
-**Deliverables.**
+**Decision.** State is `σ₁ × σ_net × σ₂` with the network as its own
+`ProbActionSpec`. Party actions guard on local + network; network
+actions guard on the network alone. Composition is action-set
+disjoint union (`ι₁ ⊕ ι_net ⊕ ι₂`); state overlap on `σ_net` is
+genuine. This is the *shared-state product* — Hirt-Maurer async UC's
+default shape — not the disjoint-state product.
 
-1. **Decision document** `docs/randomized-leslie-spike/02-parallel-state.md`
-   (~1 page) sketching the shared-state model. Likely shape: state
-   is `σ₁ × σ_net × σ₂` with each side's actions guarded on its own
-   state plus the network, and the network is its own
-   `ProbActionSpec` modeling delivery / drop / reorder / duplication.
-2. **Type signature** for `parallel` consistent with M0.1's trace
-   type. The signature must be expressible without forward
-   references to UC.
-3. **Sanity example** (~50 lines) showing two trivial parties
-   exchanging one message via the shared network in the chosen
-   shape, plus a one-line invariant about it.
+**Delivered.**
 
-**Exit gate.** Signature agreed; design plan v2.1 patched.
+1. **Decision document** at
+   `docs/randomized-leslie-spike/03-parallel-state.md` — model
+   rationale, signature shape, why shared-network beats either
+   disjoint-state or fully-shared-variables, and the M2 W1
+   promotion path.
+2. **Lean shape stub** at `Leslie/Prob/Spike/ParallelShape.lean`
+   (~150 lines, 0 sorry, 0 warning). Demonstrates `AsyncNet`
+   mailbox model, `DistState`/`DistAction` shape, `composedStep`
+   over the disjoint-action-union, and a 30-line "two parties
+   exchange one boolean message" sanity example. Mathlib-free
+   (M0.2 is pure data; the M0.1/M0.3 trace work supplies the
+   probabilistic layer above).
+
+**Exit gate.** ✓ Decision document; ✓ signature consistent with
+M0.1; ✓ Lean stub builds; ✓ sanity example fits in ~30 lines as
+budgeted.
+
+**Note on file numbering.** The doc lives at
+`03-parallel-state.md`, not `02-parallel-state.md` as originally
+indicated above. Spike files were written in the order
+M0.1 → M0.4 → M0.3 → M0.2; numbering follows write order to
+preserve link stability across the four spike commits.
 
 ### Task M0.3 — AST soundness scaffolding sanity check (~2 days) — DONE
 
