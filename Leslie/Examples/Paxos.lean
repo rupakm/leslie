@@ -222,7 +222,7 @@ structure PaxosInv {n m : Nat} (ballot : Fin m → Nat) (s : PaxosState n m) : P
   /-- Every recorded vote corresponds to some proposer's 2b. -/
   hVotDid : ∀ i b v, s.voted i b = some v →
             ∃ p, ballot p = b ∧ s.did2b p i = true
-  hSafe : ∀ q v, s.prop q = some v → safeAt s v (ballot q)
+  hSafe : ∀ q v, s.prop q = some v → safeAt ballot s v (ballot q)
 
 def paxos_inv {n m : Nat} (ballot : Fin m → Nat) (s : PaxosState n m) : Prop :=
   PaxosInv ballot s
@@ -257,20 +257,17 @@ theorem agreement {n m : Nat} {ballot : Fin m → Nat}
     obtain ⟨Q, hQmaj, hQprop⟩ := hinv.hSafe q' v hv (ballot p') hlt
     -- Overlap between Q and did2b p'
     obtain ⟨k, hdk, hQk⟩ := majority_overlap hmp' hQmaj
-    -- From hdk = did2b p' k, hN gives voted k (ballot p') = some (prop p' deref)
-    obtain ⟨vp', hpropP', hvotedP'⟩ := hinv.hN p' k hdk
-    -- k voted at ballot p', so WontVoteAt is false
-    rcases hQprop k hQk with hvote | ⟨hnotvote, _⟩
-    · -- votedFor (new form): s.voted k (ballot p') = some v
-      -- Combine with hvotedP' : s.voted k (ballot p') = some vp'
-      have hveq : v = vp' := by
-        have := hvotedP'.symm.trans hvote
-        exact (Option.some.inj this).symm
-      subst hveq
-      rw [hpropP', hv]
-    · -- WontVoteAt: voted k (ballot p') = none contradicts hvotedP'
-      rw [hvotedP'] at hnotvote
-      exact absurd hnotvote (by simp)
+    -- k did2b at ballot p' under proposer p'
+    rcases hQprop k hQk with ⟨r, hrb, _hdr, hrv⟩ | ⟨hnotvote, _⟩
+    · -- votedFor: ∃ r, ballot r = ballot p' ∧ s.did2b r k = true ∧ s.prop r = some v.
+      -- By injectivity of `ballot`, r = p'. Then s.prop p' = some v (hrv) and
+      -- s.prop q' = some v (hv) — both equal `some v`, hence equal.
+      have hrp' : r = p' := h_inj hrb
+      subst hrp'
+      rw [hrv, hv]
+    · -- WontVoteAt: ∀ p, ballot p = ballot p' → s.did2b p k ≠ true.
+      -- But hdk : s.did2b p' k = true, applied with p = p' and rfl, contradiction.
+      exact absurd hdk (hnotvote p' rfl)
 
 /-! ### Refinement Mapping -/
 
@@ -469,6 +466,24 @@ private theorem paxos_inv_next_p2a {n m : Nat} {ballot : Fin m → Nat}
     · subst hqp; simp [setFn] at hq; exact hg2
     · simp [setFn, hqp] at hq; exact hinv.hJ q hq
   · exact hinv.hF  -- hF: rep unchanged
+  · -- hL: voted unchanged, prop only gains at p. Thread setFn through prop.
+    intro i b w hv
+    obtain ⟨r, hrb, hrprop⟩ := hinv.hL i b w hv
+    refine ⟨r, hrb, ?_⟩
+    by_cases hrp : r = p
+    · subst hrp; simp [hg1] at hrprop
+    · simp [setFn, hrp]; exact hrprop
+  · exact hinv.hK  -- hK: voted/prom unchanged
+  · -- hN: did2b/voted unchanged, prop only gains at p; old proposer ≠ p (hg1).
+    intro q i hd
+    obtain ⟨w, hw, hv⟩ := hinv.hN q i hd
+    refine ⟨w, ?_, hv⟩
+    by_cases hqp : q = p
+    · subst hqp; simp [hg1] at hw
+    · simp [setFn, hqp]; exact hw
+  · exact hinv.hAcc  -- hAcc: acc/voted unchanged
+  · exact hinv.hM  -- hM: rep/voted unchanged
+  · exact hinv.hVotDid  -- hVotDid: voted/did2b unchanged
   · -- hSafe: safeAt is given directly as the transition constraint for q = p.
     -- For q ≠ p: prop unchanged, old hSafe carries over.
     -- In both cases, safeAt transfers because p2a only changes prop, and
@@ -488,9 +503,19 @@ private theorem paxos_inv_next_p2a {n m : Nat} {ballot : Fin m → Nat}
         have hrq : r ≠ q := fun h => by subst h; exact absurd hrv (by simp [hg1])
         exact Or.inl ⟨r, hrb, hdr, by simp [setFn, hrq, hrv]⟩
       · exact Or.inr ⟨hnv, hprom⟩
-    · -- q ≠ p: prop q unchanged (setFn s.prop p (some v) q = s.prop q)
+    · -- q ≠ p: prop q unchanged. Old hSafe gives pre-state safeAt witness; lift each
+      -- disjunct to post-state (votedFor is monotone since did2b unchanged and we can
+      -- argue r ≠ p; wontVoteAt is unchanged since did2b and prom are unchanged).
       simp only [hqp, ite_false] at hprop
-      exact hinv.hSafe q w hprop c hc
+      obtain ⟨Q, hQmaj, hQprop⟩ := hinv.hSafe q w hprop c hc
+      refine ⟨Q, hQmaj, fun a ha => ?_⟩
+      rcases hQprop a ha with ⟨r, hrb, hdr, hrv⟩ | ⟨hnv, hprom⟩
+      · -- votedFor: hrv : s.prop r = some w. p2a only changes prop at p; r ≠ p
+        -- since s.prop p = none ≠ some w.
+        have hrp : r ≠ p := fun h => by subst h; exact absurd hrv (by simp [hg1])
+        exact Or.inl ⟨r, hrb, hdr, by simp [setFn, hrp]; exact hrv⟩
+      · -- wontVoteAt: did2b and prom unchanged.
+        exact Or.inr ⟨hnv, hprom⟩
 
 private theorem paxos_inv_next_p2b {n m : Nat} {ballot : Fin m → Nat}
     (h_inj : Function.Injective ballot)
@@ -717,39 +742,42 @@ private theorem paxos_inv_next_p2b {n m : Nat} {ballot : Fin m → Nat}
         · subst hji'; simp
         · simp [hji']; exact hdr
       · simp [hrp]; exact hdr
-  · -- hSafe: prop unchanged, voted gains (i, ballot p). Old Q witnesses still work
-    -- unless the new entry breaks wontVoteAt.
+  · -- hSafe: prop unchanged. did2b only gains (p, i); prom only ↑ at i.
+    -- Old Q witnesses still work, lifted to post-state.
     intro q w hprop c hc
     obtain ⟨Q, hQmaj, hQprop⟩ := hinv.hSafe q w hprop c hc
     refine ⟨Q, hQmaj, fun a ha => ?_⟩
-    rcases hQprop a ha with hvote | ⟨hnv, hprom⟩
-    · -- votedFor: s.voted a c = some w (pre). New: updateVoted at (i, ballot p).
-      -- If (a, c) = (i, ballot p), old voted = some w means hvote : s.voted i (ballot p) = some w.
-      -- New value: some v. If w ≠ v, this breaks votedFor. But by hinv.hVotDid on hvote,
-      -- some r with ballot r = ballot p and did2b r i = true. But gate: did2b p i = false.
-      -- Hmm that doesn't immediately give contradiction unless r = p.
-      -- Actually: for (a, c) ≠ (i, ballot p), updateVoted = old. So just case-split.
-      left
-      show updateVoted s.voted i (ballot p) v a c = some w
-      by_cases hac : a = i ∧ c = ballot p
-      · obtain ⟨rfl, rfl⟩ := hac
-        have : s.voted a (ballot p) = some w := hvote
-        rw [hvot_none] at this; exact absurd this (by simp)
-      · simp only [updateVoted, if_neg hac]; exact hvote
-    · -- wontVoteAt: voted a c = none (old). New value: updateVoted.
-      -- If (a, c) = (i, ballot p): pre voted i (ballot p) = none. Post: some v.
-      -- This breaks "voted a c = none". So need to rule out (a, c) = (i, ballot p).
-      -- Do this via hprom : s.prom a > c. If a = i: prom i > c. Gate: prom i ≤ ballot p.
-      -- If c = ballot p then prom i > ballot p ≥ prom i — contradiction.
+    rcases hQprop a ha with ⟨r, hrb, hdr, hrv⟩ | ⟨hnv, hprom⟩
+    · -- votedFor in old state → votedFor in new state.
+      -- did2b only grew at (p, i); old hdr : s.did2b r a = true is preserved.
+      apply Or.inl
+      refine ⟨r, hrb, ?_, hrv⟩
+      show setFn s.did2b p (setFn (s.did2b p) i true) r a = true
+      simp only [setFn]
+      by_cases hrp : r = p
+      · subst hrp; simp only [ite_true, setFn]
+        by_cases hai : a = i
+        · subst hai; simp only [ite_true]
+        · simp only [hai, ite_false]; exact hdr
+      · simp only [hrp, ite_false]; exact hdr
+    · -- wontVoteAt in old state → wontVoteAt in new state.
+      -- (1) ∀ p', ballot p' = c → did2b p' a ≠ true: only new (p, i) entry could break.
+      --     If a = i and c = ballot p: hprom gives s.prom i > c = ballot p, but gate says
+      --     s.prom i ≤ ballot p. Contradiction → c ≠ ballot p, so the new entry doesn't matter.
+      -- (2) prom a > c: prom only ↑ at i; if a = i, ballot p > c (from same argument).
       right
-      refine ⟨?_, ?_⟩
-      · show updateVoted s.voted i (ballot p) v a c = none
-        simp only [updateVoted]
-        by_cases hac : a = i ∧ c = ballot p
-        · obtain ⟨rfl, rfl⟩ := hac
-          -- hprom : s.prom i > ballot p, hg2 : s.prom i ≤ ballot p — contradiction
-          exfalso; omega
-        · rw [if_neg hac]; exact hnv
+      refine ⟨fun r' hrb_eq => ?_, ?_⟩
+      · show setFn s.did2b p (setFn (s.did2b p) i true) r' a ≠ true
+        simp only [setFn]
+        by_cases hrp : r' = p
+        · subst hrp; simp only [ite_true, setFn]
+          by_cases hai : a = i
+          · subst hai; simp only [ite_true]
+            -- hprom : s.prom i > c; gate : s.prom i ≤ ballot p; hrb_eq : ballot p = c
+            -- ⇒ ballot p > ballot p, contradiction.
+            exfalso; omega
+          · simp only [hai, ite_false]; exact hnv r' hrb_eq
+        · simp only [hrp, ite_false]; exact hnv r' hrb_eq
       · show setFn s.prom i (ballot p) a > c
         by_cases hai : a = i
         · subst hai; simp only [setFn, ite_true]; omega
