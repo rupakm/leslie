@@ -200,7 +200,7 @@ def leaseSpec : ActionSpec (LeaseState n) (LeaseAction n) where
       }
     | .writeOk p v => {
         -- ── Write to storage (accepted) ───────────────────────────
-        -- A process that believes it is the leader attempts to write.
+        -- A process attempts to write to storage.
         -- The storage node checks the fencing token:
         --   accept iff (myToken, writeSeq+1) > (highToken, highSeq)
         -- in lexicographic order. If accepted, the storage node
@@ -213,9 +213,8 @@ def leaseSpec : ActionSpec (LeaseState n) (LeaseAction n) where
         -- can write. But once a newer leader has written (with a
         -- higher token), the stale leader's writes will be rejected.
         gate := fun s =>
-          s.believesLeader p = true ∧
-          (s.myToken p > s.highToken ∨
-           (s.myToken p = s.highToken ∧ s.writeSeq p + 1 > s.highSeq))
+          s.myToken p > s.highToken ∨
+          (s.myToken p = s.highToken ∧ s.writeSeq p + 1 > s.highSeq)
         transition := fun s s' =>
           s' = { s with
             highToken := s.myToken p
@@ -428,7 +427,6 @@ theorem lease_inv_step :
     -- The gate ensures (myToken p, writeSeq p + 1) > (highToken, highSeq).
     -- The storage node updates its high-water mark and appends the entry.
     simp only [leaseSpec] at hgate htrans
-    obtain ⟨_, hfence⟩ := hgate
     subst htrans
     refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
     · -- (1) Token monotonicity: unchanged
@@ -452,7 +450,7 @@ theorem lease_inv_step :
           unfold entry_lt
           dsimp only
           rw [htok_last, hseq_last]
-          rcases hfence with h | ⟨h1, h2⟩
+          rcases hgate with h | ⟨h1, h2⟩
           · left ; omega
           · right ; constructor <;> omega
     · -- (5) All entries ≤ new high-water mark (myToken p, writeSeq p + 1).
@@ -464,7 +462,7 @@ theorem lease_inv_step :
       rcases he with he | he
       · -- Old entry: ≤ old high-water mark < new high-water mark
         have h_old := h_entries_le e he
-        rcases hfence with htgt | ⟨hteq, hsgt⟩
+        rcases hgate with htgt | ⟨hteq, hsgt⟩
         · left ; simp only ; rcases h_old with h | ⟨h, _⟩ <;> omega
         · rcases h_old with h_lt | ⟨h_eq, h_le⟩
           · left ; simp only ; omega
