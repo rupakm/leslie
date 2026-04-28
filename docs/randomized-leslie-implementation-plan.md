@@ -223,7 +223,7 @@ answered.
 
 **Exit gate.** Signature agreed; design plan v2.1 patched.
 
-### Task M0.3 — AST soundness scaffolding sanity check (~2 days)
+### Task M0.3 — AST soundness scaffolding sanity check (~2 days) — DONE
 
 **Question.** Does `ASTCertificate.sound` actually go through against
 the M0.1 trace type?
@@ -235,20 +235,35 @@ for the POPL 2025 rule, which doesn't exist in the literature) or
 the deferral is wrong. Either way, M3 W1 cannot start until this is
 clear.
 
-**Deliverables.**
+**Resolution.** Mathlib has the lemmas. M0.1 already established
+`Submartingale.ae_tendsto_limitProcess`; M0.3 confirmed it composes
+with `Filtration`, `Supermartingale`, `eLpNorm`, `IsFiniteMeasure`,
+and the `∀ᵐ` machinery to express the full POPL 2025 (V, U)-rule
+shape and its soundness statement.
 
-1. **One-page outline** of the soundness proof against the M0.1
-   trace type, citing the specific Mathlib martingale lemmas used
-   (and noting which are missing).
-2. **Statement-only Lean stub** (~50 lines) of `ASTCertificate` and
-   `ASTCertificate.sound` with `sorry` in the body, every proof
-   obligation typed correctly under the M0.1 trace type. Must build
-   green with explicit `sorry`.
+**Delivered.**
 
-**Exit gate.** Outline + stub build. If the outline reveals that
-Doob's available form does not match what the rule needs, file an
-issue against the POPL 2025 / 2026 authors and pause M1 until the
-math is resolved.
+1. **Outline** at `docs/randomized-leslie-spike/02-ast-soundness.md`
+   — four-step soundness proof (negate to submartingale → Doob's
+   a.e. convergence → non-negativity bounds limit → sublevel-set
+   Borel-Cantelli for termination) with each step naming the
+   specific Mathlib lemma it uses.
+2. **Lean stub** at `Leslie/Prob/Spike/ASTSanity.lean` (108 lines).
+   `ASTCert` structure with `V_super`, `V_nonneg`, `V_term`,
+   `V_bdd`, `U_bdd_subl`, `U_dec_prob` fields against an arbitrary
+   `(μ, ℱ, V, U, term)`. `ASTCert.sound` statement type-checks
+   under `IsFiniteMeasure μ`. Builds green with the planned single
+   `sorry` in the soundness body.
+
+**Findings.** The "small shim, ~200 lines worst case" budget for the
+Mathlib martingale-convergence gap is conservative. Actual shim is
+~50 lines: `Supermartingale.neg`-to-`Submartingale` conversion (~5
+lines), `Filtration.natural` `MetrizableSpace` plumbing on `X n`
+(~10 lines), sublevel-set Borel-Cantelli application (~30 lines).
+No Mathlib gap blocks M3 W1.
+
+**Exit gate.** ✓ Outline written; ✓ stub builds green; ✓ no Mathlib
+gap.
 
 ### Task M0.4 — Conservativity CI regex fix (~0.5 days) — DONE
 

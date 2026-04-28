@@ -826,6 +826,13 @@ demands it.
   non-negative supermartingales is load-bearing for
   `ASTCertificate.sound`. *Mitigation:* small shim in M3, upstream
   when stable; worst case ~200 lines from scratch.
+  *Status (M0.3 outcome).* **Resolved.**
+  `Submartingale.ae_tendsto_limitProcess` is in Mathlib v4.27.0; the
+  AST stub at `Leslie/Prob/Spike/ASTSanity.lean` builds green with
+  the full (V, U)-rule shape against the trace measure. Remaining
+  shim is ~50 lines (negation, predictable filtration witness,
+  sublevel-set Borel-Cantelli), not 200. See
+  `docs/randomized-leslie-spike/02-ast-soundness.md`.
 - **AVSS certificate shape doesn't fit POPL 2026 rule cleanly.**
   *Mitigation:* M3 entry gate requires the sketch be discharged into a
   Lean stub before AVSS work begins.
