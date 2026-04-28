@@ -16,11 +16,12 @@ Goal of this file:
   3. Witness the `IsProbabilityMeasure` instance.
   4. State (and ideally prove) that the marginal at step `n+1` is
      uniform on `Bool`, by reducing to `map_traj_succ_self`.
-  5. Stub `ASTCertificate.sound` against this trace-measure type
-     (statement-only; body is `sorry` per M0 sorry budget).
 
-If this file builds end-to-end with `(0)` `sorry` on items 1–3 and the
-standard sorry budget on items 4–5, M0.1 prototype phase passes.
+If this file builds with `(0)` `sorry` on items 1–3 and one planned
+`sorry` on item 4 (the marginal lemma; closing it is downstream M3
+work), M0.1 prototype phase passes. The AST-certificate scaffolding
+lives in `Leslie/Prob/Spike/ASTSanity.lean` (M0.3); this file is
+focused purely on the trace-measure construction.
 
 See `docs/randomized-leslie-spike/01-trace-measure.md` for the
 decision rationale and the API references this file relies on.
@@ -94,49 +95,13 @@ theorem coinTrace_marginal_succ_uniform
     (coinTrace μ₀).map (fun (x : Π n, X n) => x (n + 1)) = uniformBool := by
   sorry
 
-/-! ## AST certificate stub
+/-! ## Scope
 
-Statement-only stub of `ASTCertificate` and its soundness, with the
-trace type being `Measure (Π n, X n)` instead of v2's invalid
-`PMF (Trace σ ι)`. Compiles → M0.3 exit gate's "shape compiles"
-condition is met for this trivial example.
-
-The full structure is just enough to type-check the soundness lemma's
-quantification; non-trivial fields are placeholders.
+The AST-certificate shape was previously stubbed in this file as a
+placeholder; it has moved to `Leslie/Prob/Spike/ASTSanity.lean` in its
+full POPL 2025 (V, U) form. This file's responsibility is purely the
+*trace-measure construction* — `coinKernel`, `coinTrace`, and the
+marginal lemma. AST stuff lives next door.
 -/
-
-/-- Stub almost-sure box: probability-1 set under a measure. -/
-def AlmostBox {α : Type*} [MeasurableSpace α] (μ : Measure α)
-    (P : α → Prop) : Prop :=
-  ∀ᵐ x ∂μ, P x
-
-/-- Stub almost-sure diamond: probability-1 set under a measure.
-For the prototype this is the same as `AlmostBox` — what matters is
-that the *type* is expressible against `Measure (Π n, X n)`, not the
-exact temporal-logic semantics, which lands in M3 W1. -/
-def AlmostDiamond {α : Type*} [MeasurableSpace α] (μ : Measure α)
-    (P : α → Prop) : Prop :=
-  ∀ᵐ x ∂μ, P x
-
-/-- Stub `ASTCertificate` for a trace measure on coin flips. The full
-shape (V, U, Inv, sublevel-set compatibility) is deferred to M3 W1;
-this stub just confirms the type *shape* is expressible against the
-trace-measure type. -/
-structure CoinASTCertificate
-    (μ₀ : Measure Bool) [IsProbabilityMeasure μ₀]
-    (term : (Π n, X n) → Prop) where
-  /-- The (V, U, Inv) triple is elided for the prototype. We just
-  record the shape: a measurable set of "terminating" trajectories. -/
-  measurable_term : Measurable (fun (x : Π n, X n) => term x)
-
-/-- Stub soundness: a `CoinASTCertificate` implies almost-sure
-termination under the trace measure. Body is `sorry` per the M0
-sorry budget. -/
-theorem CoinASTCertificate.sound
-    (μ₀ : Measure Bool) [IsProbabilityMeasure μ₀]
-    (term : (Π n, X n) → Prop)
-    (_ : CoinASTCertificate μ₀ term) :
-    AlmostDiamond (coinTrace μ₀) term := by
-  sorry
 
 end Leslie.Prob.Spike
