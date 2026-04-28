@@ -49,6 +49,15 @@ structure PaxosState (n m : Nat) where
   rep : Fin m → Fin n → Option (Nat × Value)
   prop : Fin m → Option Value
   did2b : Fin m → Fin n → Bool
+  /-- Ghost per-acceptor vote history: `voted i c = some v` means acceptor `i`
+      voted for value `v` at ballot `c`. This field is acceptor-local and
+      decouples the safety argument from proposer bookkeeping. -/
+  voted : Fin n → Nat → Option Value
+
+/-- Functional update of a two-argument function at `(i, c)`. -/
+def updateVoted {n : Nat} (f : Fin n → Nat → Option Value)
+    (i : Fin n) (c : Nat) (v : Value) : Fin n → Nat → Option Value :=
+  fun j b => if j = i ∧ b = c then some v else f j b
 
 inductive PaxosAction (n m : Nat) where
   | p1b (p : Fin m) (i : Fin n)
@@ -141,7 +150,8 @@ def paxos (n m : Nat) (ballot : Fin m → Nat) : ActionSpec (PaxosState n m) (Pa
     (∀ p i, s.got1b p i = false) ∧
     (∀ p i, s.rep p i = none) ∧
     (∀ p, s.prop p = none) ∧
-    (∀ p i, s.did2b p i = false)
+    (∀ p i, s.did2b p i = false) ∧
+    (∀ i c, s.voted i c = none)
   actions := fun
     | .p1b p i => {
         gate := fun s => s.got1b p i = false ∧ s.prom i ≤ ballot p
@@ -172,7 +182,8 @@ def paxos (n m : Nat) (ballot : Fin m → Nat) : ActionSpec (PaxosState n m) (Pa
             s' = { s with
               prom := setFn s.prom i (ballot p)
               acc := setFn s.acc i (some (ballot p, v))
-              did2b := setFn s.did2b p (setFn (s.did2b p) i true) }
+              did2b := setFn s.did2b p (setFn (s.did2b p) i true)
+              voted := updateVoted s.voted i (ballot p) v }
       }
 
 /-! ### Protocol Invariant
@@ -198,7 +209,20 @@ structure PaxosInv {n m : Nat} (ballot : Fin m → Nat) (s : PaxosState n m) : P
   hH : ∀ p i, s.did2b p i = true → ∃ b v, s.acc i = some (b, v) ∧ b ≥ ballot p
   hJ : ∀ q, s.prop q ≠ none → majority (s.got1b q) = true
   hF : ∀ q i b v, s.rep q i = some (b, v) → b ≤ ballot q
-  hSafe : ∀ q v, s.prop q = some v → safeAt ballot s v (ballot q)
+  /-- Voted entries only appear at ballots used by some proposer, with matching value. -/
+  hL : ∀ i b v, s.voted i b = some v → ∃ q, ballot q = b ∧ s.prop q = some v
+  /-- A vote at ballot `b` means the acceptor's promise is at least `b`. -/
+  hK : ∀ i b v, s.voted i b = some v → s.prom i ≥ b
+  /-- `did2b p i` implies the corresponding vote was recorded at `ballot p`. -/
+  hN : ∀ p i, s.did2b p i = true → ∃ v, s.prop p = some v ∧ s.voted i (ballot p) = some v
+  /-- Acceptor's `acc` is captured by the vote history. -/
+  hAcc : ∀ i b v, s.acc i = some (b, v) → s.voted i b = some v
+  /-- Reports are backed by actual votes. -/
+  hM : ∀ q i b v, s.rep q i = some (b, v) → s.voted i b = some v
+  /-- Every recorded vote corresponds to some proposer's 2b. -/
+  hVotDid : ∀ i b v, s.voted i b = some v →
+            ∃ p, ballot p = b ∧ s.did2b p i = true
+  hSafe : ∀ q v, s.prop q = some v → safeAt s v (ballot q)
 
 def paxos_inv {n m : Nat} (ballot : Fin m → Nat) (s : PaxosState n m) : Prop :=
   PaxosInv ballot s
@@ -233,14 +257,20 @@ theorem agreement {n m : Nat} {ballot : Fin m → Nat}
     obtain ⟨Q, hQmaj, hQprop⟩ := hinv.hSafe q' v hv (ballot p') hlt
     -- Overlap between Q and did2b p'
     obtain ⟨k, hdk, hQk⟩ := majority_overlap hmp' hQmaj
+    -- From hdk = did2b p' k, hN gives voted k (ballot p') = some (prop p' deref)
+    obtain ⟨vp', hpropP', hvotedP'⟩ := hinv.hN p' k hdk
     -- k voted at ballot p', so WontVoteAt is false
-    rcases hQprop k hQk with ⟨r, hrb, hdr, hrv⟩ | ⟨hnotvote, _⟩
-    · -- VotedFor(k, ballot p', v): prop r = some v, ballot r = ballot p'
-      have : r = p' := h_inj hrb
-      subst this; rw [hrv, hv]
-    · -- WontVoteAt(k, ballot p'): impossible since k voted at ballot p'
-      have : ballot p' = ballot p' := rfl
-      exact absurd hdk (hnotvote p' this)
+    rcases hQprop k hQk with hvote | ⟨hnotvote, _⟩
+    · -- votedFor (new form): s.voted k (ballot p') = some v
+      -- Combine with hvotedP' : s.voted k (ballot p') = some vp'
+      have hveq : v = vp' := by
+        have := hvotedP'.symm.trans hvote
+        exact (Option.some.inj this).symm
+      subst hveq
+      rw [hpropP', hv]
+    · -- WontVoteAt: voted k (ballot p') = none contradicts hvotedP'
+      rw [hvotedP'] at hnotvote
+      exact absurd hnotvote (by simp)
 
 /-! ### Refinement Mapping -/
 
@@ -256,7 +286,7 @@ def paxos_ref {n m : Nat} (s : PaxosState n m) : ConsensusState where
 
 theorem paxos_inv_init {n m : Nat} (ballot : Fin m → Nat) :
     ∀ s, (paxos n m ballot).init s → paxos_inv ballot s := by
-  intro s ⟨_, hacc, hgot, hrep, hprop, hdid⟩
+  intro s ⟨_, hacc, hgot, hrep, hprop, hdid, hvot⟩
   exact {
     hA := by intro p i hi; simp [hdid p i] at hi
     hB := by intro i _ _ hi; simp [hacc i] at hi
@@ -267,6 +297,12 @@ theorem paxos_inv_init {n m : Nat} (ballot : Fin m → Nat) :
     hH := by intro p i hi; simp [hdid p i] at hi
     hJ := by intro q hq; simp [hprop q] at hq
     hF := by intro q i _ _ hri; simp [hrep q i] at hri
+    hL := by intro i b v hv; simp [hvot i b] at hv
+    hK := by intro i b v hv; simp [hvot i b] at hv
+    hN := by intro p i hd; simp [hdid p i] at hd
+    hAcc := by intro i b v hi; simp [hacc i] at hi
+    hM := by intro q i b v hi; simp [hrep q i] at hi
+    hVotDid := by intro i b v hv; simp [hvot i b] at hv
     hSafe := by intro q _ hq; simp [hprop q] at hq
   }
 
@@ -336,12 +372,31 @@ private theorem paxos_inv_next_p1b {n m : Nat} {ballot : Fin m → Nat}
         exact hinv.hF q j b w hrep
     · simp [setFn, hq] at hrep
       exact hinv.hF q j b w hrep
-  · -- hSafe: did2b/prop unchanged, prom ↑ → old Q still works
+  · exact hinv.hL  -- hL: voted unchanged
+  · -- hK: voted unchanged, prom ↑
+    intro j b v hv
+    by_cases hj : j = i
+    · subst hj; simp [setFn]; have := hinv.hK j b v hv; omega
+    · simp [setFn, hj]; exact hinv.hK j b v hv
+  · exact hinv.hN  -- hN: did2b, prop, voted unchanged
+  · exact hinv.hAcc  -- hAcc: acc, voted unchanged
+  · -- hM: new rep p i = acc i; use hAcc for the new entry
+    intro q j b w hrep
+    by_cases hq : q = p
+    · subst hq; by_cases hj : j = i
+      · subst hj; simp [setFn] at hrep
+        exact hinv.hAcc j b w hrep
+      · simp [setFn, hj] at hrep
+        exact hinv.hM q j b w hrep
+    · simp [setFn, hq] at hrep
+      exact hinv.hM q j b w hrep
+  · exact hinv.hVotDid  -- hVotDid: voted/did2b unchanged
+  · -- hSafe: voted/prop unchanged, prom ↑ → old Q still works
     intro q v hprop c hc
     obtain ⟨Q, hQmaj, hQprop⟩ := hinv.hSafe q v hprop c hc
     refine ⟨Q, hQmaj, fun a ha => ?_⟩
-    rcases hQprop a ha with ⟨r, hrb, hdr, hrv⟩ | ⟨hnv, hprom⟩
-    · exact Or.inl ⟨r, hrb, hdr, hrv⟩
+    rcases hQprop a ha with hvote | ⟨hnv, hprom⟩
+    · exact Or.inl hvote
     · right; refine ⟨hnv, ?_⟩
       by_cases ha : a = i
       · subst ha; simp [setFn]; omega
@@ -435,15 +490,10 @@ private theorem paxos_inv_next_p2a {n m : Nat} {ballot : Fin m → Nat}
       · exact Or.inr ⟨hnv, hprom⟩
     · -- q ≠ p: prop q unchanged (setFn s.prop p (some v) q = s.prop q)
       simp only [hqp, ite_false] at hprop
-      obtain ⟨Q, hQmaj, hQprop⟩ := hinv.hSafe q w hprop c hc
-      refine ⟨Q, hQmaj, fun a ha => ?_⟩
-      rcases hQprop a ha with ⟨r, hrb, hdr, hrv⟩ | ⟨hnv, hprom⟩
-      · -- votedFor: prop r was some w ≠ none, so r ≠ p (since old prop p = none)
-        have hrp : r ≠ p := fun h => by subst h; simp [hg1] at hrv
-        exact Or.inl ⟨r, hrb, hdr, by simp [setFn, hrp, hrv]⟩
-      · exact Or.inr ⟨hnv, hprom⟩
+      exact hinv.hSafe q w hprop c hc
 
 private theorem paxos_inv_next_p2b {n m : Nat} {ballot : Fin m → Nat}
+    (h_inj : Function.Injective ballot)
     (s : PaxosState n m) (p : Fin m) (i : Fin n)
     (hinv : PaxosInv ballot s)
     (hg1 : s.did2b p i = false)
@@ -453,7 +503,16 @@ private theorem paxos_inv_next_p2b {n m : Nat} {ballot : Fin m → Nat}
     PaxosInv ballot { s with
       prom := setFn s.prom i (ballot p)
       acc := setFn s.acc i (some (ballot p, v))
-      did2b := setFn s.did2b p (setFn (s.did2b p) i true) } := by
+      did2b := setFn s.did2b p (setFn (s.did2b p) i true)
+      voted := updateVoted s.voted i (ballot p) v } := by
+  -- Key helper: pre-state voted i (ballot p) is already none (else gate contradicts).
+  have hvot_none : s.voted i (ballot p) = none := by
+    by_contra hne
+    obtain ⟨w, hw⟩ := Option.ne_none_iff_exists'.mp hne
+    obtain ⟨r, hrb, hdr⟩ := hinv.hVotDid i (ballot p) w hw
+    have hrp : r = p := h_inj hrb
+    subst hrp
+    rw [hg1] at hdr; exact absurd hdr (by decide)
   apply PaxosInv.mk
   · -- hA: did2b gained (p,i); prop unchanged. prop p = some v ≠ none.
     intro q j hd
@@ -531,46 +590,167 @@ private theorem paxos_inv_next_p2b {n m : Nat} {ballot : Fin m → Nat}
       · exact ⟨b, w, by simp only [setFn, hj, ite_false]; exact hacc, hge⟩
   · exact hinv.hJ  -- hJ: got1b/prop unchanged
   · exact hinv.hF  -- hF: rep unchanged
-  · -- hSafe: old Q witnesses still work in new state.
-    -- votedFor: did2b only gained (p,i). Old votes persist.
-    -- wontVoteAt: prom ↑, and if a = i and ballot p = c: old prom i > c contradicts gate prom i ≤ ballot p = c.
-    intro q w hprop c hc
-    -- prop unchanged in new state
-    obtain ⟨Q, hQmaj, hQprop⟩ := hinv.hSafe q w hprop c hc
-    refine ⟨Q, hQmaj, fun a ha => ?_⟩
-    rcases hQprop a ha with ⟨r, hrb, hdr, hrv⟩ | ⟨hnv, hprom⟩
-    · -- votedFor in old state → votedFor in new state
-      -- new did2b r a: setFn (setFn (s.did2b p)) only changes (p, i). Old entry preserved.
-      apply Or.inl
-      refine ⟨r, hrb, ?_, hrv⟩
-      show setFn s.did2b p (setFn (s.did2b p) i true) r a = true
+  · -- hL: new voted entry at (i, ballot p) = some v; prop p = some v witness.
+    intro j b w hv
+    show ∃ q, ballot q = b ∧ s.prop q = some w
+    simp only [updateVoted] at hv
+    by_cases hji : j = i ∧ b = ballot p
+    · rw [if_pos hji] at hv
+      obtain ⟨rfl⟩ : w = v := (Option.some.inj hv).symm
+      obtain ⟨rfl, rfl⟩ := hji
+      exact ⟨p, rfl, hp⟩
+    · rw [if_neg hji] at hv
+      exact hinv.hL j b w hv
+  · -- hK: voted → prom. For new entry: prom i := ballot p, b = ballot p. For existing: prom ↑.
+    intro j b w hv
+    show setFn s.prom i (ballot p) j ≥ b
+    simp only [updateVoted] at hv
+    by_cases hji : j = i ∧ b = ballot p
+    · obtain ⟨rfl, rfl⟩ := hji; simp [setFn]
+    · rw [if_neg hji] at hv
+      have := hinv.hK j b w hv
+      by_cases hj : j = i
+      · subst hj; simp [setFn]; omega
+      · simp [setFn, hj]; exact this
+  · -- hN: new did2b entry (p, i) tracked by new voted (i, ballot p).
+    -- Existing did2b entries: voted unchanged for them, use hinv.hN.
+    intro q j hd
+    show ∃ vv, s.prop q = some vv ∧ updateVoted s.voted i (ballot p) v j (ballot q) = some vv
+    simp only [setFn] at hd
+    by_cases hq : q = p
+    · subst hq
+      simp only [ite_true] at hd
+      simp only [setFn] at hd
+      by_cases hj : j = i
+      · subst hj
+        refine ⟨v, hp, ?_⟩
+        simp [updateVoted]
+      · simp only [hj, ite_false] at hd
+        obtain ⟨vv, hvv, hvvotes⟩ := hinv.hN q j hd
+        refine ⟨vv, hvv, ?_⟩
+        show updateVoted s.voted i (ballot q) v j (ballot q) = some vv
+        simp only [updateVoted, hj, false_and, if_false]
+        exact hvvotes
+    · simp only [hq, ite_false] at hd
+      obtain ⟨vv, hvv, hvvotes⟩ := hinv.hN q j hd
+      refine ⟨vv, hvv, ?_⟩
+      -- new voted at (i, ballot p). If (j, ballot q) = (i, ballot p): need voted i (ballot p) = some vv.
+      -- From hinv.hK: prom j ≥ ballot q. From gate: prom i ≤ ballot p.
+      -- If j = i and ballot q = ballot p: need to show vv = v.
+      -- Actually the vote slot is updated, so if the update target matches, we use the new value.
+      -- Since the new value is v and hvv : s.prop q = some vv, and if ballot q = ballot p
+      -- then q = p (by injectivity... but we don't have h_inj here).
+      -- Instead: does (j, ballot q) = (i, ballot p)? If so:
+      --   - j = i
+      --   - ballot q = ballot p, and hvvotes : s.voted i (ballot p) = some vv (pre-state).
+      -- We're trying to show updateVoted... = some vv. If (j,ballot q) = (i, ballot p), it's some v.
+      -- But we need some vv. So we need vv = v.
+      -- From hinv.hL applied to hvvotes: ∃ r, ballot r = ballot p ∧ prop r = some vv.
+      -- If ballot is injective via hinv... actually hVotDid says did2b r i for some r with ballot r = ballot p.
+      -- Cleaner: from hvvotes (pre-state voted i (ballot p) = some vv), use hinv.hL to get
+      -- ∃ r, ballot r = ballot p ∧ prop r = some vv. But we want vv = v.
+      -- The issue: proposer with that ballot may differ from p unless ballot is injective.
+      -- We don't have h_inj. So this approach doesn't straightforwardly work.
+      -- Alternative: show (j, ballot q) ≠ (i, ballot p) in this branch.
+      -- If j = i and ballot q = ballot p: we have hvvotes : voted i (ballot p) = some vv (pre-state).
+      -- By hinv.hVotDid, some r with ballot r = ballot p ∧ did2b r i = true.
+      -- But we have did2b q j = true (hd) with q ≠ p and j = i. ballot q = ballot p.
+      -- The old hinv.hL on hvvotes gives ∃ r with ballot r = ballot p ∧ prop r = some vv.
+      -- If we had injectivity we'd get r = p and vv = v. Without, we're stuck.
+      -- Observation: we could strengthen the invariant so that at most one voted entry exists
+      -- per (acceptor, ballot), but that's automatic from updateVoted-only updates.
+      -- Alternatively: simply state hN only when (j, ballot q) ≠ (i, ballot p), showing equality.
+      -- Actually: the simplest approach. `updateVoted` updates only (i, ballot p). For q ≠ p,
+      -- if (j, ballot q) = (i, ballot p) then j = i and ballot q = ballot p. The pre-state
+      -- has voted i (ballot p) = some vv (from hinv.hN q j hd). So post-state voted i (ballot p)
+      -- is overwritten to some v. For the post-state value we get some v, not some vv. For hN
+      -- to hold we'd need vv = v.
+      -- Escape hatch: use hinv.hL on pre-state voted i (ballot p) = some vv. We get some proposer
+      -- r with ballot r = ballot p, prop r = some vv. Use h_inj to conclude r = p, hence vv = v.
+      -- But we lack h_inj here. SOLUTION: pass h_inj to p2b like p2a.
+      show updateVoted s.voted i (ballot p) v j (ballot q) = some vv
+      by_cases hji : j = i ∧ ballot q = ballot p
+      · -- Contradiction: q ≠ p but h_inj makes ballot q = ballot p impossible.
+        obtain ⟨_, hji2⟩ := hji
+        exact absurd (h_inj hji2) hq
+      · simp only [updateVoted, if_neg hji]
+        exact hvvotes
+  · -- hAcc: new acc i = (ballot p, v), new voted i (ballot p) = some v.
+    intro j b w hacc
+    simp only [setFn] at hacc
+    by_cases hj : j = i
+    · subst hj; simp only [ite_true] at hacc
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hacc)
+      simp [updateVoted]
+    · simp only [hj, ite_false] at hacc
+      have := hinv.hAcc j b w hacc
+      show updateVoted s.voted i (ballot p) v j b = some w
+      simp only [updateVoted, hj, false_and, if_false]
+      exact this
+  · -- hM: rep unchanged, voted possibly gains. For old rep entry, old hM gives
+    -- voted i' b' = some w'. Conflict only if (i', b') = (i, ballot p), but then
+    -- hold gives pre-state voted i (ballot p) = some w, contradicting hvot_none.
+    intro q j b w hrep
+    show updateVoted s.voted i (ballot p) v j b = some w
+    have hold := hinv.hM q j b w hrep
+    simp only [updateVoted]
+    by_cases hji : j = i ∧ b = ballot p
+    · obtain ⟨rfl, rfl⟩ := hji
+      rw [hvot_none] at hold; exact absurd hold (by simp)
+    · rw [if_neg hji]; exact hold
+  · -- hVotDid: new entry (i, ballot p) corresponds to did2b p i = true (new).
+    intro j b w hv
+    simp only [updateVoted] at hv
+    by_cases hji : j = i ∧ b = ballot p
+    · obtain ⟨rfl, rfl⟩ := hji
+      refine ⟨p, rfl, ?_⟩
+      show setFn s.did2b p (setFn (s.did2b p) j true) p j = true
+      simp [setFn]
+    · rw [if_neg hji] at hv
+      obtain ⟨r, hrb, hdr⟩ := hinv.hVotDid j b w hv
+      refine ⟨r, hrb, ?_⟩
+      show setFn s.did2b p (setFn (s.did2b p) i true) r j = true
       simp only [setFn]
       by_cases hrp : r = p
-      · subst hrp; simp only [ite_true]
-        -- need setFn (s.did2b p) i true a = true
-        -- old hdr : s.did2b r a = true = s.did2b p a = true
-        simp only [setFn]
-        by_cases hai : a = i
-        · subst hai; simp only [ite_true]
-        · simp only [hai, ite_false]; exact hdr
-      · simp only [hrp, ite_false]; exact hdr
-    · -- wontVoteAt in old state → wontVoteAt in new state
+      · subst hrp; simp only [ite_true, setFn]
+        by_cases hji' : j = i
+        · subst hji'; simp
+        · simp [hji']; exact hdr
+      · simp [hrp]; exact hdr
+  · -- hSafe: prop unchanged, voted gains (i, ballot p). Old Q witnesses still work
+    -- unless the new entry breaks wontVoteAt.
+    intro q w hprop c hc
+    obtain ⟨Q, hQmaj, hQprop⟩ := hinv.hSafe q w hprop c hc
+    refine ⟨Q, hQmaj, fun a ha => ?_⟩
+    rcases hQprop a ha with hvote | ⟨hnv, hprom⟩
+    · -- votedFor: s.voted a c = some w (pre). New: updateVoted at (i, ballot p).
+      -- If (a, c) = (i, ballot p), old voted = some w means hvote : s.voted i (ballot p) = some w.
+      -- New value: some v. If w ≠ v, this breaks votedFor. But by hinv.hVotDid on hvote,
+      -- some r with ballot r = ballot p and did2b r i = true. But gate: did2b p i = false.
+      -- Hmm that doesn't immediately give contradiction unless r = p.
+      -- Actually: for (a, c) ≠ (i, ballot p), updateVoted = old. So just case-split.
+      left
+      show updateVoted s.voted i (ballot p) v a c = some w
+      by_cases hac : a = i ∧ c = ballot p
+      · obtain ⟨rfl, rfl⟩ := hac
+        have : s.voted a (ballot p) = some w := hvote
+        rw [hvot_none] at this; exact absurd this (by simp)
+      · simp only [updateVoted, if_neg hac]; exact hvote
+    · -- wontVoteAt: voted a c = none (old). New value: updateVoted.
+      -- If (a, c) = (i, ballot p): pre voted i (ballot p) = none. Post: some v.
+      -- This breaks "voted a c = none". So need to rule out (a, c) = (i, ballot p).
+      -- Do this via hprom : s.prom a > c. If a = i: prom i > c. Gate: prom i ≤ ballot p.
+      -- If c = ballot p then prom i > ballot p ≥ prom i — contradiction.
       right
-      refine ⟨fun r hrb_eq => ?_, ?_⟩
-      · -- no new vote at c for a
-        show setFn s.did2b p (setFn (s.did2b p) i true) r a ≠ true
-        simp only [setFn]
-        by_cases hrp : r = p
-        · subst hrp; simp only [ite_true]
-          simp only [setFn]
-          by_cases hai : a = i
-          · subst hai; simp only [ite_true]
-            -- ballot p = c, old wontVoteAt: prom i > c. Gate: prom i ≤ ballot p = c. Contradiction.
-            exfalso; omega
-          · simp only [hai, ite_false]; exact hnv r hrb_eq
-        · simp only [hrp, ite_false]; exact hnv r hrb_eq
-      · -- prom a > c: prom i ↑ (only helps)
-        show setFn s.prom i (ballot p) a > c
+      refine ⟨?_, ?_⟩
+      · show updateVoted s.voted i (ballot p) v a c = none
+        simp only [updateVoted]
+        by_cases hac : a = i ∧ c = ballot p
+        · obtain ⟨rfl, rfl⟩ := hac
+          -- hprom : s.prom i > ballot p, hg2 : s.prom i ≤ ballot p — contradiction
+          exfalso; omega
+        · rw [if_neg hac]; exact hnv
+      · show setFn s.prom i (ballot p) a > c
         by_cases hai : a = i
         · subst hai; simp only [setFn, ite_true]; omega
         · simp only [setFn, hai, ite_false]; exact hprom
@@ -594,11 +774,11 @@ theorem paxos_inv_next {n m : Nat} {ballot : Fin m → Nat}
   case p2b p i =>
     simp only [GatedAction.fires] at hfires; dsimp only [paxos] at hfires
     obtain ⟨⟨hg1, hg2⟩, v, hp, rfl⟩ := hfires
-    exact paxos_inv_next_p2b s p i hinv hg1 hg2 v hp
+    exact paxos_inv_next_p2b h_inj s p i hinv hg1 hg2 v hp
 
 theorem paxos_init_preserved {n m : Nat} (ballot : Fin m → Nat) :
     ∀ s, (paxos n m ballot).init s → consensus.init (paxos_ref s) := by
-  intro s ⟨_, _, _, _, hprop, hdid⟩
+  intro s ⟨_, _, _, _, hprop, hdid, _⟩
   simp only [paxos_ref, firstMajority, consensus]
   have hmaj_false : ∀ p : Fin m, majority (s.did2b p) = false := by
     intro p; unfold majority countTrue
@@ -635,7 +815,8 @@ private theorem paxos_step_sim_p2b {n m : Nat} {ballot : Fin m → Nat}
     let s' : PaxosState n m := { s with
         prom := setFn s.prom i (ballot p)
         acc := setFn s.acc i (some (ballot p, v))
-        did2b := setFn s.did2b p (setFn (s.did2b p) i true) }
+        did2b := setFn s.did2b p (setFn (s.did2b p) i true)
+        voted := updateVoted s.voted i (ballot p) v }
     (∃ act, (consensus.actions act).fires (paxos_ref s) (paxos_ref s')) ∨
     paxos_ref s = paxos_ref s' := by
   intro s'
@@ -680,7 +861,7 @@ private theorem paxos_step_sim_p2b {n m : Nat} {ballot : Fin m → Nat}
     simp only [hprop_eq]
     have hmr : majority (s.did2b r) = true := by simpa using List.find?_some hfm_old
     have hmr' : majority (s'.did2b r') = true := by simpa using List.find?_some hfm_new
-    have hinv' : PaxosInv ballot s' := paxos_inv_next_p2b s p i hinv hg1 hg2 v hp
+    have hinv' : PaxosInv ballot s' := paxos_inv_next_p2b h_inj s p i hinv hg1 hg2 v hp
     have hmr_new : majority (s'.did2b r) = true := by
       rw [hdid_eq]; simp only [setFn]
       by_cases hrp : r = p
