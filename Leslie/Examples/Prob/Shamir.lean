@@ -1,25 +1,52 @@
 /-
 M1 W4 — Shamir secret sharing: secrecy proof.
 
-Defines the Shamir-share spec as a `ProbActionSpec` and proves the
-secrecy theorem: for any coalition of size ≤ t, the distribution
-of shares is the same regardless of the secret. Mathematical core
-is two applications of `Polynomial.evals_uniform` plus transitivity:
+Defines the Shamir-share spec as a `ProbActionSpec` and proves
+secrecy at three levels of abstraction:
 
-```
-(uniformWithFixedZero t s).map share_view
-  = uniform                                     by evals_uniform
-  = (uniformWithFixedZero t s').map share_view  by evals_uniform.symm
-```
+  * `shamir_secrecy_pts` — algebraic core: for any
+    `pts ⊂ F` with `|pts| ≤ t` and `0 ∉ pts`, the distribution
+    of polynomial evaluations at `pts` is independent of the
+    secret. Two applications of `Polynomial.evals_uniform`.
+  * `shamir_secrecy` — coalition-level lift: for any coalition
+    `C : Coalition n t`, the post-deal coalition view (as a
+    polynomial-eval pushforward) is independent of the secret.
+  * `shamir_secrecy_via_step` — operational/state-level: the
+    `step`-of-`shamirShare` post-deal coalition view distribution
+    is independent of the secret. This is the corollary that
+    actually uses the spec, the step semantics, and `coalitionView`
+    together.
 
-The proof is two rewrite steps once the eval-points are set up.
-Modulo the deferred `evals_uniform` body (M1 W3 sorry; planned),
-Shamir secrecy is *fully proved* — no extra sorries here.
+Modulo the deferred `evals_uniform` body (M1 W3 sorry), Shamir
+secrecy is fully proved at all three levels — zero sorries in this
+file.
 
-Per implementation plan v2.2 §M1 W4. Coalition-with-`Coalition`-
-shape and `Embed.lean` Level-2 conservativity are deferred to a
-separate pass once `traceDist` measure-level infrastructure lands
-(M2 W1 per plan).
+## Model assumptions
+
+  * **Synchronous broadcast deal.** The `.deal` action atomically
+    writes shares to all parties. Real Shamir distributes shares
+    over a network; modeling per-party delivery is M2/M3 work.
+  * **Single-shot dealer.** Once the deal has occurred, `gate`
+    becomes `False` and no further `.deal` actions fire. No
+    re-deal, no proactive refresh, no multiple dealers.
+  * **Scheduler-supplied secret.** `ShamirAction := .deal (s : F)`
+    parameterizes the action by the secret, so the scheduler picks
+    both "fire deal" and "with this secret". An alternative model
+    keeps the secret in the dealer's local state, separating
+    setup from the protocol step. Either is fine for secrecy
+    (we quantify ∀ s, s'); for richer fault models the latter is
+    preferable.
+  * **`partyPoint` is a parameter.** The party→field-element map
+    is provided by the caller. For `F = ZMod p` with `p > n`, the
+    canonical embedding `i ↦ ((i.val + 1 : ℕ) : F)` works.
+    Injectivity is *not* needed for secrecy (it's enforced
+    operationally for distinguishability of parties).
+
+## Per implementation plan v2.2 §M1 W4
+
+Note: the plan's Embed.lean Level-2 conservativity and
+Invariant.lean (almost-sure invariants) are deferred — both
+require trace-measure infrastructure (M2 W1 per design plan).
 -/
 
 import Leslie.Prob.Action
@@ -101,10 +128,9 @@ noncomputable def shamirShare (t : ℕ) (partyPoint : Fin n → F) :
 /-- A `t`-coalition: a subset of parties of size ≤ t. -/
 def Coalition (n t : ℕ) := { S : Finset (Fin n) // S.card ≤ t }
 
-/-- The view of a coalition: the (some-)shares of its members. The
-`Option`-stripping is justified because in any reachable state the
-shares are either all-`none` or all-`some`. -/
-noncomputable def coalitionView (C : Coalition n t) (st : ShamirState F n) :
+/-- The view of a coalition: the (`Option`-wrapped) shares of its
+members. Pure data projection — no probabilistic dependencies. -/
+def coalitionView (C : Coalition n t) (st : ShamirState F n) :
     C.val → Option F :=
   fun i => st.shares i.val
 
@@ -123,14 +149,20 @@ level lifts directly to secrecy at the share level. -/
 
 /-- Secrecy at the post-deal coalition-share level.
 
-Given a coalition `C` of size ≤ t and an injective `partyPoint`
-avoiding 0, the distribution of `C`'s shares after dealing depends
-only on the coalition (not on the secret). Reduces to
-`shamir_secrecy_pts` by transporting along `partyPoint` and
-stripping the `Option.some` wrapper. -/
+Given a coalition `C` of size ≤ t and a `partyPoint` avoiding 0,
+the distribution of `C`'s shares after dealing depends only on the
+coalition (not on the secret). Reduces to `shamir_secrecy_pts` by
+transporting along `partyPoint` and stripping the `Option.some`
+wrapper.
+
+Note: injectivity of `partyPoint` is *not* required — the proof
+goes through `Finset.card_image_le`, which gives the size bound
+regardless. So this theorem also holds when multiple parties
+share an evaluation point (in which case they jointly observe
+fewer distinct shares — still `≤ t` of them). For standard
+Shamir, callers will supply an injective `partyPoint` anyway. -/
 theorem shamir_secrecy {t : ℕ}
     (partyPoint : Fin n → F)
-    (_h_inj : Function.Injective partyPoint)  -- documentation; not used
     (h_nz_pp : ∀ i, partyPoint i ≠ 0)
     (C : Coalition n t) (s s' : F) :
     (Leslie.Prob.Polynomial.uniformWithFixedZero t s).map
@@ -166,5 +198,49 @@ theorem shamir_secrecy {t : ℕ}
   rw [h_factor s, h_factor s']
   -- Inner equality is exactly `shamir_secrecy_pts`.
   rw [shamir_secrecy_pts t s s' pts h_card h_nz]
+
+/-! ## State-level secrecy
+
+Connecting `shamir_secrecy` to the spec: the post-deal coalition
+view, computed via `step` ∘ `coalitionView`, is independent of the
+secret. -/
+
+/-- State-level secrecy: when the dealer's gate holds (no shares
+dealt), the post-deal coalition-view distribution depends only on
+the coalition, not on the secret.
+
+This is the corollary that makes `shamirShare` the *operational
+witness* for the secrecy claim: the spec, the step semantics, and
+the coalition view all participate. -/
+theorem shamir_secrecy_via_step {t : ℕ}
+    (partyPoint : Fin n → F)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (C : Coalition n t) (s s' : F)
+    (initial : ShamirState F n)
+    (h_init : ∀ i, initial.shares i = none) :
+    Option.map (PMF.map (coalitionView C))
+        ((shamirShare t partyPoint).step (.deal s) initial)
+      =
+    Option.map (PMF.map (coalitionView C))
+        ((shamirShare t partyPoint).step (.deal s') initial) := by
+  -- Both `step` calls succeed (gate = `h_init`).
+  have h_gate : ∀ (sec : F),
+      ((shamirShare t partyPoint).actions (.deal sec)).gate initial :=
+    fun _ => h_init
+  rw [ProbActionSpec.step_eq_some (h_gate s),
+      ProbActionSpec.step_eq_some (h_gate s')]
+  -- Goal: some (PMF.map view (effect_s)) = some (PMF.map view (effect_s'))
+  simp only [Option.map_some, Option.some_inj]
+  -- Goal: effect_s.map view = effect_s'.map view
+  --       where effect_sec = (uniformWithFixedZero t sec).map poly→state
+  -- Compose maps to reduce to shamir_secrecy.
+  rw [show (((shamirShare t partyPoint).actions (.deal s)).effect initial (h_gate s))
+        = (Leslie.Prob.Polynomial.uniformWithFixedZero t s).map fun f =>
+            { shares := fun i => some (f.eval (partyPoint i)) } from rfl]
+  rw [show (((shamirShare t partyPoint).actions (.deal s')).effect initial (h_gate s'))
+        = (Leslie.Prob.Polynomial.uniformWithFixedZero t s').map fun f =>
+            { shares := fun i => some (f.eval (partyPoint i)) } from rfl]
+  rw [PMF.map_comp, PMF.map_comp]
+  exact shamir_secrecy partyPoint h_nz_pp C s s'
 
 end Leslie.Examples.Prob.Shamir
