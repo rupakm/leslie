@@ -45,6 +45,14 @@ theorem filter_length_mono {α : Type} (P Q : α → Bool) (l : List α)
     simp only [List.filter_cons]
     cases hpa : P a <;> cases hqa : Q a <;> simp_all <;> omega
 
+/-- The number of elements of `finRange n` that belong to a list `l`
+    is at most `l.length`. Commonly used to bound
+    `|filter (· ∈ corrupted) (finRange n)| ≤ corrupted.length`. -/
+theorem filter_mem_le {n : Nat} (l : List (Fin n)) :
+    ((List.finRange n).filter (fun p => decide (p ∈ l))).length ≤ l.length :=
+  nodup_sub_length ((finRange_nodup n).sublist List.filter_sublist)
+    (fun x hx => by simp [List.mem_filter] at hx ; exact hx)
+
 /-- |filter (P ∧ Q)| ≤ |filter Q|: a conjunctive filter is bounded
     by either conjunct alone. -/
 theorem filter_and_le {α : Type} (P Q : α → Bool) (l : List α) :
@@ -85,12 +93,11 @@ theorem count_correct_ge {n f : Nat} (corrupted : List (Fin n))
   have hneg_le :
       ((List.finRange n).filter (fun p => !decide (p ∉ corrupted))).length ≤ f := by
     calc ((List.finRange n).filter (fun p => !decide (p ∉ corrupted))).length
-        ≤ corrupted.length := by
-          apply nodup_sub_length ((finRange_nodup n).sublist List.filter_sublist)
-          intro x hx
-          simp only [List.mem_filter, Bool.not_eq_true', decide_eq_false_iff_not,
-            Classical.not_not] at hx
-          exact hx.2
+        ≤ ((List.finRange n).filter (fun p => decide (p ∈ corrupted))).length := by
+          apply filter_length_mono ; intro p hp
+          simp only [Bool.not_eq_true', decide_eq_false_iff_not, Classical.not_not,
+            decide_eq_true_eq] at hp ⊢ ; exact hp
+      _ ≤ corrupted.length := filter_mem_le corrupted
       _ ≤ f := hbudget
   -- |filter (· ∉ corrupted)| + |filter ¬(· ∉ corrupted)| = n, via filter_split.
   have hsplit := filter_split (fun _ : Fin n => true)
@@ -137,6 +144,38 @@ theorem filter_or_le {α : Type} (P Q : α → Bool) (l : List α) :
   | cons a t ih =>
     simp only [List.filter_cons]
     cases P a <;> cases Q a <;> simp <;> omega
+
+/-- If `P src = false`, adding the disjunct `q = src` to the filter
+    predicate increases the filtered length by exactly one.
+    Useful when a Boolean field is set for one new key. -/
+theorem filter_succ_of_new {n : Nat} (P : Fin n → Bool)
+    (src : Fin n) (hnew : P src = false) :
+    ((List.finRange n).filter (fun q => decide (q = src) || P q)).length =
+    ((List.finRange n).filter P).length + 1 := by
+  have aux : ∀ (l : List (Fin n)), src ∈ l → l.Nodup →
+      (l.filter (fun q => decide (q = src) || P q)).length =
+      (l.filter P).length + 1 := by
+    intro l ; induction l with
+    | nil => intro h ; exact absurd h (by simp)
+    | cons a t ih =>
+      intro hin hnd
+      simp only [List.filter_cons]
+      rcases List.mem_cons.mp hin with rfl | hmem
+      · have hsrc_notin : src ∉ t := (List.nodup_cons.mp hnd).1
+        simp [hnew]
+        have heq : ∀ q ∈ t, (decide (q = src) || P q) = P q := by
+          intro q hq
+          have : q ≠ src := fun h => hsrc_notin (h ▸ hq)
+          simp [this]
+        rw [List.filter_congr heq]
+      · have hnd_t := (List.nodup_cons.mp hnd).2
+        have hane : a ≠ src := by
+          intro h ; subst h ; exact (List.nodup_cons.mp hnd).1 hmem
+        simp [hane]
+        cases hra : P a
+        · simp ; exact ih hmem hnd_t
+        · simp ; rw [ih hmem hnd_t]
+  exact aux (List.finRange n) (List.mem_finRange src) (finRange_nodup n)
 
 /-- Strict monotonicity: if P implies Q pointwise and there exists an element
     where Q holds but P doesn't, then |filter Q| ≥ |filter P| + 1.
@@ -267,3 +306,48 @@ theorem echo_quorum_intersection {n f : Nat} {α : Type} [DecidableEq α]
     decide (r ∉ corrupted) && decide (echoed r = some w))).length
     + f + corrupted.length := by omega
   omega
+
+/-! # Boolean decide-pair extraction
+
+  When a Boolean field is updated via `if q = src ∧ w = b then true else old`,
+  looking up a *different* key yields `old`. If `old = false` and the result
+  is `true`, the key must match. -/
+
+/-- Extract equalities from a Boolean decide-pair update.
+    If `old = false` and `(decide (a = a') && decide (b = b') || old) = true`,
+    then `a = a'` and `b = b'`. -/
+theorem or_decide_pair_eq {α β : Type} [DecidableEq α] [DecidableEq β]
+    {a a' : α} {b b' : β} {old : Bool}
+    (h_old : old = false)
+    (h_new : (decide (a = a') && decide (b = b') || old) = true) :
+    a = a' ∧ b = b' := by
+  simp [h_old, decide_eq_true_eq] at h_new ; exact h_new
+
+/-! # Execution drop helpers
+
+  Simplification lemmas for `exec.drop` that bridge between the
+  temporal-level `exec.drop k e 0` representation and the state-level
+  `e k` representation. Used pervasively in liveness proofs. -/
+
+open TLA in
+/-- `exec.drop k e 0 = e k`: the state at step k. -/
+theorem exec_drop_zero {α : Type u} (k : Nat) (e : exec α) :
+    exec.drop k e 0 = e k := by
+  simp [exec.drop]
+
+open TLA in
+/-- `exec.drop k e 1 = e (1 + k)`: the state one step after k. -/
+theorem exec_drop_one {α : Type u} (k : Nat) (e : exec α) :
+    exec.drop k e 1 = e (1 + k) := by
+  simp [exec.drop]
+
+open TLA in
+/-- Extract a fires proof from `ActionSpec.safety` at step `k`.
+    Converts the `exec.drop` representation to raw `e k` / `e (k + 1)`. -/
+theorem safety_fires {σ ι : Type u} (spec : ActionSpec σ ι)
+    (e : exec σ) (hsafety : spec.safety e) (k : Nat) :
+    ∃ i, (spec.actions i).fires (e k) (e (k + 1)) := by
+  obtain ⟨i, hfire⟩ := hsafety.2 k
+  refine ⟨i, ?_⟩
+  simp only [exec.drop, Nat.zero_add] at hfire
+  rwa [show 1 + k = k + 1 from by omega] at hfire

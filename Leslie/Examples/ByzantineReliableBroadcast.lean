@@ -34,6 +34,10 @@ open TLA
 
 namespace ByzantineReliableBroadcast
 
+/-- Alias for `exec_drop_zero` inside the BRB namespace. -/
+private theorem drop_zero {α : Type u} (k : Nat) (e : exec α) :
+    exec.drop k e 0 = e k := _root_.exec_drop_zero k e
+
 /-! ### Messages -/
 
 inductive MsgType where
@@ -50,6 +54,9 @@ structure Message (n : Nat) (Value : Type) where
 /-! ### Local state -/
 
 structure LocalState (n : Nat) (Value : Type) where
+  /-- The value this process will broadcast (set externally via `set_broadcast`;
+      only meaningful for the designated sender). -/
+  broadcastVal : Option Value
   /-- `sent dst t v = true` iff this process has sent message (t, v) to dst. -/
   sent : Fin n → MsgType → Value → Bool
   /-- Value received via SEND from the designated sender (at most one). -/
@@ -82,6 +89,7 @@ inductive Action (n : Nat) (Value : Type) where
   | send (src dst : Fin n) (t : MsgType) (v : Value)
   | recv (src dst : Fin n) (t : MsgType) (v : Value)
   | doReturn (i : Fin n) (v : Value)
+  | set_broadcast (i : Fin n) (v : Value)
 
 /-! ### Helpers -/
 
@@ -103,6 +111,7 @@ def returnThreshold : Nat := n - f
 
 /-- Default initial local state: everything empty/none/zero. -/
 def LocalState.init : LocalState n Value where
+  broadcastVal := none
   sent := fun _ _ _ => false
   sendRecv := none
   echoRecv := fun _ _ => false
@@ -113,7 +122,7 @@ def LocalState.init : LocalState n Value where
 
 /-! ### Specification -/
 
-def brb (sender : Fin n) (val : Value) : ActionSpec (State n Value) (Action n Value) where
+def brb (sender : Fin n) : ActionSpec (State n Value) (Action n Value) where
   -- Initially: all local states are empty, buffer is clear, no corruptions.
   init := fun s =>
     (∀ p, s.local_ p = LocalState.init n Value) ∧
@@ -158,8 +167,8 @@ def brb (sender : Fin n) (val : Value) : ActionSpec (State n Value) (Action n Va
           (isCorrect n Value s src ∧ (s.local_ src).sent dst t mv = false ∧
             match t with
             | .init =>
-              -- Only the designated sender may send SEND, carrying val.
-              src = sender ∧ mv = val
+              -- Only the designated sender may send SEND, carrying its broadcastVal.
+              src = sender ∧ (s.local_ src).broadcastVal = some mv
             | .echo =>
               -- Echo(mv) if: already echoed mv, or first echo from SEND(mv).
               (s.local_ src).echoed = some mv
@@ -256,6 +265,20 @@ def brb (sender : Fin n) (val : Value) : ActionSpec (State n Value) (Action n Va
             then { s.local_ i with returned := some mv }
             else s.local_ p }
       }
+    --
+    -- === Set broadcast value ===
+    --
+    -- The environment sets the broadcast value for the sender.
+    -- This is how external data flows into BRB (for composition).
+    | .set_broadcast i v => {
+        gate := fun s =>
+          (s.local_ i).broadcastVal = none
+        transition := fun s s' =>
+          s' = { s with
+            local_ := fun p => if p = i
+              then { s.local_ i with broadcastVal := some v }
+              else s.local_ p }
+      }
 
 /-! ### Safety properties -/
 
@@ -320,8 +343,12 @@ def brb_inv (sender : Fin n) (val : Value) (s : State n Value) : Prop :=
   -- 5. Buffer vote trace
   (∀ p dst v, isCorrect n Value s p →
     s.buffer ⟨p, dst, .vote, v⟩ = true → (s.local_ p).voted v = true) ∧
-  -- 6. Conditional (validity)
-  (isCorrect n Value s sender →
+  -- 6. Conditional (validity): if the sender's broadcastVal is set to val
+  --    and the sender is correct, then all correct processes are consistent
+  --    with val. Weakened from "val is a parameter" to "broadcastVal = some val"
+  --    to support set_broadcast composition.
+  ((s.local_ sender).broadcastVal = some val →
+    isCorrect n Value s sender →
     (∀ p, isCorrect n Value s p → local_consistent n Value val (s.local_ p)) ∧
     buffer_consistent n Value val s) ∧
   -- 7. Vote backing (agreement): no isCorrect needed since only correct processes can return
@@ -337,23 +364,31 @@ def brb_inv (sender : Fin n) (val : Value) (s : State n Value) : Prop :=
     countVoteRecv n Value (s.local_ p) v ≥ voteThreshold f) ∧
   -- 10. Echo witness: if any correct process voted v, some process has ≥ n−f echo receipts
   (∀ v, (∃ p, isCorrect n Value s p ∧ (s.local_ p).voted v = true) →
-    ∃ q, countEchoRecv n Value (s.local_ q) v ≥ echoThreshold n f)
+    ∃ q, countEchoRecv n Value (s.local_ q) v ≥ echoThreshold n f) ∧
+  -- 11. Pre-broadcast consistency: if the sender is correct and has not yet broadcast,
+  --     all correct processes are locally consistent with val (fields are still empty/consistent
+  --     because no protocol activity carrying a different value can have occurred).
+  (isCorrect n Value s sender → (s.local_ sender).broadcastVal = none →
+    (∀ p, isCorrect n Value s p → local_consistent n Value val (s.local_ p)) ∧
+    buffer_consistent n Value val s)
 
 -- All conjuncts vacuously true: sent/voted/echoRecv/voteRecv all false, buffer empty.
 theorem brb_inv_init (sender : Fin n) (val : Value) :
-    ∀ s, (brb n f Value sender val).init s → brb_inv n f Value sender val s := by
+    ∀ s, (brb n f Value sender).init s → brb_inv n f Value sender val s := by
   intro s ⟨hlocal, hbuf, hcorr⟩
-  refine ⟨by simp [hcorr], ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨by simp [hcorr], ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro p q v _ h ; simp [hlocal, LocalState.init] at h
   · intro p dst v _ h ; simp [hbuf] at h
   · intro p q w _ h ; simp [hlocal, LocalState.init] at h
   · intro p dst v _ h ; simp [hbuf] at h
-  · intro _ ; exact ⟨fun p _ => by simp [hlocal, LocalState.init, local_consistent],
+  · intro _ _ ; exact ⟨fun p _ => by simp [hlocal, LocalState.init, local_consistent],
       fun m hm _ => by simp [hbuf] at hm⟩
   · intro p v h ; simp [hlocal, LocalState.init] at h
   · intro p q vp vq _ _ hvp _ ; simp [hlocal, LocalState.init] at hvp
   · intro p v _ hvp ; simp [hlocal, LocalState.init] at hvp
   · intro v ⟨p, _, hvp⟩ ; simp [hlocal, LocalState.init] at hvp
+  · intro _ _ ; exact ⟨fun p _ => by simp [hlocal, LocalState.init, local_consistent],
+      fun m hm _ => by simp [hbuf] at hm⟩
 
 /-! ### Invariant preservation
 
@@ -414,9 +449,9 @@ private theorem echo_quorum_intersection {n : Nat} {Value : Type} [DecidableEq V
 
 set_option maxHeartbeats 400000 in
 theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
-    ∀ s s', (∃ i, ((brb n f Value sender val).actions i).fires s s') →
+    ∀ s s', (∃ i, ((brb n f Value sender).actions i).fires s s') →
     brb_inv n f Value sender val s → brb_inv n f Value sender val s' := by
-  intro s s' ⟨action, hfire⟩ ⟨hbudget, hetrace, hbet, hvtrace, hbvt, hcond, hvotes, hvagree, hecho_back, hecho_wit⟩
+  intro s s' ⟨action, hfire⟩ ⟨hbudget, hetrace, hbet, hvtrace, hbvt, hcond, hvotes, hvagree, hecho_back, hecho_wit, hpre⟩
   simp [brb, GatedAction.fires] at hfire
   obtain ⟨hgate, htrans⟩ := hfire
   cases action with
@@ -433,44 +468,69 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
       fun p d v hp h => hbet p d v (hcw p hp) h,         -- fields unchanged,
       fun p q w hp h => hvtrace p q w (hcw q hp) h,      -- only isCorrect weakens
       fun p d v hp h => hbvt p d v (hcw p hp) h,         -- via hcw
-      fun hs' => let ⟨hl, hb⟩ := hcond (hcw sender hs') ;
+      fun hs' hsc' => let ⟨hl, hb⟩ := hcond hs' (hcw sender hsc') ;
         ⟨fun p hp => hl p (hcw p hp), fun m hm hsrc => hb m hm (hcw m.src hsrc)⟩,
       fun p v hret => hvotes p v hret,
       fun p q vp vq hp hq hvp hvq => hvagree p q vp vq (hcw p hp) (hcw q hq) hvp hvq,
       -- echo backing: echoRecv unchanged, isCorrect weakens
       fun p v hp hvp => hecho_back p v (hcw p hp) hvp,
-      fun v ⟨p, hp, hvp⟩ => hecho_wit v ⟨p, hcw p hp, hvp⟩⟩
+      fun v ⟨p, hp, hvp⟩ => hecho_wit v ⟨p, hcw p hp, hvp⟩,
+      fun hsc' hbv => let ⟨hl, hb⟩ := hpre (hcw sender hsc') hbv ;
+        ⟨fun p hp => hl p (hcw p hp), fun m hm hsrc => hb m hm (hcw m.src hsrc)⟩⟩
   | send src dst t v =>
     subst htrans
     cases t with
     | init => -- send.init: only sent and buffer change (new .init message)
       -- Only sent and buffer change. All traces preserved trivially. Conditional: v = val from gate (sender sends val). Vote backing/agreement/echo witness: unchanged.
       dsimp only
-      refine ⟨hbudget, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+      refine ⟨hbudget, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
       · -- echo trace: echoRecv/echoed unchanged
         intro p q w hp h
-        have := hetrace p q w hp (by by_cases h' : q = src <;> simp_all)
-        by_cases h' : p = src <;> simp_all
+        have h : (s.local_ q).echoRecv p w = true := by
+          by_cases h' : q = src
+          · subst h' ; simpa only [ite_true] using h
+          · simpa only [h', ite_false] using h
+        have := hetrace p q w hp h
+        by_cases h' : p = src
+        · subst h' ; simpa only [ite_true] using this
+        · simpa only [h', ite_false] using this
       · -- buffer echo trace: new msg is .init, not .echo
         intro p d w hp hbuf ; simp at hbuf
         have := hbet p d w hp hbuf
-        by_cases h' : p = src <;> simp_all
+        by_cases h' : p = src
+        · subst h' ; simpa only [ite_true] using this
+        · simpa only [h', ite_false] using this
       · -- vote trace: voteRecv/voted unchanged
         intro p q w hp h
-        have := hvtrace p q w hp (by by_cases h' : p = src <;> simp_all)
-        by_cases h' : q = src <;> (try subst h') <;> simp_all
+        have h : (s.local_ p).voteRecv q w = true := by
+          by_cases h' : p = src
+          · subst h' ; simpa only [ite_true] using h
+          · simpa only [h', ite_false] using h
+        have := hvtrace p q w hp h
+        by_cases h' : q = src
+        · subst h' ; simpa only [ite_true] using this
+        · simpa only [h', ite_false] using this
       · -- buffer vote trace: new msg is .init, not .vote
         intro p d w hp hbuf ; simp at hbuf
         have := hbvt p d w hp hbuf
-        by_cases h' : p = src <;> simp_all
+        by_cases h' : p = src
+        · subst h' ; simpa only [ite_true] using this
+        · simpa only [h', ite_false] using this
       · -- conditional: sent grows, v = val from gate
-        intro hs'
-        obtain ⟨hloc, hbuf⟩ := hcond hs'
+        intro hs' hsc'
+        -- broadcastVal unchanged by send; recover pre-state hypothesis
+        have hbv_pre : (s.local_ sender).broadcastVal = some val := by
+          by_cases hse : sender = src
+          · subst hse ; simpa only [ite_true] using hs'
+          · simpa only [hse, ite_false] using hs'
+        obtain ⟨hloc, hbuf⟩ := hcond hbv_pre hsc'
         constructor
         · intro p hp ; by_cases hpsrc : p = src
           · subst hpsrc
             have hv : v = val := by cases hgate with
-              | inl hmem => exact absurd hmem hp | inr hc => exact hc.2.2.2
+              | inl hmem => exact absurd hmem hp
+              | inr hc =>
+                exact Option.some_inj.mp ((hc.2.2.1 ▸ hc.2.2.2).symm.trans hbv_pre)
             have hcons := hloc p hp
             constructor
             · intro d t' w hsent ; simp at hsent
@@ -480,7 +540,10 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
             · simp only [local_consistent] at hcons ⊢ ; exact hcons.2
           · simp [hpsrc] ; exact hloc p hp
         · intro m hm hsrc ; simp at hm ; rcases hm with rfl | hold
-          · cases hgate with | inl h => exact absurd h hsrc | inr hc => exact hc.2.2.2
+          · cases hgate with
+            | inl h => exact absurd h hsrc
+            | inr hc =>
+              exact Option.some_inj.mp ((hc.2.2.1 ▸ hc.2.2.2).symm.trans hbv_pre)
           · exact hbuf m hold hsrc
       · -- vote backing: voteRecv/returned unchanged
         intro p w hret
@@ -489,9 +552,15 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
         · simp [h'] at hret ⊢ ; exact hvotes p w hret
       · -- vote agreement: voted unchanged
         intro p q vp vq hp hq hvp hvq
-        exact hvagree p q vp vq hp hq
-          (by by_cases h' : p = src <;> simp_all)
-          (by by_cases h' : q = src <;> simp_all)
+        have hvp : (s.local_ p).voted vp = true := by
+          by_cases h' : p = src
+          · subst h' ; simpa only [ite_true] using hvp
+          · simpa only [h', ite_false] using hvp
+        have hvq : (s.local_ q).voted vq = true := by
+          by_cases h' : q = src
+          · subst h' ; simpa only [ite_true] using hvq
+          · simpa only [h', ite_false] using hvq
+        exact hvagree p q vp vq hp hq hvp hvq
       · -- echo backing: echoRecv/voted unchanged
         intro p w hp hvp
         by_cases hpsrc : p = src
@@ -506,14 +575,44 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
         by_cases h' : q = src
         · subst h' ; simp ; exact hq
         · simp [h'] ; exact hq
+      · -- pre-broadcast consistency: broadcastVal unchanged; buf grows with INIT
+        intro hsc' hbv'
+        have hbv_pre : (s.local_ sender).broadcastVal = none := by
+          by_cases hse : sender = src
+          · subst hse ; simpa only [ite_true] using hbv'
+          · simpa only [hse, ite_false] using hbv'
+        obtain ⟨hloc, hbuf⟩ := hpre hsc' hbv_pre
+        constructor
+        · intro p hp ; by_cases hpsrc : p = src
+          · subst hpsrc
+            -- Gate for correct INIT requires src = sender ∧ broadcastVal = some v.
+            -- hbv_pre : (s.local_ sender).broadcastVal = none. Contradiction.
+            exfalso
+            cases hgate with
+            | inl hmem => exact absurd hmem hp
+            | inr hc =>
+              have hbvsome : (s.local_ sender).broadcastVal = some v := hc.2.2.1 ▸ hc.2.2.2
+              exact absurd (hbvsome.symm.trans hbv_pre) (Option.some_ne_none v)
+          · simp only [hpsrc, ite_false] ; exact hloc p hp
+        · intro m hm hsrc' ; simp at hm ; rcases hm with rfl | hold
+          · -- new INIT message: gate for correct src requires broadcastVal = some v,
+            -- but hbv_pre says none. Contradiction.
+            cases hgate with
+            | inl hmem => exact absurd hmem hsrc'
+            | inr hc =>
+              have hbvsome : (s.local_ sender).broadcastVal = some v := hc.2.2.1 ▸ hc.2.2.2
+              exact absurd (hbvsome.symm.trans hbv_pre) (Option.some_ne_none v)
+          · exact hbuf m hold hsrc'
     | echo => -- send.echo: echoed changes at src; buffer grows
       -- echoed changes at src (set to some v for correct src). Echo trace: gate ensures echoed was none or already some v (single echo). Conditional: v = val from gate (echoed or sendRecv). Others: unchanged.
       dsimp only
-      refine ⟨hbudget, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+      refine ⟨hbudget, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
       · -- echo trace: echoed set to some v at correct src; echoRecv unchanged
         intro p q w hp h
         have h' : (s.local_ q).echoRecv p w = true := by
-          by_cases hq : q = src <;> simp_all
+          by_cases hq : q = src
+          · subst hq ; simp only [ite_true] at h ; exact h
+          · simp only [hq, ite_false] at h ; exact h
         have hold := hetrace p q w hp h'
         by_cases hpsrc : p = src
         · -- p = src: new echoed = some v (correct). Need some v = some w.
@@ -542,15 +641,25 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
         · simp [hpsrc] at hbuf ⊢ ; exact hbet p d w hp hbuf
       · -- vote trace: voteRecv/voted unchanged
         intro p q w hp h
-        have := hvtrace p q w hp (by by_cases h' : p = src <;> simp_all)
-        by_cases h' : q = src <;> (try subst h') <;> simp_all
+        have := hvtrace p q w hp (by
+          by_cases h' : p = src
+          · subst h' ; simp only [ite_true] at h ; exact h
+          · simp only [h', ite_false] at h ; exact h)
+        by_cases h' : q = src
+        · subst h' ; simp only [ite_true] ; exact this
+        · simp only [h', ite_false] ; exact this
       · -- buffer vote trace: new msg is .echo, not .vote
         intro p d w hp hbuf ; simp at hbuf
         have := hbvt p d w hp hbuf
-        by_cases h' : p = src <;> simp_all
+        by_cases h' : p = src <;> (try subst h') <;> simp [*]
       · -- conditional: sent + echoed grow. v = val from gate.
-        intro hs'
-        obtain ⟨hloc, hbuf⟩ := hcond hs'
+        intro hs' hsc'
+        -- broadcastVal unchanged by send; recover pre-state hypothesis
+        have hbv_pre : (s.local_ sender).broadcastVal = some val := by
+          by_cases hse : sender = src
+          · subst hse ; simpa only [ite_true] using hs'
+          · simpa only [hse, ite_false] using hs'
+        obtain ⟨hloc, hbuf⟩ := hcond hbv_pre hsc'
         have hv : isCorrect n Value s src → v = val := fun hp => by
           cases hgate with
           | inl hmem => exact absurd hmem hp
@@ -580,8 +689,12 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
       · -- vote agreement: voted unchanged
         intro p q vp vq hp hq hvp hvq
         exact hvagree p q vp vq hp hq
-          (by by_cases h' : p = src <;> simp_all)
-          (by by_cases h' : q = src <;> simp_all)
+          (by by_cases h' : p = src
+              · subst h' ; simp only [ite_true] at hvp ; exact hvp
+              · simp only [h', ite_false] at hvp ; exact hvp)
+          (by by_cases h' : q = src
+              · subst h' ; simp only [ite_true] at hvq ; exact hvq
+              · simp only [h', ite_false] at hvq ; exact hvq)
       · -- echo backing: echoRecv/voted unchanged
         intro p w hp hvp
         by_cases hpsrc : p = src
@@ -596,26 +709,74 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
         by_cases h' : q = src
         · subst h' ; simp ; exact hq
         · simp [h'] ; exact hq
+      · -- pre-broadcast consistency: broadcastVal/voted/voteRecv unchanged; echoed may change at src
+        intro hsc' hbv'
+        have hbv_pre : (s.local_ sender).broadcastVal = none := by
+          by_cases hse : sender = src
+          · subst hse ; simpa only [ite_true] using hbv'
+          · simpa only [hse, ite_false] using hbv'
+        obtain ⟨hloc, hbuf⟩ := hpre hsc' hbv_pre
+        constructor
+        · intro p hp ; by_cases hpsrc : p = src
+          · subst hpsrc ; simp only [ite_true]
+            have hcons := hloc p hp
+            -- echoed may change; local_consistent for echoed
+            simp only [local_consistent] at hcons ⊢
+            -- sent grows with one ECHO entry (value v); echoed may change to some v.
+            -- Need: v = val (for new sent/echoed entry). Follows from gate: echoed=some v or sendRecv=some v.
+            have hv_val : v = val := by
+              cases hgate with
+              | inl hmem => exact absurd hmem hp
+              | inr hc =>
+                rcases hc.2.2 with hev | ⟨_, hsr⟩
+                · exact hcons.2.2.1 v hev
+                · exact hcons.2.1 v hsr
+            refine ⟨?_, hcons.2.1, ?_, hcons.2.2.2⟩
+            · intro d t' w hsent ; simp at hsent
+              rcases hsent with ⟨_, _, rfl⟩ | hold
+              · exact hv_val
+              · exact hcons.1 d t' w hold
+            · intro w hecho ; simp [show p ∉ s.corrupted from hp] at hecho
+              exact hecho ▸ hv_val
+          · simp only [hpsrc, ite_false] ; exact hloc p hp
+        · intro m hm hsrc' ; simp at hm ; rcases hm with rfl | hold
+          · -- new ECHO message: correct src echoed w = v or had sendRecv = v
+            cases hgate with
+            | inl hmem => exact absurd hmem hsrc'
+            | inr hc =>
+              rcases hc.2.2 with hev | ⟨_, hsr⟩
+              · exact (hloc src hsrc').2.2.1 v hev
+              · exact (hloc src hsrc').2.1 v hsr
+          · exact hbuf m hold hsrc'
     | vote => -- send.vote: voted changes at src; buffer grows
       -- voted changes at src. Vote trace: old voted preserved (monotone). Buffer vote trace: new message carries voted value. Conditional: v = val from echo_quorum_val or vote_quorum_val. Vote agreement: echo_quorum_intersection for echo-backed votes, pigeonhole + old hvagree for vote-backed. Echo witness: src is witness for echo threshold, old witness for re-vote/vote threshold.
       dsimp only
-      refine ⟨hbudget, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+      refine ⟨hbudget, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
       · -- echo trace: echoRecv/echoed unchanged
         intro p q w hp h
-        have := hetrace p q w hp (by by_cases hq : q = src <;> simp_all)
-        by_cases h' : p = src <;> simp_all
+        have := hetrace p q w hp (by
+          by_cases hq : q = src
+          · subst hq ; simp only [ite_true] at h ; exact h
+          · simp only [hq, ite_false] at h ; exact h)
+        by_cases h' : p = src
+        · subst h' ; simp only [ite_true] ; exact this
+        · simp only [h', ite_false] ; exact this
       · -- buffer echo trace: new msg is .vote, not .echo
         intro p d w hp hbuf ; simp at hbuf
         have := hbet p d w hp hbuf
-        by_cases h' : p = src <;> simp_all
+        by_cases h' : p = src
+        · subst h' ; simp only [ite_true] ; exact this
+        · simp only [h', ite_false] ; exact this
       · -- vote trace: voted grows at src; voteRecv unchanged
         intro p q w hp h
         have h' : (s.local_ p).voteRecv q w = true := by
-          by_cases h' : p = src <;> simp_all
+          by_cases h' : p = src
+          · subst h' ; simp only [ite_true] at h ; exact h
+          · simp only [h', ite_false] at h ; exact h
         have hvold := hvtrace p q w hp h'
         by_cases hqsrc : q = src
         · -- q = src (correct): new voted w = true (old was true, stays true)
-          subst hqsrc ; simp [show q ∉ s.corrupted from hp] ; simp_all
+          subst hqsrc ; simp [show q ∉ s.corrupted from hp] ; simp [hvold]
         · simp [hqsrc] ; exact hvold
       · -- buffer vote trace: new vote msg; voted set at src
         intro p d w hp hbuf ; simp at hbuf
@@ -625,11 +786,16 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
           · simp  -- new msg: voted v = true by transition
           · -- old msg: old voted w = true → new voted w = true
             have := hbvt p d w hp hold
-            simp_all
+            simp [this]
         · simp [hpsrc] at hbuf ⊢ ; exact hbvt p d w hp hbuf
       · -- conditional: sent + voted grow. v = val from counting.
-        intro hs'
-        obtain ⟨hloc, hbuf⟩ := hcond hs'
+        intro hs' hsc'
+        -- broadcastVal unchanged by send; recover pre-state hypothesis
+        have hbv_pre : (s.local_ sender).broadcastVal = some val := by
+          by_cases hse : sender = src
+          · subst hse ; simpa only [ite_true] using hs'
+          · simpa only [hse, ite_false] using hs'
+        obtain ⟨hloc, hbuf⟩ := hcond hbv_pre hsc'
         have hv : isCorrect n Value s src → v = val := fun hp => by
           cases hgate with
           | inl hmem => exact absurd hmem hp
@@ -831,14 +997,18 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
             · have : (s.local_ p).voted w = true := by simp [hps] at hvp ; exact hvp
               obtain ⟨q, hq⟩ := hecho_wit w ⟨p, hp', this⟩
               refine ⟨q, ?_⟩ ; simp only [countEchoRecv] at hq ⊢
-              by_cases h' : q = src <;> (try subst h') <;> simp_all
+              by_cases h' : q = src
+              · subst h' ; simp only [ite_true] ; exact hq
+              · simp only [h', ite_false] ; exact hq
           | inr hc =>
             obtain ⟨hsrc_corr, _, htrigger⟩ := hc
             rcases htrigger with hvoted_old | hecho_count | hvote_count
             · -- re-vote: old witness
               obtain ⟨q, hq⟩ := hecho_wit w ⟨src, hsrc_corr, hwv ▸ hvoted_old⟩
               refine ⟨q, ?_⟩ ; simp only [countEchoRecv] at hq ⊢
-              by_cases h' : q = src <;> (try subst h') <;> simp_all
+              by_cases h' : q = src
+              · subst h' ; simp only [ite_true] ; exact hq
+              · simp only [h', ite_false] ; exact hq
             · -- echo threshold: src is the witness
               refine ⟨src, ?_⟩ ; simp only [countEchoRecv] at hecho_count ⊢
               simp ; rw [hwv] ; exact hecho_count
@@ -852,20 +1022,85 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
               have hr_voted := hvtrace src r v hr_corr hr_vote
               obtain ⟨q, hq⟩ := hecho_wit w ⟨r, hr_corr, hwv ▸ hr_voted⟩
               refine ⟨q, ?_⟩ ; simp only [countEchoRecv] at hq ⊢
-              by_cases h' : q = src <;> (try subst h') <;> simp_all
+              by_cases h' : q = src
+              · subst h' ; simp only [ite_true] ; exact hq
+              · simp only [h', ite_false] ; exact hq
         · -- old vote: old witness persists
           obtain ⟨q, hq⟩ := hecho_wit w ⟨p, hp', hvp_old⟩
           refine ⟨q, ?_⟩ ; simp only [countEchoRecv] at hq ⊢
           by_cases h' : q = src
           · subst h' ; simp ; exact hq
           · simp [h'] ; exact hq
+      · -- pre-broadcast consistency: broadcastVal/echoRecv unchanged; voted/sent may change at src
+        intro hsc' hbv'
+        have hbv_pre : (s.local_ sender).broadcastVal = none := by
+          by_cases hse : sender = src
+          · subst hse ; simpa only [ite_true] using hbv'
+          · simpa only [hse, ite_false] using hbv'
+        obtain ⟨hloc, hbuf⟩ := hpre hsc' hbv_pre
+        constructor
+        · intro p hp ; by_cases hpsrc : p = src
+          · subst hpsrc ; simp only [ite_true]
+            have hcons := hloc p hp
+            simp only [local_consistent] at hcons ⊢
+            refine ⟨?_, hcons.2.1, hcons.2.2.1, ?_, hcons.2.2.2.2⟩
+            · intro d t' w hsent ; simp at hsent
+              rcases hsent with ⟨_, _, rfl⟩ | hold
+              · -- new vote: w = val from gate
+                cases hgate with
+                | inl hmem => exact absurd hmem hp
+                | inr hc =>
+                  rcases hc.2.2 with hvold | hecho | hvote
+                  · exact hcons.2.2.2.1 _ hvold
+                  · exact echo_quorum_val s p _ hetrace hloc
+                      (calc s.corrupted.length ≤ f := hbudget
+                        _ < n - f := by omega
+                        _ ≤ _ := hecho)
+                  · exact vote_quorum_val s p _ hvtrace hloc
+                      (calc s.corrupted.length ≤ f := hbudget
+                        _ < f + 1 := by omega
+                        _ ≤ _ := hvote)
+              · exact hcons.1 d t' w hold
+            · intro w hvd ; simp [show p ∉ s.corrupted from hp] at hvd
+              rcases hvd with rfl | hold
+              · cases hgate with
+                | inl hmem => exact absurd hmem hp
+                | inr hc =>
+                  rcases hc.2.2 with hvold | hecho | hvote
+                  · exact hcons.2.2.2.1 _ hvold
+                  · exact echo_quorum_val s p _ hetrace hloc
+                      (calc s.corrupted.length ≤ f := hbudget
+                        _ < n - f := by omega
+                        _ ≤ _ := hecho)
+                  · exact vote_quorum_val s p _ hvtrace hloc
+                      (calc s.corrupted.length ≤ f := hbudget
+                        _ < f + 1 := by omega
+                        _ ≤ _ := hvote)
+              · exact hcons.2.2.2.1 w hold
+          · simp only [hpsrc, ite_false] ; exact hloc p hp
+        · intro m hm hsrc' ; simp at hm ; rcases hm with rfl | hold
+          · -- new VOTE message
+            cases hgate with
+            | inl hmem => exact absurd hmem hsrc'
+            | inr hc =>
+              rcases hc.2.2 with hvold | hecho | hvote
+              · exact (hloc src hsrc').2.2.2.1 _ hvold
+              · exact echo_quorum_val s src _ hetrace hloc
+                  (calc s.corrupted.length ≤ f := hbudget
+                    _ < n - f := by omega
+                    _ ≤ _ := hecho)
+              · exact vote_quorum_val s src _ hvtrace hloc
+                  (calc s.corrupted.length ≤ f := hbudget
+                    _ < f + 1 := by omega
+                    _ ≤ _ := hvote)
+          · exact hbuf m hold hsrc'
   | recv src dst t v =>
     subst htrans
     cases t with
     | init => -- recv.init: sendRecv may change at dst; buffer shrinks
       -- sendRecv may change at dst. All other fields unchanged. Conditional: v = val from buffer_consistent.
       dsimp only ; simp at hgate
-      refine ⟨hbudget, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+      refine ⟨hbudget, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
       · -- echo trace: echoRecv/echoed unchanged
         intro p q w hp h
         have h' : (s.local_ q).echoRecv p w = true := by
@@ -899,14 +1134,19 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
         · subst hp' ; by_cases hc : src = sender ∧ (s.local_ p).sendRecv = none <;> simp [hc] <;> exact this
         · simp [hp'] ; exact this
       · -- conditional: sendRecv may change; mv = val from buffer_consistent
-        intro hs'
-        obtain ⟨hloc, hbuf⟩ := hcond hs'
+        intro hs' hsc'
+        -- broadcastVal unchanged by recv; recover pre-state hypothesis
+        have hbv_pre : (s.local_ sender).broadcastVal = some val := by
+          by_cases hse : sender = dst
+          · subst hse ; by_cases hc : src = sender ∧ (s.local_ sender).sendRecv = none <;> simp [hc] at hs' <;> exact hs'
+          · simpa only [hse, ite_false] using hs'
+        obtain ⟨hloc, hbuf⟩ := hcond hbv_pre hsc'
         constructor
         · intro p hp ; by_cases hpdst : p = dst
           · subst hpdst ; have hcons := hloc p hp
             by_cases hrecv : src = sender ∧ (s.local_ p).sendRecv = none
             · simp [hrecv]
-              have hval : v = val := hbuf ⟨src, p, .init, v⟩ hgate (hrecv.1 ▸ hs')
+              have hval : v = val := hbuf ⟨src, p, .init, v⟩ hgate (hrecv.1 ▸ hsc')
               subst hval
               exact ⟨hcons.1, fun w h => by injection h with h ; exact h ▸ rfl, hcons.2.2⟩
             · simp [hrecv] ; exact hcons
@@ -916,9 +1156,8 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
         intro p w hret
         by_cases hp' : p = dst
         · subst hp'
-          by_cases hc : src = sender ∧ (s.local_ p).sendRecv = none
-          · simp [hc] at hret ⊢ ; exact hvotes p w hret
-          · simp [hc] at hret ⊢ ; exact hvotes p w hret
+          by_cases hc : src = sender ∧ (s.local_ p).sendRecv = none <;>
+            simp [hc] at hret ⊢ <;> exact hvotes p w hret
         · simp [hp'] at hret ⊢ ; exact hvotes p w hret
       · -- vote agreement: voted unchanged
         intro p q vp vq hp hq hvp hvq
@@ -951,10 +1190,30 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
         by_cases h' : q = dst
         · subst h' ; by_cases hc : src = sender ∧ (s.local_ q).sendRecv = none <;> simp [hc] <;> exact hq
         · simp [h'] ; exact hq
+      · -- pre-broadcast consistency: broadcastVal/voted/sent/echoed unchanged; sendRecv may change at dst
+        intro hsc' hbv'
+        have hbv_pre : (s.local_ sender).broadcastVal = none := by
+          by_cases hse : sender = dst
+          · subst hse ; by_cases hc : src = sender ∧ (s.local_ sender).sendRecv = none <;> simp [hc] at hbv' <;> exact hbv'
+          · simpa only [hse, ite_false] using hbv'
+        obtain ⟨hloc, hbuf⟩ := hpre hsc' hbv_pre
+        constructor
+        · intro p hp ; by_cases hpdst : p = dst
+          · subst hpdst ; have hcons := hloc p hp
+            by_cases hrecv : src = sender ∧ (s.local_ p).sendRecv = none
+            · simp [hrecv]
+              have hsender : src = sender := hrecv.1
+              subst hsender
+              have hval : v = val := hbuf ⟨src, p, .init, v⟩ hgate hsc'
+              subst hval
+              exact ⟨hcons.1, fun w h => by injection h with h ; exact h ▸ rfl, hcons.2.2⟩
+            · simp [hrecv] ; exact hcons
+          · simp [hpdst] ; exact hloc p hp
+        · intro m hm hsrc' ; simp at hm ; exact hbuf m hm.2 hsrc'
     | echo => -- recv.echo: echoRecv grows at dst; buffer shrinks
       -- echoRecv grows at dst. Echo trace: new entry from buffer echo trace. Counts monotone. Others unchanged.
       dsimp only ; simp at hgate
-      refine ⟨hbudget, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+      refine ⟨hbudget, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
       · -- echo trace: new echoRecv entry from buffer echo trace; old from echo trace
         intro p q w hp h
         have h_old_or_new : (s.local_ q).echoRecv p w = true ∨
@@ -1001,8 +1260,13 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
         · subst hp' ; simp ; split <;> exact this
         · simp [hp'] ; exact this
       · -- conditional: echoRecv not in local_consistent
-        intro hs'
-        obtain ⟨hloc, hbuf⟩ := hcond hs'
+        intro hs' hsc'
+        -- broadcastVal unchanged by recv.echo; recover pre-state hypothesis
+        have hbv_pre : (s.local_ sender).broadcastVal = some val := by
+          by_cases hse : sender = dst
+          · subst hse ; by_cases hc : (s.local_ sender).echoRecv src v = false <;> simp [hc] at hs' <;> exact hs'
+          · simpa only [hse, ite_false] using hs'
+        obtain ⟨hloc, hbuf⟩ := hcond hbv_pre hsc'
         constructor
         · intro p hp ; by_cases hpdst : p = dst
           · subst hpdst ; have hcons := hloc p hp
@@ -1014,7 +1278,7 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
       · -- vote backing: voteRecv/returned unchanged
         intro p w hret
         by_cases hp' : p = dst
-        · subst hp' ; simp at hret ⊢ ; split at hret <;> simp_all <;> exact hvotes p w (by assumption)
+        · subst hp' ; simp at hret ⊢ ; split at hret <;> simp [*] <;> exact hvotes p w (by assumption)
         · simp [hp'] at hret ⊢ ; exact hvotes p w hret
       · -- vote agreement: voted unchanged
         intro p q vp vq hp hq hvp hvq
@@ -1043,7 +1307,7 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
             · left ; simp only [countEchoRecv] at h1 ⊢
               apply Nat.le_trans h1 ; apply filter_length_mono
               intro q hq ; simp at hq ⊢
-              by_cases hqs : q = src ∧ w = v <;> simp_all
+              by_cases hqs : q = src ∧ w = v <;> (try obtain ⟨rfl, rfl⟩ := hqs) <;> simp [*]
             · right ; simp only [countVoteRecv] at h2 ⊢ ; exact h2
           · -- echoRecv unchanged (already had entry)
             simp only [hc] at ⊢ ; exact hold
@@ -1063,14 +1327,29 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
           · -- new entry: count grows
             simp only [countEchoRecv, hc, ite_true] at hq ⊢
             apply Nat.le_trans hq ; apply filter_length_mono
-            intro r hr ; simp at hr ⊢ ; by_cases hrs : r = src ∧ w = v <;> simp_all
+            intro r hr ; simp at hr ⊢ ; by_cases hrs : r = src ∧ w = v <;> (try obtain ⟨rfl, rfl⟩ := hrs) <;> simp [*]
           · -- already had entry: unchanged
             simp only [countEchoRecv, hc] at hq ⊢ ; exact hq
         · simp only [countEchoRecv, h', ite_false] at hq ⊢ ; exact hq
+      · -- pre-broadcast consistency: broadcastVal/voted/sent/echoed/sendRecv unchanged; echoRecv grows at dst
+        intro hsc' hbv'
+        have hbv_pre : (s.local_ sender).broadcastVal = none := by
+          by_cases hse : sender = dst
+          · subst hse ; by_cases hc : (s.local_ sender).echoRecv src v = false <;> simp [hc] at hbv' <;> exact hbv'
+          · simpa only [hse, ite_false] using hbv'
+        obtain ⟨hloc, hbuf⟩ := hpre hsc' hbv_pre
+        constructor
+        · intro p hp ; by_cases hpdst : p = dst
+          · subst hpdst ; have hcons := hloc p hp
+            simp only [local_consistent] at hcons ⊢
+            by_cases hnew : (s.local_ p).echoRecv src v = false <;> simp [hnew]
+            all_goals exact hcons
+          · simp [hpdst] ; exact hloc p hp
+        · intro m hm hsrc' ; simp at hm ; exact hbuf m hm.2 hsrc'
     | vote => -- recv.vote: voteRecv grows at dst; buffer shrinks
       -- voteRecv grows at dst. Vote trace: new entry from buffer vote trace. Vote backing: countVoteRecv monotone. Others unchanged.
       dsimp only ; simp at hgate
-      refine ⟨hbudget, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+      refine ⟨hbudget, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
       · -- echo trace: echoRecv/echoed unchanged (recv.vote only touches voteRecv)
         intro p q w hp h
         have h' := hetrace p q w hp (show (s.local_ q).echoRecv p w = true by
@@ -1117,8 +1396,13 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
         · subst hp' ; by_cases hc : (s.local_ p).voteRecv src v = false <;> simp [hc] <;> exact this
         · simp [hp'] ; exact this
       · -- conditional: voteRecv not in local_consistent
-        intro hs'
-        obtain ⟨hloc, hbuf⟩ := hcond hs'
+        intro hs' hsc'
+        -- broadcastVal unchanged by recv.vote; recover pre-state hypothesis
+        have hbv_pre : (s.local_ sender).broadcastVal = some val := by
+          by_cases hse : sender = dst
+          · subst hse ; by_cases hc : (s.local_ sender).voteRecv src v = false <;> simp [hc] at hs' <;> exact hs'
+          · simpa only [hse, ite_false] using hs'
+        obtain ⟨hloc, hbuf⟩ := hcond hbv_pre hsc'
         constructor
         · intro p hp ; by_cases hpdst : p = dst
           · subst hpdst ; have hcons := hloc p hp
@@ -1138,7 +1422,7 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
             simp only [countVoteRecv] at hold ⊢
             apply Nat.le_trans hold ; apply filter_length_mono
             intro q hq ; simp at hq
-            by_cases hqs : q = src <;> simp_all
+            by_cases hqs : q = src <;> (try subst hqs) <;> simp [*]
           · simp [hc] at hret ⊢ ; exact hvotes p w hret
         · simp [hpdst] at hret ⊢ ; exact hvotes p w hret
       · -- vote agreement: voted unchanged
@@ -1169,7 +1453,7 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
           by_cases h' : p = dst
           · subst h' ; by_cases hc : (s.local_ p).voteRecv src v = false <;> simp [hc]
             · apply Nat.le_trans hvote ; apply filter_length_mono
-              intro q hq ; simp at hq ⊢ ; by_cases hqs : q = src ∧ w = v <;> simp_all
+              intro q hq ; simp at hq ⊢ ; by_cases hqs : q = src ∧ w = v <;> (try obtain ⟨rfl, rfl⟩ := hqs) <;> simp [*]
             · exact hvote
           · simp [h'] ; exact hvote
       · -- echo witness: voted/echoRecv unchanged → old witness persists
@@ -1183,30 +1467,64 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
         by_cases h' : q = dst
         · subst h' ; by_cases hc : (s.local_ q).voteRecv src v = false <;> simp [hc] <;> exact hq
         · simp [h'] ; exact hq
+      · -- pre-broadcast consistency: broadcastVal/voted/sent/echoed/sendRecv unchanged; voteRecv grows at dst
+        intro hsc' hbv'
+        have hbv_pre : (s.local_ sender).broadcastVal = none := by
+          by_cases hse : sender = dst
+          · subst hse ; by_cases hc : (s.local_ sender).voteRecv src v = false <;> simp [hc] at hbv' <;> exact hbv'
+          · simpa only [hse, ite_false] using hbv'
+        obtain ⟨hloc, hbuf⟩ := hpre hsc' hbv_pre
+        constructor
+        · intro p hp ; by_cases hpdst : p = dst
+          · subst hpdst ; have hcons := hloc p hp
+            simp only [local_consistent] at hcons ⊢
+            by_cases hnew : (s.local_ p).voteRecv src v = false <;> simp [hnew]
+            all_goals exact hcons
+          · simp [hpdst] ; exact hloc p hp
+        · intro m hm hsrc' ; simp at hm ; exact hbuf m hm.2 hsrc'
   -- ── doReturn: only returned changes at process i ──
   -- Only returned changes. Conditional: v = val from vote_quorum_val. Vote backing: gate gives count. Others unchanged.
   | doReturn i v =>
     subst htrans
-    refine ⟨hbudget, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    refine ⟨hbudget, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
     · -- echo trace: unchanged
       intro p q w hp h
-      have := hetrace p q w hp (by by_cases h' : q = i <;> simp_all)
-      by_cases h' : p = i <;> (try subst h') <;> simp_all
+      have := hetrace p q w hp (by
+        by_cases h' : q = i
+        · subst h' ; simp only [ite_true] at h ; exact h
+        · simp only [h', ite_false] at h ; exact h)
+      by_cases h' : p = i
+      · subst h' ; simp only [ite_true] ; exact this
+      · simp only [h', ite_false] ; exact this
     · -- buffer echo trace: unchanged
       intro p dst w hp hbuf
       have := hbet p dst w hp hbuf
-      by_cases h' : p = i <;> (try subst h') <;> simp_all
+      by_cases h' : p = i
+      · subst h' ; simp only [ite_true] ; exact this
+      · simp only [h', ite_false] ; exact this
     · -- vote trace: unchanged
       intro p q w hp h
-      have := hvtrace p q w hp (by by_cases h' : p = i <;> simp_all)
-      by_cases h' : q = i <;> (try subst h') <;> simp_all
+      have := hvtrace p q w hp (by
+        by_cases h' : p = i
+        · subst h' ; simp only [ite_true] at h ; exact h
+        · simp only [h', ite_false] at h ; exact h)
+      by_cases h' : q = i
+      · subst h' ; simp only [ite_true] ; exact this
+      · simp only [h', ite_false] ; exact this
     · -- buffer vote trace: unchanged
       intro p dst w hp hbuf
       have := hbvt p dst w hp hbuf
-      by_cases h' : p = i <;> (try subst h') <;> simp_all
+      by_cases h' : p = i
+      · subst h' ; simp only [ite_true] ; exact this
+      · simp only [h', ite_false] ; exact this
     · -- conditional: returned changes; v = val by vote counting
-      intro hs'
-      obtain ⟨hloc, hbuf⟩ := hcond hs'
+      intro hs' hsc'
+      -- broadcastVal unchanged by doReturn; recover pre-state hypothesis
+      have hbv_pre : (s.local_ sender).broadcastVal = some val := by
+        by_cases hse : sender = i
+        · subst hse ; simpa only [ite_true] using hs'
+        · simpa only [hse, ite_false] using hs'
+      obtain ⟨hloc, hbuf⟩ := hcond hbv_pre hsc'
       constructor
       · intro p hp ; by_cases hpi : p = i
         · subst hpi ; have hcons := hloc p hp
@@ -1250,6 +1568,145 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
       by_cases h' : q = i
       · subst h' ; simp ; exact hq
       · simp [h'] ; exact hq
+    · -- pre-broadcast consistency: broadcastVal/all fields unchanged by doReturn (only returned changes)
+      intro hsc' hbv'
+      have hbv_pre : (s.local_ sender).broadcastVal = none := by
+        by_cases hse : sender = i
+        · subst hse ; simpa only [ite_true] using hbv'
+        · simpa only [hse, ite_false] using hbv'
+      obtain ⟨hloc, hbuf⟩ := hpre hsc' hbv_pre
+      constructor
+      · intro p hp ; by_cases hpi : p = i
+        · subst hpi ; have hcons := hloc p hp
+          simp only [local_consistent] at hcons ⊢
+          refine ⟨hcons.1, hcons.2.1, hcons.2.2.1, hcons.2.2.2.1, ?_⟩
+          intro w hret ; simp only [ite_true] at hret
+          -- hret : some v = some w; need w = val
+          have hveq : v = w := by injection hret
+          subst hveq
+          exact vote_quorum_val s p v hvtrace hloc
+            (calc s.corrupted.length ≤ f := hbudget
+              _ < n - f := by omega
+              _ ≤ _ := hgate.2.2)
+        · simp [hpi] ; exact hloc p hp
+      · exact hbuf
+  -- ── set_broadcast: only broadcastVal changes at process i ──
+  -- All sent/echoRecv/voteRecv/echoed/voted/returned/buffer/corrupted unchanged.
+  | set_broadcast i bv =>
+    subst htrans
+    refine ⟨hbudget, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    · -- 2. echo trace: echoRecv/echoed unchanged by set_broadcast
+      intro p q w hp h
+      have h' : (s.local_ q).echoRecv p w = true := by
+        by_cases hq : q = i <;> simp_all
+      have := hetrace p q w hp h'
+      by_cases hp' : p = i <;> simp_all
+    · -- 3. buffer echo trace: buffer/echoed unchanged
+      intro p d w hp hbuf
+      have := hbet p d w hp hbuf
+      by_cases hp' : p = i <;> simp_all
+    · -- 4. vote trace: voteRecv/voted unchanged
+      intro p q w hq h
+      have h' : (s.local_ p).voteRecv q w = true := by
+        by_cases hp : p = i <;> simp_all
+      have := hvtrace p q w hq h'
+      by_cases hq' : q = i <;> simp_all
+    · -- 5. buffer vote trace: buffer/voted unchanged
+      intro p d w hp hbuf
+      have := hbvt p d w hp hbuf
+      by_cases hp' : p = i <;> simp_all
+    · -- 6. conditional: if sender = i, use hpre (conjunct 11) since gate gives broadcastVal = none.
+      --    If sender ≠ i, broadcastVal unchanged; use hcond directly.
+      intro hs' hsc'
+      by_cases hsi : sender = i
+      · subst hsi
+        -- sender = i: post-state has broadcastVal = some bv; gate: (s.local_ i).broadcastVal = none.
+        -- hs' : (s'.local_ sender).broadcastVal = some val, i.e., some bv = some val → bv = val.
+        simp only [ite_true] at hs'
+        have hbveq : bv = val := by injection hs'
+        subst hbveq
+        -- Use hpre (conjunct 11): gate gives (s.local_ sender).broadcastVal = none,
+        -- so hpre hsc' hgate gives local_consistent and buffer_consistent for the pre-state.
+        -- Since local_consistent doesn't reference broadcastVal, it transfers to the post-state.
+        obtain ⟨hloc_pre, hbuf_pre⟩ := hpre hsc' hgate
+        constructor
+        · intro p hp
+          by_cases hpi : p = sender
+          · subst hpi
+            simp only [ite_true]
+            -- local_consistent for s'.local_ sender = { s.local_ sender with broadcastVal := some val }.
+            -- local_consistent only checks sent/sendRecv/echoed/voted/returned (not broadcastVal).
+            -- All those fields are unchanged. Apply hloc_pre.
+            have hcons := hloc_pre p hp
+            simp only [local_consistent] at hcons ⊢
+            exact hcons
+          · simp only [hpi, ite_false]
+            exact hloc_pre p (by simpa [hpi] using hp)
+        · intro m hm hsrc
+          exact hbuf_pre m hm hsrc
+      · -- sender ≠ i: broadcastVal unchanged for sender; use hcond directly.
+        have hbv_pre2 : (s.local_ sender).broadcastVal = some val := by
+          simpa only [show sender ≠ i from hsi, ite_false] using hs'
+        obtain ⟨hloc2, hbuf2⟩ := hcond hbv_pre2 hsc'
+        constructor
+        · intro p hp
+          by_cases hpi : p = i
+          · subst hpi ; simp only [ite_true] ; exact hloc2 p hp
+          · simp only [hpi, ite_false] ; exact hloc2 p hp
+        · intro m hm hsrc ; exact hbuf2 m hm hsrc
+    · -- 7. vote backing: returned unchanged
+      intro p w hret
+      by_cases hpi : p = i
+      · subst hpi ; simpa only [ite_true] using hvotes p w (by simpa only [ite_true] using hret)
+      · simpa only [hpi, ite_false] using hvotes p w (by simpa only [hpi, ite_false] using hret)
+    · -- 8. vote agreement: voted unchanged
+      intro p q vp vq hp hq hvp hvq
+      exact hvagree p q vp vq hp hq
+        (by by_cases hpi : p = i
+            · subst hpi ; simp only [ite_true] at hvp ; exact hvp
+            · simp only [hpi, ite_false] at hvp ; exact hvp)
+        (by by_cases hqi : q = i
+            · subst hqi ; simp only [ite_true] at hvq ; exact hvq
+            · simp only [hqi, ite_false] at hvq ; exact hvq)
+    · -- 9. echo backing: voted unchanged
+      intro p w hp hvp
+      have hvp' : (s.local_ p).voted w = true := by
+        by_cases hpi : p = i <;> simp_all
+      have hold := hecho_back p w hp hvp'
+      by_cases hpi : p = i
+      · subst hpi ; simp only [ite_true]
+        rcases hold with h1 | h2
+        · left ; simp only [countEchoRecv] at h1 ⊢ ; exact h1
+        · right ; simp only [countVoteRecv] at h2 ⊢ ; exact h2
+      · simp only [hpi, ite_false] ; exact hold
+    · -- 10. echo witness: voted unchanged
+      intro w ⟨p, hp, hvp⟩
+      have hvp' : (s.local_ p).voted w = true := by
+        by_cases hpi : p = i <;> simp_all
+      obtain ⟨q, hq⟩ := hecho_wit w ⟨p, hp, hvp'⟩
+      refine ⟨q, ?_⟩ ; simp only [countEchoRecv] at hq ⊢
+      by_cases hqi : q = i
+      · subst hqi ; simpa only [ite_true]
+      · simpa only [hqi, ite_false]
+    · -- 11. pre-broadcast consistency: if sender = i, post-broadcastVal = some bv ≠ none → vacuous.
+      --     If sender ≠ i, broadcastVal unchanged → use hpre.
+      intro hsc' hbv'
+      by_cases hsi : sender = i
+      · subst hsi
+        -- post-state (s'.local_ sender).broadcastVal = some bv ≠ none → antecedent is false → vacuous.
+        simp only [ite_true] at hbv'
+        exact absurd hbv' (Option.some_ne_none _)
+      · -- sender ≠ i: broadcastVal unchanged for sender.
+        have hbv_pre3 : (s.local_ sender).broadcastVal = none := by
+          simpa only [show sender ≠ i from hsi, ite_false] using hbv'
+        obtain ⟨hloc3, hbuf3⟩ := hpre hsc' hbv_pre3
+        constructor
+        · intro p hp
+          by_cases hpi : p = i
+          · subst hpi ; simp only [ite_true] ; exact hloc3 p hp
+          · simp only [hpi, ite_false] ; exact hloc3 p hp
+        · intro m hm hsrc ; exact hbuf3 m hm hsrc
+  -- end set_broadcast
 
 /-! ### Validity -/
 
@@ -1258,19 +1715,20 @@ theorem brb_inv_step (sender : Fin n) (val : Value) (hn : n > 3 * f) :
 -- Derives from conjunct 6 (conditional): if sender correct, local_consistent gives returned = some v → v = val.
 theorem brb_validity (sender : Fin n) (val : Value) (hn : n > 3 * f) :
     pred_implies
-      (tla_and (brb n f Value sender val).safety
+      (tla_and (tla_and (brb n f Value sender).safety
         [tlafml| □ ⌜ fun s => isCorrect n Value s sender ⌝])
+        [tlafml| □ ⌜ fun s => (s.local_ sender).broadcastVal = some val ⌝])
       [tlafml| □ ⌜ fun s => ∀ p v, isCorrect n Value s p →
         (s.local_ p).returned = some v → v = val ⌝] := by
-  intro e ⟨hsafety, hsc⟩
+  intro e ⟨⟨hsafety, hsc⟩, hbv⟩
   have hinv := init_invariant
     (brb_inv_init n f Value sender val)
     (fun s s' hn' hi => brb_inv_step n f Value sender val hn s s' hn' hi)
     e hsafety
   intro k
-  obtain ⟨_, _, _, _, _, hcond, _, _, _, _⟩ := hinv k
+  obtain ⟨_, _, _, _, _, hcond, _, _, _, _, _⟩ := hinv k
   intro p v hp hret
-  exact (hcond (hsc k)).1 p hp |>.2.2.2.2 v hret
+  exact (hcond (hbv k) (hsc k)).1 p hp |>.2.2.2.2 v hret
 
 /-! ### Agreement -/
 
@@ -1280,7 +1738,7 @@ theorem brb_validity (sender : Fin n) (val : Value) (hn : n > 3 * f) :
     forces the values to be equal. -/
 -- Each returned value has ≥ n-f votes. Pigeonhole gives a correct voter. Vote trace bridges voteRecv → voted. Vote agreement (conjunct 8) forces values equal.
 theorem brb_agreement (sender : Fin n) (val : Value) (hn : n > 3 * f) :
-    pred_implies (brb n f Value sender val).safety
+    pred_implies (brb n f Value sender).safety
       [tlafml| □ ⌜ agreement n Value ⌝] := by
   intro e hsafety
   have hinv := init_invariant
@@ -1288,7 +1746,7 @@ theorem brb_agreement (sender : Fin n) (val : Value) (hn : n > 3 * f) :
     (fun s s' hn' hi => brb_inv_step n f Value sender val hn s s' hn' hi)
     e hsafety
   intro k
-  obtain ⟨hbudget, _, _, hvtrace, _, _, hvotes, hvagree, _, _⟩ := hinv k
+  obtain ⟨hbudget, _, _, hvtrace, _, _, hvotes, hvagree, _, _, _⟩ := hinv k
   intro p q vp vq hp hq hretp hretq
   -- p returned vp with ≥ n−f votes. Since n−f > f ≥ |corrupted|,
   -- pigeonhole gives a correct voter rp that voted vp.
@@ -1314,14 +1772,107 @@ theorem brb_agreement (sender : Fin n) (val : Value) (hn : n > 3 * f) :
   have hrq_voted := hvtrace q rq vq hrq_corr hrq_vote
   exact hvagree rp rq vp vq hrp_corr hrq_corr hrp_voted hrq_voted
 
+/-! ### Safety-stutter versions
+
+    The same properties under `safety_stutter` (allowing stutter steps).
+    Useful for protocol composition via `ProtocolCall.lift_invariant`. -/
+
+/-- The inductive invariant holds under `safety_stutter`. -/
+theorem brb_inv_stutter (sender : Fin n) (val : Value) (hn : n > 3 * f) :
+    pred_implies (brb n f Value sender).toSpec.safety_stutter
+      [tlafml| □ ⌜ brb_inv n f Value sender val ⌝] :=
+  (brb n f Value sender).toSpec.invariant_under_safety_stutter
+    (brb_inv_init n f Value sender val)
+    (fun s s' hn' hi => brb_inv_step n f Value sender val hn s s' hn' hi)
+
+/-- Agreement under `safety_stutter`. -/
+theorem brb_agreement_stutter (sender : Fin n) (val : Value) (hn : n > 3 * f) :
+    pred_implies (brb n f Value sender).toSpec.safety_stutter
+      [tlafml| □ ⌜ agreement n Value ⌝] := by
+  intro e hsafety k
+  obtain ⟨hbudget, _, _, hvtrace, _, _, hvotes, hvagree, _, _, _⟩ :=
+    brb_inv_stutter n f Value sender val hn e hsafety k
+  intro p q vp vq hp hq hretp hretq
+  have hvp := hvotes p vp hretp
+  have hvq := hvotes q vq hretq
+  have hgt_p : (exec.drop k e 0).corrupted.length <
+      countVoteRecv n Value ((exec.drop k e 0).local_ p) vp :=
+    calc (exec.drop k e 0).corrupted.length ≤ f := hbudget
+      _ < n - f := by omega
+      _ ≤ _ := hvp
+  obtain ⟨rp, hrp_vote, hrp_corr⟩ := pigeonhole_filter
+    ((exec.drop k e 0).local_ p |>.voteRecv · vp) (exec.drop k e 0).corrupted hgt_p
+  have hgt_q : (exec.drop k e 0).corrupted.length <
+      countVoteRecv n Value ((exec.drop k e 0).local_ q) vq :=
+    calc (exec.drop k e 0).corrupted.length ≤ f := hbudget
+      _ < n - f := by omega
+      _ ≤ _ := hvq
+  obtain ⟨rq, hrq_vote, hrq_corr⟩ := pigeonhole_filter
+    ((exec.drop k e 0).local_ q |>.voteRecv · vq) (exec.drop k e 0).corrupted hgt_q
+  exact hvagree rp rq vp vq hrp_corr hrq_corr
+    (hvtrace p rp vp hrp_corr hrp_vote) (hvtrace q rq vq hrq_corr hrq_vote)
+
+/-- Validity under `safety_stutter` (with sender-correctness assumption). -/
+theorem brb_validity_stutter (sender : Fin n) (val : Value) (hn : n > 3 * f) :
+    pred_implies
+      (tla_and (tla_and (brb n f Value sender).toSpec.safety_stutter
+        [tlafml| □ ⌜ fun s => isCorrect n Value s sender ⌝])
+        [tlafml| □ ⌜ fun s => (s.local_ sender).broadcastVal = some val ⌝])
+      [tlafml| □ ⌜ fun s => ∀ p v, isCorrect n Value s p →
+        (s.local_ p).returned = some v → v = val ⌝] := by
+  intro e ⟨⟨hsafety, hsc⟩, hbv⟩
+  intro k
+  obtain ⟨_, _, _, _, _, hcond, _, _, _, _, _⟩ :=
+    brb_inv_stutter n f Value sender val hn e hsafety k
+  intro p v hp hret
+  exact (hcond (hbv k) (hsc k)).1 p hp |>.2.2.2.2 v hret
+
+/-! ### Recv field preservation
+
+  The recv action only modifies `sendRecv`, `echoRecv`, or `voteRecv` at the
+  destination process. It never touches `voted`, `sent`, `echoed`, or `returned`. -/
+
+/-- Recv never modifies `voted` at any process. -/
+private theorem recv_preserves_voted (sender : Fin n)
+    (s s' : State n Value) (src dst : Fin n) (t : MsgType) (mv : Value)
+    (htrans : ((brb n f Value sender).actions (.recv src dst t mv)).transition s s')
+    (q : Fin n) (v : Value) :
+    (s'.local_ q).voted v = (s.local_ q).voted v := by
+  simp only [brb] at htrans ; subst htrans
+  by_cases hq : q = dst
+  · subst hq ; cases t <;> simp only [ite_true] <;> split <;> rfl
+  · simp [hq]
+
+/-- Recv never modifies `sent` at any process. -/
+private theorem recv_preserves_sent (sender : Fin n)
+    (s s' : State n Value) (src dst : Fin n) (t : MsgType) (mv : Value)
+    (htrans : ((brb n f Value sender).actions (.recv src dst t mv)).transition s s')
+    (q : Fin n) (r : Fin n) (mt : MsgType) (w : Value) :
+    (s'.local_ q).sent r mt w = (s.local_ q).sent r mt w := by
+  simp only [brb] at htrans ; subst htrans
+  by_cases hq : q = dst
+  · subst hq ; cases t <;> simp only [ite_true] <;> split <;> rfl
+  · simp [hq]
+
+/-- Recv never modifies `returned` at any process. -/
+private theorem recv_preserves_returned (sender : Fin n)
+    (s s' : State n Value) (src dst : Fin n) (t : MsgType) (mv : Value)
+    (htrans : ((brb n f Value sender).actions (.recv src dst t mv)).transition s s')
+    (q : Fin n) :
+    (s'.local_ q).returned = (s.local_ q).returned := by
+  simp only [brb] at htrans ; subst htrans
+  by_cases hq : q = dst
+  · subst hq ; cases t <;> simp only [ite_true] <;> split <;> rfl
+  · simp [hq]
+
 /-! ### Message tracking invariant -/
 
 /-- Message tracking invariant: once a vote is sent, it is either
     still in the buffer or already received. Init: sent=false (vacuous).
     Step: send sets both sent and buffer; recv consumes buffer and sets
     voteRecv; other actions preserve both. -/
-theorem vote_msg_tracking (sender : Fin n) (val : Value) :
-    pred_implies (brb n f Value sender val).safety
+theorem vote_msg_tracking (sender : Fin n) :
+    pred_implies (brb n f Value sender).safety
       [tlafml| □ ⌜ fun s => ∀ q r v,
         (s.local_ q).sent r .vote v = true →
         s.buffer ⟨q, r, .vote, v⟩ = true ∨
@@ -1366,8 +1917,8 @@ theorem vote_msg_tracking (sender : Fin n) (val : Value) :
         -- recv doesn't change sent; extract old sent value
         have hold : (s.local_ q).sent r .vote w = true := by
           by_cases hq : q = dst
-          · simp only [apply_ite LocalState.sent, hq] at hsent
-            cases t <;> simp at hsent <;> split at hsent <;> simp_all
+          · subst hq ; simp only [ite_true] at hsent
+            cases t <;> simp at hsent <;> split at hsent <;> exact hsent
           · simp [hq] at hsent ; exact hsent
         rcases hi q r w hold with hbuf | hvr
         · -- buffer was true: check if this recv consumed our message
@@ -1375,25 +1926,37 @@ theorem vote_msg_tracking (sender : Fin n) (val : Value) :
           · -- consumed: voteRecv updated
             obtain ⟨rfl, rfl, ht, rfl⟩ := Message.mk.inj hm
             right ; subst ht
-            simp only [apply_ite LocalState.voteRecv]
-            split
-            · split <;> simp_all
-            · rename_i h ; exact absurd trivial h
+            by_cases hc : (s.local_ r).voteRecv q w = false
+            · simp only [hc, ite_true] ; simp
+            · simp only [hc] ; exact (Bool.not_eq_false _).mp hc
           · -- not consumed: buffer preserved
             left ; simp only [] ; rw [if_neg hm] ; exact hbuf
         · -- voteRecv was true: preserved through recv
           right ; by_cases hr : r = dst
-          · simp only [apply_ite LocalState.voteRecv, hr]
-            cases t <;> simp <;> split <;> simp_all
+          · subst hr ; simp only [ite_true]
+            cases t <;> simp <;> split <;> simp [hvr]
           · simp [hr] ; exact hvr
       | doReturn j mv =>
         simp only [brb] at htrans ; subst htrans
         intro q r w hsent
         have hold : (s.local_ q).sent r .vote w = true := by
-          by_cases hq : q = j <;> simp_all
+          by_cases hq : q = j
+          · subst hq ; simp only [ite_true] at hsent ; exact hsent
+          · simp only [hq, ite_false] at hsent ; exact hsent
         rcases hi q r w hold with hbuf | hvr
         · left ; exact hbuf
-        · right ; by_cases hr : r = j <;> simp_all)
+        · right ; by_cases hr : r = j
+          · subst hr ; simp only [ite_true] ; exact hvr
+          · simp only [hr, ite_false] ; exact hvr
+      | set_broadcast i bv =>
+        -- set_broadcast only changes broadcastVal at i; sent/buffer/voteRecv unchanged.
+        simp only [brb] at htrans ; subst htrans
+        intro q r w hsent
+        have hold : (s.local_ q).sent r .vote w = true := by
+          by_cases hq : q = i <;> simp_all
+        rcases hi q r w hold with hbuf | hvr
+        · left ; exact hbuf
+        · right ; by_cases hr : r = i <;> simp_all)
     e hsafety
 
 /-! ### Liveness: Totality
@@ -1405,39 +1968,39 @@ theorem vote_msg_tracking (sender : Fin n) (val : Value) :
 -/
 
 /-- The "fires" relation for a specific BRB action instance. -/
-def brb_action (sender : Fin n) (val : Value) (a : Action n Value) :
+def brb_action (sender : Fin n) (a : Action n Value) :
     action (State n Value) :=
-  (brb n f Value sender val).actions a |>.fires
+  (brb n f Value sender).actions a |>.fires
 
 /-- The overall next-state relation. -/
-def brb_next (sender : Fin n) (val : Value) : action (State n Value) :=
-  (brb n f Value sender val).next
+def brb_next (sender : Fin n) : action (State n Value) :=
+  (brb n f Value sender).next
 
 /-- Weak fairness for BRB actions by correct processes.
     Corrupt processes have no fairness obligation.
     - Send: WF only for correct senders (not corrupt sends)
     - Recv/doReturn: WF for all processes -/
-def brb_fairness (sender : Fin n) (val : Value) : pred (State n Value) :=
+def brb_fairness (sender : Fin n) : pred (State n Value) :=
   fun e =>
     (∀ src dst t v, TLA.weak_fairness
       (fun s s' => isCorrect n Value s src ∧
-        brb_action n f Value sender val (.send src dst t v) s s') e) ∧
-    (∀ src dst t v, TLA.weak_fairness (brb_action n f Value sender val (.recv src dst t v)) e) ∧
-    (∀ i v, TLA.weak_fairness (brb_action n f Value sender val (.doReturn i v)) e)
+        brb_action n f Value sender (.send src dst t v) s s') e) ∧
+    (∀ src dst t v, TLA.weak_fairness (brb_action n f Value sender (.recv src dst t v)) e) ∧
+    (∀ i v, TLA.weak_fairness (brb_action n f Value sender (.doReturn i v)) e)
 
 /-! #### Stability and monotonicity -/
 
 /-- Stability of P ∨ ¬isCorrect(q): if P is stable under □⟨next⟩ and
     corruption is irreversible, then P ∨ ¬isCorrect(q) is stable. -/
-theorem stable_or_corrupt (sender : Fin n) (val : Value)
+theorem stable_or_corrupt (sender : Fin n)
     (q : Fin n) (P : State n Value → Prop)
     (hP : pred_implies
-      (tla_and (state_pred P) [tlafml| □ ⟨(brb n f Value sender val).next⟩])
+      (tla_and (state_pred P) [tlafml| □ ⟨(brb n f Value sender).next⟩])
       [tlafml| □ ⌜ P ⌝]) :
     pred_implies
       (tla_and
         (state_pred (fun s => P s ∨ ¬isCorrect n Value s q))
-        [tlafml| □ ⟨(brb n f Value sender val).next⟩])
+        [tlafml| □ ⟨(brb n f Value sender).next⟩])
       [tlafml| □ ⌜ fun s => P s ∨ ¬isCorrect n Value s q ⌝] := by
   intro e ⟨h0, hnext⟩ k
   rcases h0 with hP0 | hC0
@@ -1453,34 +2016,33 @@ theorem stable_or_corrupt (sender : Fin n) (val : Value)
       | corrupt j =>
         simp only [brb] at htrans ; rw [htrans]
         exact fun habs => ih (fun hmem => habs (List.mem_cons_of_mem j hmem))
-      | send src dst t mv =>
+      | send src dst t mv | recv src dst t v' | doReturn j v' =>
         simp only [brb] at htrans ; rw [htrans] ; exact ih
-      | recv src dst t v' =>
-        simp only [brb] at htrans ; rw [htrans] ; exact ih
-      | doReturn j v' =>
+      | set_broadcast j bv =>
+        -- set_broadcast only changes broadcastVal; isCorrect/corruption unchanged.
         simp only [brb] at htrans ; rw [htrans] ; exact ih
 
 /-- Corruption is irreversible: once a process is corrupt, it stays corrupt.
     Corollary of stable_or_corrupt with P = False. -/
-theorem corrupt_persistent (sender : Fin n) (val : Value)
+theorem corrupt_persistent (sender : Fin n)
     (q : Fin n) :
     pred_implies
       (tla_and (state_pred (fun s => ¬isCorrect n Value s q))
-        [tlafml| □ ⟨(brb n f Value sender val).next⟩])
+        [tlafml| □ ⟨(brb n f Value sender).next⟩])
       [tlafml| □ ⌜ fun s => ¬isCorrect n Value s q ⌝] := by
   intro e ⟨h0, hnext⟩ k
-  have h := stable_or_corrupt n f Value sender val q (fun _ => False)
+  have h := stable_or_corrupt n f Value sender q (fun _ => False)
     (by intro e' ⟨h, _⟩ ; exact absurd h (by simp [state_pred]))
     e ⟨Or.inr h0, hnext⟩ k
   exact h.resolve_left (by simp)
 
 /-- Stability: once ∀ x ∈ l, voteRecv(x,q,v) holds, it holds forever. -/
-theorem voteRecv_list_stable (sender : Fin n) (val : Value)
+theorem voteRecv_list_stable (sender : Fin n)
     (q : Fin n) (v : Value) (l : List (Fin n)) :
     pred_implies
       (tla_and
         (state_pred (fun s => ∀ x ∈ l, (s.local_ x).voteRecv q v = true))
-        [tlafml| □ ⟨(brb n f Value sender val).next⟩])
+        [tlafml| □ ⟨(brb n f Value sender).next⟩])
       [tlafml| □ ⌜ fun s => ∀ x ∈ l, (s.local_ x).voteRecv q v = true ⌝] := by
   intro e ⟨h0, hnext⟩
   simp only [always, action_pred, state_pred, exec.drop, ActionSpec.next,
@@ -1489,8 +2051,8 @@ theorem voteRecv_list_stable (sender : Fin n) (val : Value)
   induction k with
   | zero => exact h0
   | succ k' ih =>
-    simp only [state_pred, exec.drop, Nat.zero_add] at ih ⊢
-    rw [show k' + 1 = 1 + k' from by omega]
+    simp only [state_pred, drop_zero] at ih ⊢
+    rw [Nat.add_comm]
     obtain ⟨i, _, htrans⟩ := hnext k'
     intro x hx
     have hprev := ih x hx
@@ -1499,30 +2061,41 @@ theorem voteRecv_list_stable (sender : Fin n) (val : Value)
       simp only [brb, Nat.zero_add] at htrans ; rw [htrans] ; exact hprev
     | send src dst t mv =>
       simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
-      by_cases hx : x = src <;> simp_all
+      by_cases hx : x = src
+      · subst hx ; simp only [ite_true] ; exact hprev
+      · simp only [hx, ite_false] ; exact hprev
     | recv src dst t mv =>
       simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
       by_cases hx : x = dst
-      · subst hx ; simp
-        cases t <;> simp
-        · split <;> simp_all
-        · split <;> simp_all
-        · by_cases hc : ((e k').local_ x).voteRecv src mv = false <;> simp [hc]
-          · by_cases hsv : src = q ∧ mv = v <;> simp_all
-          · exact hprev
-      · simp_all
+      · subst hx ; simp only [ite_true]
+        cases t <;> simp only []
+        · split <;> exact hprev
+        · split <;> exact hprev
+        · by_cases hc : ((e k').local_ x).voteRecv src mv = false
+          · simp only [hc, ite_true]
+            by_cases hsv : q = src ∧ v = mv
+            · rw [if_pos hsv]
+            · rw [if_neg hsv] ; exact hprev
+          · simp only [hc] ; exact hprev
+      · simp only [hx, ite_false] ; exact hprev
     | doReturn j mv =>
+      simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
+      by_cases hx : x = j
+      · subst hx ; simp only [ite_true] ; exact hprev
+      · simp only [hx, ite_false] ; exact hprev
+    | set_broadcast j bv =>
+      -- set_broadcast only changes broadcastVal; voteRecv unchanged.
       simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
       by_cases hx : x = j <;> simp_all
 
 /-- Stability: once voted(q,v) = true, it stays true forever.
     Only the send.vote action modifies voted, and only to set entries to true. -/
-theorem voted_stable (sender : Fin n) (val : Value)
+theorem voted_stable (sender : Fin n)
     (q : Fin n) (v : Value) :
     pred_implies
       (tla_and
         (state_pred (fun s => (s.local_ q).voted v = true))
-        [tlafml| □ ⟨(brb n f Value sender val).next⟩])
+        [tlafml| □ ⟨(brb n f Value sender).next⟩])
       [tlafml| □ ⌜ fun s => (s.local_ q).voted v = true ⌝] := by
   intro e ⟨h0, hnext⟩
   simp only [always, action_pred, state_pred, exec.drop, ActionSpec.next,
@@ -1531,8 +2104,8 @@ theorem voted_stable (sender : Fin n) (val : Value)
   induction k with
   | zero => exact h0
   | succ k' ih =>
-    simp only [state_pred, exec.drop, Nat.zero_add] at ih ⊢
-    rw [show k' + 1 = 1 + k' from by omega]
+    simp only [state_pred, drop_zero] at ih ⊢
+    rw [Nat.add_comm]
     obtain ⟨i, _, htrans⟩ := hnext k'
     cases i with
     | corrupt j =>
@@ -1540,33 +2113,41 @@ theorem voted_stable (sender : Fin n) (val : Value)
     | send src dst t mv =>
       simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
       by_cases hq : q = src
-      · cases t
-        · simp_all  -- init: voted unchanged
-        · simp_all  -- echo: voted unchanged
+      · subst hq ; cases t
+        · simp only [ite_true] ; exact ih  -- init: voted unchanged
+        · simp only [ite_true] ; exact ih  -- echo: voted unchanged
         · -- vote: voted may grow but doesn't shrink
-          simp only [hq, ite_true]
-          rw [hq] at ih
-          by_cases hc : src ∈ (e k').corrupted <;> simp [hc]
-          · exact ih  -- corrupted: voted unchanged
-          · by_cases hv : v = mv <;> simp [hv, ih]
-      · simp [hq] ; exact ih
+          simp only [ite_true]
+          split
+          · -- isTrue: ¬q ∈ corrupted, voted = fun w => if w = mv then true else old.voted w
+            -- goal: (fun w => if w = mv then true else old.voted w) v = true
+            by_cases hvm : v = mv
+            · subst hvm ; simp only [ite_true]  -- v = mv: true
+            · simp only [hvm, ite_false] ; exact ih  -- v ≠ mv: old.voted v = ih
+          · -- isFalse: q ∈ corrupted, voted unchanged
+            exact ih
+      · simp only [hq, ite_false] ; exact ih
     | recv src dst t mv =>
-      simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
-      by_cases hq : q = dst
-      · cases t <;> simp [hq] <;> split <;> simp_all
-      · simp [hq] ; exact ih
+      simp only [Nat.zero_add] at htrans
+      rw [recv_preserves_voted n f Value sender _ _ src dst t mv htrans q v] ; exact ih
     | doReturn j mv =>
+      simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
+      by_cases hq : q = j
+      · subst hq ; simp only [ite_true] ; exact ih
+      · simp only [hq, ite_false] ; exact ih
+    | set_broadcast j bv =>
+      -- set_broadcast only changes broadcastVal; voted unchanged.
       simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
       by_cases hq : q = j <;> simp_all
 
 /-- Stability: once sent(q,dst,t,v) = true, it stays true forever.
     Only the send action modifies sent, and only to set entries to true. -/
-theorem sent_stable (sender : Fin n) (val : Value)
+theorem sent_stable (sender : Fin n)
     (q : Fin n) (dst : Fin n) (t : MsgType) (v : Value) :
     pred_implies
       (tla_and
         (state_pred (fun s => (s.local_ q).sent dst t v = true))
-        [tlafml| □ ⟨(brb n f Value sender val).next⟩])
+        [tlafml| □ ⟨(brb n f Value sender).next⟩])
       [tlafml| □ ⌜ fun s => (s.local_ q).sent dst t v = true ⌝] := by
   intro e ⟨h0, hnext⟩
   simp only [always, action_pred, state_pred, exec.drop, ActionSpec.next,
@@ -1575,8 +2156,8 @@ theorem sent_stable (sender : Fin n) (val : Value)
   induction k with
   | zero => exact h0
   | succ k' ih =>
-    simp only [state_pred, exec.drop, Nat.zero_add] at ih ⊢
-    rw [show k' + 1 = 1 + k' from by omega]
+    simp only [state_pred, drop_zero] at ih ⊢
+    rw [Nat.add_comm]
     obtain ⟨i, _, htrans⟩ := hnext k'
     cases i with
     | corrupt j =>
@@ -1584,26 +2165,32 @@ theorem sent_stable (sender : Fin n) (val : Value)
     | send src dst' t' mv =>
       simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
       by_cases hq : q = src
-      · rw [hq] at ih ; simp only [hq, ite_true]
+      · subst hq ; simp only [ite_true]
         by_cases h : dst' = dst ∧ t' = t ∧ mv = v <;> simp [h, ih]
       · simp [hq] ; exact ih
     | recv src dst' t' mv =>
       simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
       by_cases hq : q = dst'
-      · cases t' <;> simp [hq] <;> split <;> simp_all
+      · subst hq ; cases t' <;> simp only [ite_true] <;> split <;> exact ih
       · simp [hq] ; exact ih
     | doReturn j mv =>
+      simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
+      by_cases hq : q = j
+      · subst hq ; simp only [ite_true] ; exact ih
+      · simp only [hq, ite_false] ; exact ih
+    | set_broadcast j bv =>
+      -- set_broadcast only changes broadcastVal; sent unchanged.
       simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
       by_cases hq : q = j <;> simp_all
 
 /-- Stability: once returned(q) ≠ none, it stays non-none forever.
     Only the doReturn action modifies returned, setting it from none to some v. -/
-theorem returned_stable (sender : Fin n) (val : Value)
+theorem returned_stable (sender : Fin n)
     (q : Fin n) :
     pred_implies
       (tla_and
         (state_pred (fun s => (s.local_ q).returned ≠ none))
-        [tlafml| □ ⟨(brb n f Value sender val).next⟩])
+        [tlafml| □ ⟨(brb n f Value sender).next⟩])
       [tlafml| □ ⌜ fun s => (s.local_ q).returned ≠ none ⌝] := by
   intro e ⟨h0, hnext⟩
   simp only [always, action_pred, state_pred, exec.drop, ActionSpec.next,
@@ -1612,34 +2199,38 @@ theorem returned_stable (sender : Fin n) (val : Value)
   induction k with
   | zero => exact h0
   | succ k' ih =>
-    simp only [state_pred, exec.drop, Nat.zero_add] at ih ⊢
-    rw [show k' + 1 = 1 + k' from by omega]
+    simp only [state_pred, drop_zero] at ih ⊢
+    rw [Nat.add_comm]
     obtain ⟨i, _, htrans⟩ := hnext k'
     cases i with
     | corrupt j =>
       simp only [brb, Nat.zero_add] at htrans ; rw [htrans] ; exact ih
     | send src dst t mv =>
       simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
-      by_cases hq : q = src <;> simp_all
+      by_cases hq : q = src
+      · subst hq ; simp only [ite_true] ; exact ih
+      · simp only [hq, ite_false] ; exact ih
     | recv src dst t mv =>
-      simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
-      by_cases hq : q = dst
-      · cases t <;> simp [hq] <;> split <;> simp_all
-      · simp [hq] ; exact ih
+      simp only [Nat.zero_add] at htrans
+      rw [recv_preserves_returned n f Value sender _ _ src dst t mv htrans q] ; exact ih
     | doReturn j mv =>
       simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
       by_cases hq : q = j
       · simp [hq]
       · simp [hq] ; exact ih
+    | set_broadcast j bv =>
+      -- set_broadcast only changes broadcastVal; returned unchanged.
+      simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
+      by_cases hq : q = j <;> simp_all
 
 /-- Stability: countVoteRecv is monotone — once ≥ threshold, stays ≥ threshold.
     Follows from voteRecv pointwise monotonicity (voteRecv_list_stable). -/
-theorem countVoteRecv_stable (sender : Fin n) (val : Value)
+theorem countVoteRecv_stable (sender : Fin n)
     (q : Fin n) (v : Value) (threshold : Nat) :
     pred_implies
       (tla_and
         (state_pred (fun s => countVoteRecv n Value (s.local_ q) v ≥ threshold))
-        [tlafml| □ ⟨(brb n f Value sender val).next⟩])
+        [tlafml| □ ⟨(brb n f Value sender).next⟩])
       [tlafml| □ ⌜ fun s => countVoteRecv n Value (s.local_ q) v ≥ threshold ⌝] := by
   intro e ⟨h0, hnext⟩
   simp only [always, action_pred, state_pred, exec.drop, ActionSpec.next,
@@ -1648,8 +2239,8 @@ theorem countVoteRecv_stable (sender : Fin n) (val : Value)
   induction k with
   | zero => exact h0
   | succ k' ih =>
-    simp only [state_pred, exec.drop, Nat.zero_add] at ih ⊢
-    rw [show k' + 1 = 1 + k' from by omega]
+    simp only [state_pred, drop_zero] at ih ⊢
+    rw [Nat.add_comm]
     obtain ⟨i, _, htrans⟩ := hnext k'
     -- It suffices to show voteRecv only grows pointwise, so the count doesn't decrease.
     apply Nat.le_trans ih
@@ -1662,66 +2253,79 @@ theorem countVoteRecv_stable (sender : Fin n) (val : Value)
       simp only [brb, Nat.zero_add] at htrans ; rw [htrans] ; exact hr
     | send src dst t mv =>
       simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
-      by_cases hq : q = src <;> simp_all
+      by_cases hq : q = src
+      · subst hq ; simp only [ite_true] ; exact hr
+      · simp only [hq, ite_false] ; exact hr
     | recv src dst t mv =>
       simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
       by_cases hq : q = dst
-      · cases t
-        · simp [hq] ; split <;> simp_all  -- init
-        · simp [hq] ; split <;> simp_all  -- echo
+      · subst hq ; cases t
+        · simp only [ite_true] ; split <;> exact hr  -- init: voteRecv unchanged
+        · simp only [ite_true] ; split <;> exact hr  -- echo: voteRecv unchanged
         · -- vote: voteRecv may grow
-          rw [hq] at hr
-          by_cases hc : ((e k').local_ dst).voteRecv src mv = false <;> simp_all
-      · simp [hq] ; exact hr
+          by_cases hc : ((e k').local_ q).voteRecv src mv = false
+          · simp only [hc, ite_true]
+            -- goal: (fun q_1 w => if q_1 = src ∧ w = mv then true else old.voteRecv q_1 w) r v = true
+            by_cases hrv : r = src ∧ v = mv
+            · obtain ⟨rfl, rfl⟩ := hrv ; simp
+            · simp only [hrv, ite_false] ; exact hr
+          · simp only [hc] ; exact hr
+      · simp only [hq, ite_false] ; exact hr
     | doReturn j mv =>
+      simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
+      by_cases hq : q = j
+      · subst hq ; simp only [ite_true] ; exact hr
+      · simp only [hq, ite_false] ; exact hr
+    | set_broadcast j bv =>
+      -- set_broadcast only changes broadcastVal; voteRecv unchanged.
       simp only [brb, Nat.zero_add] at htrans ; rw [htrans]
       by_cases hq : q = j <;> simp_all
 
 /-- Step-level corollary of voteRecv_list_stable: voteRecv(r,q,v) persists. -/
-theorem voteRecv_persist (sender : Fin n) (val : Value)
-    (e : exec (State n Value)) (hsafety : (brb n f Value sender val).safety e)
+theorem voteRecv_persist (sender : Fin n)
+    (e : exec (State n Value)) (hsafety : (brb n f Value sender).safety e)
     (r q : Fin n) (v : Value) (j d : Nat) :
     ((exec.drop j e 0).local_ r).voteRecv q v = true →
     ((exec.drop (j + d) e 0).local_ r).voteRecv q v = true := by
   intro h
-  have := voteRecv_list_stable n f Value sender val q v [r] (exec.drop j e)
+  have := voteRecv_list_stable n f Value sender q v [r] (exec.drop j e)
     ⟨by simp [state_pred] ; exact h,
      by intro j' ; rw [exec.drop_drop] ; exact hsafety.2 _⟩ d
   simp only [state_pred, exec.drop_drop] at this
   exact this r (List.mem_singleton.mpr rfl)
 
 /-- Step-level corollary of corrupt_persistent: ¬isCorrect persists. -/
-theorem isCorrect_persist (sender : Fin n) (val : Value)
-    (e : exec (State n Value)) (hsafety : (brb n f Value sender val).safety e)
+theorem isCorrect_persist (sender : Fin n)
+    (e : exec (State n Value)) (hsafety : (brb n f Value sender).safety e)
     (q : Fin n) (j d : Nat) :
     ¬isCorrect n Value (exec.drop j e 0) q →
     ¬isCorrect n Value (exec.drop (j + d) e 0) q := by
   intro h
-  have := corrupt_persistent n f Value sender val q (exec.drop j e)
+  have := corrupt_persistent n f Value sender q (exec.drop j e)
     ⟨h, by intro j' ; rw [exec.drop_drop] ; exact hsafety.2 _⟩ d
   simp only [state_pred, exec.drop_drop] at this
   exact this
 
 /-- Step-level corollary of countVoteRecv_stable: vote count threshold persists. -/
-theorem countVoteRecv_persist (sender : Fin n) (val : Value)
-    (e : exec (State n Value)) (hsafety : (brb n f Value sender val).safety e)
+theorem countVoteRecv_persist (sender : Fin n)
+    (e : exec (State n Value)) (hsafety : (brb n f Value sender).safety e)
     (q : Fin n) (v : Value) (threshold : Nat) (j d : Nat) :
     countVoteRecv n Value ((exec.drop j e 0).local_ q) v ≥ threshold →
     countVoteRecv n Value ((exec.drop (j + d) e 0).local_ q) v ≥ threshold := by
   intro h
-  have := countVoteRecv_stable n f Value sender val q v threshold (exec.drop j e)
+  have := countVoteRecv_stable n f Value sender q v threshold (exec.drop j e)
     ⟨h, by intro j' ; rw [exec.drop_drop] ; exact hsafety.2 _⟩ d
   simp only [state_pred, exec.drop_drop] at this
   exact this
 
 /-- Step-level corollary of voted_stable: voted(q,v) persists. -/
-theorem voted_persist (sender : Fin n) (val : Value)
-    (e : exec (State n Value)) (hsafety : (brb n f Value sender val).safety e)
+theorem voted_persist (sender : Fin n)
+    (e : exec (State n Value)) (hsafety : (brb n f Value sender).safety e)
     (q : Fin n) (v : Value) (j d : Nat) :
     ((exec.drop j e 0).local_ q).voted v = true →
     ((exec.drop (j + d) e 0).local_ q).voted v = true := by
   intro h
-  have := voted_stable n f Value sender val q v (exec.drop j e)
+  have := voted_stable n f Value sender q v (exec.drop j e)
     ⟨h, by intro j' ; rw [exec.drop_drop] ; exact hsafety.2 _⟩ d
   simp only [state_pred, exec.drop_drop] at this
   exact this
@@ -1740,11 +2344,11 @@ theorem voted_persist (sender : Fin n) (val : Value)
 /-- WF on correct send: if q voted v, then q eventually
     sends vote(v) to p. Uses WF on the correct send(q,p,.vote,v) action.
     The gate is enabled because voted(v) = true and sent = false. -/
-theorem wf_vote_send (sender : Fin n) (val : Value)
+theorem wf_vote_send (sender : Fin n)
     (q p : Fin n) (v : Value) :
     pred_implies
-      (tla_and (brb n f Value sender val).safety
-        (brb_fairness n f Value sender val))
+      (tla_and (brb n f Value sender).safety
+        (brb_fairness n f Value sender))
       [tlafml|
         ⌜ fun s => (s.local_ q).voted v = true ⌝ ↝
         ⌜ fun s => (s.local_ q).sent p .vote v = true ∨ ¬isCorrect n Value s q ⌝] := by
@@ -1753,11 +2357,11 @@ theorem wf_vote_send (sender : Fin n) (val : Value)
   -- Fairness action: correct send(q, p, .vote, v)
   let a : action (State n Value) :=
     fun s s' => isCorrect n Value s q ∧
-      brb_action n f Value sender val (.send q p .vote v) s s'
+      brb_action n f Value sender (.send q p .vote v) s s'
   exact wf1
     (state_pred (fun s => (s.local_ q).voted v = true))
     (state_pred (fun s => (s.local_ q).sent p .vote v = true ∨ ¬isCorrect n Value s q))
-    ((brb n f Value sender val).next)
+    ((brb n f Value sender).next)
     a e
     ⟨by -- Persistence: p ∧ ⟨next⟩ ⇒ ◯p ∨ ◯q
         -- voted is stable under all actions, so ◯p always holds
@@ -1774,33 +2378,43 @@ theorem wf_vote_send (sender : Fin n) (val : Value)
         | send s d t mv =>
           left ; simp only [brb] at htrans ; rw [htrans]
           by_cases hq : q = s
-          · cases t <;> simp_all
-            -- .vote: voted may grow
-            by_cases hc : s ∈ (e k).corrupted <;> simp [hc]
-            · exact hvoted
-            · by_cases hv : v = mv <;> simp [hv, hvoted]
-          · simp [hq] ; exact hvoted
+          · subst hq ; cases t
+            · simp only [ite_true] ; exact hvoted  -- init
+            · simp only [ite_true] ; exact hvoted  -- echo
+            · -- vote: voted may grow
+              simp only [ite_true]
+              split
+              · -- isTrue: ¬q ∈ corrupted, voted = fun w => if w = mv then true else old.voted w
+                by_cases hv : v = mv
+                · subst hv ; simp only [ite_true]  -- v = mv: true
+                · simp only [hv, ite_false] ; exact hvoted  -- v ≠ mv: old.voted v = hvoted
+              · -- isFalse: q ∈ corrupted, voted unchanged
+                exact hvoted
+          · simp only [hq, ite_false] ; exact hvoted
         | recv s d t mv =>
-          left ; simp only [brb] at htrans ; rw [htrans]
-          by_cases hq : q = d
-          · simp only [apply_ite LocalState.voted, hq]
-            cases t <;> simp <;> split <;> simp_all
-          · simp [hq] ; exact hvoted
+          left ; rw [recv_preserves_voted n f Value sender _ _ s d t mv htrans q v]
+          exact hvoted
         | doReturn j mv =>
+          left ; simp only [brb] at htrans ; rw [htrans]
+          by_cases hq : q = j
+          · subst hq ; simp only [ite_true] ; exact hvoted
+          · simp only [hq, ite_false] ; exact hvoted
+        | set_broadcast j bv =>
+          -- set_broadcast only changes broadcastVal; voted unchanged.
           left ; simp only [brb] at htrans ; rw [htrans]
           by_cases hq : q = j <;> simp_all,
      by -- Progress: p ∧ ⟨next⟩ ∧ ⟨a⟩ ⇒ ◯q
         -- When correct send(q,p,.vote,v) fires, sent becomes true
         intro k ; dsimp only [tlasimp_def]
         intro ⟨_, _, ha⟩
-        simp only [exec.drop, Nat.zero_add] at ha ⊢
+        simp only [drop_zero] at ha ⊢
         obtain ⟨_, _, htrans⟩ := ha
         simp only [brb] at htrans ; rw [htrans]
         left ; simp,
      by -- Enabledness: p ⇒ Enabled a ∨ q
         intro k ; dsimp only [tlasimp_def]
         intro hvoted
-        simp only [exec.drop, Nat.zero_add] at hvoted ⊢
+        simp only [drop_zero] at hvoted ⊢
         by_cases hsent : ((e k).local_ q).sent p .vote v = true
         · right ; left ; exact hsent
         · by_cases hcorr : isCorrect n Value (e k) q
@@ -1817,11 +2431,11 @@ theorem wf_vote_send (sender : Fin n) (val : Value)
 /-- WF on correct send (threshold): if q has ≥ f+1 votes for v, then q eventually sends vote(v) to p. The vote gate is
     enabled by the threshold (third disjunct), and the send also sets
     voted(v) = true for correct q. -/
-theorem wf_vote_threshold_send (sender : Fin n) (val : Value)
+theorem wf_vote_threshold_send (sender : Fin n)
     (q p : Fin n) (v : Value) :
     pred_implies
-      (tla_and (brb n f Value sender val).safety
-        (brb_fairness n f Value sender val))
+      (tla_and (brb n f Value sender).safety
+        (brb_fairness n f Value sender))
       [tlafml|
         ⌜ fun s => countVoteRecv n Value (s.local_ q) v ≥ voteThreshold f ⌝ ↝
         ⌜ fun s => (s.local_ q).sent p .vote v = true ∨ ¬isCorrect n Value s q ⌝] := by
@@ -1829,11 +2443,11 @@ theorem wf_vote_threshold_send (sender : Fin n) (val : Value)
   obtain ⟨hwf_send, _, _⟩ := hfair
   let a : action (State n Value) :=
     fun s s' => isCorrect n Value s q ∧
-      brb_action n f Value sender val (.send q p .vote v) s s'
+      brb_action n f Value sender (.send q p .vote v) s s'
   exact wf1
     (state_pred (fun s => countVoteRecv n Value (s.local_ q) v ≥ voteThreshold f))
     (state_pred (fun s => (s.local_ q).sent p .vote v = true ∨ ¬isCorrect n Value s q))
-    ((brb n f Value sender val).next)
+    ((brb n f Value sender).next)
     a e
     ⟨by -- Persistence: countVoteRecv is monotone, so ◯p always holds
         intro k ; dsimp only [tlasimp_def]
@@ -1850,33 +2464,50 @@ theorem wf_vote_threshold_send (sender : Fin n) (val : Value)
           left ; simp only [brb] at htrans ; rw [htrans]
           simp only [countVoteRecv] ; apply Nat.le_trans hcount
           apply filter_length_mono ; intro r hr
-          by_cases hqr : q = s <;> simp_all
+          by_cases hqr : q = s
+          · subst hqr ; simp only [ite_true] ; exact hr
+          · simp only [hqr, ite_false] ; exact hr
         | recv s d t mv =>
           left ; simp only [brb] at htrans ; rw [htrans]
           simp only [countVoteRecv] ; apply Nat.le_trans hcount
           apply filter_length_mono ; intro r hr
           by_cases hqr : q = d
-          · simp only [apply_ite LocalState.voteRecv, hqr]
-            cases t <;> simp <;> split <;> simp_all
-          · simp_all
+          · subst hqr ; simp only [ite_true]
+            cases t
+            · simp only [apply_ite LocalState.voteRecv] ; split <;> exact hr  -- init
+            · simp only [apply_ite LocalState.voteRecv] ; split <;> exact hr  -- echo
+            · -- vote: voteRecv may grow
+              by_cases hc : ((e k).local_ q).voteRecv s mv = false
+              · simp only [hc, ite_true]
+                by_cases hrv : r = s ∧ v = mv
+                · obtain ⟨rfl, rfl⟩ := hrv ; simp
+                · simp only [hrv, ite_false] ; exact hr
+              · simp only [hc] ; exact hr
+          · simp only [hqr, ite_false] ; exact hr
         | doReturn j mv =>
           simp only [brb] at htrans ; rw [htrans]
           by_cases hj : q = j
           · left ; rw [hj] at hcount
             simp only [hj, ite_true]
             simp only [countVoteRecv] ; exact hcount
-          · left ; simp [hj] ; omega,
+          · left ; simp [hj] ; omega
+        | set_broadcast j bv =>
+          -- set_broadcast only changes broadcastVal; voteRecv/countVoteRecv unchanged.
+          left ; simp only [brb] at htrans ; rw [htrans]
+          simp only [countVoteRecv] ; apply Nat.le_trans hcount
+          apply filter_length_mono ; intro r hr
+          by_cases hq : q = j <;> simp_all,
      by -- Progress: when correct send(q,p,.vote,v) fires, sent becomes true
         intro k ; dsimp only [tlasimp_def]
         intro ⟨_, _, ha⟩
-        simp only [exec.drop, Nat.zero_add] at ha ⊢
+        simp only [drop_zero] at ha ⊢
         obtain ⟨_, _, htrans⟩ := ha
         simp only [brb] at htrans ; rw [htrans]
         left ; simp,
      by -- Enabledness: countVoteRecv ≥ f+1 ⇒ Enabled a ∨ q
         intro k ; dsimp only [tlasimp_def]
         intro hcount
-        simp only [exec.drop, Nat.zero_add] at hcount ⊢
+        simp only [drop_zero] at hcount ⊢
         by_cases hsent : ((e k).local_ q).sent p .vote v = true
         · right ; left ; exact hsent
         · by_cases hcorr : isCorrect n Value (e k) q
@@ -1893,11 +2524,11 @@ theorem wf_vote_threshold_send (sender : Fin n) (val : Value)
 
 /-- WF on doReturn: if r has ≥ n-f votes for v, then r eventually returns.
     The doReturn gate requires isCorrect, returned = none, and the threshold. -/
-theorem wf_return (sender : Fin n) (val : Value)
+theorem wf_return (sender : Fin n)
     (r : Fin n) (v : Value) :
     pred_implies
-      (tla_and (brb n f Value sender val).safety
-        (brb_fairness n f Value sender val))
+      (tla_and (brb n f Value sender).safety
+        (brb_fairness n f Value sender))
       [tlafml|
         ⌜ fun s => countVoteRecv n Value (s.local_ r) v ≥ returnThreshold n f ⌝ ↝
         ⌜ fun s => (s.local_ r).returned ≠ none ∨ ¬isCorrect n Value s r ⌝] := by
@@ -1906,8 +2537,8 @@ theorem wf_return (sender : Fin n) (val : Value)
   exact wf1
     (state_pred (fun s => countVoteRecv n Value (s.local_ r) v ≥ returnThreshold n f))
     (state_pred (fun s => (s.local_ r).returned ≠ none ∨ ¬isCorrect n Value s r))
-    ((brb n f Value sender val).next)
-    (brb_action n f Value sender val (.doReturn r v))
+    ((brb n f Value sender).next)
+    (brb_action n f Value sender (.doReturn r v))
     e
     ⟨by -- Persistence: p ∧ ⟨next⟩ ⇒ ◯p ∨ ◯q
         intro k ; dsimp only [tlasimp_def]
@@ -1924,20 +2555,37 @@ theorem wf_return (sender : Fin n) (val : Value)
           left ; simp only [brb] at htrans ; rw [htrans]
           simp only [countVoteRecv] ; apply Nat.le_trans hcount
           apply filter_length_mono ; intro q hq
-          by_cases hqr : r = s <;> simp_all
+          by_cases hqr : r = s
+          · subst hqr ; simp only [ite_true] ; exact hq
+          · simp only [hqr, ite_false] ; exact hq
         | recv s d t mv =>
           left ; simp only [brb] at htrans ; rw [htrans]
           simp only [countVoteRecv] ; apply Nat.le_trans hcount
           apply filter_length_mono ; intro q hq
           by_cases hqr : r = d
-          · simp only [apply_ite LocalState.voteRecv, hqr]
-            cases t <;> simp <;> split <;> simp_all
-          · simp_all
+          · subst hqr ; simp only [ite_true]
+            cases t
+            · simp only [apply_ite LocalState.voteRecv] ; split <;> exact hq  -- init
+            · simp only [apply_ite LocalState.voteRecv] ; split <;> exact hq  -- echo
+            · -- vote: voteRecv may grow
+              by_cases hc : ((e k).local_ r).voteRecv s mv = false
+              · simp only [hc, ite_true]
+                by_cases hqv : q = s ∧ v = mv
+                · obtain ⟨rfl, rfl⟩ := hqv ; simp
+                · simp only [hqv, ite_false] ; exact hq
+              · simp only [hc] ; exact hq
+          · simp only [hqr, ite_false] ; exact hq
         | doReturn j mv =>
           simp only [brb] at htrans ; rw [htrans]
           by_cases hj : r = j
           · right ; left ; simp [hj]
-          · left ; simp [hj] ; omega,
+          · left ; simp [hj] ; omega
+        | set_broadcast j bv =>
+          -- set_broadcast only changes broadcastVal; voteRecv/countVoteRecv unchanged.
+          left ; simp only [brb] at htrans ; rw [htrans]
+          simp only [countVoteRecv] ; apply Nat.le_trans hcount
+          apply filter_length_mono ; intro q hq
+          by_cases hr : r = j <;> simp_all,
      by -- Progress: p ∧ ⟨next⟩ ∧ ⟨a⟩ ⇒ ◯q
         intro k ; dsimp only [tlasimp_def]
         intro ⟨_, _, ha⟩
@@ -1962,11 +2610,11 @@ theorem wf_return (sender : Fin n) (val : Value)
 
 /-- WF on recv: if a vote message is in the buffer, it is eventually
     received. Uses WF on the recv(src,dst,.vote,v) action. -/
-theorem wf_deliver (sender : Fin n) (val : Value)
+theorem wf_deliver (sender : Fin n)
     (src dst : Fin n) (v : Value) :
     pred_implies
-      (tla_and (brb n f Value sender val).safety
-        (brb_fairness n f Value sender val))
+      (tla_and (brb n f Value sender).safety
+        (brb_fairness n f Value sender))
       [tlafml|
         ⌜ fun s => s.buffer ⟨src, dst, .vote, v⟩ = true ⌝ ↝
         ⌜ fun s => (s.local_ dst).voteRecv src v = true ⌝] := by
@@ -1975,8 +2623,8 @@ theorem wf_deliver (sender : Fin n) (val : Value)
   exact wf1
     (state_pred (fun s => s.buffer ⟨src, dst, .vote, v⟩ = true))
     (state_pred (fun s => (s.local_ dst).voteRecv src v = true))
-    ((brb n f Value sender val).next)
-    (brb_action n f Value sender val (.recv src dst .vote v))
+    ((brb n f Value sender).next)
+    (brb_action n f Value sender (.recv src dst .vote v))
     e
     ⟨by -- Persistence: p ∧ ⟨next⟩ ⇒ ◯p ∨ ◯q
         intro k ; dsimp only [tlasimp_def]
@@ -1984,31 +2632,36 @@ theorem wf_deliver (sender : Fin n) (val : Value)
         simp only [exec.drop, ActionSpec.next, GatedAction.fires] at hbuf hnext_k ⊢
         obtain ⟨action, _, htrans⟩ := hnext_k
         cases action with
-        | corrupt j => left ; simp only [brb] at htrans ; rw [htrans] ; exact hbuf
-        | send s d t mv => left ; simp only [brb] at htrans ; rw [htrans] ; dsimp ; simp_all
+        | corrupt j | doReturn j mv => left ; simp only [brb] at htrans ; rw [htrans] ; exact hbuf
+        | send s d t mv =>
+          left ; simp only [brb] at htrans ; rw [htrans]
+          by_cases hm : (⟨src, dst, MsgType.vote, v⟩ : Message n Value) = ⟨s, d, t, mv⟩
+          · simp [hm]
+          · simp only [hm, ite_false] ; exact hbuf
         | recv s d t mv =>
           simp only [brb] at htrans
           by_cases hm : (⟨s, d, t, mv⟩ : Message n Value) = ⟨src, dst, .vote, v⟩
           · right ; obtain ⟨rfl, rfl, rfl, rfl⟩ := Message.mk.inj hm
-            rw [htrans] ; simp only [] ; split
-            · -- outer isTrue: voteRecv was false, struct updated
-              -- need to show updated voteRecv at (s, mv) = true
-              -- updated voteRecv = fun q w => decide (q=s) && decide (w=mv) || old
-              -- at (s, mv): decide (s=s) && decide (mv=mv) || old = true
-              simp only [apply_ite LocalState.voteRecv]
-              split
-              · simp [and_self]
-              · simp_all
-            · -- outer isFalse: voteRecv was already true, state unchanged
-              rename_i h ; cases ((e k).local_ d).voteRecv s mv <;> simp_all
-          · left ; rw [htrans] ; simp only [] ; simp only [Ne.symm hm, ite_false] ; exact hbuf;
-        | doReturn j mv => left ; simp only [brb] at htrans ; rw [htrans] ; exact hbuf,
+            rw [htrans]
+            simp only [ite_true]
+            by_cases hc : ((e (0 + k)).local_ d).voteRecv s mv = false
+            · simp only [hc, ite_true] ; simp
+            · simp only [hc] ; exact (Bool.not_eq_false _).mp hc
+          · left ; rw [htrans] ; simp only [] ; simp only [Ne.symm hm, ite_false] ; exact hbuf
+        | set_broadcast j bv =>
+          -- set_broadcast doesn't change the buffer; message stays.
+          left ; simp only [brb] at htrans ; rw [htrans] ; exact hbuf,
      by -- Progress: p ∧ ⟨next⟩ ∧ ⟨a⟩ ⇒ ◯q
         intro k ; dsimp only [tlasimp_def]
         intro ⟨_, _, ha⟩
         simp only [exec.drop, brb_action, GatedAction.fires] at ha ⊢
         obtain ⟨_, htrans⟩ := ha
-        simp only [brb] at htrans ; rw [htrans] ; simp ; split <;> simp_all,
+        simp only [brb] at htrans ; rw [htrans] ; simp only [ite_true]
+        split
+        · -- voteRecv src v = false: new entry added, goal is true
+          simp only [ite_true, and_self]
+        · -- voteRecv src v ≠ false: old state, but this branch has the old voteRecv = true
+          rename_i h ; exact (Bool.not_eq_false _).mp h,
      by -- Enabledness: p ⇒ Enabled a ∨ q
         intro k ; dsimp only [tlasimp_def]
         intro hbuf ; left
@@ -2030,18 +2683,18 @@ theorem wf_deliver (sender : Fin n) (val : Value)
     - If q already sent: message is in buffer or already received (tracking).
     - Buffer message → received (wf_deliver).
     - If q gets corrupted: ¬isCorrect escape. -/
-theorem vote_delivery (sender : Fin n) (val : Value)
+theorem vote_delivery (sender : Fin n)
     (q r : Fin n) (v : Value) :
     pred_implies
-      (tla_and (brb n f Value sender val).safety
-        (brb_fairness n f Value sender val))
+      (tla_and (brb n f Value sender).safety
+        (brb_fairness n f Value sender))
       [tlafml|
         ⌜ fun s => (s.local_ q).voted v = true ⌝ ↝
         ⌜ fun s => (s.local_ r).voteRecv q v = true ∨ ¬isCorrect n Value s q ⌝] := by
   intro e ⟨hsafety, hfair⟩
-  have hwf1 := wf_vote_send n f Value sender val q r v e ⟨hsafety, hfair⟩
-  have hwf2 := wf_deliver n f Value sender val q r v e ⟨hsafety, hfair⟩
-  have htrack := vote_msg_tracking n f Value sender val e hsafety
+  have hwf1 := wf_vote_send n f Value sender q r v e ⟨hsafety, hfair⟩
+  have hwf2 := wf_deliver n f Value sender q r v e ⟨hsafety, hfair⟩
+  have htrack := vote_msg_tracking n f Value sender e hsafety
   intro k hvoted
   -- Step 1: voted → eventually sent ∨ ¬isCorrect
   obtain ⟨k1, hsent_or⟩ := hwf1 k hvoted
@@ -2053,7 +2706,7 @@ theorem vote_delivery (sender : Fin n) (val : Value)
       obtain ⟨k2, hvr⟩ := hwf2 (k + k1) hbuf
       rw [exec.drop_drop] at hvr
       exact ⟨k1 + k2, by
-        rw [exec.drop_drop, show k + (k1 + k2) = (k + k1) + k2 from by omega]
+        rw [exec.drop_drop, ← Nat.add_assoc]
         exact Or.inl hvr⟩
     · exact ⟨k1, by rw [exec.drop_drop] ; exact Or.inl hvr⟩
   · exact ⟨k1, by rw [exec.drop_drop] ; exact Or.inr hcorr⟩
@@ -2063,18 +2716,18 @@ theorem vote_delivery (sender : Fin n) (val : Value)
     Chain: wf_vote_threshold_send(q,r) → vote_msg_tracking → wf_deliver(q,r).
     Same structure as vote_delivery but triggered by the vote threshold
     instead of an existing voted flag. -/
-theorem vote_threshold_delivery (sender : Fin n) (val : Value)
+theorem vote_threshold_delivery (sender : Fin n)
     (q r : Fin n) (v : Value) :
     pred_implies
-      (tla_and (brb n f Value sender val).safety
-        (brb_fairness n f Value sender val))
+      (tla_and (brb n f Value sender).safety
+        (brb_fairness n f Value sender))
       [tlafml|
         ⌜ fun s => countVoteRecv n Value (s.local_ q) v ≥ voteThreshold f ⌝ ↝
         ⌜ fun s => (s.local_ r).voteRecv q v = true ∨ ¬isCorrect n Value s q ⌝] := by
   intro e ⟨hsafety, hfair⟩
-  have hwf1 := wf_vote_threshold_send n f Value sender val q r v e ⟨hsafety, hfair⟩
-  have hwf2 := wf_deliver n f Value sender val q r v e ⟨hsafety, hfair⟩
-  have htrack := vote_msg_tracking n f Value sender val e hsafety
+  have hwf1 := wf_vote_threshold_send n f Value sender q r v e ⟨hsafety, hfair⟩
+  have hwf2 := wf_deliver n f Value sender q r v e ⟨hsafety, hfair⟩
+  have htrack := vote_msg_tracking n f Value sender e hsafety
   intro k hcount
   -- Step 1: threshold → eventually sent ∨ ¬isCorrect
   obtain ⟨k1, hsent_or⟩ := hwf1 k hcount
@@ -2086,7 +2739,7 @@ theorem vote_threshold_delivery (sender : Fin n) (val : Value)
       obtain ⟨k2, hvr⟩ := hwf2 (k + k1) hbuf
       rw [exec.drop_drop] at hvr
       exact ⟨k1 + k2, by
-        rw [exec.drop_drop, show k + (k1 + k2) = (k + k1) + k2 from by omega]
+        rw [exec.drop_drop, ← Nat.add_assoc]
         exact Or.inl hvr⟩
     · exact ⟨k1, by rw [exec.drop_drop] ; exact Or.inl hvr⟩
   · exact ⟨k1, by rw [exec.drop_drop] ; exact Or.inr hcorr⟩
@@ -2103,11 +2756,11 @@ theorem vote_threshold_delivery (sender : Fin n) (val : Value)
 /-- Combine vote deliveries: if every q in l voted v at step k, then
     eventually for every q in l, voteRecv(r,q,v) or ¬isCorrect(q).
     Also preserves any voteRecv already true at step k. -/
-theorem combine_vote_delivery (sender : Fin n) (val : Value)
+theorem combine_vote_delivery (sender : Fin n)
     (r : Fin n) (v : Value)
     (e : exec (State n Value)) (k : Nat)
-    (hsafety : (brb n f Value sender val).safety e)
-    (hfair : brb_fairness n f Value sender val e)
+    (hsafety : (brb n f Value sender).safety e)
+    (hfair : brb_fairness n f Value sender e)
     (l : List (Fin n)) :
     ∃ kl,
       (∀ q ∈ l, ((exec.drop k e 0).local_ q).voted v = true →
@@ -2120,27 +2773,27 @@ theorem combine_vote_delivery (sender : Fin n) (val : Value)
   | nil => exact ⟨0, fun _ h => absurd h (by simp), fun _ h => by simp at h ⊢ ; exact h⟩
   | cons q₀ l' ih =>
     obtain ⟨kl', hdel', hmono'⟩ := ih
-    have hvd := vote_delivery n f Value sender val q₀ r v e ⟨hsafety, hfair⟩
+    have hvd := vote_delivery n f Value sender q₀ r v e ⟨hsafety, hfair⟩
     -- Split on whether voted(q₀) holds at step k
     by_cases hvq : ((exec.drop k e 0).local_ q₀).voted v = true
     · -- voted(q₀) at k → persists to k+kl' → vote_delivery gives k₀
-      have hvq' := voted_persist n f Value sender val e hsafety q₀ v k kl' hvq
+      have hvq' := voted_persist n f Value sender e hsafety q₀ v k kl' hvq
       obtain ⟨k₀, hq₀⟩ := hvd (k + kl') hvq'
       rw [exec.drop_drop] at hq₀
       refine ⟨kl' + k₀, fun q hq hvoted => ?_, fun q h => ?_⟩
       · -- Delivery for q ∈ q₀ :: l'
         rcases List.mem_cons.mp hq with rfl | hq'
         · -- q = q₀: result from vote_delivery at step k+kl'+k₀
-          rw [show k + (kl' + k₀) = (k + kl') + k₀ from by omega] ; exact hq₀
+          rw [← Nat.add_assoc] ; exact hq₀
         · -- q ∈ l': IH result at k+kl', extended to k+kl'+k₀
           rcases hdel' q hq' hvoted with hvr | hcorr
-          · left ; rw [show k + (kl' + k₀) = (k + kl') + k₀ from by omega]
-            exact voteRecv_persist n f Value sender val e hsafety r q v (k + kl') k₀ hvr
-          · right ; rw [show k + (kl' + k₀) = (k + kl') + k₀ from by omega]
-            exact isCorrect_persist n f Value sender val e hsafety q (k + kl') k₀ hcorr
+          · left ; rw [← Nat.add_assoc]
+            exact voteRecv_persist n f Value sender e hsafety r q v (k + kl') k₀ hvr
+          · right ; rw [← Nat.add_assoc]
+            exact isCorrect_persist n f Value sender e hsafety q (k + kl') k₀ hcorr
       · -- Monotonicity: voteRecv at k → voteRecv at k+kl'+k₀
-        rw [show k + (kl' + k₀) = (k + kl') + k₀ from by omega]
-        exact voteRecv_persist n f Value sender val e hsafety r q v (k + kl') k₀ (hmono' q h)
+        rw [← Nat.add_assoc]
+        exact voteRecv_persist n f Value sender e hsafety r q v (k + kl') k₀ (hmono' q h)
     · -- voted(q₀) doesn't hold at k: vacuous for q₀, IH for l'
       exact ⟨kl', fun q hq hvoted => by
         rcases List.mem_cons.mp hq with rfl | hq'
@@ -2150,11 +2803,11 @@ theorem combine_vote_delivery (sender : Fin n) (val : Value)
 /-- Combine vote threshold deliveries: if every q in l has ≥ f+1 votes
     for v at step k, then eventually for every q in l, voteRecv(r,q,v)
     or ¬isCorrect(q). Also preserves existing voteRecv values. -/
-theorem combine_vote_threshold_delivery (sender : Fin n) (val : Value)
+theorem combine_vote_threshold_delivery (sender : Fin n)
     (r : Fin n) (v : Value)
     (e : exec (State n Value)) (k : Nat)
-    (hsafety : (brb n f Value sender val).safety e)
-    (hfair : brb_fairness n f Value sender val e)
+    (hsafety : (brb n f Value sender).safety e)
+    (hfair : brb_fairness n f Value sender e)
     (l : List (Fin n)) :
     ∃ kl,
       (∀ q ∈ l, countVoteRecv n Value ((exec.drop k e 0).local_ q) v ≥ voteThreshold f →
@@ -2166,22 +2819,22 @@ theorem combine_vote_threshold_delivery (sender : Fin n) (val : Value)
   | nil => exact ⟨0, fun _ h => absurd h (by simp), fun _ h => by simp at h ⊢ ; exact h⟩
   | cons q₀ l' ih =>
     obtain ⟨kl', hdel', hmono'⟩ := ih
-    have hvd := vote_threshold_delivery n f Value sender val q₀ r v e ⟨hsafety, hfair⟩
+    have hvd := vote_threshold_delivery n f Value sender q₀ r v e ⟨hsafety, hfair⟩
     by_cases hvq : countVoteRecv n Value ((exec.drop k e 0).local_ q₀) v ≥ voteThreshold f
     · -- countVoteRecv ≥ f+1 at k → persists to k+kl' → vote_threshold_delivery gives k₀
-      have hvq' := countVoteRecv_persist n f Value sender val e hsafety q₀ v (voteThreshold f) k kl' hvq
+      have hvq' := countVoteRecv_persist n f Value sender e hsafety q₀ v (voteThreshold f) k kl' hvq
       obtain ⟨k₀, hq₀⟩ := hvd (k + kl') hvq'
       rw [exec.drop_drop] at hq₀
       refine ⟨kl' + k₀, fun q hq hcount => ?_, fun q h => ?_⟩
       · rcases List.mem_cons.mp hq with rfl | hq'
-        · rw [show k + (kl' + k₀) = (k + kl') + k₀ from by omega] ; exact hq₀
+        · rw [← Nat.add_assoc] ; exact hq₀
         · rcases hdel' q hq' hcount with hvr | hcorr
-          · left ; rw [show k + (kl' + k₀) = (k + kl') + k₀ from by omega]
-            exact voteRecv_persist n f Value sender val e hsafety r q v (k + kl') k₀ hvr
-          · right ; rw [show k + (kl' + k₀) = (k + kl') + k₀ from by omega]
-            exact isCorrect_persist n f Value sender val e hsafety q (k + kl') k₀ hcorr
-      · rw [show k + (kl' + k₀) = (k + kl') + k₀ from by omega]
-        exact voteRecv_persist n f Value sender val e hsafety r q v (k + kl') k₀ (hmono' q h)
+          · left ; rw [← Nat.add_assoc]
+            exact voteRecv_persist n f Value sender e hsafety r q v (k + kl') k₀ hvr
+          · right ; rw [← Nat.add_assoc]
+            exact isCorrect_persist n f Value sender e hsafety q (k + kl') k₀ hcorr
+      · rw [← Nat.add_assoc]
+        exact voteRecv_persist n f Value sender e hsafety r q v (k + kl') k₀ (hmono' q h)
     · exact ⟨kl', fun q hq hcount => by
         rcases List.mem_cons.mp hq with rfl | hq'
         · exact absurd hcount hvq
@@ -2189,11 +2842,11 @@ theorem combine_vote_threshold_delivery (sender : Fin n) (val : Value)
 
 /-- Combine returns: if every q in l has ≥ n-f votes for v at step k,
     then eventually every q in l has returned or got corrupted. -/
-theorem combine_return (sender : Fin n) (val : Value)
+theorem combine_return (sender : Fin n)
     (v : Value)
     (e : exec (State n Value)) (k : Nat)
-    (hsafety : (brb n f Value sender val).safety e)
-    (hfair : brb_fairness n f Value sender val e)
+    (hsafety : (brb n f Value sender).safety e)
+    (hfair : brb_fairness n f Value sender e)
     (l : List (Fin n)) :
     ∃ kl,
       ∀ q ∈ l, countVoteRecv n Value ((exec.drop k e 0).local_ q) v ≥ returnThreshold n f →
@@ -2203,7 +2856,7 @@ theorem combine_return (sender : Fin n) (val : Value)
   have ret_persist : ∀ q' j d, ((exec.drop j e 0).local_ q').returned ≠ none →
       ((exec.drop (j + d) e 0).local_ q').returned ≠ none := by
     intro q' j d h
-    have := returned_stable n f Value sender val q' (exec.drop j e)
+    have := returned_stable n f Value sender q' (exec.drop j e)
       ⟨h, by intro j' ; rw [exec.drop_drop] ; exact hsafety.2 _⟩ d
     simp only [state_pred, exec.drop_drop] at this
     exact this
@@ -2211,20 +2864,20 @@ theorem combine_return (sender : Fin n) (val : Value)
   | nil => exact ⟨0, fun _ h => absurd h (by simp)⟩
   | cons q₀ l' ih =>
     obtain ⟨kl', hdel'⟩ := ih
-    have hwr := wf_return n f Value sender val q₀ v e ⟨hsafety, hfair⟩
+    have hwr := wf_return n f Value sender q₀ v e ⟨hsafety, hfair⟩
     by_cases hvq : countVoteRecv n Value ((exec.drop k e 0).local_ q₀) v ≥ returnThreshold n f
     · -- count ≥ threshold at k → persists to k+kl' → wf_return gives k₀
-      have hvq' := countVoteRecv_persist n f Value sender val e hsafety q₀ v (returnThreshold n f) k kl' hvq
+      have hvq' := countVoteRecv_persist n f Value sender e hsafety q₀ v (returnThreshold n f) k kl' hvq
       obtain ⟨k₀, hq₀⟩ := hwr (k + kl') hvq'
       rw [exec.drop_drop] at hq₀
       exact ⟨kl' + k₀, fun q hq hcount => by
         rcases List.mem_cons.mp hq with rfl | hq'
-        · rw [show k + (kl' + k₀) = (k + kl') + k₀ from by omega] ; exact hq₀
+        · rw [← Nat.add_assoc] ; exact hq₀
         · rcases hdel' q hq' hcount with hret | hcorr
-          · left ; rw [show k + (kl' + k₀) = (k + kl') + k₀ from by omega]
+          · left ; rw [← Nat.add_assoc]
             exact ret_persist q (k + kl') k₀ hret
-          · right ; rw [show k + (kl' + k₀) = (k + kl') + k₀ from by omega]
-            exact isCorrect_persist n f Value sender val e hsafety q (k + kl') k₀ hcorr⟩
+          · right ; rw [← Nat.add_assoc]
+            exact isCorrect_persist n f Value sender e hsafety q (k + kl') k₀ hcorr⟩
     · exact ⟨kl', fun q hq hcount => by
         rcases List.mem_cons.mp hq with rfl | hq'
         · exact absurd hcount hvq
@@ -2244,11 +2897,11 @@ theorem combine_return (sender : Fin n) (val : Value)
     Proof: call combine_vote_delivery for each receiver, take the max offset,
     use voteRecv monotonicity (voteRecv_list_stable) to show earlier results
     persist, then apply the counting argument (filter_split + pigeonhole). -/
-theorem combine_vote_delivery_all_receivers (sender : Fin n) (val : Value) (hn : n > 3 * f)
+theorem combine_vote_delivery_all_receivers (sender : Fin n) (hn : n > 3 * f)
     (p : Fin n) (v : Value)
     (e : exec (State n Value)) (k : Nat)
-    (hsafety : (brb n f Value sender val).safety e)
-    (hfair : brb_fairness n f Value sender val e)
+    (hsafety : (brb n f Value sender).safety e)
+    (hfair : brb_fairness n f Value sender e)
     (hvback : countVoteRecv n Value ((exec.drop k e 0).local_ p) v ≥ returnThreshold n f) :
     ∃ k1,
       ∀ q, countVoteRecv n Value ((exec.drop (k + k1) e 0).local_ q) v ≥ voteThreshold f
@@ -2264,19 +2917,20 @@ theorem combine_vote_delivery_all_receivers (sender : Fin n) (val : Value) (hn :
   | cons r receivers ih =>
     obtain ⟨k1', hall'⟩ := ih
     -- Step 1: Get the invariant at step k+k1' (vote trace + budget)
+    -- Use the invariant with v as the val parameter (only budget + vote trace needed)
     have hinv := init_invariant
-      (brb_inv_init n f Value sender val)
-      (fun s s' hn' hi => brb_inv_step n f Value sender val hn s s' hn' hi)
+      (brb_inv_init n f Value sender v)
+      (fun s s' hn' hi => brb_inv_step n f Value sender v hn s s' hn' hi)
       e hsafety
-    obtain ⟨hbudget', _, _, hvtrace', _, _, _, _, _, _⟩ := hinv (k + k1')
+    obtain ⟨hbudget', _, _, hvtrace', _, _, _, _, _, _, _⟩ := hinv (k + k1')
     -- hvtrace': correct source q with voteRecv(p,q,v) at step k+k1' has voted(q,v)
     -- hbudget': |corrupted| ≤ f at step k+k1'
     -- Step 2: Apply combine_vote_delivery for receiver r at step k+k1'
     -- Need: vote sources still have voteRecv at p at step k+k1' (by voteRecv_persist)
-    have hvback' := countVoteRecv_persist n f Value sender val e hsafety p v
+    have hvback' := countVoteRecv_persist n f Value sender e hsafety p v
       (returnThreshold n f) k k1' hvback
     obtain ⟨k₀, hdel_r, hmono_r⟩ :=
-      combine_vote_delivery n f Value sender val r v e (k + k1') hsafety hfair (List.finRange n)
+      combine_vote_delivery n f Value sender r v e (k + k1') hsafety hfair (List.finRange n)
     -- hdel_r: ∀ q ∈ finRange n, voted(q,v) at k+k1' → voteRecv(r,q,v) ∨ ¬isCorrect(q) at k+k1'+k₀
     -- hmono_r: voteRecv at k+k1' preserved at k+k1'+k₀
     -- Step 3: Counting argument → r has ≥ f+1 votes at step k+k1'+k₀
@@ -2298,7 +2952,7 @@ theorem combine_vote_delivery_all_receivers (sender : Fin n) (val : Value) (hn :
           · right ; simp only [B, decide_eq_true_eq, isCorrect] at hc ⊢
             exact Classical.not_not.mp hc
         · right ; simp only [B, decide_eq_true_eq]
-          have := isCorrect_persist n f Value sender val e hsafety q (k + k1') k₀ hcq
+          have := isCorrect_persist n f Value sender e hsafety q (k + k1') k₀ hcq
           simp only [isCorrect, Classical.not_not] at this ; exact this
       -- Fact 3: |filter B| ≤ f
       obtain ⟨hbudget_k, _⟩ := hinv ((k + k1') + k₀)
@@ -2329,13 +2983,13 @@ theorem combine_vote_delivery_all_receivers (sender : Fin n) (val : Value) (hn :
     refine ⟨k1' + k₀, fun q hq => ?_⟩
     rcases List.mem_cons.mp hq with rfl | hq'
     · -- q = r: use hf1_r
-      left ; rw [show k + (k1' + k₀) = (k + k1') + k₀ from by omega] ; exact hf1_r
+      left ; rw [← Nat.add_assoc] ; exact hf1_r
     · -- q ∈ receivers: IH result at k+k1', extended to k+k1'+k₀
       rcases hall' q hq' with hcount | hcorr
-      · left ; rw [show k + (k1' + k₀) = (k + k1') + k₀ from by omega]
-        exact countVoteRecv_persist n f Value sender val e hsafety q v (voteThreshold f) (k + k1') k₀ hcount
-      · right ; rw [show k + (k1' + k₀) = (k + k1') + k₀ from by omega]
-        exact isCorrect_persist n f Value sender val e hsafety q (k + k1') k₀ hcorr
+      · left ; rw [← Nat.add_assoc]
+        exact countVoteRecv_persist n f Value sender e hsafety q v (voteThreshold f) (k + k1') k₀ hcount
+      · right ; rw [← Nat.add_assoc]
+        exact isCorrect_persist n f Value sender e hsafety q (k + k1') k₀ hcorr
 
 /-! #### Totality
 
@@ -2354,8 +3008,8 @@ theorem combine_vote_delivery_all_receivers (sender : Fin n) (val : Value) (hn :
 theorem totality (sender : Fin n) (val : Value) (hn : n > 3 * f)
     (r : Fin n) (v : Value) :
     pred_implies
-      (tla_and (brb n f Value sender val).safety
-        (brb_fairness n f Value sender val))
+      (tla_and (brb n f Value sender).safety
+        (brb_fairness n f Value sender))
       [tlafml|
         ⌜ fun s => ∃ p, (s.local_ p).returned = some v ⌝ ↝
         ⌜ fun s => (s.local_ r).returned ≠ none ∨ ¬isCorrect n Value s r ⌝] := by
@@ -2367,16 +3021,16 @@ theorem totality (sender : Fin n) (val : Value) (hn : n > 3 * f)
   unfold TLA.leads_to always eventually
   intro k ⟨p, hpret⟩
   -- Step 1: p returned v → n-f vote sources
-  obtain ⟨_, _, _, _, _, _, hvback, _, _, _⟩ := hinv k
+  obtain ⟨_, _, _, _, _, _, hvback, _, _, _, _⟩ := hinv k
   have hvotes_p := hvback p v hpret
 
   -- Step 2: Multi-receiver delivery → all processes get f+1 votes or corrupt
   obtain ⟨k1, hall_f1⟩ :=
-    combine_vote_delivery_all_receivers n f Value sender val hn p v e k hsafety hfair hvotes_p
+    combine_vote_delivery_all_receivers n f Value sender hn p v e k hsafety hfair hvotes_p
 
   -- Step 3: combine_vote_threshold_delivery for receiver r at step k+k1
   obtain ⟨k2, hdel2, _⟩ :=
-    combine_vote_threshold_delivery n f Value sender val r v e (k + k1) hsafety hfair
+    combine_vote_threshold_delivery n f Value sender r v e (k + k1) hsafety hfair
       (List.finRange n)
 
   -- Step 4: Counting → r has ≥ n-f votes at step k+k1+k2
@@ -2403,7 +3057,7 @@ theorem totality (sender : Fin n) (val : Value) (hn : n > 3 * f)
           exact Classical.not_not.mp hc
       · -- q corrupt at k+k1 → still corrupt at k+k1+k2
         right ; simp only [B, decide_eq_true_eq]
-        have hcp := corrupt_persistent n f Value sender val q (exec.drop (k + k1) e)
+        have hcp := corrupt_persistent n f Value sender q (exec.drop (k + k1) e)
           ⟨hcorrupt, by intro j ; rw [exec.drop_drop] ; exact hsafety.2 _⟩ k2
         have : ¬isCorrect n Value (exec.drop k2 (exec.drop (k + k1) e) 0) q := hcp
         simp only [exec.drop, isCorrect, Classical.not_not] at this
@@ -2442,7 +3096,7 @@ theorem totality (sender : Fin n) (val : Value) (hn : n > 3 * f)
 
   -- Step 5: wf_return → r returns or gets corrupted
   rcases hnf with hnf_votes | hcorrupt
-  · have hret := wf_return n f Value sender val r v e ⟨hsafety, hfair⟩
+  · have hret := wf_return n f Value sender r v e ⟨hsafety, hfair⟩
     unfold TLA.leads_to always eventually at hret
     obtain ⟨k3, hk3⟩ := hret (k + k1 + k2) hnf_votes
     exact ⟨k1 + k2 + k3, by
@@ -2451,7 +3105,7 @@ theorem totality (sender : Fin n) (val : Value) (hn : n > 3 * f)
       exact hk3⟩
   · exact ⟨k1 + k2, by
       simp only [exec.drop_drop] at hcorrupt ⊢
-      rw [show k + k1 + k2 = k + (k1 + k2) from by omega] at hcorrupt
+      rw [Nat.add_assoc] at hcorrupt
       exact Or.inr hcorrupt⟩
 
 end ByzantineReliableBroadcast
