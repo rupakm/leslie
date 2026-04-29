@@ -17,11 +17,11 @@ Goal of this file:
   4. State (and ideally prove) that the marginal at step `n+1` is
      uniform on `Bool`, by reducing to `map_traj_succ_self`.
 
-If this file builds with `(0)` `sorry` on items 1–3 and one planned
-`sorry` on item 4 (the marginal lemma; closing it is downstream M3
-work), M0.1 prototype phase passes. The AST-certificate scaffolding
-lives in `Leslie/Prob/Spike/ASTSanity.lean` (M0.3); this file is
-focused purely on the trace-measure construction.
+All four items now build with `0` `sorry`s — the marginal lemma
+(item 4) was closed using the Mathlib lemma chain `traj_comp_partialTraj`
++ `Kernel.map_comp` + `map_traj_succ_self` + `Kernel.const_comp'`. The
+AST-certificate scaffolding lives in `Leslie/Prob/Spike/ASTSanity.lean`
+(M0.3); this file is focused purely on the trace-measure construction.
 
 See `docs/randomized-leslie-spike/01-trace-measure.md` for the
 decision rationale and the API references this file relies on.
@@ -81,19 +81,46 @@ instance (μ₀ : Measure Bool) [IsProbabilityMeasure μ₀] :
 This is the headline correctness fact for the prototype. We use
 `map_traj_succ_self` from Mathlib: the (a+1)-th marginal of
 `traj κ a` equals `κ a` itself. Since our kernel is constant uniform,
-the marginal is uniform.
-
-Statement is given; the proof is left as `sorry` for M0.1 prototype
-phase — closing it is M0.3's stuck-soundness sanity check. The
-*shape* compiling is what matters here.
+every step's marginal is uniform — regardless of the initial
+distribution `μ₀`. The proof reduces `traj κ 0` to
+`traj κ n ∘ₖ partialTraj κ 0 n` so that `map_traj_succ_self` applies
+to the outer `traj κ n`, then collapses the resulting constant kernel
+composition with `Kernel.const_comp'`.
 -/
 
 /-- For any step `n + 1`, the marginal of the trace measure is uniform
-on `Bool`, regardless of the initial distribution. -/
+on `Bool`, regardless of the initial distribution.
+
+Proof outline: unfold `coinTrace` to `(traj coinKernel 0) ∘ₘ ν₀`, push the
+marginal map through the measure-kernel composition (`Measure.map_comp`),
+then compute the kernel marginal via the chain
+`traj κ 0 = traj κ n ∘ₖ partialTraj κ 0 n` (`traj_comp_partialTraj`),
+`Kernel.map_comp`, and `map_traj_succ_self` (giving `coinKernel n`).
+Since `coinKernel n = Kernel.const _ uniformBool` and `partialTraj` is a
+Markov kernel, `Kernel.const_comp'` collapses the composition; then
+`Measure.const_comp` plus `measure_univ` finishes. -/
 theorem coinTrace_marginal_succ_uniform
     (μ₀ : Measure Bool) [IsProbabilityMeasure μ₀] (n : ℕ) :
     (coinTrace μ₀).map (fun (x : Π n, X n) => x (n + 1)) = uniformBool := by
-  sorry
+  unfold coinTrace Kernel.trajMeasure
+  have hν : IsProbabilityMeasure
+      (μ₀.map (MeasurableEquiv.piUnique ((fun i : Finset.Iic 0 ↦ X i))).symm) :=
+    Measure.isProbabilityMeasure_map <| by fun_prop
+  rw [Measure.map_comp _ _ (by fun_prop : Measurable (fun (x : Π n, X n) => x (n + 1)))]
+  -- It suffices to show the marginal kernel equals the constant `uniformBool` kernel.
+  rw [show (Kernel.traj coinKernel 0).map (fun (x : Π n, X n) => x (n + 1))
+        = Kernel.const _ uniformBool from ?_]
+  · rw [Measure.const_comp, measure_univ, one_smul]
+  -- Reduce `traj coinKernel 0` to `traj coinKernel n ∘ₖ partialTraj coinKernel 0 n`
+  -- so that `map_traj_succ_self` applies to the outer `traj coinKernel n`.
+  rw [show (Kernel.traj coinKernel 0)
+        = (Kernel.traj coinKernel n) ∘ₖ (Kernel.partialTraj coinKernel 0 n) from
+       (Kernel.traj_comp_partialTraj (Nat.zero_le n)).symm]
+  rw [Kernel.map_comp _ _ _, Kernel.map_traj_succ_self]
+  -- `coinKernel n = Kernel.const _ uniformBool`; `partialTraj` is Markov, so
+  -- `const_comp'` collapses the composition.
+  show (Kernel.const _ uniformBool) ∘ₖ _ = Kernel.const _ uniformBool
+  rw [Kernel.const_comp']
 
 /-! ## Scope
 
