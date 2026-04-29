@@ -80,8 +80,13 @@ This is the probabilistic Abadi–Lamport, parametric in `proj`
 For the special case where `Σ` and `Π` have the same trace shape,
 use `Trace.idProj` for `proj`; this gives the simple "Π ⊑ Σ at
 the same trace shape" relation (no refinement mapping). -/
-def Refines [MeasurableSpace σ] [MeasurableSpace σ']
-            [MeasurableSpace ι] [MeasurableSpace ι']
+def Refines
+    [Countable σ] [Countable σ']
+    [Countable ι] [Countable ι']
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace σ'] [MeasurableSingletonClass σ']
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+    [MeasurableSpace ι'] [MeasurableSingletonClass ι']
     (spec₁ : ProbActionSpec σ ι) (spec₂ : ProbActionSpec σ' ι')
     (proj : Trace σ' ι' → Trace σ ι) : Prop :=
   ∀ (μ₀ : Measure σ), IsProbabilityMeasure μ₀ →
@@ -97,7 +102,10 @@ projection, and refinements compose. These hold without unfolding
 `traceDist`. -/
 
 /-- Every spec refines itself under the identity projection. -/
-theorem Refines.id [MeasurableSpace σ] [MeasurableSpace ι]
+theorem Refines.id
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
     (spec₁ : ProbActionSpec σ ι) :
     Refines spec₁ spec₁ Trace.idProj := by
   intro μ₀ hμ₀ A
@@ -109,9 +117,15 @@ theorem Refines.id [MeasurableSpace σ] [MeasurableSpace ι]
 
 /-- Composition of refinements. If `Π ⊑ Σ` via `g` and `Σ ⊑ Τ` via
 `f`, then `Π ⊑ Τ` via `g ∘ f`. -/
-theorem Refines.comp [MeasurableSpace σ] [MeasurableSpace σ']
-    [MeasurableSpace σ''] [MeasurableSpace ι] [MeasurableSpace ι']
-    [MeasurableSpace ι'']
+theorem Refines.comp
+    [Countable σ] [Countable σ'] [Countable σ'']
+    [Countable ι] [Countable ι'] [Countable ι'']
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace σ'] [MeasurableSingletonClass σ']
+    [MeasurableSpace σ''] [MeasurableSingletonClass σ'']
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+    [MeasurableSpace ι'] [MeasurableSingletonClass ι']
+    [MeasurableSpace ι''] [MeasurableSingletonClass ι'']
     {spec₁ : ProbActionSpec σ ι} {spec₂ : ProbActionSpec σ' ι'}
     {spec₃ : ProbActionSpec σ'' ι''}
     {g : Trace σ' ι' → Trace σ ι}
@@ -142,7 +156,10 @@ theorem Refines.comp [MeasurableSpace σ] [MeasurableSpace σ']
 Probabilistic analogues of `□` and `◇` against a `traceDist`. -/
 
 /-- Almost-surely-always: `φ` holds at every step of the trace. -/
-def AlmostBox [MeasurableSpace σ] [MeasurableSpace ι]
+def AlmostBox
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
     (spec₁ : ProbActionSpec σ ι) (A : Adversary σ ι)
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
     (φ : σ → Prop) : Prop :=
@@ -150,7 +167,10 @@ def AlmostBox [MeasurableSpace σ] [MeasurableSpace ι]
 
 /-- Almost-surely-eventually: there exists a step at which `φ`
 holds, almost surely. -/
-def AlmostDiamond [MeasurableSpace σ] [MeasurableSpace ι]
+def AlmostDiamond
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
     (spec₁ : ProbActionSpec σ ι) (A : Adversary σ ι)
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
     (φ : σ → Prop) : Prop :=
@@ -175,8 +195,13 @@ Stated here; sorry'd until those land. -/
 
 /-- Stated form: invariant `φ` on the abstract spec lifts (via
 projection) to an invariant on the concrete spec. -/
-theorem Refines_safe [MeasurableSpace σ] [MeasurableSpace σ']
-    [MeasurableSpace ι] [MeasurableSpace ι']
+theorem Refines_safe
+    [Countable σ] [Countable σ']
+    [Countable ι] [Countable ι']
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace σ'] [MeasurableSingletonClass σ']
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+    [MeasurableSpace ι'] [MeasurableSingletonClass ι']
     {spec₁ : ProbActionSpec σ ι} {spec₂ : ProbActionSpec σ' ι'}
     {proj : Trace σ' ι' → Trace σ ι}
     (h_ref : Refines spec₁ spec₂ proj)

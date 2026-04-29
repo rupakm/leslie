@@ -14,28 +14,49 @@ This file:
   * Defines the per-step Markov kernel `stepKernel` and the
     trace measure `traceDist`, both **sorry-free**.
 
-**M2 W1 polish status.** The per-step kernel currently realises
-the *stutter branch* of the conceptual definition (`Dirac` at
-`(currentState, none)` regardless of schedule/gate). This is a
-deliberate, mathematically valid simplification: it delivers the
-correct *type* (a Markov kernel and hence a probability measure
-on `Trace σ ι` via `Kernel.trajMeasure`), so downstream M2 W2
-(`Refinement.lean`) and M2 W3 (`BrachaRBC.lean`) can be stated
-and typechecked against it.
+**M2 W2 polish status — real conditional kernel (option 2a).**
 
-The schedule-conditional and PMF-effect branches of the kernel
-are deferred to a follow-up session. The technical blocker is
-that `MeasurableSpace (Option ι) := ⊤` (declared locally below)
-makes every *set* in `Option ι` measurable but does *not*
-automatically make every *function into* `Option ι` measurable.
-Closing that gap requires either an explicit measurability
-hypothesis on `A.schedule`, a typeclass refinement on `ι`/`σ`
-that forces it, or a custom σ-algebra on the adversary history
-type. See the long comment above `stepKernel` for the full
-checklist. The M0.1 design document (§"Outstanding questions"
-item 5) anticipated this might be automatic; it isn't.
+The per-step kernel `stepKernel` realises the full conceptual
+definition: it branches on `A.schedule h.toList`, and for the
+`some i` branch it further branches on whether `(spec.actions i).gate`
+holds at the current state, returning either the effect-PMF
+measure (paired with `some i`) or a `Dirac` stutter.
 
-Per implementation plan v2.2 §M2 W1.
+Three sub-options for handling measurability of
+`fun h ↦ A.schedule h.toList : FinPrefix σ ι n → Option ι` were
+listed in the M2 W1 polish header (now superseded). We took
+**option (2a)**: typeclass refinement requiring
+
+  * `[Countable σ]`, `[MeasurableSpace σ]`, `[MeasurableSingletonClass σ]`
+  * `[Countable ι]`, `[MeasurableSpace ι]`, `[MeasurableSingletonClass ι]`
+
+These imply `Countable (FinPrefix σ ι n)` (via
+`instCountableForallOfFinite` on `Π _ : Finset.Iic n, σ × Option ι`)
+and `MeasurableSingletonClass (FinPrefix σ ι n)` (via the Pi
+σ-algebra on a finite product of singleton-measurable types).
+
+Together these unlock `Kernel.ofFunOfCountable`: any function
+`(FinPrefix σ ι n) → Measure (σ × Option ι)` lifts to a kernel
+without an explicit measurability proof, sidestepping the
+measurability-of-`A.schedule` blocker entirely.
+
+Why (2a) over (2b/2c)?
+  - All concrete state types in M3+ (Bracha RBC node states, AVSS
+    polynomial commitments over `ZMod p`, lock-step round counters)
+    are countable; the discrete σ-algebra is fine for them.
+  - (2b/2c) require either changing `Adversary` to carry a
+    measurability witness or threading a hypothesis through every
+    `traceDist` call site. The first invades a structure used
+    elsewhere; the second clutters every downstream theorem.
+  - (2a) is local — it only refines the typeclass list on
+    `stepKernel` / `traceDist` without changing any structures.
+
+Decidable gates use `Classical.dec` (not a per-action `Decidable`
+typeclass), keeping `ProbGatedAction.gate`'s signature `σ → Prop`
+unchanged.
+
+Per implementation plan v2.2 §M2 W1 + M2 W2 polish brief
+(`docs/randomized-leslie-spike/07-real-tracedist-kernel-task.md`).
 -/
 
 import Leslie.Prob.Action
@@ -94,7 +115,7 @@ end FinPrefix
 `stepKernel spec A n` is the per-step Markov kernel from the
 finite trace prefix at time `n` to the next `(σ × Option ι)` pair.
 
-Conceptually we want it to branch on `A.schedule h.toList`:
+It realises the conceptual branching definition:
 
 ```
 match A.schedule h.toList with
@@ -105,57 +126,19 @@ match A.schedule h.toList with
     else Dirac (currentState h, none)
 ```
 
-Discharging measurability of this match expression in full
-generality requires a *measurability hypothesis* on
-`A.schedule` of the form
-`Measurable (fun h : FinPrefix σ ι n ↦ A.schedule h.toList)`,
-which is **not** automatic from the standalone instances on
-`σ`, `ι`, and `Option ι` alone — codomain ⊤ on `Option ι`
-makes every preimage trivially `MeasurableSet`, but the
-preimage in `FinPrefix σ ι n` (Pi-product σ-algebra) is *not*
-automatically measurable for an arbitrary `A.schedule`. The
-M0.1 design document anticipated this might be automatic
-(§"Outstanding questions for the prototype" item 5); it is
-not, in fact.
+The function-to-kernel lift uses `Kernel.ofFunOfCountable`, which
+sidesteps the measurability-of-`A.schedule` blocker by requiring
+the *input* type `FinPrefix σ ι n` to be `Countable` and have
+`MeasurableSingletonClass`. Both follow from the typeclass
+list `[Countable σ] [Countable ι]
+[MeasurableSpace σ] [MeasurableSingletonClass σ]
+[MeasurableSpace ι] [MeasurableSingletonClass ι]` plus the
+discrete `MeasurableSpace (Option ι)` instance declared above
+(`MeasurableSingletonClass (Option ι)` follows from
+`Countable ι` plus the discrete instance).
 
-For the M2 W1 *polish* milestone the goal is to deliver a
-sorry-free, well-typed, measure-theoretically valid `traceDist`
-that downstream `Refinement.lean` and `BrachaRBC.lean` can be
-stated against. We adopt the simplest realisation that meets
-that bar: **stutter at every step**. This is the `none`-branch
-of the conceptual definition above, applied unconditionally.
-
-Concretely:
-
-```
-stepKernel spec A n := Kernel.deterministic
-    (fun h ↦ (h.currentState, none))
-    (by measurability)
-```
-
-The resulting `traceDist spec A μ₀` is the law of the
-stuttering trajectory `(s₀, none), (s₀, none), …` where
-`s₀ ∼ μ₀`. It is a probability measure (so `Refinement` and
-liveness statements typecheck), but it does *not* yet reflect
-the adversary or the spec's effect distributions.
-
-Closing the schedule branch (and hence delivering the
-"interesting" `traceDist`) is an M2 W2 follow-up. The required
-ingredients are:
-
-  * Either an extra `Measurable`-hypothesis on the schedule
-    threaded through `traceDist`'s signature, or
-  * A typeclass refinement (e.g. `MeasurableSpace ι := ⊤`
-    plus `MeasurableSingletonClass σ` plus `Countable ι`)
-    that makes `fun h ↦ A.schedule h.toList` automatically
-    measurable, or
-  * A bespoke `MeasurableSpace` instance on the adversary's
-    history list-domain that's compatible with `toList`.
-
-The choice is a small design call to be made when the
-downstream lemmas (`Refines.refl`, `BrachaRBC` totality) need
-the *non-stuttering* trace measure; documented at length here
-so the next session has a concrete checklist. -/
+The decidable instance for the gate predicate is supplied by
+`Classical.dec` via `open Classical in`. -/
 
 /-- The current state of a finite-prefix history is a measurable
 function of the history (a coordinate projection composed with
@@ -167,29 +150,77 @@ theorem FinPrefix.measurable_currentState {σ ι : Type*}
   unfold FinPrefix.currentState
   fun_prop
 
-/-- The per-step Markov kernel of a `ProbActionSpec`/`Adversary`
-pair. **M2 W1 polish realisation: stutter at every step.** See
-the file's "Per-step kernel" section above for why this falls
-short of the conceptual definition and what's required to
-close the gap. -/
-noncomputable def stepKernel {σ ι : Type*}
-    [MeasurableSpace σ] [MeasurableSpace ι]
-    (_spec : ProbActionSpec σ ι) (_A : Adversary σ ι) (n : ℕ) :
-    Kernel (FinPrefix σ ι n) (σ × Option ι) :=
-  Kernel.deterministic
-    (fun h ↦ (h.currentState, (none : Option ι)))
-    (by
-      refine Measurable.prod ?_ ?_
-      · exact FinPrefix.measurable_currentState
-      · exact measurable_const)
+section StepKernel
 
-/-- The per-step kernel is a Markov kernel (Dirac measures are
-probability measures). -/
+open Classical
+
+/-- The per-step Markov kernel of a `ProbActionSpec`/`Adversary`
+pair, branching on the adversary's schedule and the spec's gates.
+
+  * If `A.schedule h.toList = none`, the kernel emits a Dirac at
+    `(currentState h, none)` — a stutter step.
+  * If `A.schedule h.toList = some i` and `(spec.actions i).gate`
+    holds at the current state, the kernel emits the effect's
+    PMF measure paired with `some i`.
+  * If the gate is unmet, it stutters: Dirac at
+    `(currentState h, none)`.
+
+`Kernel.ofFunOfCountable` lifts the per-history measure to a
+Markov kernel without requiring an explicit measurability proof
+for the schedule, given the typeclass requirements documented in
+the file header. Decidability of the gate is via `Classical.dec`
+(supplied by `open Classical` for this section). -/
+noncomputable def stepKernel {σ ι : Type*}
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+    (spec : ProbActionSpec σ ι) (A : Adversary σ ι) (n : ℕ) :
+    Kernel (FinPrefix σ ι n) (σ × Option ι) :=
+  Kernel.ofFunOfCountable fun h =>
+    match A.schedule h.toList with
+    | none => Measure.dirac (h.currentState, (none : Option ι))
+    | some i =>
+      if hgate : (spec.actions i).gate h.currentState then
+        ((spec.actions i).effect h.currentState hgate).toMeasure.map
+          (fun s => (s, some i))
+      else Measure.dirac (h.currentState, (none : Option ι))
+
+/-- The per-step kernel is a Markov kernel: each branch produces
+a probability measure (Dirac in the `none` and gate-fail cases;
+pushforward of a PMF measure in the gate-pass case). -/
 instance instIsMarkovKernel_stepKernel {σ ι : Type*}
-    [MeasurableSpace σ] [MeasurableSpace ι]
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
     (spec : ProbActionSpec σ ι) (A : Adversary σ ι) (n : ℕ) :
     IsMarkovKernel (stepKernel spec A n) := by
-  unfold stepKernel; infer_instance
+  refine ⟨fun h => ?_⟩
+  -- `Kernel.ofFunOfCountable f h` is definitionally `f h`, so the
+  -- goal reduces to showing the per-history measure is a
+  -- probability measure for each branch of the match.
+  show IsProbabilityMeasure
+    (match A.schedule h.toList with
+     | none => Measure.dirac (h.currentState, (none : Option ι))
+     | some i =>
+       if hgate : (spec.actions i).gate h.currentState then
+         ((spec.actions i).effect h.currentState hgate).toMeasure.map
+           (fun s => (s, some i))
+       else Measure.dirac (h.currentState, (none : Option ι)))
+  match A.schedule h.toList with
+  | none =>
+    show IsProbabilityMeasure (Measure.dirac _)
+    infer_instance
+  | some i =>
+    by_cases hgate : (spec.actions i).gate h.currentState
+    · simp only [hgate, dite_true]
+      have : IsProbabilityMeasure
+          ((spec.actions i).effect h.currentState hgate).toMeasure := by
+        infer_instance
+      exact Measure.isProbabilityMeasure_map (by fun_prop)
+    · simp only [hgate, dite_false]
+      infer_instance
+
+end StepKernel
 
 /-! ## Trace measure (`traceDist`)
 
@@ -209,15 +240,14 @@ uses `traceDist` directly. -/
 /-- The trace measure under `spec`, `A`, and initial state
 distribution `μ₀`.
 
-**M2 W1 polish realisation.** Per the file's "Per-step kernel"
-section: the per-step kernel is stutter-only, so this measure
-is the law of `(s₀, none), (s₀, none), …` for `s₀ ∼ μ₀`. The
-shape is correct (probability measure on `Trace σ ι` when
-`μ₀` is, ready for `Refinement.lean` to be stated against);
-the schedule and effect branches of the kernel are M2 W2
-follow-up. -/
+**M2 W2 polish realisation.** The per-step kernel is the real
+schedule-and-gate-conditional kernel (see `stepKernel` above),
+so this measure faithfully reflects both the adversary's choices
+and the spec's effect distributions. -/
 noncomputable def traceDist {σ ι : Type*}
-    [MeasurableSpace σ] [MeasurableSpace ι]
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
     (spec : ProbActionSpec σ ι) (A : Adversary σ ι)
     (μ₀ : Measure σ) :
     Measure (Trace σ ι) :=
@@ -227,7 +257,9 @@ noncomputable def traceDist {σ ι : Type*}
 
 /-- The trace measure is a probability measure when `μ₀` is. -/
 instance instIsProbabilityMeasure_traceDist {σ ι : Type*}
-    [MeasurableSpace σ] [MeasurableSpace ι]
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
     (spec : ProbActionSpec σ ι) (A : Adversary σ ι)
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀] :
     IsProbabilityMeasure (traceDist spec A μ₀) := by
