@@ -10,22 +10,28 @@ This is the trace-level analogue of `Leslie.Refinement`'s
 deterministic refinement, lifted to Mathlib `Measure`s under the
 cylinder σ-algebra (per design plan v2.2 §"Composition combinators").
 
-Status (M2 W2 first cut):
+Status (M2 W2 polish — sorry-free):
 
   * `Refines Π Σ proj` — the refinement predicate, parameterized
     by a trace-level projection function.
   * `Refines.id` — every spec refines itself via the identity
     projection.
-  * `Refines.comp` — composition of refinements.
+  * `Refines.comp` — composition of refinements (requires
+    measurability of both projections to compose pushforwards
+    via `Measure.map_map`).
   * `AlmostBox`, `AlmostDiamond` — modal predicates on
     `traceDist`.
-  * `Refines_safe` — invariant lift along refinement (statement;
-    body sorry, requires `traceDist` body from M2 W1 polish).
+  * `Refines_safe` — invariant lift along refinement: a safety
+    property `φ` that holds Σ-AE under any abstract execution
+    lifts to a Π-AE invariant via `ae_map_iff` on the pushforward.
+    Requires measurability of `proj` and of `{s | φ s}`; both
+    are satisfied for our discrete protocol settings.
 
-Per implementation plan v2.2 §M2 W2. The proofs that need to
-unfold `traceDist` carry transitive sorries until M2 W1 polish
-lands; this file's structural lemmas (`comp`, `id`) compose
-cleanly without `traceDist` unfolding.
+Per implementation plan v2.2 §M2 W2. The real `traceDist` body
+(M2 W1 polish + M2 W2 polish) is now a real schedule-and-gate-
+conditional Markov-kernel measure; both `Refines.comp` and
+`Refines_safe` are proved by composing it with Mathlib's measure
+pushforward / AE machinery.
 -/
 
 import Leslie.Prob.Action
@@ -131,7 +137,7 @@ theorem Refines.comp
     {g : Trace σ' ι' → Trace σ ι}
     {f : Trace σ'' ι'' → Trace σ' ι'}
     (h_g : Refines spec₁ spec₂ g) (h_f : Refines spec₂ spec₃ f)
-    (h_g_meas : Measurable g) :
+    (h_g_meas : Measurable g) (h_f_meas : Measurable f) :
     Refines spec₁ spec₃ (Trace.compProj g f) := by
   intro μ₀ hμ₀ A
   -- From h_g: ∃ μ₀₂, A₂ such that map g (traceDist spec₂ A₂ μ₀₂) = traceDist spec₁ A μ₀
@@ -140,16 +146,12 @@ theorem Refines.comp
   obtain ⟨μ₀₃, hμ₀₃, A₃, h_eq_f⟩ := h_f μ₀₂ hμ₀₂ A₂
   refine ⟨μ₀₃, hμ₀₃, A₃, ?_⟩
   -- Goal: map (g ∘ f) (traceDist spec₃ A₃ μ₀₃) = traceDist spec₁ A μ₀
-  -- = map g (map f (traceDist spec₃ A₃ μ₀₃))   [by Measure.map_map, using measurability]
+  -- = map g (map f (traceDist spec₃ A₃ μ₀₃))   [by Measure.map_map]
   -- = map g (traceDist spec₂ A₂ μ₀₂)            [by h_eq_f]
   -- = traceDist spec₁ A μ₀                        [by h_eq_g]
-  show Measure.map (g ∘ f) (traceDist spec₃ A₃ μ₀₃) = traceDist spec₁ A μ₀
-  -- Compose pushforwards: map (g ∘ f) = map g ∘ map f.
-  -- Needs g and f measurable; we have g measurable, but f's
-  -- measurability isn't a hypothesis here. The full proof requires
-  -- threading measurability through both steps; deferred to
-  -- M2 W2 polish (analogous to traceDist body in M2 W1 polish).
-  sorry
+  show Measure.map (Trace.compProj g f) (traceDist spec₃ A₃ μ₀₃) = traceDist spec₁ A μ₀
+  rw [show Trace.compProj g f = g ∘ f from rfl,
+      ← Measure.map_map h_g_meas h_f_meas, h_eq_f, h_eq_g]
 
 /-! ### Modal predicates on `traceDist`
 
@@ -182,19 +184,23 @@ If `Π` refines `Σ` (via `proj`) and `φ` holds always for `Σ`'s
 trace (under projected predicates), then `φ` holds always for
 `Π`'s trace.
 
-Proof outline: pushforward through `proj` preserves
-`MeasureTheory.ae`. Concretely:
-- From `Refines Π Σ proj`, every Π-execution comes from a
-  Σ-execution via `proj`.
-- `φ` holds Σ-almost-everywhere ⇒ `φ ∘ proj_state` holds
-  Π-almost-everywhere via measure-pushforward.
+Proof: extract the `Refines` witness `(μ₀', A')`, instantiate the
+`AlmostBox`-on-Σ hypothesis there, then use `ae_map_iff` to push
+the AE-event back through `Measure.map proj`. The state-component
+identity `h_proj_state` lets us turn `φ ((proj ω) n).1` into
+`(φ ∘ state_proj) ((ω n).1)`, which is exactly the Σ-side
+hypothesis at index `n`.
 
-The proof requires unfolding `traceDist` (M2 W1 polish task) and
-careful handling of the projection's component-wise structure.
-Stated here; sorry'd until those land. -/
+The hypothesis is universally quantified over `(μ₀', A')` (with
+`[IsProbabilityMeasure μ₀']` carried as an instance). This is
+strictly stronger than the existential form but matches the
+"safety holds for *every* abstract execution" reading and lets
+us instantiate at the witness produced by `Refines`. -/
 
-/-- Stated form: invariant `φ` on the abstract spec lifts (via
-projection) to an invariant on the concrete spec. -/
+/-- Invariant `φ` on the abstract spec lifts (via projection) to
+an invariant on the concrete spec. Requires measurability of
+`proj` and of the predicate set; both are satisfied for our
+discrete protocol settings. -/
 theorem Refines_safe
     [Countable σ] [Countable σ']
     [Countable ι] [Countable ι']
@@ -205,15 +211,33 @@ theorem Refines_safe
     {spec₁ : ProbActionSpec σ ι} {spec₂ : ProbActionSpec σ' ι'}
     {proj : Trace σ' ι' → Trace σ ι}
     (h_ref : Refines spec₁ spec₂ proj)
+    (h_proj_meas : Measurable proj)
     (state_proj : σ' → σ)
     (h_proj_state : ∀ (ω : Trace σ' ι') n, ((proj ω) n).1 = state_proj ((ω n).1))
-    (φ : σ → Prop)
-    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
-    (A : Adversary σ ι) :
-    (∃ (μ₀' : Measure σ') (_ : IsProbabilityMeasure μ₀')
-       (A' : Adversary σ' ι'),
-       AlmostBox spec₂ A' μ₀' (φ ∘ state_proj)) →
+    (φ : σ → Prop) (h_phi_meas : MeasurableSet {s : σ | φ s})
+    (μ₀ : Measure σ) [hμ₀ : IsProbabilityMeasure μ₀]
+    (A : Adversary σ ι)
+    (h_box : ∀ (μ₀' : Measure σ') [IsProbabilityMeasure μ₀']
+        (A' : Adversary σ' ι'),
+        AlmostBox spec₂ A' μ₀' (φ ∘ state_proj)) :
     AlmostBox spec₁ A μ₀ φ := by
-  sorry
+  obtain ⟨μ₀', hμ₀', A', h_eq⟩ := h_ref μ₀ hμ₀ A
+  haveI : IsProbabilityMeasure μ₀' := hμ₀'
+  have hbox' := h_box μ₀' A'
+  -- Reduce to AE on the pushforward `Measure.map proj _`.
+  unfold AlmostBox at hbox' ⊢
+  rw [← h_eq]
+  -- The predicate set `{ω | ∀ n, φ (ω n).1}` is measurable as a
+  -- countable intersection of preimages of `{s | φ s}`.
+  have h_pred : MeasurableSet {ω : Trace σ ι | ∀ n, φ (ω n).1} := by
+    have heq : {ω : Trace σ ι | ∀ n, φ (ω n).1} = ⋂ n, {ω | φ (ω n).1} := by
+      ext ω; simp
+    rw [heq]
+    exact MeasurableSet.iInter fun n =>
+      (measurable_fst.comp (measurable_pi_apply n)) h_phi_meas
+  rw [ae_map_iff h_proj_meas.aemeasurable h_pred]
+  filter_upwards [hbox'] with ω' h_ae n
+  rw [h_proj_state ω' n]
+  exact h_ae n
 
 end Leslie.Prob
