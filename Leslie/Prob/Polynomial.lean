@@ -113,6 +113,120 @@ theorem _root_.PMF.uniform_map_of_surjective_constFiber
   · left; exact_mod_cast (Fintype.card_pos).ne'
   · left; simp
 
+/-! ## Pi-lift of a uniform pushforward
+
+If `h : α → β` pushes forward `uniform α` to `uniform β`, then for any
+finite nonempty index `ι`, the per-coordinate map `f ↦ (i ↦ h (f i))`
+pushes forward `uniform (ι → α)` to `uniform (ι → β)`.
+
+Proof sketch: from `(uniform α).map h = uniform β`, every fiber of `h`
+has the same size `k = |α|/|β|`. For the per-coordinate map
+`Φ : (ι → α) → (ι → β)`, the fiber over `g` is the product over `i` of
+the per-coordinate fibers `{a | h a = g i}`, hence has size `k^|ι|`,
+constant in `g`. Conclude via `uniform_map_of_surjective_constFiber`. -/
+
+theorem _root_.PMF.uniform_pi_map_of_uniform_map
+    {ι α β : Type*}
+    [Fintype ι] [Nonempty ι] [DecidableEq ι]
+    [Fintype α] [Fintype β] [Nonempty α] [Nonempty β]
+    [DecidableEq α] [DecidableEq β]
+    {h : α → β} (h_uniform : (PMF.uniform α).map h = PMF.uniform β) :
+    (PMF.uniform (ι → α)).map (fun f i => h (f i)) = PMF.uniform (ι → β) := by
+  -- Extract the constant fiber size of `h` from the PMF equation.
+  -- For any b : β, the fiber {a | h a = b} has size |α|/|β|.
+  have h_card_β_pos : 0 < Fintype.card β := Fintype.card_pos
+  have h_card_α_pos : 0 < Fintype.card α := Fintype.card_pos
+  -- The fiber size for h.
+  have h_fib_h : ∀ b : β,
+      (Finset.univ.filter (fun a : α => h a = b)).card * Fintype.card β
+        = Fintype.card α := by
+    intro b
+    have h_pmf : ((PMF.uniform α).map h) b = (PMF.uniform β) b := by rw [h_uniform]
+    simp only [PMF.map_apply, PMF.uniform_apply] at h_pmf
+    -- Reduce the tsum to a sum over the fiber.
+    have h_sum : (∑' (a : α), if b = h a then ((Fintype.card α : ℝ≥0∞))⁻¹ else 0)
+        = (Finset.univ.filter (fun a : α => h a = b)).card *
+            ((Fintype.card α : ℝ≥0∞))⁻¹ := by
+      rw [tsum_eq_sum (s := Finset.univ.filter (fun a => h a = b))
+          (fun a ha => by simp at ha; simp [Ne.symm ha])]
+      have hsum_eq : ∀ a ∈ (Finset.univ.filter (fun a : α => h a = b)),
+          (if b = h a then ((Fintype.card α : ℝ≥0∞))⁻¹ else 0)
+            = ((Fintype.card α : ℝ≥0∞))⁻¹ := by
+        intro a ha; simp at ha; simp [ha]
+      rw [Finset.sum_congr rfl hsum_eq, Finset.sum_const, nsmul_eq_mul]
+    rw [h_sum] at h_pmf
+    -- h_pmf : (filter.card : ℝ≥0∞) * |α|⁻¹ = |β|⁻¹.
+    have hα_ne : (Fintype.card α : ℝ≥0∞) ≠ 0 := by exact_mod_cast h_card_α_pos.ne'
+    have hα_ne_top : (Fintype.card α : ℝ≥0∞) ≠ ⊤ := ENNReal.natCast_ne_top _
+    have hβ_ne : (Fintype.card β : ℝ≥0∞) ≠ 0 := by exact_mod_cast h_card_β_pos.ne'
+    have hβ_ne_top : (Fintype.card β : ℝ≥0∞) ≠ ⊤ := ENNReal.natCast_ne_top _
+    -- Multiply both sides by |α| to get filter.card = |α|/|β|, then by |β| to clear.
+    have h_pmf2 :
+        ((Finset.univ.filter (fun a : α => h a = b)).card : ℝ≥0∞) * Fintype.card β
+          = Fintype.card α := by
+      -- From h_pmf : k * |α|⁻¹ = |β|⁻¹.
+      -- Multiply both sides by |α|: k = |α| * |β|⁻¹.
+      have h_pmf' : ((Finset.univ.filter (fun a : α => h a = b)).card : ℝ≥0∞)
+          = (Fintype.card β : ℝ≥0∞)⁻¹ * Fintype.card α := by
+        have := congrArg (· * (Fintype.card α : ℝ≥0∞)) h_pmf
+        simp only at this
+        rw [mul_assoc, ENNReal.inv_mul_cancel hα_ne hα_ne_top, mul_one] at this
+        exact this
+      -- Multiply by |β|.
+      rw [h_pmf']
+      rw [mul_comm ((Fintype.card β : ℝ≥0∞)⁻¹), mul_assoc,
+          ENNReal.inv_mul_cancel hβ_ne hβ_ne_top, mul_one]
+    -- Cast back to ℕ.
+    have h_pmf3 :
+        (((Finset.univ.filter (fun a : α => h a = b)).card * Fintype.card β : ℕ) : ℝ≥0∞)
+          = ((Fintype.card α : ℕ) : ℝ≥0∞) := by
+      push_cast; exact h_pmf2
+    exact_mod_cast h_pmf3
+  -- Conclude |β| ∣ |α| and the per-fiber size k.
+  have h_β_dvd_α : Fintype.card β ∣ Fintype.card α := by
+    obtain ⟨b⟩ := (inferInstance : Nonempty β)
+    exact ⟨_, (h_fib_h b).symm.trans (by ring)⟩
+  set k : ℕ := Fintype.card α / Fintype.card β with hk_def
+  have hk_card : Fintype.card α = Fintype.card β * k := by
+    rw [hk_def, Nat.mul_div_cancel' h_β_dvd_α]
+  have hk_fib : ∀ b : β,
+      (Finset.univ.filter (fun a : α => h a = b)).card = k := by
+    intro b
+    have := h_fib_h b
+    rw [hk_card] at this
+    have h_eq : (Finset.univ.filter (fun a : α => h a = b)).card * Fintype.card β
+        = k * Fintype.card β := by rw [this]; ring
+    exact Nat.eq_of_mul_eq_mul_right h_card_β_pos h_eq
+  have hk_pos : 0 < k := by
+    by_contra hk0
+    push_neg at hk0
+    interval_cases k
+    rw [Nat.mul_zero] at hk_card
+    exact absurd hk_card h_card_α_pos.ne'
+  -- Now the Pi map: each fiber over g : ι → β has size k^|ι|.
+  have h_pow_pos : 0 < k ^ Fintype.card ι := pow_pos hk_pos _
+  apply PMF.uniform_map_of_surjective_constFiber (fun (f : ι → α) i => h (f i))
+      (k ^ Fintype.card ι) h_pow_pos
+  intro g
+  -- Fiber: {f : ι → α | (fun i => h (f i)) = g} = {f | ∀ i, h (f i) = g i}.
+  -- This corresponds to Fintype.piFinset (fun i => univ.filter (h · = g i)).
+  have h_fib_eq :
+      Finset.univ.filter (fun f : ι → α => (fun i => h (f i)) = g)
+        = Fintype.piFinset (fun i => Finset.univ.filter (fun a : α => h a = g i)) := by
+    ext f
+    simp only [Finset.mem_filter, Finset.mem_univ, true_and,
+               Fintype.mem_piFinset]
+    constructor
+    · intro hf i
+      have := congrFun hf i
+      simp [this]
+    · intro hf
+      funext i
+      exact (hf i)
+  rw [h_fib_eq, Fintype.card_piFinset]
+  rw [Finset.prod_congr rfl (fun i _ => hk_fib (g i))]
+  rw [Finset.prod_const, Finset.card_univ]
+
 variable {F : Type*} [Field F] [Fintype F] [DecidableEq F]
 
 /-! ## Uniform polynomial with fixed constant term -/
@@ -423,15 +537,212 @@ theorem evals_uniform (d : ℕ) (s : F)
   exact h_fib_card
 
 /-- Bivariate evaluation uniformity. Proof reduces to univariate
-`evals_uniform` applied row-wise. Deferred to M2 per plan v2.2. -/
+`evals_uniform` applied in each direction via the row-then-column
+factoring `f(p,q) = s + ∑_i (∑_j coefs(i,j) * q^(j+1)) * p^(i+1)`. -/
 theorem bivariate_evals_uniform (dx dy : ℕ) (s : F)
     (pts_x : Finset F) (pts_y : Finset F)
     (h_cx : pts_x.card ≤ dx) (h_cy : pts_y.card ≤ dy)
-    (h_nx : (0 : F) ∉ pts_x) (h_ny : (0 : F) ∉ pts_y) :
+    (h_nx : (0 : F) ∉ pts_x) (h_ny : (0 : F) ∉ pts_y)
+    (h_Fx : dx + 1 ≤ Fintype.card F) (h_Fy : dy + 1 ≤ Fintype.card F) :
     (uniformBivariateWithFixedZero dx dy s).map
         (fun f => fun (p : pts_x) (q : pts_y) =>
           (f.eval (Polynomial.C p.val)).eval q.val)
       = PMF.uniform (pts_x → pts_y → F) := by
-  sorry
+  -- Edge cases first: if either pts_x or pts_y is empty, the codomain
+  -- `pts_x → pts_y → F` is a subsingleton, and any two PMFs on a
+  -- subsingleton type are equal.
+  by_cases h_xy_subsing : pts_x.card = 0 ∨ pts_y.card = 0
+  · -- Subsingleton case.
+    have h_subsing : Subsingleton (pts_x → pts_y → F) := by
+      rcases h_xy_subsing with hx | hy
+      · haveI : IsEmpty pts_x := by
+          rw [Finset.card_eq_zero] at hx
+          subst hx
+          exact ⟨fun ⟨_, h⟩ => Finset.notMem_empty _ h⟩
+        infer_instance
+      · haveI : IsEmpty pts_y := by
+          rw [Finset.card_eq_zero] at hy
+          subst hy
+          exact ⟨fun ⟨_, h⟩ => Finset.notMem_empty _ h⟩
+        haveI : Subsingleton (pts_y → F) := inferInstance
+        infer_instance
+    apply PMF.ext
+    intro g
+    have h_default : ∀ a, a = g := fun a => Subsingleton.elim a g
+    have hμ := PMF.tsum_coe ((uniformBivariateWithFixedZero dx dy s).map
+        (fun f => fun (p : pts_x) (q : pts_y) =>
+          (f.eval (Polynomial.C p.val)).eval q.val))
+    have hν := PMF.tsum_coe (PMF.uniform (pts_x → pts_y → F))
+    rw [tsum_eq_single g (fun b hb => absurd (h_default b) hb)] at hμ
+    rw [tsum_eq_single g (fun b hb => absurd (h_default b) hb)] at hν
+    rw [hμ, hν]
+  -- Non-degenerate case: both pts are nonempty.
+  push_neg at h_xy_subsing
+  obtain ⟨h_px_pos, h_py_pos⟩ := h_xy_subsing
+  have h_dx_pos : 0 < dx := lt_of_lt_of_le (Nat.pos_of_ne_zero h_px_pos) h_cx
+  have h_dy_pos : 0 < dy := lt_of_lt_of_le (Nat.pos_of_ne_zero h_py_pos) h_cy
+  haveI : Nonempty (Fin dx) := ⟨⟨0, h_dx_pos⟩⟩
+  haveI : Nonempty (Fin dy) := ⟨⟨0, h_dy_pos⟩⟩
+  haveI h_pts_x_ne : Nonempty pts_x := by
+    have h := Finset.card_pos.mp (Nat.pos_of_ne_zero h_px_pos)
+    exact ⟨⟨h.choose, h.choose_spec⟩⟩
+  haveI h_pts_y_ne : Nonempty pts_y := by
+    have h := Finset.card_pos.mp (Nat.pos_of_ne_zero h_py_pos)
+    exact ⟨⟨h.choose, h.choose_spec⟩⟩
+  -- Define per-row Y-eval and per-q X-eval.
+  set step1 : (Fin dx → Fin dy → F) → (Fin dx → pts_y → F) :=
+    fun coefs i q => ∑ j : Fin dy, coefs i j * (q.val : F) ^ (j.val + 1) with hstep1
+  set step2 : (Fin dx → pts_y → F) → (pts_x → pts_y → F) :=
+    fun b p q => s + ∑ i : Fin dx, b i q * (p.val : F) ^ (i.val + 1) with hstep2
+  -- Algebraic identity: bivariate eval = step2 ∘ step1.
+  have h_factor : ∀ (coefs : Fin dx → Fin dy → F) (p : pts_x) (q : pts_y),
+        Polynomial.eval (q.val : F)
+          (Polynomial.eval (Polynomial.C (p.val : F))
+            (Polynomial.C (Polynomial.C s) +
+              ∑ i : Fin dx, ∑ j : Fin dy,
+                Polynomial.C (Polynomial.C (coefs i j)) *
+                  Polynomial.X ^ (i.val + 1) *
+                  (Polynomial.C Polynomial.X) ^ (j.val + 1)))
+      = step2 (step1 coefs) p q := by
+    intro coefs p q
+    simp only [hstep1, hstep2]
+    -- Both inner and outer eval simplifications (one simp call handles both).
+    simp only [Polynomial.eval_add, Polynomial.eval_C,
+               Polynomial.eval_finset_sum, Polynomial.eval_mul,
+               Polynomial.eval_pow, Polynomial.eval_X]
+    -- Algebraic massaging: ∑ i ∑ j, coefs i j * p^(i+1) * q^(j+1) = ∑ i, (∑ j, coefs i j * q^(j+1)) * p^(i+1).
+    congr 1
+    apply Finset.sum_congr rfl
+    intro i _
+    rw [Finset.sum_mul]
+    apply Finset.sum_congr rfl
+    intro j _
+    ring
+  -- Push h_factor as a function-equality.
+  have h_factor_fun :
+      (fun (coefs : Fin dx → Fin dy → F) (p : pts_x) (q : pts_y) =>
+        Polynomial.eval (q.val : F)
+          (Polynomial.eval (Polynomial.C (p.val : F))
+            (Polynomial.C (Polynomial.C s) +
+              ∑ i : Fin dx, ∑ j : Fin dy,
+                Polynomial.C (Polynomial.C (coefs i j)) *
+                  Polynomial.X ^ (i.val + 1) *
+                  (Polynomial.C Polynomial.X) ^ (j.val + 1))))
+        = step2 ∘ step1 := by
+    funext coefs p q; exact h_factor coefs p q
+  -- Step 1: per-row Y-eval pushes uniform to uniform.
+  have h_step1 :
+      (PMF.uniform (Fin dx → Fin dy → F)).map step1
+        = PMF.uniform (Fin dx → pts_y → F) := by
+    -- The per-row map: row ↦ (q ↦ ∑ j, row j * q.val^(j+1)).
+    -- This equals evals_uniform dy 0 pts_y h_cy h_ny h_Fy after simplification.
+    have h_y_uni : (PMF.uniform (Fin dy → F)).map
+        (fun (row : Fin dy → F) (q : pts_y) =>
+          ∑ j : Fin dy, row j * (q.val : F) ^ (j.val + 1))
+        = PMF.uniform (pts_y → F) := by
+      have h_evals := evals_uniform dy (0 : F) pts_y h_cy h_ny h_Fy
+      unfold uniformWithFixedZero at h_evals
+      rw [PMF.map_comp] at h_evals
+      have h_eq : (fun (row : Fin dy → F) (q : pts_y) =>
+            ∑ j : Fin dy, row j * (q.val : F) ^ (j.val + 1))
+          = (fun f (p : pts_y) => Polynomial.eval p.val f) ∘
+              (fun coefs : Fin dy → F =>
+                Polynomial.C (0 : F) + ∑ i : Fin dy,
+                  Polynomial.C (coefs i) * Polynomial.X ^ (i.val + 1)) := by
+        funext row q
+        simp only [Function.comp, Polynomial.eval_add, Polynomial.eval_C,
+                   Polynomial.eval_finset_sum, Polynomial.eval_mul,
+                   Polynomial.eval_pow, Polynomial.eval_X, zero_add]
+      rw [h_eq]; exact h_evals
+    -- Now lift via Pi-uniform helper.
+    have h_pi := PMF.uniform_pi_map_of_uniform_map (ι := Fin dx) h_y_uni
+    -- Rewrite step1 = fun coefs i => h (coefs i) where h is the per-row map.
+    have h_step1_eq : step1 = fun (coefs : Fin dx → Fin dy → F) (i : Fin dx) =>
+        (fun (row : Fin dy → F) (q : pts_y) =>
+          ∑ j : Fin dy, row j * (q.val : F) ^ (j.val + 1)) (coefs i) := by
+      funext coefs i q; rfl
+    rw [h_step1_eq]; exact h_pi
+  -- Step 2: pushforward via per-q X-eval. Decompose step2 via swaps.
+  have h_step2 :
+      (PMF.uniform (Fin dx → pts_y → F)).map step2
+        = PMF.uniform (pts_x → pts_y → F) := by
+    -- Decompose step2 = swap2 ∘ pi_x ∘ swap1.
+    set swap1 : (Fin dx → pts_y → F) → (pts_y → Fin dx → F) :=
+      fun b q i => b i q with hswap1
+    set pi_x : (pts_y → Fin dx → F) → (pts_y → pts_x → F) :=
+      fun M q p => s + ∑ i : Fin dx, M q i * (p.val : F) ^ (i.val + 1) with hpi_x
+    set swap2 : (pts_y → pts_x → F) → (pts_x → pts_y → F) :=
+      fun M p q => M q p with hswap2
+    have h_decomp : step2 = swap2 ∘ pi_x ∘ swap1 := by
+      funext b p q
+      simp only [hstep2, Function.comp, hswap1, hpi_x, hswap2]
+    rw [h_decomp]
+    -- swap1 is bijective.
+    have h_swap1_bij : Function.Bijective swap1 := by
+      refine ⟨?_, ?_⟩
+      · intro b1 b2 h_eq
+        funext i q
+        exact congrFun (congrFun h_eq q) i
+      · intro M
+        exact ⟨fun i q => M q i, rfl⟩
+    have h_swap1 : (PMF.uniform (Fin dx → pts_y → F)).map swap1
+        = PMF.uniform (pts_y → Fin dx → F) :=
+      PMF.uniform_map_of_bijective h_swap1_bij
+    -- swap2 is bijective.
+    have h_swap2_bij : Function.Bijective swap2 := by
+      refine ⟨?_, ?_⟩
+      · intro M1 M2 h_eq
+        funext q p
+        exact congrFun (congrFun h_eq p) q
+      · intro N
+        exact ⟨fun q p => N p q, rfl⟩
+    have h_swap2 : (PMF.uniform (pts_y → pts_x → F)).map swap2
+        = PMF.uniform (pts_x → pts_y → F) :=
+      PMF.uniform_map_of_bijective h_swap2_bij
+    -- Per-q X-eval via Pi-uniform helper.
+    have h_x_uni : (PMF.uniform (Fin dx → F)).map
+        (fun (col : Fin dx → F) (p : pts_x) =>
+          s + ∑ i : Fin dx, col i * (p.val : F) ^ (i.val + 1))
+        = PMF.uniform (pts_x → F) := by
+      have h_evals := evals_uniform dx s pts_x h_cx h_nx h_Fx
+      unfold uniformWithFixedZero at h_evals
+      rw [PMF.map_comp] at h_evals
+      have h_eq : (fun (col : Fin dx → F) (p : pts_x) =>
+            s + ∑ i : Fin dx, col i * (p.val : F) ^ (i.val + 1))
+          = (fun f (p : pts_x) => Polynomial.eval p.val f) ∘
+              (fun coefs : Fin dx → F =>
+                Polynomial.C s + ∑ i : Fin dx,
+                  Polynomial.C (coefs i) * Polynomial.X ^ (i.val + 1)) := by
+        funext col p
+        simp only [Function.comp, Polynomial.eval_add, Polynomial.eval_C,
+                   Polynomial.eval_finset_sum, Polynomial.eval_mul,
+                   Polynomial.eval_pow, Polynomial.eval_X]
+      rw [h_eq]; exact h_evals
+    have h_pi_x : (PMF.uniform (pts_y → Fin dx → F)).map pi_x
+        = PMF.uniform (pts_y → pts_x → F) := by
+      have h_pi := PMF.uniform_pi_map_of_uniform_map (ι := pts_y) h_x_uni
+      have h_pi_x_eq : pi_x = fun (M : pts_y → Fin dx → F) (q : pts_y) =>
+          (fun (col : Fin dx → F) (p : pts_x) =>
+            s + ∑ i : Fin dx, col i * (p.val : F) ^ (i.val + 1)) (M q) := by
+        funext M q p; rfl
+      rw [h_pi_x_eq]; exact h_pi
+    -- Compose: ((uniform).map swap1).map pi_x.map swap2.
+    rw [show (swap2 ∘ pi_x ∘ swap1) = swap2 ∘ (pi_x ∘ swap1) from rfl]
+    rw [← PMF.map_comp]
+    rw [← PMF.map_comp]
+    rw [h_swap1, h_pi_x, h_swap2]
+  -- Compose step1 and step2.
+  unfold uniformBivariateWithFixedZero
+  rw [PMF.map_comp]
+  -- The composed map equals step2 ∘ step1.
+  rw [show ((fun f (p : pts_x) (q : pts_y) =>
+              Polynomial.eval (q.val : F) (Polynomial.eval (Polynomial.C (p.val : F)) f))
+            ∘ (fun coefs : Fin dx → Fin dy → F =>
+                Polynomial.C (Polynomial.C s) + ∑ i : Fin dx, ∑ j : Fin dy,
+                  Polynomial.C (Polynomial.C (coefs i j)) *
+                    Polynomial.X ^ (i.val + 1) *
+                    (Polynomial.C Polynomial.X) ^ (j.val + 1)))
+          = step2 ∘ step1 from h_factor_fun]
+  rw [← PMF.map_comp, h_step1, h_step2]
 
 end Leslie.Prob.Polynomial
