@@ -15,7 +15,7 @@ against a real distributed protocol, so the same top-level
 statements port cleanly when later protocols (AVSS, common coin)
 actually flip coins.
 
-## Status (M2 W3 polish)
+## Status
 
   * §1 `brbStep` — a deterministic next-state function mirroring
     every case of the protocol. **Closed.**
@@ -26,53 +26,27 @@ actually flip coins.
   * §4 `brbProb_fires_iff` — bridge expressing that an enabled
     action's next-state is uniquely `brbStep`. **Closed.**
   * §5 `brbProb_budget_AS` — corruption budget invariant lifted to
-    `AlmostBox`. **Carries one `sorry`** on the trace-AE step (the
-    `traceDist`-support → step-relation bridge, which is not yet
-    pinned down in `Leslie/Prob/Refinement.lean`). The structural
-    side (deterministic step preserves the budget) IS closed in §5.1.
-  * §6 `brbProb_validity_AS`, §7 `brbProb_agreement_AS`,
-    §8 `brbProb_totality_AS_fair` — same shape as §5; each carries
-    a `sorry` for the same reason and a TODO. The interesting
-    safety / liveness contents are already proved deterministically
-    in `Leslie/Examples/ByzantineReliableBroadcast.lean` upstream.
+    `AlmostBox`. **Closed** modulo the `AlmostBox_of_pure_inductive`
+    bridge in `Leslie/Prob/Refinement.lean`. The structural side
+    (deterministic step preserves the budget) IS closed in §5.1.
+  * §6 `brbProb_validity_AS`, §7 `brbProb_agreement_AS` — same shape
+    as §5; closed via the inductive invariant `brb_inv` from upstream
+    `Leslie.Examples.ByzantineReliableBroadcast` plus the same
+    `AlmostBox_of_pure_inductive` bridge.
+  * §8 `brbProb_totality_AS_fair` — liveness; still carries a `sorry`
+    pending the `AlmostDiamond` analogue of the bridge.
 
-## Deviation from the brief
+## Upstream reuse
 
-The brief asks to `import Leslie.Examples.ByzantineReliableBroadcast`
-and `open ByzantineReliableBroadcast` to reuse types verbatim.
-**That file currently has 24 pre-existing compile errors** in its
-liveness section (lines 1611+), all `rw` failures stemming from a
-`Nat` simp-normal-form change in the upgrade to Lean 4.27.0 / mathlib
-v4.27.0 (e.g. `0 + (k'+1)` is now normalized to `k'+1+0` instead of
-`0 + (k'+1)`, breaking ~20 explicit `rw [show 0 + ... = ... from …]`
-forms in `stable_or_corrupt`, `voted_stable`, `*_stable`,
-`vote_msg_tracking`, `wf_*`, etc.). Since the brief restricts edits
-to `Leslie/Examples/Prob/BrachaRBC.lean`, and the broken section
-prevents the Bracha file from being imported at all, I redeclare
-the protocol types and helpers verbatim in this file, with attribution
-comments pointing to the upstream definitions.
-
-The redeclared declarations are:
-  * `MsgType`, `Message`, `LocalState`, `State`, `Action`
-    (structurally identical to upstream).
-  * `isCorrect`, `countEchoRecv`, `countVoteRecv`, `echoThreshold`,
-    `voteThreshold`, `returnThreshold`, `LocalState.init`.
-  * The `brbStep` deterministic next-state function (§1, new).
-  * The probabilistic spec `brbProb` (§2, new).
-
-The brief's `brb` (relational) and the deterministic safety
-proofs `brb_validity`, `brb_agreement`, `totality`, `brb_inv`,
-`brb_inv_init`, `brb_inv_step`, `brb_fairness` are *not*
-redeclared here: the trace-AE-bridge gap means we wouldn't be
-able to use them anyway (§5–§8 sorry on the bridge step,
-the deterministic content is left to a future M2 W4 / M3 W1
-generic lemma in `Leslie/Prob/Refinement.lean`).
-
-Once the upstream `ByzantineReliableBroadcast.lean` is repaired
-(which is a 1-line-per-error mechanical fix — change
-`0 + (k' + 1)` to `k' + 1 + 0` in each broken `rw`), this file
-should be migrated to `import Leslie.Examples.ByzantineReliableBroadcast`
-and the local redeclarations removed.
+This file imports protocol types (`MsgType`, `Message`, `LocalState`,
+`State`, `Action`), helpers (`isCorrect`, `countEchoRecv`,
+`countVoteRecv`, `*Threshold`, `LocalState.init`), the deterministic
+relational spec `brb`, and the safety invariant `brb_inv` (with
+`brb_inv_init` / `brb_inv_step`) from
+`Leslie.Examples.ByzantineReliableBroadcast`. The pieces added here
+are the deterministic next-state function `brbStep`, the gate
+predicate `actionGate`, the initial-state predicate `initPred`, and
+the probabilistic spec `brbProb` built on top.
 
 ## Typeclass setup
 
@@ -90,6 +64,7 @@ Per implementation plan v2.2 §M2 W3 + design plan v2.2
 §"Probabilistic refinement on a real protocol".
 -/
 
+import Leslie.Examples.ByzantineReliableBroadcast
 import Leslie.Prob.Action
 import Leslie.Prob.Adversary
 import Leslie.Prob.Trace
@@ -104,83 +79,18 @@ import Mathlib.Data.Countable.Defs
 
 namespace Leslie.Prob.Examples.BrachaRBC
 
-open Leslie.Prob MeasureTheory
+open Leslie.Prob MeasureTheory ByzantineReliableBroadcast
 
-/-! ## §0. Protocol types (local redeclaration)
+/-! ## §0. Fintype on upstream `MsgType`
 
-Mirror of `Leslie.Examples.ByzantineReliableBroadcast` types — see
-the file header for why we redeclare here. -/
+Upstream derives only `DecidableEq` for `MsgType`; we need `Fintype`
+to make `Action n Value` and `Message n Value` countable. -/
 
-/-- Message type: `init`, `echo`, or `vote`. -/
-inductive MsgType where
-  | init | echo | vote
-  deriving DecidableEq, Fintype
-
-/-- A point-to-point message in the network buffer. -/
-structure Message (n : Nat) (Value : Type) where
-  src : Fin n
-  dst : Fin n
-  type : MsgType
-  val : Value
-  deriving DecidableEq
-
-/-- Per-process local state. -/
-structure LocalState (n : Nat) (Value : Type) where
-  /-- `sent dst t v = true` iff this process has sent message (t, v) to dst. -/
-  sent : Fin n → MsgType → Value → Bool
-  /-- Value received via SEND from the designated sender (at most one). -/
-  sendRecv : Option Value
-  /-- Received ECHO(v) from process j (one per source per value). -/
-  echoRecv : Fin n → Value → Bool
-  /-- Received VOTE(v) from process j (one per source per value). -/
-  voteRecv : Fin n → Value → Bool
-  /-- Value echoed (at most one). -/
-  echoed : Option Value
-  /-- `voted v = true` iff this process has voted for value v. -/
-  voted : Value → Bool
-  /-- Value returned (at most one). -/
-  returned : Option Value
-
-/-- Global state: per-process local states, network buffer, list of
-corrupted processes. -/
-structure State (n : Nat) (Value : Type) where
-  local_ : Fin n → LocalState n Value
-  buffer : Message n Value → Bool
-  corrupted : List (Fin n)
-
-/-- Action labels. -/
-inductive Action (n : Nat) (Value : Type) where
-  | corrupt (i : Fin n)
-  | send (src dst : Fin n) (t : MsgType) (v : Value)
-  | recv (src dst : Fin n) (t : MsgType) (v : Value)
-  | doReturn (i : Fin n) (v : Value)
+instance : Fintype MsgType where
+  elems := {.init, .echo, .vote}
+  complete := fun t => by cases t <;> decide
 
 variable (n f : Nat) (Value : Type) [DecidableEq Value]
-
-/-- A process is *correct* iff it is not in the corrupted list. -/
-def isCorrect (s : State n Value) (p : Fin n) : Prop := p ∉ s.corrupted
-
-/-- Count distinct sources from which ECHO(v) was received. -/
-def countEchoRecv (ls : LocalState n Value) (v : Value) : Nat :=
-  (List.finRange n).filter (ls.echoRecv · v) |>.length
-
-/-- Count distinct sources from which VOTE(v) was received. -/
-def countVoteRecv (ls : LocalState n Value) (v : Value) : Nat :=
-  (List.finRange n).filter (ls.voteRecv · v) |>.length
-
-def echoThreshold : Nat := n - f
-def voteThreshold : Nat := f + 1
-def returnThreshold : Nat := n - f
-
-/-- Default initial local state: empty/none/false everywhere. -/
-def LocalState.init : LocalState n Value where
-  sent := fun _ _ _ => false
-  sendRecv := none
-  echoRecv := fun _ _ => false
-  voteRecv := fun _ _ => false
-  echoed := none
-  voted := fun _ => false
-  returned := none
 
 /-! ## §1. Deterministic next-state function `brbStep`
 
@@ -533,39 +443,112 @@ theorem brbProb_budget_AS
       brbStep_preserves_budget n f Value sender val a s hgate hbudget)
     μ₀ h_init' A
 
+/-! ### §5.3 Bridges to upstream relational `brb`
+
+`actionGate` and `brbStep` were inlined here so the probabilistic
+spec doesn't have to dispatch through the relational `(brb …).actions`.
+Both are *definitionally equal* to the corresponding upstream fields,
+so the bridge is a pair of `cases a <;> rfl` lemmas. We use these to
+relay the inductive invariant `brb_inv` from upstream
+`brb_inv_init` / `brb_inv_step` into our deterministic
+`brbStep`-driven `AlmostBox_of_pure_inductive` framework. -/
+
+omit [Fintype Value] in
+theorem actionGate_iff_brb_gate
+    (sender : Fin n) (val : Value)
+    (a : Action n Value) (s : State n Value) :
+    actionGate n f Value sender val a s ↔
+      ((brb n f Value sender val).actions a).gate s := by
+  cases a <;> rfl
+
+omit [Fintype Value] in
+theorem brbStep_eq_brb_transition
+    (sender : Fin n) (val : Value)
+    (a : Action n Value) (s : State n Value) :
+    ((brb n f Value sender val).actions a).transition s
+      (brbStep n Value sender val a s) := by
+  cases a <;> rfl
+
+omit [Fintype Value] in
+/-- Bridge: when the gate holds and `s' = brbStep …`, the upstream
+relational `brb`-action `fires`, so `brb_inv_step` applies. -/
+theorem brbStep_preserves_brb_inv
+    (sender : Fin n) (val : Value) (hn : n > 3 * f)
+    (a : Action n Value) (s : State n Value)
+    (hgate  : actionGate n f Value sender val a s)
+    (hinv : brb_inv n f Value sender val s) :
+    brb_inv n f Value sender val (brbStep n Value sender val a s) := by
+  apply brb_inv_step n f Value sender val hn s (brbStep n Value sender val a s)
+  · exact ⟨a, (actionGate_iff_brb_gate n f Value sender val a s).mp hgate,
+      brbStep_eq_brb_transition n f Value sender val a s⟩
+  · exact hinv
+
+omit [Fintype Value] in
+/-- The initial-state predicate `initPred` is definitionally `(brb …).init`,
+so `brb_inv_init` hands us `brb_inv` at every state in the support. -/
+theorem initPred_brb_inv
+    (sender : Fin n) (val : Value)
+    (s : State n Value) (h : initPred n Value s) :
+    brb_inv n f Value sender val s :=
+  brb_inv_init n f Value sender val s h
+
 /-! ## §6. Validity (AlmostBox formulation)
 
 Validity = "if the sender is correct, no honest party returns a
 value other than `val`". The deterministic content is upstream
-`brb_validity` (in `Leslie/Examples/ByzantineReliableBroadcast.lean`).
-For the probabilistic side we constrain the adversary's `corrupt`
-set to exclude `sender` (this matches the deterministic hypothesis
-`□⌜ isCorrect sender ⌝`). -/
+`brb_validity` (in `Leslie/Examples/ByzantineReliableBroadcast.lean`),
+which extracts conjunct 6 (`local_consistent`) of `brb_inv`.
 
+For the probabilistic side we lift `brb_inv` itself to an `AlmostBox`
+via `AlmostBox_of_pure_inductive`, then read off conjunct 6. -/
+
+set_option maxHeartbeats 400000 in
 /-- Validity, lifted to an `AlmostBox` on the probabilistic trace.
 
-**Sorry note (M2 W3 polish — deferred to M3).** The bridge
-`AlmostBox_of_pure_inductive` is now in `Leslie.Prob.Refinement`,
-but closing validity needs the deterministic `brb_inv` content
-(specifically the `local_consistent` conjunct under
-`isCorrect sender`), which lives in upstream
-`Leslie.Examples.ByzantineReliableBroadcast` — currently broken
-in its liveness section, see file header. Porting the relevant
-sub-invariants is a ~1000-line task; deferred to M3. The bridge
-helper itself has been validated by `brbProb_budget_AS` above. -/
+Closed by lifting `brb_inv` to an `AlmostBox` (using
+`brb_inv_init` and `brb_inv_step` from upstream
+`Leslie.Examples.ByzantineReliableBroadcast`), then reading off
+conjunct 6 (the `local_consistent` clause guarded by
+`isCorrect n Value s sender`).
+
+The `n > 3 * f` premise is required because `brb_inv_step` uses the
+echo-quorum-intersection argument (which needs `n > 3 * f`) to
+preserve conjunct 8 of the invariant; conjunct 6 — the clause that
+gives validity — depends on the full `brb_inv` being inductive, so
+we cannot drop it. -/
 theorem brbProb_validity_AS
     (sender : Fin n) (val : Value)
+    (hn : n > 3 * f)
     (μ₀ : Measure (State n Value)) [IsProbabilityMeasure μ₀]
-    (_h_init : ∀ᵐ s ∂μ₀, initPred n Value s)
+    (h_init : ∀ᵐ s ∂μ₀, initPred n Value s)
     (A : Adversary (State n Value) (Action n Value))
     (_h_sender_honest : (sender.val : PartyId) ∉ A.corrupt) :
     AlmostBox (brbProb n f Value sender val) A μ₀
       (fun s => isCorrect n Value s sender →
         ∀ p v, isCorrect n Value s p →
           (s.local_ p).returned = some v → v = val) := by
-  -- TODO(M3): close via `AlmostBox_of_pure_inductive` plus
-  -- the ported `local_consistent` sub-invariant from upstream `brb_inv`.
-  sorry
+  have h_pure : ∀ (a : Action n Value) (s : State n Value)
+      (h : ((brbProb n f Value sender val).actions a).gate s),
+      ((brbProb n f Value sender val).actions a).effect s h
+        = PMF.pure (brbStep n Value sender val a s) :=
+    fun _ _ _ => rfl
+  have h_init' : ∀ᵐ s ∂μ₀, brb_inv n f Value sender val s := by
+    filter_upwards [h_init] with s hs
+    exact initPred_brb_inv n f Value sender val s hs
+  have h_inv : AlmostBox (brbProb n f Value sender val) A μ₀
+      (fun s => brb_inv n f Value sender val s) :=
+    AlmostBox_of_pure_inductive
+      (fun s => brb_inv n f Value sender val s)
+      (fun a s => brbStep n Value sender val a s)
+      h_pure
+      (fun a s hgate hinv =>
+        brbStep_preserves_brb_inv n f Value sender val hn a s hgate hinv)
+      μ₀ h_init' A
+  -- Read off conjunct 6 (`local_consistent`, the validity clause).
+  unfold AlmostBox at h_inv ⊢
+  filter_upwards [h_inv] with ω hinv k hsender p v hp hret
+  obtain ⟨_, _, _, _, _, hcond, _, _, _, _⟩ := hinv k
+  exact (hcond hsender).1 p hp |>.2.2.2.2 v hret
 
 /-! ## §7. Agreement (AlmostBox formulation)
 
@@ -578,24 +561,64 @@ def agreementPred (s : State n Value) : Prop :=
     (s.local_ p).returned = some vp → (s.local_ q).returned = some vq →
     vp = vq
 
+set_option maxHeartbeats 400000 in
 /-- Agreement, lifted to an `AlmostBox` on the probabilistic trace.
 
-**Sorry note (M2 W3 polish — deferred to M3).** Same as validity:
-the bridge helper is in place, but agreement needs `brb_inv`
-conjuncts 7–9 plus the echo-quorum-intersection lemma from upstream
-`Leslie.Examples.ByzantineReliableBroadcast` (broken; see file
-header). Deferred to M3. -/
+Closed by lifting `brb_inv` to an `AlmostBox` and reproducing the
+upstream `brb_agreement` pigeonhole argument inside the
+`filter_upwards`: each returned value has ≥ n−f votes (conjunct 7),
+the budget is ≤ f (conjunct 1), so pigeonhole gives a correct voter,
+the vote-trace conjunct (4) bridges `voteRecv → voted`, and vote
+agreement (conjunct 8) forces the values to be equal. -/
 theorem brbProb_agreement_AS
     (sender : Fin n) (val : Value)
-    (_hn : n > 3 * f)
+    (hn : n > 3 * f)
     (μ₀ : Measure (State n Value)) [IsProbabilityMeasure μ₀]
-    (_h_init : ∀ᵐ s ∂μ₀, initPred n Value s)
+    (h_init : ∀ᵐ s ∂μ₀, initPred n Value s)
     (A : Adversary (State n Value) (Action n Value)) :
     AlmostBox (brbProb n f Value sender val) A μ₀
       (agreementPred n Value) := by
-  -- TODO(M3): close via `AlmostBox_of_pure_inductive` against
-  -- ported `brb_inv` conjuncts 7–9.
-  sorry
+  have h_pure : ∀ (a : Action n Value) (s : State n Value)
+      (h : ((brbProb n f Value sender val).actions a).gate s),
+      ((brbProb n f Value sender val).actions a).effect s h
+        = PMF.pure (brbStep n Value sender val a s) :=
+    fun _ _ _ => rfl
+  have h_init' : ∀ᵐ s ∂μ₀, brb_inv n f Value sender val s := by
+    filter_upwards [h_init] with s hs
+    exact initPred_brb_inv n f Value sender val s hs
+  have h_inv : AlmostBox (brbProb n f Value sender val) A μ₀
+      (fun s => brb_inv n f Value sender val s) :=
+    AlmostBox_of_pure_inductive
+      (fun s => brb_inv n f Value sender val s)
+      (fun a s => brbStep n Value sender val a s)
+      h_pure
+      (fun a s hgate hinv =>
+        brbStep_preserves_brb_inv n f Value sender val hn a s hgate hinv)
+      μ₀ h_init' A
+  -- Pigeonhole on conjuncts 1, 4, 7, 8 (mirrors upstream `brb_agreement`).
+  unfold AlmostBox at h_inv ⊢
+  filter_upwards [h_inv] with ω hinv k p q vp vq hp hq hretp hretq
+  obtain ⟨hbudget, _, _, hvtrace, _, _, hvotes, hvagree, _, _⟩ := hinv k
+  -- p returned vp with ≥ n−f votes; n − f > f ≥ |corrupted| → correct voter.
+  have hvp := hvotes p vp hretp
+  have hgt_p : ((ω k).1).corrupted.length <
+      countVoteRecv n Value (((ω k).1).local_ p) vp :=
+    calc ((ω k).1).corrupted.length ≤ f := hbudget
+      _ < n - f := by omega
+      _ ≤ _ := hvp
+  obtain ⟨rp, hrp_vote, hrp_corr⟩ := pigeonhole_filter n
+    (((ω k).1).local_ p |>.voteRecv · vp) ((ω k).1).corrupted hgt_p
+  have hvq := hvotes q vq hretq
+  have hgt_q : ((ω k).1).corrupted.length <
+      countVoteRecv n Value (((ω k).1).local_ q) vq :=
+    calc ((ω k).1).corrupted.length ≤ f := hbudget
+      _ < n - f := by omega
+      _ ≤ _ := hvq
+  obtain ⟨rq, hrq_vote, hrq_corr⟩ := pigeonhole_filter n
+    (((ω k).1).local_ q |>.voteRecv · vq) ((ω k).1).corrupted hgt_q
+  have hrp_voted := hvtrace p rp vp hrp_corr hrp_vote
+  have hrq_voted := hvtrace q rq vq hrq_corr hrq_vote
+  exact hvagree rp rq vp vq hrp_corr hrq_corr hrp_voted hrq_voted
 
 /-! ## §8. Totality (AlmostDiamond formulation, fair adversary)
 
