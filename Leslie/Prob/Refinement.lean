@@ -178,6 +178,84 @@ def AlmostDiamond
     (φ : σ → Prop) : Prop :=
   ∀ᵐ ω ∂(traceDist spec₁ A μ₀), ∃ n, φ ((ω n).1)
 
+/-! ### `AlmostBox_of_pure_inductive` — deterministic-step bridge
+
+When every action's effect is a Dirac (`PMF.pure (det_step i s)`), the
+`stepKernel` collapses to a deterministic kernel: in the `none`-schedule
+branch and the gate-fail branch it is already a Dirac (stutter), and in
+the gate-pass branch the PMF.pure measure is also a Dirac. With a
+deterministic-everywhere kernel, an inductive predicate `P` that is
+preserved by the deterministic step transfers from the initial measure
+to every coordinate of the trace, hence `AlmostBox` holds.
+
+**M2 W3 polish status.** The helper is structural (signature pinned
+down by the four BrachaRBC-AS theorems below). The proof body needs
+the n-step marginal extraction lemma for `Kernel.trajMeasure`, which
+is not yet exposed in Mathlib v4.27.0 in a directly usable form (only
+joint marginals via `map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`).
+Closing this rigorously is M3-W1-adjacent work — see the documentation
+of the gap below the theorem.
+
+For now we leave the body as `sorry` so the BrachaRBC closures (which
+reduce to one-line applications of this helper) demonstrate the API
+is correctly shaped.
+
+Mathlib lemmas used / needed:
+  * `MeasureTheory.ae_all_iff` — countable-AE swap (already available).
+  * `PMF.toMeasure_pure` — Dirac form of `PMF.pure` (already available).
+  * `Kernel.trajMeasure_marginal_succ` (NOT in Mathlib): would say
+    `(trajMeasure μ₀ κ).map (fun ω => ω (n+1))` equals the kernel-
+    pushed marginal at coordinate `n`. This is derivable from the
+    existing `map_traj_succ_self` plus
+    `map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`, but the
+    derivation is ~80 lines of measure-theoretic plumbing. -/
+
+/-- When all effects are Dirac on a deterministic step function and
+the deterministic step preserves an inductive predicate `P`, the
+predicate holds AE-always on the trace measure.
+
+**Body status: documented `sorry`** — see file-section header. The
+BrachaRBC-AS callers (§5–§7 in `Examples/Prob/BrachaRBC.lean`) reduce
+to one-line applications of this helper; the helper signature is
+pinned down by those callers.
+
+Closing the body needs an n-step marginal lemma for
+`Kernel.trajMeasure` that is currently missing from Mathlib v4.27.0
+(see the section header for the precise gap). -/
+theorem AlmostBox_of_pure_inductive
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+    {spec : ProbActionSpec σ ι}
+    (P : σ → Prop)
+    (det_step : ι → σ → σ)
+    (h_pure : ∀ (i : ι) (s : σ) (h : (spec.actions i).gate s),
+        (spec.actions i).effect s h = PMF.pure (det_step i s))
+    (h_step : ∀ (i : ι) (s : σ),
+        (spec.actions i).gate s → P s → P (det_step i s))
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, P s)
+    (A : Adversary σ ι) :
+    AlmostBox spec A μ₀ P := by
+  -- Mark the hypotheses as "intentionally unused" until the body lands
+  -- (M3 polish). Keeping them in the signature so callers can already
+  -- apply this lemma cleanly (see `BrachaRBC.brbProb_budget_AS`).
+  let _ := h_pure
+  let _ := h_step
+  let _ := h_init
+  -- AlmostBox unfolds to `∀ᵐ ω ∂traceDist, ∀ n, P (ω n).1`.
+  -- By `MeasureTheory.ae_all_iff` this is `∀ n, ∀ᵐ ω, P (ω n).1`.
+  -- For each `n`, the marginal of `traceDist` at coordinate `n` is the
+  -- pushforward of `μ₀.map (·, none)` through `n` deterministic-Dirac
+  -- kernel steps; the inductive `h_step`/`h_init` finish.
+  --
+  -- Body deferred — see section header for the missing Mathlib lemma.
+  -- Concretely: we need `(trajMeasure μ₀_full (stepKernel ..)).map (eval n)`
+  -- in a form usable by `filter_upwards`. With `_h_pure` plus the
+  -- countable-AE swap, this reduces to a finite induction step that
+  -- transports `P` along the deterministic kernel.
+  sorry
+
 /-! ### Refines_safe
 
 If `Π` refines `Σ` (via `proj`) and `φ` holds always for `Σ`'s

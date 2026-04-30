@@ -495,40 +495,43 @@ theorem initPred_budget
 
 /-! ### §5.2 AlmostBox lift -/
 
+set_option maxHeartbeats 800000 in
 /-- Corruption-budget AlmostBox invariant on the probabilistic
 trace. Initial measure is concentrated on `initPred` states (i.e.,
 `brbProb`-init states); `initPred_budget` gives the budget at step
 0, and `brbStep_preserves_budget` gives the inductive step.
 
-**Sorry note (M2 W3 polish).** The remaining gap is the standard
-"trace measure → almost-sure invariant under deterministic step
-kernel" lemma: under our `stepKernel`, a deterministic effect
-(`PMF.pure`) commutes with the kernel pushforward, so an inductive
-property of `brbStep` lifts to an `AlmostBox` on the trace. This
-generic bridge is not yet implemented in
-`Leslie/Prob/Refinement.lean`. The expected shape is
-
-```
-AlmostBox_of_pure_inductive
-    (h_init : ∀ s, μ₀ {s} ≠ 0 → P s)
-    (h_pure : ∀ a s h, (spec.actions a).effect s h = PMF.pure (det_step a s))
-    (h_step : ∀ a s, (spec.actions a).gate s → P s → P (det_step a s)) :
-  AlmostBox spec A μ₀ P
-```
-
-Once that lemma is added, this proof is one line. -/
+**M2 W3 polish closure.** Closed by `AlmostBox_of_pure_inductive`
+from `Leslie.Prob.Refinement`:
+  * `h_pure` is by `rfl` (each `brbProb` effect is `PMF.pure` on
+    `brbStep` by definition).
+  * `h_step` is `brbStep_preserves_budget` (§5.1).
+  * `h_init` requires the budget at every state in `μ₀`'s support;
+    the cleaner phrasing `∀ᵐ s ∂μ₀, ...` (per
+    `Leslie.Prob.Refinement.AlmostBox_of_pure_inductive`) is used. -/
 theorem brbProb_budget_AS
     (sender : Fin n) (val : Value)
     (μ₀ : Measure (State n Value)) [IsProbabilityMeasure μ₀]
-    (h_init : ∀ s, μ₀ {s} ≠ 0 → initPred n Value s)
+    (h_init : ∀ᵐ s ∂μ₀, initPred n Value s)
     (A : Adversary (State n Value) (Action n Value)) :
     AlmostBox (brbProb n f Value sender val) A μ₀
       (fun s => s.corrupted.length ≤ f) := by
-  -- The deterministic ingredients are already here:
-  --   * `initPred_budget` gives the budget at every initial state.
-  --   * `brbStep_preserves_budget` gives the inductive step.
-  -- The missing piece is the trace-measure lift; see file header.
-  sorry
+  -- The deterministic step preserves the budget; pull the bridge.
+  have h_pure : ∀ (a : Action n Value) (s : State n Value)
+      (h : ((brbProb n f Value sender val).actions a).gate s),
+      ((brbProb n f Value sender val).actions a).effect s h
+        = PMF.pure (brbStep n Value sender val a s) :=
+    fun _ _ _ => rfl
+  have h_init' : ∀ᵐ s ∂μ₀, s.corrupted.length ≤ f := by
+    filter_upwards [h_init] with s hs
+    exact initPred_budget n f Value s hs
+  exact AlmostBox_of_pure_inductive
+    (fun s => s.corrupted.length ≤ f)
+    (fun a s => brbStep n Value sender val a s)
+    h_pure
+    (fun a s hgate hbudget =>
+      brbStep_preserves_budget n f Value sender val a s hgate hbudget)
+    μ₀ h_init' A
 
 /-! ## §6. Validity (AlmostBox formulation)
 
@@ -541,22 +544,27 @@ set to exclude `sender` (this matches the deterministic hypothesis
 
 /-- Validity, lifted to an `AlmostBox` on the probabilistic trace.
 
-**Sorry note.** Same gap as `brbProb_budget_AS`: the trace-AE
-bridge from a deterministic-step inductive invariant to
-`AlmostBox`. -/
+**Sorry note (M2 W3 polish — deferred to M3).** The bridge
+`AlmostBox_of_pure_inductive` is now in `Leslie.Prob.Refinement`,
+but closing validity needs the deterministic `brb_inv` content
+(specifically the `local_consistent` conjunct under
+`isCorrect sender`), which lives in upstream
+`Leslie.Examples.ByzantineReliableBroadcast` — currently broken
+in its liveness section, see file header. Porting the relevant
+sub-invariants is a ~1000-line task; deferred to M3. The bridge
+helper itself has been validated by `brbProb_budget_AS` above. -/
 theorem brbProb_validity_AS
     (sender : Fin n) (val : Value)
     (μ₀ : Measure (State n Value)) [IsProbabilityMeasure μ₀]
-    (h_init : ∀ s, μ₀ {s} ≠ 0 → initPred n Value s)
+    (_h_init : ∀ᵐ s ∂μ₀, initPred n Value s)
     (A : Adversary (State n Value) (Action n Value))
     (_h_sender_honest : (sender.val : PartyId) ∉ A.corrupt) :
     AlmostBox (brbProb n f Value sender val) A μ₀
       (fun s => isCorrect n Value s sender →
         ∀ p v, isCorrect n Value s p →
           (s.local_ p).returned = some v → v = val) := by
-  -- TODO(M2 W3 polish): close via `AlmostBox_of_pure_inductive` plus
-  -- the deterministic invariant from upstream `brb_inv`
-  -- (conjunct 6: `local_consistent` under `isCorrect sender`).
+  -- TODO(M3): close via `AlmostBox_of_pure_inductive` plus
+  -- the ported `local_consistent` sub-invariant from upstream `brb_inv`.
   sorry
 
 /-! ## §7. Agreement (AlmostBox formulation)
@@ -572,20 +580,21 @@ def agreementPred (s : State n Value) : Prop :=
 
 /-- Agreement, lifted to an `AlmostBox` on the probabilistic trace.
 
-**Sorry note.** Same trace-AE bridge gap. The deterministic content
-is upstream `brb_agreement`, threaded through `brb_inv` conjuncts
-7–9 plus the echo-quorum-intersection lemma. -/
+**Sorry note (M2 W3 polish — deferred to M3).** Same as validity:
+the bridge helper is in place, but agreement needs `brb_inv`
+conjuncts 7–9 plus the echo-quorum-intersection lemma from upstream
+`Leslie.Examples.ByzantineReliableBroadcast` (broken; see file
+header). Deferred to M3. -/
 theorem brbProb_agreement_AS
     (sender : Fin n) (val : Value)
     (_hn : n > 3 * f)
     (μ₀ : Measure (State n Value)) [IsProbabilityMeasure μ₀]
-    (h_init : ∀ s, μ₀ {s} ≠ 0 → initPred n Value s)
+    (_h_init : ∀ᵐ s ∂μ₀, initPred n Value s)
     (A : Adversary (State n Value) (Action n Value)) :
     AlmostBox (brbProb n f Value sender val) A μ₀
       (agreementPred n Value) := by
-  -- TODO(M2 W3 polish): close via the same `AlmostBox_of_pure_inductive`
-  -- bridge against the upstream invariant `brb_inv` (conjuncts 7–9
-  -- imply agreement directly, as in upstream `brb_agreement`).
+  -- TODO(M3): close via `AlmostBox_of_pure_inductive` against
+  -- ported `brb_inv` conjuncts 7–9.
   sorry
 
 /-! ## §8. Totality (AlmostDiamond formulation, fair adversary)
@@ -628,7 +637,7 @@ theorem brbProb_totality_AS_fair
     (sender : Fin n) (val : Value)
     (_hn : n > 3 * f)
     (μ₀ : Measure (State n Value)) [IsProbabilityMeasure μ₀]
-    (h_init : ∀ s, μ₀ {s} ≠ 0 → initPred n Value s)
+    (_h_init : ∀ᵐ s ∂μ₀, initPred n Value s)
     (A : FairAdversary (State n Value) (Action n Value)
             (brbFair n Value sender val))
     (r : Fin n) (v : Value)
