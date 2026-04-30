@@ -144,4 +144,141 @@ theorem eq_of_coupling_id {μ ν : PMF α} (c : Coupling μ ν)
     rw [hzero]
     simp
 
+/-! ## coupling_up_to_bad — pRHL "up-to-bad"
+
+The classical "fundamental lemma of game-playing" in the
+information-theoretic setting: if a coupling `c` of `μ` and `ν`
+agrees on coordinates everywhere outside a "bad" event `B` on the
+joint, then for any event `S ⊆ α`,
+
+    `μ.toOuterMeasure S ≤ ν.toOuterMeasure S + Pr_joint[B]`.
+
+(And by symmetry, the same with `μ` and `ν` swapped.)
+
+This is the cleanest statement that supports cryptographic
+reductions: replace one game by another, and pay the probability
+of the bad event as the gap. The hypothesis `h_good` says: on the
+joint's support, `¬ B p → p.1 = p.2` — outside `B`, the coupling
+witnesses equality of coordinates.
+
+Compare with `eq_of_coupling_id`: when `B = ⊥` (no bad event), the
+bound collapses to `μ S ≤ ν S`, and applying the same combinator
+in both directions yields `μ S = ν S`, hence `μ = ν`.
+
+This combinator is the M2.5 W2 deliverable; the Wegman–Carter
+ITMAC bound (`Examples/Prob/ITMAC.lean`) is its first non-trivial
+client. -/
+
+/-- "Up-to-bad" probability bound for a coupling of two PMFs on
+the same type.
+
+Let `μ ν : PMF α` and `c : Coupling μ ν`. If `B : α × α → Prop` is
+a "bad" predicate on the joint such that on the joint's support,
+`¬ B p` implies `p.1 = p.2`, then for any event `S ⊆ α`,
+`μ.toOuterMeasure S ≤ ν.toOuterMeasure S + Pr_joint[B]`. -/
+theorem coupling_up_to_bad {μ ν : PMF α}
+    (c : Coupling μ ν) (B : α × α → Prop)
+    (h_good : ∀ p ∈ c.joint.support, ¬ B p → p.1 = p.2)
+    (S : Set α) :
+    μ.toOuterMeasure S ≤
+      ν.toOuterMeasure S + c.joint.toOuterMeasure {p | B p} := by
+  -- Rewrite both marginal measures as joint preimage measures.
+  -- Avoid `rw` on the dependent `c.marg_*` (which reads as
+  -- `joint.map Prod.fst = μ`); use `conv_lhs` to direct the rewrite.
+  have hL : μ.toOuterMeasure S = c.joint.toOuterMeasure (Prod.fst ⁻¹' S) := by
+    conv_lhs => rw [← c.marg_left]
+    rw [PMF.toOuterMeasure_map_apply]
+  have hR : ν.toOuterMeasure S = c.joint.toOuterMeasure (Prod.snd ⁻¹' S) := by
+    conv_lhs => rw [← c.marg_right]
+    rw [PMF.toOuterMeasure_map_apply]
+  rw [hL, hR]
+  -- All three measures are tsums of indicators of subsets of α × α
+  -- against `c.joint`. We do the inequality pointwise on each `p`.
+  rw [PMF.toOuterMeasure_apply, PMF.toOuterMeasure_apply, PMF.toOuterMeasure_apply]
+  rw [← ENNReal.tsum_add]
+  apply ENNReal.tsum_le_tsum
+  intro p
+  by_cases hp : p ∈ c.joint.support
+  · -- On support, decide on `B p`.
+    by_cases hB : B p
+    · -- Bad case: bound LHS by the bad-set indicator alone.
+      have h_bad : (Set.indicator {p | B p} (⇑c.joint)) p = c.joint p := by
+        simp [Set.indicator_of_mem, hB]
+      calc Set.indicator (Prod.fst ⁻¹' S) (⇑c.joint) p
+          ≤ c.joint p := Set.indicator_le_self _ _ p
+        _ = (Set.indicator {p | B p} (⇑c.joint)) p := h_bad.symm
+        _ ≤ Set.indicator (Prod.snd ⁻¹' S) (⇑c.joint) p
+            + Set.indicator {p | B p} (⇑c.joint) p := le_add_self
+    · -- Good case: `p.1 = p.2` by `h_good`, so the two preimage
+      -- indicators are equal and LHS = RHS-left ≤ RHS.
+      have heq : p.1 = p.2 := h_good p hp hB
+      have h_pre : (Prod.fst ⁻¹' S) p ↔ (Prod.snd ⁻¹' S) p := by
+        constructor <;> intro h
+        · show p.2 ∈ S; rw [← heq]; exact h
+        · show p.1 ∈ S; rw [heq]; exact h
+      have h_ind_eq :
+          Set.indicator (Prod.fst ⁻¹' S) (⇑c.joint) p
+            = Set.indicator (Prod.snd ⁻¹' S) (⇑c.joint) p := by
+        by_cases hPS : p.1 ∈ S
+        · have hPS' : p.2 ∈ S := h_pre.mp hPS
+          simp [Set.indicator_of_mem, hPS, hPS']
+        · have hPS' : p.2 ∉ S := fun h => hPS (h_pre.mpr h)
+          simp [Set.indicator_of_notMem, hPS, hPS']
+      rw [h_ind_eq]
+      exact le_self_add
+  · -- Off support: `joint p = 0`, so all indicators are 0.
+    have hzero : c.joint p = 0 := (PMF.apply_eq_zero_iff c.joint p).mpr hp
+    have h0L : Set.indicator (Prod.fst ⁻¹' S) (⇑c.joint) p = 0 := by
+      by_cases h : p ∈ Prod.fst ⁻¹' S
+      · simp [Set.indicator_of_mem, h, hzero]
+      · simp [Set.indicator_of_notMem, h]
+    rw [h0L]
+    exact zero_le _
+
+/-- Symmetric form of `coupling_up_to_bad`: bound `ν S` in terms
+of `μ S` plus the bad-event probability. -/
+theorem coupling_up_to_bad_symm {μ ν : PMF α}
+    (c : Coupling μ ν) (B : α × α → Prop)
+    (h_good : ∀ p ∈ c.joint.support, ¬ B p → p.1 = p.2)
+    (S : Set α) :
+    ν.toOuterMeasure S ≤
+      μ.toOuterMeasure S + c.joint.toOuterMeasure {p | B p} := by
+  -- Build the swapped coupling and apply `coupling_up_to_bad`.
+  let c' : Coupling ν μ :=
+    { joint := c.joint.map Prod.swap
+      marg_left := by
+        rw [PMF.map_comp]
+        show c.joint.map (Prod.fst ∘ Prod.swap) = ν
+        have : (Prod.fst ∘ Prod.swap : α × α → α) = Prod.snd := rfl
+        rw [this, c.marg_right]
+      marg_right := by
+        rw [PMF.map_comp]
+        show c.joint.map (Prod.snd ∘ Prod.swap) = μ
+        have : (Prod.snd ∘ Prod.swap : α × α → α) = Prod.fst := rfl
+        rw [this, c.marg_left] }
+  have h_good' : ∀ p ∈ c'.joint.support,
+      ¬ (fun q : α × α => B q.swap) p → p.1 = p.2 := by
+    intro p hp hB
+    have hp' : p.swap ∈ c.joint.support := by
+      change p ∈ (c.joint.map Prod.swap).support at hp
+      rw [PMF.support_map] at hp
+      obtain ⟨q, hq, hpq⟩ := hp
+      have : p.swap = q := by rw [← hpq]; exact Prod.swap_swap q
+      rw [this]; exact hq
+    exact (h_good p.swap hp' hB).symm
+  have h := coupling_up_to_bad c' (fun q : α × α => B q.swap) h_good' S
+  have h_bad_swap :
+      c'.joint.toOuterMeasure {q | B q.swap}
+        = c.joint.toOuterMeasure {p | B p} := by
+    show (c.joint.map Prod.swap).toOuterMeasure {q | B q.swap}
+        = c.joint.toOuterMeasure {p | B p}
+    rw [PMF.toOuterMeasure_map_apply]
+    -- The preimage `Prod.swap ⁻¹' {q | B q.swap}` is `{p | B p}`
+    -- because `q.swap.swap = q`.
+    congr 1
+  show ν.toOuterMeasure S ≤
+      μ.toOuterMeasure S + c.joint.toOuterMeasure {p | B p}
+  rw [← h_bad_swap]
+  exact h
+
 end PMF
