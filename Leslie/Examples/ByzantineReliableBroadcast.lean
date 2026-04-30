@@ -1607,8 +1607,7 @@ theorem stable_or_corrupt (sender : Fin n) (val : Value)
     | zero => exact hC0
     | succ k' ih =>
       simp only [isCorrect, always, action_pred, exec.drop,
-        ActionSpec.next, GatedAction.fires] at hnext ih ⊢
-      rw [show 0 + (k' + 1) = 1 + k' from by omega]
+        ActionSpec.next, GatedAction.fires, Nat.add_zero] at hnext ih ⊢
       obtain ⟨i, _, htrans⟩ := hnext k'
       cases i with
       | corrupt j =>
@@ -1650,8 +1649,7 @@ theorem voteRecv_list_stable (sender : Fin n) (val : Value)
   induction k with
   | zero => exact h0
   | succ k' ih =>
-    simp only [state_pred, exec.drop, Nat.zero_add] at ih ⊢
-    rw [show k' + 1 = 1 + k' from by omega]
+    simp only [state_pred, exec.drop, Nat.zero_add, Nat.add_zero] at ih ⊢
     obtain ⟨i, _, htrans⟩ := hnext k'
     intro x hx
     have hprev := ih x hx
@@ -1692,8 +1690,7 @@ theorem voted_stable (sender : Fin n) (val : Value)
   induction k with
   | zero => exact h0
   | succ k' ih =>
-    simp only [state_pred, exec.drop, Nat.zero_add] at ih ⊢
-    rw [show k' + 1 = 1 + k' from by omega]
+    simp only [state_pred, exec.drop, Nat.zero_add, Nat.add_zero] at ih ⊢
     obtain ⟨i, _, htrans⟩ := hnext k'
     cases i with
     | corrupt j =>
@@ -1736,8 +1733,7 @@ theorem sent_stable (sender : Fin n) (val : Value)
   induction k with
   | zero => exact h0
   | succ k' ih =>
-    simp only [state_pred, exec.drop, Nat.zero_add] at ih ⊢
-    rw [show k' + 1 = 1 + k' from by omega]
+    simp only [state_pred, exec.drop, Nat.zero_add, Nat.add_zero] at ih ⊢
     obtain ⟨i, _, htrans⟩ := hnext k'
     cases i with
     | corrupt j =>
@@ -1773,8 +1769,7 @@ theorem returned_stable (sender : Fin n) (val : Value)
   induction k with
   | zero => exact h0
   | succ k' ih =>
-    simp only [state_pred, exec.drop, Nat.zero_add] at ih ⊢
-    rw [show k' + 1 = 1 + k' from by omega]
+    simp only [state_pred, exec.drop, Nat.zero_add, Nat.add_zero] at ih ⊢
     obtain ⟨i, _, htrans⟩ := hnext k'
     cases i with
     | corrupt j =>
@@ -1809,8 +1804,7 @@ theorem countVoteRecv_stable (sender : Fin n) (val : Value)
   induction k with
   | zero => exact h0
   | succ k' ih =>
-    simp only [state_pred, exec.drop, Nat.zero_add] at ih ⊢
-    rw [show k' + 1 = 1 + k' from by omega]
+    simp only [state_pred, exec.drop, Nat.zero_add, Nat.add_zero] at ih ⊢
     obtain ⟨i, _, htrans⟩ := hnext k'
     -- It suffices to show voteRecv only grows pointwise, so the count doesn't decrease.
     apply Nat.le_trans ih
@@ -1999,7 +1993,7 @@ theorem wf_vote_threshold_send (sender : Fin n) (val : Value)
     ⟨by -- Persistence: countVoteRecv is monotone, so ◯p always holds
         intro k ; dsimp only [tlasimp_def]
         intro ⟨hcount, hnext_k⟩
-        simp only [exec.drop, ActionSpec.next, GatedAction.fires, Nat.zero_add] at hcount hnext_k ⊢
+        simp only [exec.drop, ActionSpec.next, GatedAction.fires, Nat.zero_add, Nat.add_zero] at hcount hnext_k ⊢
         obtain ⟨action, _, htrans⟩ := hnext_k
         cases action with
         | corrupt j =>
@@ -2073,7 +2067,7 @@ theorem wf_return (sender : Fin n) (val : Value)
     ⟨by -- Persistence: p ∧ ⟨next⟩ ⇒ ◯p ∨ ◯q
         intro k ; dsimp only [tlasimp_def]
         intro ⟨hcount, hnext_k⟩
-        simp only [exec.drop, ActionSpec.next, GatedAction.fires, Nat.zero_add] at hcount hnext_k ⊢
+        simp only [exec.drop, ActionSpec.next, GatedAction.fires, Nat.zero_add, Nat.add_zero] at hcount hnext_k ⊢
         obtain ⟨action, _, htrans⟩ := hnext_k
         cases action with
         | corrupt j =>
@@ -2568,7 +2562,7 @@ theorem totality (sender : Fin n) (val : Value) (hn : n > 3 * f)
           ⟨hcorrupt, by intro j ; rw [exec.drop_drop] ; exact hsafety.2 _⟩ k2
         have : ¬isCorrect n Value (exec.drop k2 (exec.drop (k + k1) e) 0) q := hcp
         simp only [exec.drop, isCorrect, Classical.not_not] at this
-        rw [show 0 + k2 + (k + k1) = 0 + (k + k1 + k2) from by omega] at this
+        simp only [Nat.add_zero] at this
         exact this
     -- |filter B| ≤ f
     obtain ⟨hbudget12, _⟩ := hinv (k + k1 + k2)
