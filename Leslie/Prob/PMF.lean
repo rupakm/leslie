@@ -41,28 +41,8 @@ noncomputable abbrev condition (μ : PMF α) (s : Set α)
 
 /-! ## Translation-invariance of uniform
 
-For a finite, nonempty type, pushing the uniform PMF along any
-bijection yields the uniform PMF. This is the canonical
-"bijection preserves uniform" fact, used by the one-time pad and
-the universal-hash arguments in `Examples/Prob/`. Lives here
-because both `Coupling.lean` and clients want it. -/
-
-/-- For a bijection `f : α → α` on a finite nonempty type, pushing
-the uniform distribution along `f` is again uniform. -/
-theorem uniform_map_of_bijective [Fintype α] [Nonempty α]
-    {f : α → α} (hf : Function.Bijective f) :
-    (PMF.uniform α).map f = PMF.uniform α := by
-  apply PMF.ext
-  intro b
-  rw [PMF.map_apply, PMF.uniform_apply]
-  obtain ⟨a₀, ha₀⟩ := hf.surjective b
-  rw [tsum_eq_single a₀]
-  · rw [if_pos ha₀.symm, PMF.uniform_apply]
-  · intro a hane
-    rw [if_neg]
-    intro hb_eq
-    apply hane
-    apply hf.injective
-    rw [← hb_eq, ha₀]
+The general `PMF.uniform_map_of_bijective` (`α → β`) lives in
+`Leslie.Prob.Polynomial`; it specializes to the `α = β` case
+needed by `Coupling.lean` and the one-time pad. -/
 
 end PMF
