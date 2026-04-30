@@ -184,6 +184,8 @@ Leslie/
         ├── ITMAC.lean               [M2.5] info-theoretic MAC (replaces ElGamal)
         ├── BivariateShamir.lean     [M2] bivariate generalization
         ├── BrachaRBC.lean           [M2] async Byzantine, deterministic
+        ├── SyncVSS.lean             [M2.7] BGW-style synchronous VSS
+        │                                 (info-theoretic, n ≥ 3t+1, fixed rounds)
         ├── BenOrAsync.lean          [M3] async randomized BA — distinct from
         │                                 existing Leslie/Examples/BenOr.lean
         │                                 (HO/synchronous, deterministic over-approx)
@@ -722,6 +724,81 @@ information-theoretic setting and is a much better calibration.
 
 The negligible-function layer (`Prob/Negligible.lean`) is deferred
 until a milestone after M5 where a computational protocol is in scope.
+
+### M2.7 — Synchronous VSS (BGW-style, ≈3 weeks)
+
+**Code:** `Examples/Prob/SyncVSS.lean`.
+
+**Goal.** A *real* multi-round protocol with secrecy, correctness, and
+commitment — but without the asynchrony / AST-rule overhead. This is
+the natural rehearsal for M3's AVSS: same secrecy core (bivariate
+Shamir), same share-distribution + complaint-resolution shape, but
+deterministic 3-round termination in the synchronous broadcast model.
+If the framework can verify a synchronous VSS cleanly, AVSS in M3
+reduces to "add asynchrony + AST" rather than "build VSS from scratch
+under asynchrony".
+
+**Why synchronous VSS at all (not just go straight to AVSS).**
+Canetti–Rabin AVSS conflates two hard things: (a) a VSS with
+share/consistency/reconstruction phases, and (b) almost-sure
+termination under an asynchronous adversarial scheduler. M2.7
+isolates (a) on a deterministic round structure; M3 then adds (b) on
+top of a now-validated VSS shape. Splitting the work also de-risks
+M3 — if the certificate stub from the M3 entry gate runs into the
+AST rule, we've already paid down the VSS proof cost separately.
+
+**Protocol (BGW '88 VSS sub-protocol, n ≥ 3t+1, perfect security):**
+
+- *Round 1 (share).* Dealer picks bivariate `F : F[x,y]` of degree
+  `≤ t` in each variable with `F(0,0) = s`. Sends `f_i(y) := F(i,y)`
+  and `g_i(x) := F(x,i)` to party `i`.
+- *Round 2 (consistency).* Each party `i` sends `f_i(j)` to party `j`.
+  Party `j` checks: `g_j(i) =? f_i(j)`. On mismatch, both broadcast
+  the complaint `(i, j, value)`.
+- *Round 3 (resolution).* Dealer broadcasts `F(i,j)` for each
+  complained `(i,j)`. Honest parties cross-check against their own
+  data; if dealer disagrees with any honest party's polynomial,
+  dealer is exposed → output the default value `0`. Otherwise accept.
+- *Reconstruction (any time after share completes).* Each party
+  broadcasts `f_i`; honest parties run Lagrange to recover `s`.
+
+**Theorems (synchronous VSS, n ≥ 3t+1):**
+- *Termination:* deterministic — every honest party halts after
+  round 3. No `FairASTCertificate`; the standard Leslie deterministic
+  termination invariant suffices.
+- *Correctness:* if dealer is honest with secret `s`, all honest
+  outputs in reconstruction equal `s`. Lifts via Leslie
+  `invariant_preserved` over the deterministic transition relation
+  (PMF only on the dealer's choice of `F`).
+- *Commitment:* even with corrupt dealer, after round 3 the
+  reconstructed value is uniquely determined by the honest parties'
+  shares (no equivocation). Pure invariant — no probabilistic
+  reasoning needed.
+- *Secrecy (information-theoretic):* the `t`-coalition view of the
+  dealer's bivariate is independent of `F(0,0) = s`. Discharged by
+  `coupling_bijection` reduction to `bivariate_evals_uniform`
+  (already proved in M1).
+
+**M2.7 deliverable.** `SyncVSS.lean`, ~700–1000 lines. The fact that
+secrecy reduces to a *single* `bivariate_evals_uniform` call is the
+acid test for the M1 algebraic core: if the reduction is more than
+~30 lines, the framework needs cleanup before AVSS.
+
+**Risk register.**
+- *Multi-round bookkeeping.* The state machine carries 3 rounds of
+  per-party messages. State-explosion risk if naive; mitigation:
+  use `Finset.Iic` indexing as in `FinPrefix`, and per-round
+  invariants (W2 task).
+- *Complaint-resolution branching.* Round 3's honest-party logic
+  has `O(n²)` branches per (i,j). Mitigation: factor into a single
+  `resolveComplaints` helper with `#gen_frame_lemmas`.
+- *Reusing M2 `Refines`.* Synchronous VSS is a deterministic protocol
+  with one PMF (dealer's polynomial). Should embed cleanly via
+  `Refines` to a "view" abstraction; if not, that's a `Refines`
+  ergonomics issue worth fixing before AVSS.
+
+**M2.7 closeout.** Open issues for any pRHL/`Refines` ergonomics
+friction. Fix the top three before M3.
 
 ### M3 — AST rule + Ben-Or-async + AVSS + common coin (≈6 weeks)
 
