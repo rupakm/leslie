@@ -804,7 +804,86 @@ misplaced before AVSS). Wegman–Carter exercises the same
 `coupling_up_to_bad` machinery legitimately.
 
 **M2.5 closeout:** open issues for any pRHL-ergonomics friction
-discovered. Fix the top three before starting M3.
+discovered. Fix the top three before starting M2.7.
+
+## Milestone 2.7 — Synchronous VSS (3 weeks)
+
+Per design plan v2.2 §M2.7: a BGW-style synchronous information-
+theoretic VSS as a calibration-and-rehearsal milestone for AVSS.
+Same secrecy core as AVSS (bivariate Shamir, already proved), but
+deterministic 3-round termination — no AST rule, no common coin,
+no fairness obligations.
+
+**Why before M3.** Splits the AVSS work into two: (a) "verify a
+VSS protocol with secrecy + correctness + commitment" (M2.7),
+(b) "lift to asynchrony with almost-sure termination" (M3). If the
+framework can't cleanly verify a synchronous VSS, AVSS is doomed
+for unrelated reasons; finding that out in 3 weeks beats finding
+out in 6.
+
+### Week 1: Protocol model + correctness
+
+`Examples/Prob/SyncVSS.lean`. ~300 lines.
+
+State machine for the 3-round protocol:
+- **Round 1.** Dealer's `ProbAction` samples bivariate
+  `F : F[x,y]_{≤t,≤t}` uniformly subject to `F(0,0) = s`, then
+  delivers `(f_i, g_i)` to each party as a deterministic effect on
+  the post-sample state.
+- **Round 2.** Per-party deterministic `consistencyCheck` action
+  emits a `Set Complaint` from the local pair.
+- **Round 3.** Dealer's `resolveComplaints` deterministic action
+  broadcasts `F(i,j)` for each complained pair.
+
+W1 deliverable:
+- *Correctness:* if dealer honest, every honest party's reconstruction
+  output equals `s`. Lifted via Leslie `invariant_preserved` — the
+  PMF on the dealer's `F` is irrelevant once the deterministic
+  transition relation preserves "every honest party's local poly is
+  a row/column of `F`".
+
+### Week 2: Commitment + termination
+
+Commitment: even with corrupt dealer, the unique value `s'` such
+that all honest parties' polynomials interpolate to `s'` at `(0,0)`
+exists and is the reconstruction output. Pure invariant lemma —
+no probabilistic content.
+
+Termination: deterministic 3-round bound. The `terminated` predicate
+is `round ≥ 3`; standard Leslie termination via a `Nat`-valued
+variant `3 - round`.
+
+W2 deliverable: ~200 lines, two theorems.
+
+### Week 3: Secrecy
+
+Secrecy theorem: the `t`-coalition view of `(f_i, g_i)_{i ∈ T}` is
+independent of `F(0,0) = s`. Reduction:
+
+```lean
+theorem syncVSS_secrecy (T : Finset (Fin n)) (hT : T.card ≤ t)
+    (s₁ s₂ : F) :
+    (PMF.uniformBivariateThrough0 t s₁).map (fun F => coalitionView T F)
+      = (PMF.uniformBivariateThrough0 t s₂).map (fun F => coalitionView T F)
+```
+
+Proof: apply `bivariate_evals_uniform` to both sides, observe both
+yield the same uniform on `Fin n × Fin n → F` restricted to
+`T × Fin n ∪ Fin n × T`, hence equal.
+
+**M2.7 acid test.** If the reduction body is >30 lines, file an
+issue against `BivariateShamir.lean` ergonomics and fix before
+AVSS. The whole point of bivariate-Shamir-as-a-lemma is that VSS
+secrecy should be a thin wrapper.
+
+W3 deliverable: ~300 lines, one theorem.
+
+**M2.7 closeout:** open issues for `Refines` / coupling ergonomics
+discovered while modeling a real multi-round protocol. Fix top
+three before M3 entry gate. Update M3 entry-gate AVSS stub to
+*reuse* the SyncVSS state-machine shape (share/consistency/resolve
+phases) — AVSS adds the asynchronous delivery layer + AST
+termination on top, but the inner shape is now a known quantity.
 
 ## Milestone 3 — AST rule + AVSS + common coin (6 weeks)
 

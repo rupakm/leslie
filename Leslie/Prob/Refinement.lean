@@ -10,7 +10,7 @@ This is the trace-level analogue of `Leslie.Refinement`'s
 deterministic refinement, lifted to Mathlib `Measure`s under the
 cylinder σ-algebra (per design plan v2.2 §"Composition combinators").
 
-Status (M2 W2 polish — sorry-free):
+Status (M2 W3 polish — sorry-free):
 
   * `Refines Π Σ proj` — the refinement predicate, parameterized
     by a trace-level projection function.
@@ -21,17 +21,24 @@ Status (M2 W2 polish — sorry-free):
     via `Measure.map_map`).
   * `AlmostBox`, `AlmostDiamond` — modal predicates on
     `traceDist`.
+  * `AlmostBox_of_pure_inductive` — deterministic-step bridge
+    closing AE-always invariants for specs whose effects are all
+    Dirac (`PMF.pure`). Body proved by countable-AE swap +
+    coordinate induction using the joint-marginal lemma
+    `Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`.
   * `Refines_safe` — invariant lift along refinement: a safety
     property `φ` that holds Σ-AE under any abstract execution
     lifts to a Π-AE invariant via `ae_map_iff` on the pushforward.
     Requires measurability of `proj` and of `{s | φ s}`; both
     are satisfied for our discrete protocol settings.
 
-Per implementation plan v2.2 §M2 W2. The real `traceDist` body
-(M2 W1 polish + M2 W2 polish) is now a real schedule-and-gate-
-conditional Markov-kernel measure; both `Refines.comp` and
-`Refines_safe` are proved by composing it with Mathlib's measure
-pushforward / AE machinery.
+Per implementation plan v2.2 §M2 W2 + M2 W3 polish. The real
+`traceDist` body (M2 W1 polish + M2 W2 polish) is now a real
+schedule-and-gate-conditional Markov-kernel measure; both
+`Refines.comp` and `Refines_safe` are proved by composing it with
+Mathlib's measure pushforward / AE machinery, and
+`AlmostBox_of_pure_inductive` derives the per-coordinate marginal
+recurrence from Mathlib's joint-marginal lemma.
 -/
 
 import Leslie.Prob.Action
@@ -40,7 +47,7 @@ import Leslie.Prob.Trace
 
 namespace Leslie.Prob
 
-open MeasureTheory
+open MeasureTheory ProbabilityTheory
 
 variable {σ σ' σ'' : Type*} {ι ι' ι'' : Type*}
 
@@ -177,6 +184,200 @@ def AlmostDiamond
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
     (φ : σ → Prop) : Prop :=
   ∀ᵐ ω ∂(traceDist spec₁ A μ₀), ∃ n, φ ((ω n).1)
+
+/-! ### `AlmostBox_of_pure_inductive` — deterministic-step bridge
+
+When every action's effect is a Dirac (`PMF.pure (det_step i s)`), the
+`stepKernel` collapses to a deterministic kernel: in the `none`-schedule
+branch and the gate-fail branch it is already a Dirac (stutter), and in
+the gate-pass branch the `PMF.pure` measure is also a Dirac. With a
+deterministic-everywhere kernel, an inductive predicate `P` that is
+preserved by the deterministic step transfers from the initial measure
+to every coordinate of the trace, hence `AlmostBox` holds.
+
+**M2 W3 polish status — closed.** The proof derives the per-coordinate
+marginal recurrence directly from Mathlib's joint-marginal lemma
+`map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure` by taking
+`.snd` on both sides (turning a `compProd` into a `Measure.bind`).
+Combined with `MeasureTheory.ae_all_iff` for the countable-AE swap and
+`PMF.toMeasure_pure` for the Dirac form of the gate-pass branch, the
+inductive transport from coordinate `a` to coordinate `a + 1` reduces
+to a `filter_upwards`-style argument over the four kernel branches.
+
+Mathlib lemmas used:
+  * `MeasureTheory.ae_all_iff` — countable-AE swap.
+  * `MeasureTheory.ae_map_iff` — pull AE through a pushforward.
+  * `MeasureTheory.Measure.ae_comp_of_ae_ae` — AE through a kernel
+    composition `κ ∘ₘ μ`.
+  * `MeasureTheory.ae_dirac_iff` — AE on a Dirac.
+  * `PMF.toMeasure_pure` — `(PMF.pure x).toMeasure = Measure.dirac x`.
+  * `ProbabilityTheory.Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`
+    — joint marginal of `Kernel.trajMeasure` over `(frestrictLe a, eval (a+1))`.
+  * `MeasureTheory.Measure.snd_compProd` — `(μ ⊗ₘ κ).snd = κ ∘ₘ μ`.
+  * `MeasureTheory.Measure.snd_map_prodMk` — `.snd` of a paired pushforward.
+  * `ProbabilityTheory.Kernel.traj_map_frestrictLe_of_le` (and
+    `Kernel.deterministic_map`, `Measure.deterministic_comp_eq_map`)
+    — to pin down the coordinate-`0` marginal as `μ₀_full`. -/
+
+/-- When all effects are Dirac on a deterministic step function and
+the deterministic step preserves an inductive predicate `P`, the
+predicate holds AE-always on the trace measure.
+
+The proof proceeds by countable-AE swap, then induction on the
+coordinate `n`:
+
+  * Base `n = 0`: the `0`-th marginal of `Kernel.trajMeasure μ₀_full κ`
+    is `μ₀_full = μ₀.map (·, none)`, so AE-`P` on `μ₀` transports.
+  * Step `n + 1`: the `(a + 1)`-th marginal equals
+    `(stepKernel spec A a) ∘ₘ ((trajMeasure ..).map (frestrictLe a))`
+    (snd of the joint marginal). Under `h_pure`, every per-history
+    branch of `stepKernel a h` is a Dirac, so AE-`P` at coordinate
+    `a + 1` reduces to `P (h.currentState)` plus `h_step`. -/
+theorem AlmostBox_of_pure_inductive
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+    {spec : ProbActionSpec σ ι}
+    (P : σ → Prop)
+    (det_step : ι → σ → σ)
+    (h_pure : ∀ (i : ι) (s : σ) (h : (spec.actions i).gate s),
+        (spec.actions i).effect s h = PMF.pure (det_step i s))
+    (h_step : ∀ (i : ι) (s : σ),
+        (spec.actions i).gate s → P s → P (det_step i s))
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, P s)
+    (A : Adversary σ ι) :
+    AlmostBox spec A μ₀ P := by
+  -- Predicate measurability: under `Countable + MeasurableSingletonClass`,
+  -- every set is measurable.
+  have hPset : MeasurableSet ({x : σ × Option ι | P x.1}) := MeasurableSet.of_discrete
+  have hPset_finPrefix : ∀ a : ℕ,
+      MeasurableSet {h : FinPrefix σ ι a | P (FinPrefix.currentState h)} :=
+    fun _ => MeasurableSet.of_discrete
+  -- Unfold to expose the underlying `Kernel.trajMeasure`.
+  unfold AlmostBox traceDist
+  set μ₀_full : Measure (σ × Option ι) := μ₀.map (fun s => (s, (none : Option ι)))
+    with hμ₀_full_def
+  haveI : IsProbabilityMeasure μ₀_full :=
+    Measure.isProbabilityMeasure_map (by fun_prop)
+  -- Marginal at coordinate 0: `(trajMeasure μ₀_full κ).map (eval 0) = μ₀_full`.
+  -- The `0`-th coordinate of `Kernel.trajMeasure` is the initial measure, since
+  -- `traj κ 0` is concentrated on the `Iic 0`-prefix at the input.
+  have hmarg_zero :
+      (Kernel.trajMeasure (X := fun _ => σ × Option ι) μ₀_full (stepKernel spec A)).map
+        (fun ω => ω 0) = μ₀_full := by
+    unfold Kernel.trajMeasure
+    have hmeas_eval0 : Measurable (fun ω : Π _ : ℕ, σ × Option ι => ω 0) :=
+      measurable_pi_apply 0
+    rw [Measure.map_comp _ _ hmeas_eval0]
+    have hfact : (fun ω : Π _ : ℕ, σ × Option ι => ω 0) =
+        (fun y : Π _ : Finset.Iic 0, σ × Option ι => y ⟨0, by simp⟩) ∘
+          (Preorder.frestrictLe 0) := by
+      funext _; rfl
+    have hmeas_pia : Measurable
+        (fun y : Π _ : Finset.Iic 0, σ × Option ι => y ⟨0, by simp⟩) :=
+      measurable_pi_apply _
+    have hmeas_fl0 : Measurable
+        (Preorder.frestrictLe (π := fun _ : ℕ => σ × Option ι) 0) :=
+      Preorder.measurable_frestrictLe _
+    have hmeas_fl2 : Measurable
+        (Preorder.frestrictLe₂ (π := fun _ : ℕ => σ × Option ι) (le_refl 0)) :=
+      Preorder.measurable_frestrictLe₂ _
+    have hcomp : Measurable
+        ((fun y : Π _ : Finset.Iic 0, σ × Option ι => y ⟨0, by simp⟩) ∘
+          Preorder.frestrictLe₂ (π := fun _ : ℕ => σ × Option ι) (le_refl 0)) :=
+      hmeas_pia.comp hmeas_fl2
+    rw [hfact, Kernel.map_comp_right _ hmeas_fl0 hmeas_pia,
+        ProbabilityTheory.Kernel.traj_map_frestrictLe_of_le (le_refl 0)]
+    rw [Kernel.deterministic_map hmeas_fl2 hmeas_pia]
+    rw [Measure.deterministic_comp_eq_map hcomp]
+    rw [Measure.map_map hcomp (by fun_prop)]
+    convert Measure.map_id (μ := μ₀_full)
+  -- Marginal recurrence at successor: `(trajMeasure ..).map (eval (a+1)) =
+  -- (stepKernel a) ∘ₘ (trajMeasure ..).map (frestrictLe a)`.
+  -- Derived from the joint marginal lemma by taking `.snd` of both sides.
+  have hmarg_succ : ∀ a : ℕ,
+      (Kernel.trajMeasure (X := fun _ => σ × Option ι) μ₀_full (stepKernel spec A)).map
+        (fun ω => ω (a + 1)) =
+      (stepKernel spec A a) ∘ₘ
+        ((Kernel.trajMeasure (X := fun _ => σ × Option ι)
+            μ₀_full (stepKernel spec A)).map (Preorder.frestrictLe a)) := by
+    intro a
+    have hk : (Kernel.trajMeasure (X := fun _ => σ × Option ι) μ₀_full
+              (stepKernel spec A)).map (Preorder.frestrictLe a) ⊗ₘ stepKernel spec A a =
+        (Kernel.trajMeasure (X := fun _ => σ × Option ι) μ₀_full (stepKernel spec A)).map
+          (fun x => (Preorder.frestrictLe a x, x (a + 1))) :=
+      ProbabilityTheory.Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure
+    have h2 := congrArg Measure.snd hk
+    rw [Measure.snd_compProd] at h2
+    have hmeas_fl_a : Measurable
+        (Preorder.frestrictLe (π := fun _ : ℕ => σ × Option ι) a) :=
+      Preorder.measurable_frestrictLe _
+    rw [Measure.snd_map_prodMk hmeas_fl_a] at h2
+    exact h2.symm
+  -- Countable-AE swap: prove `∀ n, ∀ᵐ ω, P (ω n).1` instead.
+  rw [MeasureTheory.ae_all_iff]
+  intro n
+  -- Induction on `n`.
+  induction n with
+  | zero =>
+    -- Transport `h_init` along `μ₀_full`'s definition, then through `hmarg_zero`.
+    have hae_full : ∀ᵐ x ∂μ₀_full, P x.1 := by
+      rw [hμ₀_full_def, ae_map_iff (Measurable.aemeasurable (by fun_prop)) hPset]
+      exact h_init
+    rw [← hmarg_zero] at hae_full
+    have hmeas_eval0 : Measurable (fun ω : Π _ : ℕ, σ × Option ι => ω 0) :=
+      measurable_pi_apply 0
+    rw [ae_map_iff hmeas_eval0.aemeasurable hPset] at hae_full
+    exact hae_full
+  | succ a ih =>
+    -- IH `ih : ∀ᵐ ω, P (ω a).1`.
+    have hmeas_fl_a : Measurable
+        (Preorder.frestrictLe (π := fun _ : ℕ => σ × Option ι) a) :=
+      Preorder.measurable_frestrictLe _
+    have hmeas_eval_succ : Measurable (fun ω : Π _ : ℕ, σ × Option ι => ω (a + 1)) :=
+      measurable_pi_apply (a + 1)
+    -- Transport IH along `frestrictLe a`: `∀ᵐ h, P h.currentState`.
+    have hcurrent : ∀ᵐ h ∂((Kernel.trajMeasure (X := fun _ => σ × Option ι)
+          μ₀_full (stepKernel spec A)).map (Preorder.frestrictLe a)),
+          P (FinPrefix.currentState h) := by
+      rw [ae_map_iff hmeas_fl_a.aemeasurable (hPset_finPrefix a)]
+      filter_upwards [ih] with ω hω
+      exact hω
+    -- Bridge: `∀ᵐ h, ∀ᵐ y ∂(stepKernel a h), P y.1`.
+    -- Under `h_pure`, every kernel branch is a Dirac (stutter or `det_step`).
+    have hkernel_ae : ∀ᵐ h ∂((Kernel.trajMeasure (X := fun _ => σ × Option ι)
+          μ₀_full (stepKernel spec A)).map (Preorder.frestrictLe a)),
+          ∀ᵐ y ∂(stepKernel spec A a h), P y.1 := by
+      filter_upwards [hcurrent] with h hPcurr
+      show ∀ᵐ y ∂(stepKernel spec A a h), P y.1
+      unfold stepKernel
+      rw [Kernel.ofFunOfCountable]
+      simp only [Kernel.coe_mk]
+      rcases h_sched : A.schedule h.toList with _ | i
+      · -- Stutter case: `Dirac (h.currentState, none)`.
+        rw [ae_dirac_iff hPset]
+        exact hPcurr
+      · by_cases hgate : (spec.actions i).gate h.currentState
+        · -- Gate-pass case: `(PMF.pure (det_step i ..)).toMeasure.map (·, some i)`.
+          simp only [hgate, dite_true]
+          rw [h_pure i h.currentState hgate, PMF.toMeasure_pure,
+              Measure.map_dirac (by fun_prop)]
+          rw [ae_dirac_iff hPset]
+          exact h_step i h.currentState hgate hPcurr
+        · -- Gate-fail case: stutter again.
+          simp only [hgate, dite_false]
+          rw [ae_dirac_iff hPset]
+          exact hPcurr
+    -- Combine via `ae_comp_of_ae_ae` and the marginal recurrence.
+    have hae_succ : ∀ᵐ y ∂((stepKernel spec A a) ∘ₘ
+          (Kernel.trajMeasure (X := fun _ => σ × Option ι)
+            μ₀_full (stepKernel spec A)).map (Preorder.frestrictLe a)),
+        P y.1 :=
+      Measure.ae_comp_of_ae_ae hPset hkernel_ae
+    rw [← hmarg_succ a] at hae_succ
+    rw [ae_map_iff hmeas_eval_succ.aemeasurable hPset] at hae_succ
+    exact hae_succ
 
 /-! ### Refines_safe
 
