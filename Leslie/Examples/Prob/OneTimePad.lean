@@ -27,6 +27,7 @@ Per implementation plan v2.2 §M2.5 W1: ~80 lines, 0 sorries.
 -/
 
 import Leslie.Prob.Coupling
+import Leslie.Prob.Polynomial
 
 namespace Leslie.Examples.Prob.OneTimePad
 
@@ -37,13 +38,6 @@ open PMF
 The encryption of two messages is the same distribution under a
 uniform key. The bijection witnessing this is `k ↦ k + (m₂ - m₁)`.
 -/
-
-/-- Translation by a fixed group element is a bijection. -/
-theorem add_right_bijective {G : Type*} [AddGroup G] (c : G) :
-    Function.Bijective (fun k : G => k + c) := by
-  refine ⟨?_, ?_⟩
-  · intro a b h; simpa using h
-  · intro b; exact ⟨b - c, by simp⟩
 
 /-- One-time pad secrecy: for any two messages `m₁ m₂ : G` over a
 finite abelian group, the distribution of `m + k` for uniformly
@@ -68,7 +62,7 @@ theorem one_time_pad {G : Type*} [AddCommGroup G] [Fintype G] [Nonempty G]
       (PMF.uniform G).map (fun k => m₂ + k) := by
   -- The key bijection: `f k = k + (m₂ - m₁)`.
   set f : G → G := fun k => k + (m₂ - m₁) with hf_def
-  have hf_bij : Function.Bijective f := add_right_bijective (m₂ - m₁)
+  have hf_bij : Function.Bijective f := (Equiv.addRight (m₂ - m₁)).bijective
   -- Algebraic identity: `(m₁ + ·) ∘ f = (m₂ + ·)`.
   have h_compose : (fun k => m₁ + k) ∘ f = (fun k => m₂ + k) := by
     funext k

@@ -55,21 +55,8 @@ end Coupling
 and pairing with the same value. -/
 noncomputable def Coupling.self (μ : PMF α) : Coupling μ μ where
   joint      := μ.bind fun a => PMF.pure (a, a)
-  marg_left  := by
-    show (μ.bind fun a => PMF.pure (a, a)).map Prod.fst = μ
-    rw [PMF.map_bind]
-    show (μ.bind fun a => (PMF.pure (a, a)).map Prod.fst) = μ
-    have : ∀ a : α, (PMF.pure (a, a)).map Prod.fst = PMF.pure a := by
-      intro a; rw [PMF.pure_map]
-    simp_rw [this]
-    exact PMF.bind_pure μ
-  marg_right := by
-    show (μ.bind fun a => PMF.pure (a, a)).map Prod.snd = μ
-    rw [PMF.map_bind]
-    have : ∀ a : α, (PMF.pure (a, a)).map Prod.snd = PMF.pure a := by
-      intro a; rw [PMF.pure_map]
-    simp_rw [this]
-    exact PMF.bind_pure μ
+  marg_left  := by simp [PMF.map_bind, PMF.pure_map, PMF.bind_pure]
+  marg_right := by simp [PMF.map_bind, PMF.pure_map, PMF.bind_pure]
 
 /-- The diagonal coupling supports equality. -/
 theorem Coupling.self_supports_eq (μ : PMF α) :
@@ -90,21 +77,9 @@ noncomputable def Coupling.pure_id (a : α) : Coupling (PMF.pure a) (PMF.pure a)
 noncomputable def Coupling.bijection (μ : PMF α) (f : α → β) :
     Coupling μ (μ.map f) where
   joint      := μ.bind fun a => PMF.pure (a, f a)
-  marg_left  := by
-    rw [PMF.map_bind]
-    have : ∀ a : α, (PMF.pure (a, f a)).map Prod.fst = PMF.pure a := by
-      intro a; rw [PMF.pure_map]
-    simp_rw [this]
-    exact PMF.bind_pure μ
+  marg_left  := by simp [PMF.map_bind, PMF.pure_map, PMF.bind_pure]
   marg_right := by
-    rw [PMF.map_bind]
-    have : ∀ a : α, (PMF.pure (a, f a)).map Prod.snd = PMF.pure (f a) := by
-      intro a; rw [PMF.pure_map]
-    simp_rw [this]
-    -- Goal: (μ.bind fun a => pure (f a)) = μ.map f
-    -- Mathlib's `bind_pure_comp f p : p.bind (pure ∘ f) = map f p`
-    -- and `pure ∘ f = fun a => pure (f a)` definitionally.
-    show μ.bind (PMF.pure ∘ f) = μ.map f
+    simp only [PMF.map_bind, PMF.pure_map]
     exact PMF.bind_pure_comp f μ
 
 /-- The bijection coupling supports `b = f a`. -/
@@ -115,6 +90,29 @@ theorem Coupling.bijection_supports (μ : PMF α) (f : α → β) :
   simp [Coupling.bijection, PMF.support_bind, PMF.support_pure] at hp
   obtain ⟨a, _, rfl⟩ := hp
   rfl
+
+/-! ## Marginal pushforward helpers
+
+`Coupling`'s `marg_left` / `marg_right` fields are dependent
+equalities (`c.joint.map Prod.fst = μ`), so direct `rw [c.marg_left]`
+fails with motive-not-type-correct in many goals. The two lemmas
+below repackage the marginal facts at the outer-measure level,
+where `μ.toOuterMeasure S = c.joint.toOuterMeasure (Prod.fst ⁻¹' S)`
+elaborates cleanly without `conv` workarounds. -/
+
+/-- A coupling's first marginal at the outer-measure level. -/
+theorem Coupling.toOuterMeasure_left {μ : PMF α} {ν : PMF β}
+    (c : Coupling μ ν) (S : Set α) :
+    μ.toOuterMeasure S = c.joint.toOuterMeasure (Prod.fst ⁻¹' S) := by
+  conv_lhs => rw [← c.marg_left]
+  rw [PMF.toOuterMeasure_map_apply]
+
+/-- A coupling's second marginal at the outer-measure level. -/
+theorem Coupling.toOuterMeasure_right {μ : PMF α} {ν : PMF β}
+    (c : Coupling μ ν) (S : Set β) :
+    ν.toOuterMeasure S = c.joint.toOuterMeasure (Prod.snd ⁻¹' S) := by
+  conv_lhs => rw [← c.marg_right]
+  rw [PMF.toOuterMeasure_map_apply]
 
 /-! ## eq_of_coupling_id
 
@@ -182,16 +180,9 @@ theorem coupling_up_to_bad {μ ν : PMF α}
     (S : Set α) :
     μ.toOuterMeasure S ≤
       ν.toOuterMeasure S + c.joint.toOuterMeasure {p | B p} := by
-  -- Rewrite both marginal measures as joint preimage measures.
-  -- Avoid `rw` on the dependent `c.marg_*` (which reads as
-  -- `joint.map Prod.fst = μ`); use `conv_lhs` to direct the rewrite.
-  have hL : μ.toOuterMeasure S = c.joint.toOuterMeasure (Prod.fst ⁻¹' S) := by
-    conv_lhs => rw [← c.marg_left]
-    rw [PMF.toOuterMeasure_map_apply]
-  have hR : ν.toOuterMeasure S = c.joint.toOuterMeasure (Prod.snd ⁻¹' S) := by
-    conv_lhs => rw [← c.marg_right]
-    rw [PMF.toOuterMeasure_map_apply]
-  rw [hL, hR]
+  -- Rewrite both marginal measures as joint preimage measures via the
+  -- outer-measure helpers (avoids the dependent-`c.marg_*` motive issue).
+  rw [c.toOuterMeasure_left S, c.toOuterMeasure_right S]
   -- All three measures are tsums of indicators of subsets of α × α
   -- against `c.joint`. We do the inequality pointwise on each `p`.
   rw [PMF.toOuterMeasure_apply, PMF.toOuterMeasure_apply, PMF.toOuterMeasure_apply]

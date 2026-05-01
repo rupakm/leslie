@@ -44,6 +44,7 @@ the linear-algebra closure is heavy.
 
 import Leslie.Prob.Coupling
 import Leslie.Prob.PMF
+import Leslie.Prob.Polynomial
 import Mathlib.Algebra.Field.Basic
 import Mathlib.Data.Fintype.Card
 

@@ -2,10 +2,23 @@
 M2.7 — Synchronous BGW-style VSS as a `ProbActionSpec`.
 
 This module models a BGW '88 verifiable secret sharing protocol
-(`n` parties, `≤ t` Byzantine faults, `n ≥ 3t + 1`) over a
-synchronous broadcast channel as a `Leslie.Prob.ProbActionSpec`.
-The protocol is a 3-round share / consistency-check / resolve
-schedule over a *single* dealer-sampled bivariate polynomial.
+(`n` parties, `≤ t` Byzantine faults) over a synchronous broadcast
+channel as a `Leslie.Prob.ProbActionSpec`. The protocol is a
+3-round share / consistency-check / resolve schedule over a
+*single* dealer-sampled bivariate polynomial.
+
+**Note on the threshold `n ≥ 3t + 1`.** The standard BGW security
+threshold is needed for liveness and correct reconstruction (so a
+corrupt dealer cannot equivocate beyond honest-quorum overlap).
+The present module proves four invariants — `roundBounded_AS`,
+`correctness_AS`, `outputDeterminedInv_AS`, `secrecy_grid` — none
+of which take any `n`/`t` numeric premise. The threshold becomes
+load-bearing only once the model wires real dealer-resolution
+semantics and almost-sure termination, both of which are M3 work
+(see deferred items in §10 and §12). The current statements hold
+even with `n = 0`; they constrain the deterministic relationship
+between the dealer's `coeffs` and honest outputs, not the
+adversary's power to disrupt.
 
 ## Design choice: randomness in `μ₀`, coefficient matrix in state
 
@@ -63,7 +76,7 @@ explicitly without invoking the `Polynomial` library.
     `AlmostBox_of_pure_inductive` against the inductive invariant
     "every honest party's view is consistent with `coeffs`".
     **Closed.**
-  * `commitmentInv_AS` — even with a corrupt dealer, every honest
+  * `outputDeterminedInv_AS` — even with a corrupt dealer, every honest
     party's output is either `0` (on exposure) or
     `bivEval coeffs 0 0`. **Closed.**
   * `secrecy_grid` — grid-view secrecy: the post-share `(C × D)`-grid
@@ -174,8 +187,12 @@ end LocalState
     polynomial coefficients. Sampled once into `μ₀`; not modified
     after.
   * `secret : F` — the dealer's intended secret (`coeffs 0 0` for
-    an honest dealer). Carried as a separate field for ease of
-    stating correctness.
+    an honest dealer). **Currently unused in any predicate or
+    invariant** — `correctness_AS` reads `coeffs 0 0` directly.
+    Retained only for the `initPred` constraint that pins the
+    dealer's secret at start-of-execution; downstream proofs all
+    project to `coeffs`. Slated for removal once the row+column
+    secrecy form lands in M3.
   * `local_ : Fin n → LocalState n F` — per-party state.
   * `round : Round` — current protocol round.
   * `corrupted : Finset (Fin n)` — adversarial parties (static).
@@ -642,22 +659,11 @@ theorem vssStep_preserves_honestDealerInv (sec : F)
         exfalso
         revert hv
         simp [vssStep]
-  | consistencyAdvance =>
+  | consistencyAdvance | complain _ _ _ | resolveOpen
+  | dealerResolve _ _ | reconstructOpen =>
+      -- Frame: action doesn't touch `coeffs` or `local_.{dealerExposed, output}`.
       simp only [vssStep] at hh ⊢
-      refine ⟨hsec, ?_⟩
-      intro p hp; exact hperp p hp
-  | complain i j v =>
-      simp only [vssStep] at hh ⊢
-      refine ⟨hsec, ?_⟩
-      intro p hp; exact hperp p hp
-  | resolveOpen =>
-      simp only [vssStep] at hh ⊢
-      refine ⟨hsec, ?_⟩
-      intro p hp; exact hperp p hp
-  | dealerResolve i j =>
-      simp only [vssStep] at hh ⊢
-      refine ⟨hsec, ?_⟩
-      intro p hp; exact hperp p hp
+      exact ⟨hsec, hperp⟩
   | partyApplyResolution p _ _ =>
       simp only [vssStep] at hh ⊢
       refine ⟨hsec, ?_⟩
@@ -666,10 +672,6 @@ theorem vssStep_preserves_honestDealerInv (sec : F)
       by_cases hqp : q = p
       · subst hqp; rw [setLocal_local_self]; exact ⟨hexp_q, hout_q⟩
       · rw [setLocal_local_ne _ _ _ _ hqp]; exact ⟨hexp_q, hout_q⟩
-  | reconstructOpen =>
-      simp only [vssStep] at hh ⊢
-      refine ⟨hsec, ?_⟩
-      intro p hp; exact hperp p hp
   | reconstructAt p =>
       simp only [vssStep] at hh ⊢
       refine ⟨hsec, ?_⟩
@@ -720,43 +722,54 @@ theorem correctness_AS
   intro p hp v hv
   exact (hperp p hp).2 v hv
 
-/-! ## §10. Commitment
+/-! ## §10. Output-determined invariant (proxy for commitment)
 
-Even with a corrupt dealer, every honest party's output (after the
-deterministic reconstruction step) is uniquely determined by
-`coeffs 0 0` (or `0` on exposure). This is the commitment property
-in invariant form: no equivocation is possible because all honest
-parties read from the same `coeffs`. -/
+Every honest party's output (after the deterministic reconstruction
+step) is uniquely determined by the dealer's `coeffs 0 0` (or `0`
+when the dealer is exposed). This is a *weak* invariant form of
+commitment: it shows the output is read deterministically from the
+dealer's choice of `coeffs`, so no equivocation across honest
+parties is possible.
 
-/-- Commitment invariant: every honest party's output, if set, is
-either `0` (dealer-exposed) or `coeffs 0 0`. -/
-def commitmentInv (s : State n t F) : Prop :=
+**Strength caveat.** The current deterministic model never actually
+sets `dealerExposed = true` (the `dealerResolve` action is a stub
+and `partyApplyResolution` only ORs an always-empty resolution
+set). So the `vp = 0` disjunct is provably vacuous, and the
+invariant collapses to "every honest output is `coeffs 0 0`",
+which is the same content as `correctness_AS` modulo the
+honest-dealer hypothesis. The full equivocation-resistance content
+of standard VSS commitment (with a corrupt dealer that may emit
+inconsistent shares) is M3 work — when the model wires real
+dealer-resolution semantics, this invariant gains its full force.
+
+The name was changed from `commitmentInv` to `outputDeterminedInv`
+to reflect what's actually proved. -/
+
+/-- Output-determined invariant: every honest party's output, if
+set, is either `0` (dealer-exposed) or `coeffs 0 0`. -/
+def outputDeterminedInv (s : State n t F) : Prop :=
   ∀ p, p ∉ s.corrupted → ∀ vp, (s.local_ p).output = some vp →
     vp = 0 ∨ vp = s.coeffs 0 0
 
 omit [Fintype F] in
-theorem initPred_commitmentInv (sec : F) (corr : Finset (Fin n))
+theorem initPred_outputDeterminedInv (sec : F) (corr : Finset (Fin n))
     (s : State n t F) (h : initPred sec corr s) :
-    commitmentInv s := by
+    outputDeterminedInv s := by
   intro p _ vp hvp
   obtain ⟨hloc, _⟩ := h
   rw [hloc p] at hvp
   simp [LocalState.init] at hvp
 
 omit [Fintype F] in
-theorem vssStep_preserves_commitmentInv (a : Action n F) (s : State n t F) :
-    commitmentInv s → commitmentInv (vssStep a s) := by
+theorem vssStep_preserves_outputDeterminedInv (a : Action n F) (s : State n t F) :
+    outputDeterminedInv s → outputDeterminedInv (vssStep a s) := by
   intro hinv p hp vp hvp
   cases a with
   | deal =>
       simp [vssStep] at hvp
-  | consistencyAdvance =>
-      simp [vssStep] at hvp; exact hinv p hp vp hvp
-  | complain i j v =>
-      simp [vssStep] at hvp; exact hinv p hp vp hvp
-  | resolveOpen =>
-      simp [vssStep] at hvp; exact hinv p hp vp hvp
-  | dealerResolve i j =>
+  | consistencyAdvance | complain _ _ _ | resolveOpen
+  | dealerResolve _ _ | reconstructOpen =>
+      -- Frame: action doesn't touch `local_.output`.
       simp [vssStep] at hvp; exact hinv p hp vp hvp
   | partyApplyResolution q i j =>
       simp only [vssStep] at hvp
@@ -767,8 +780,6 @@ theorem vssStep_preserves_commitmentInv (a : Action n F) (s : State n t F) :
         exact hinv p hp vp hvp
       · rw [setLocal_local_ne _ _ _ _ hqp] at hvp
         exact hinv p hp vp hvp
-  | reconstructOpen =>
-      simp [vssStep] at hvp; exact hinv p hp vp hvp
   | reconstructAt q =>
       simp only [vssStep] at hvp
       by_cases hqp : p = q
@@ -785,25 +796,25 @@ theorem vssStep_preserves_commitmentInv (a : Action n F) (s : State n t F) :
 
 set_option maxHeartbeats 800000 in
 /-- Commitment invariant `AlmostBox` lift. -/
-theorem commitmentInv_AS
+theorem outputDeterminedInv_AS
     (sec : F) (corr : Finset (Fin n))
     (μ₀ : Measure (State n t F)) [IsProbabilityMeasure μ₀]
     (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
     (A : Adversary (State n t F) (Action n F)) :
-    AlmostBox (vssProb (t := t) sec corr) A μ₀ commitmentInv := by
+    AlmostBox (vssProb (t := t) sec corr) A μ₀ outputDeterminedInv := by
   have h_pure : ∀ (a : Action n F) (s : State n t F)
       (h : ((vssProb (t := t) sec corr).actions a).gate s),
       ((vssProb (t := t) sec corr).actions a).effect s h
         = PMF.pure (vssStep a s) :=
     fun _ _ _ => rfl
-  have h_init' : ∀ᵐ s ∂μ₀, commitmentInv s := by
+  have h_init' : ∀ᵐ s ∂μ₀, outputDeterminedInv s := by
     filter_upwards [h_init] with s hs
-    exact initPred_commitmentInv sec corr s hs
+    exact initPred_outputDeterminedInv sec corr s hs
   exact AlmostBox_of_pure_inductive
-    commitmentInv
+    outputDeterminedInv
     (fun a s => vssStep a s)
     h_pure
-    (fun a s _ h => vssStep_preserves_commitmentInv a s h)
+    (fun a s _ h => vssStep_preserves_outputDeterminedInv a s h)
     μ₀ h_init' A
 
 /-! ## §11. Secrecy (grid form, option (b))
@@ -851,7 +862,7 @@ manipulation; we defer it to M3 AVSS where it is needed for the
 real protocol.
 
 **Commitment ⇒ disagreement-freedom.** The pure invariant
-`commitmentInv_AS` says every honest output is in `{0, coeffs 0 0}`.
+`outputDeterminedInv_AS` says every honest output is in `{0, coeffs 0 0}`.
 Disagreement (one party outputs `0`, another outputs `coeffs 0 0`)
 is ruled out by an additional "global exposure" invariant: in the
 synchronous broadcast model, all honest parties see the *same*

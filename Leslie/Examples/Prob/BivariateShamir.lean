@@ -229,17 +229,23 @@ theorem bivariate_shamir_secrecy_via_step {t : ℕ}
   rw [ProbActionSpec.step_eq_some (h_gate s),
       ProbActionSpec.step_eq_some (h_gate s')]
   simp only [Option.map_some, Option.some_inj]
-  rw [show (((bivariateShamirShare t t partyPoint).actions (.deal s)).effect initial (h_gate s))
-        = (Leslie.Prob.Polynomial.uniformBivariateWithFixedZero t t s).map fun f =>
-            { shares := fun i j =>
-                some ((f.eval (Polynomial.C (partyPoint i))).eval (partyPoint j)) }
-        from rfl]
-  rw [show (((bivariateShamirShare t t partyPoint).actions (.deal s')).effect initial (h_gate s'))
-        = (Leslie.Prob.Polynomial.uniformBivariateWithFixedZero t t s').map fun f =>
-            { shares := fun i j =>
-                some ((f.eval (Polynomial.C (partyPoint i))).eval (partyPoint j)) }
-        from rfl]
-  rw [PMF.map_comp, PMF.map_comp]
+  -- The two `effect` calls reduce to bivariate-uniform-mapped-through-share;
+  -- combine the maps via `PMF.map_comp` and reduce to `bivariate_shamir_secrecy`.
+  rw [show ((bivariateShamirShare t t partyPoint).actions (.deal s)).effect
+        initial (h_gate s)
+      = (Leslie.Prob.Polynomial.uniformBivariateWithFixedZero t t s).map fun f =>
+          ({ shares := fun i j =>
+              some ((f.eval (Polynomial.C (partyPoint i))).eval (partyPoint j)) }
+            : BivariateShamirState F n)
+      from rfl,
+      show ((bivariateShamirShare t t partyPoint).actions (.deal s')).effect
+        initial (h_gate s')
+      = (Leslie.Prob.Polynomial.uniformBivariateWithFixedZero t t s').map fun f =>
+          ({ shares := fun i j =>
+              some ((f.eval (Polynomial.C (partyPoint i))).eval (partyPoint j)) }
+            : BivariateShamirState F n)
+      from rfl,
+      PMF.map_comp, PMF.map_comp]
   exact bivariate_shamir_secrecy partyPoint h_nz_pp h_F C D s s'
 
 end Leslie.Examples.Prob.BivariateShamir
