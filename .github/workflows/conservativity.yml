@@ -1,0 +1,46 @@
+# Conservative-extension gate for the randomized-leslie branch.
+#
+# Runs on PRs targeting `main` from `randomized-leslie` (and any spike
+# branches off it). Two jobs:
+#
+#   1. test — exercises scripts/check-conservative.test.sh's 33
+#      synthetic-diff cases. Catches regressions in the allowlist
+#      regex itself.
+#   2. check — runs scripts/check-conservative.sh against the actual
+#      PR diff. Fails if any file outside the randomized-leslie
+#      allowlist is touched.
+#
+# Both jobs are cheap (sub-second). No Lean toolchain, no Mathlib
+# cache, no setup overhead beyond `actions/checkout`.
+
+name: conservativity
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - randomized-leslie
+
+jobs:
+  test:
+    name: regex test suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Run synthetic-diff tests
+        run: bash scripts/check-conservative.test.sh
+
+  check:
+    name: actual diff vs main
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout (full history for diff)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify diff against origin/main
+        run: bash scripts/check-conservative.sh
