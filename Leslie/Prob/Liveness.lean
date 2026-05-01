@@ -174,13 +174,33 @@ each step decreases `U` with probability ≥ `p`. The variant
 strictly decreases at most `M` times before forcing termination,
 so the geometric tail bound gives AST.
 
-**Status:** `sorry`. The proof is the standard finite-variant rule
-applied to the bounded sub-process. Mathlib provides the
-geometric-tail / Borel–Cantelli ingredients
-(`MeasureTheory.measure_eq_zero_of_summable_indicator`,
-`ENNReal.tsum_geometric_lt_top`, etc.) but the assembly into a
-positive-probability-decrease + bounded-variant AST conclusion is
-not packaged. ~80 lines of bookkeeping. -/
+**Status:** `sorry`. Two gaps stand between this and a closed proof:
+
+1. **Statement-level**: as written, the theorem is technically *false*
+   under the demonic adversary that always stutters
+   (`A.schedule _ = none` everywhere). On such a trace the state is
+   constant, so `V (ω n).1 = V (ω 0).1` for all `n`, making the
+   hypothesis `∀ n, V (ω n).1 ≤ N` vacuously true for any
+   `N ≥ V (ω 0).1`, while termination need not hold. The fix is a
+   `cert`-level "non-stuttering" / progress field (e.g., a fairness
+   constraint on the adversary, or a `Inv s → ¬terminated s →
+   ∃ i, (spec.actions i).gate s` field) — but adding it requires
+   amending `ASTCertificate`, which is outside the M3 W2 budget and
+   needs design discussion.
+
+2. **Mathlib-level**: even with the missing field, the assembly is
+   the standard finite-variant rule (positive-probability decrease
+   + bounded variant ⇒ AS termination). Mathlib provides the
+   geometric-tail / Borel–Cantelli ingredients
+   (`MeasureTheory.measure_eq_zero_of_summable_indicator`,
+   `ENNReal.tsum_geometric_lt_top`, etc.) but the assembly into a
+   positive-probability-decrease + bounded-variant AST conclusion
+   is not packaged. ~250 LOC of filtration plumbing.
+
+Tracked under M3 W3. Concrete protocols satisfy a deterministic-
+decrease specialisation that closes via the simpler step-counting
+argument; this can be added as a separate lemma `pi_n_AST_det` once
+the statement-level field is added. -/
 theorem pi_n_AST (cert : ASTCertificate spec terminated)
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
     (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
@@ -202,19 +222,47 @@ inductive invariant lift (an `AlmostBox`-style argument that's
 exactly the calling pattern of `Refinement.AlmostBox_of_pure_inductive`,
 modulo specializing `P` to `Inv s ∧ V s ≤ K`).
 
-**Status:** `sorry` — the trajectory-Inv lift requires a
-generalization of `AlmostBox_of_pure_inductive` to non-pure-effect
-specs (or a more concrete trajectory-marginal argument). The proof
-is mechanical given that lemma; ~30 LOC pending the lemma.
-The Doob-convergence path is no longer needed thanks to
-`V_init_bdd`. -/
+**Status:** closed (M3 W2). Uses
+`Refinement.AlmostBox_of_inductive` (non-pure-effect generalisation
+of `AlmostBox_of_pure_inductive`) to lift `cert.Inv` along
+trajectories, then combines with `cert.V_init_bdd` to bound `V`
+trajectorywise by `⌈K⌉₊` for the witness `K`. The Doob-convergence
+path is no longer needed thanks to `V_init_bdd`. -/
 theorem pi_infty_zero (cert : ASTCertificate spec terminated)
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
     (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
     (A : Adversary σ ι) :
     (traceDist spec A μ₀)
       {ω | ∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))} = 0 := by
-  sorry
+  -- Extract the uniform `V`-bound `K` on the invariant set.
+  obtain ⟨K, hK⟩ := cert.V_init_bdd
+  -- Lift `cert.Inv` along trajectories via `AlmostBox_of_inductive`.
+  have hbox_inv : AlmostBox spec A μ₀ cert.Inv :=
+    AlmostBox_of_inductive cert.Inv
+      (fun i s h hInv s' hs' => cert.inv_step i s h hInv s' hs')
+      μ₀ h_init_inv A
+  -- Goal: `traceDist .. {ω | ∀ N, ¬ (∀ n, V (ω n).1 ≤ N)} = 0`.
+  -- Equivalent to: `∀ᵐ ω, ¬ (∀ N, ¬ (∀ n, V ≤ N))`.
+  have : ∀ᵐ ω ∂(traceDist spec A μ₀),
+      ¬ (∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))) := by
+    unfold AlmostBox at hbox_inv
+    filter_upwards [hbox_inv] with ω hInv_all
+    push_neg
+    refine ⟨⌈(K : ℝ≥0)⌉₊, fun n => ?_⟩
+    have h1 : cert.V (ω n).1 ≤ K := hK _ (hInv_all n)
+    have h2 : (K : ℝ≥0) ≤ ((⌈(K : ℝ≥0)⌉₊ : ℕ) : ℝ≥0) := by
+      have : (K : ℝ) ≤ (⌈(K : ℝ≥0)⌉₊ : ℝ) := Nat.le_ceil (K : ℝ≥0)
+      exact_mod_cast this
+    exact h1.trans h2
+  -- Convert AE to measure-zero.
+  rw [MeasureTheory.ae_iff] at this
+  -- Now `this : traceDist .. {ω | ¬ ¬ (∀ N, ¬ ..)} = 0`.
+  -- The set under `this` simplifies via `not_not` to the target set.
+  have hset : {a : Trace σ ι | ¬ ¬ ∀ N : ℕ, ¬ ∀ n, cert.V (a n).1 ≤ (N : ℝ≥0)} =
+      {ω : Trace σ ι | ∀ N : ℕ, ¬ ∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)} := by
+    ext ω; simp
+  rw [hset] at this
+  exact this
 
 /-- **Step 3 — partition argument.** Combine `pi_n_AST` (AST on
 each sublevel `Π_n`) with `pi_infty_zero` (the unbounded set is
@@ -274,14 +322,16 @@ theorem partition_almostDiamond (cert : ASTCertificate spec terminated)
 /-- AST certificate soundness: under a demonic adversary, every
 execution AE terminates.
 
-**Status (M3 W1):** reduced to two well-identified sorry'd
-lemmas — `pi_n_AST` (sublevel-set finite-variant rule) and
-`pi_infty_zero` (Doob-style supermartingale convergence). The
-top-level partition argument (`partition_almostDiamond`) closes
-without sorry once those two land. The Mathlib-side gap is the
-non-negative-supermartingale-converges-AE specialization plus
-filtration plumbing on the trace measure; documented in each
-intermediate lemma's docstring. -/
+**Status (M3 W2):** reduced to a single sorry'd lemma —
+`pi_n_AST` (sublevel-set finite-variant rule). The companion
+`pi_infty_zero` is now closed, using the non-pure-effect
+generalisation `Refinement.AlmostBox_of_inductive` to lift
+`cert.Inv` along trajectories and combining with `cert.V_init_bdd`
+to bound `V` trajectorywise (Doob convergence is no longer needed).
+The top-level partition argument (`partition_almostDiamond`) closes
+without sorry once `pi_n_AST` lands. See `pi_n_AST`'s docstring for
+the two outstanding gaps (statement-level non-stuttering field +
+Mathlib-level filtration plumbing). -/
 theorem sound (cert : ASTCertificate spec terminated)
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
     (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
