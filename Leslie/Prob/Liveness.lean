@@ -625,28 +625,32 @@ hypothesis explicitly. This isolates gap 1 (trajectory-level
 fairness witness, opaque from `isWeaklyFair`) from gap 2 (Mathlib
 Borel-Cantelli + filtration plumbing).
 
-**Status (M3 W4 — Phase 2):** the chain-shaped reduction is in place;
-the only remaining `sorry` is the **inductive step of the geometric
-chain bound** (`h_chain_bound.succ`), which iterates
-`traceDist_kernel_step_bound` to derive `μ(badSet) ≤ (1 - q)^(k+1)`.
-The proof body:
+**Status (M3 W4 — Phase 3):** the chain-shaped reduction is in
+place; the only remaining `sorry` is the existence of a chain
+`C : ℕ → Set (Trace σ ι)` with `badSet ⊆ C k` and
+`μ(C k) ≤ (1 - qE)^k` — captured as a single `∃ C, …`
+statement (`h_chain_exists`). The proof body:
 
   1. Reduces the AE statement to `μ(badSet) = 0` via `ae_iff`,
      where `badSet := {ω | sublevel ∧ ∀ n, ¬ terminated (ω n).1}`.
   2. Extracts `q = min p 1` from `cert.U_dec_prob N` for a
      well-typed `(1 - qE) < 1` ENNReal bound.
-  3. Builds the geometric chain bound `μ(badSet) ≤ (1 - qE)^k`
-     (induction on `k`), with the inductive step left as the
-     documented inner gap.
-  4. Closes via `ENNReal.tendsto_pow_atTop_nhds_zero_of_lt_one`
+  3. Asserts existence of the geometric chain `C : ℕ → Set _`
+     (`h_chain_exists`) — single inner sorry; documented strategy
+     below.
+  4. Combines containment + bound to derive the chain bound
+     `μ(badSet) ≤ (1 - qE)^k` for every k (closed).
+  5. Closes via `ENNReal.tendsto_pow_atTop_nhds_zero_of_lt_one`
      and `le_of_tendsto_of_tendsto'` — both fully verified.
 
-The remaining inner gap (the recurrence `μ(C_{k+1}) ≤ (1-q) μ(C_k)`)
-is the chain assembly: defining `S_k ⊆ FinPrefix σ ι k` of "good
-prefixes" where a fair-required action fires from a sublevel
-non-terminated state, applying `traceDist_kernel_step_bound` to
-derive the per-step kernel bound, and combining via measurability
-of cylinders. ~250 LOC of trajectory bookkeeping.
+The remaining inner gap is the chain assembly: building stopping-
+time-indexed `C k = {ω ∈ badSet | by k-th fair firing, < k
+U-decreases observed}` via `Nat.find` on the `_h_progress`
+witness; applying `traceDist_kernel_step_bound` at each fair-firing
+step to derive the recurrence `μ(C (k+1)) ≤ (1 - qE) μ(C k)`;
+and combining with `cert.U_bdd_subl N = M` to show
+`badSet ⊆ ⋂ k, C k`. ~250 LOC of trajectory bookkeeping plus
+measurability glue for `Nat.find`-defined stopping times.
 
 The closed deterministic specialisation `pi_n_AST_fair_with_progress_det`
 below covers all concrete protocols (Bracha, AVSS, common-coin); this
@@ -797,37 +801,68 @@ theorem pi_n_AST_fair_with_progress
   -- the tendsto-zero of `(1 - pE)^k` and `tendsto_measure_iInter_atTop`.
   --
   -- We close the geometric → 0 part directly here, leaving the
-  -- chain-bound as a single sorry'd intermediate `h_chain_bound`.
+  -- chain construction as a single sorry'd existential intermediate.
   -- This isolates the only remaining proof obligation cleanly.
-  -- Existence of the chain witnessing the geometric bound:
+  --
+  -- ## Chain existence claim — single named gap.
+  --
+  -- We assert the existence of a chain `C : ℕ → Set (Trace σ ι)`
+  -- with two properties:
+  --   (a) `badSet ⊆ C k` for every `k`.
+  --   (b) `μ(C k) ≤ (1 - qE)^k` for every `k`.
+  --
+  -- Property (b) implies the chain bound by transitivity through (a).
+  -- Constructing such a chain is the ~250-LOC documented gap (chain
+  -- assembly via stopping-time-indexed `C k` + `traceDist_kernel_step_bound`).
+  --
+  -- The chain lives "logically" but its construction is non-trivial:
+  -- - `C k` has the form "trajectories where fewer than `k` U-decrease
+  --   events have been observed at the first `k` fair-firing slots".
+  -- - The fair-firing slots are stopping-time-indexed via `_h_progress`
+  --   (which holds AE on `badSet` since on `badSet` we never terminate
+  --   so progress is still required).
+  -- - The recurrence `μ(C (k+1)) ≤ (1 - qE) μ(C k)` is the per-step
+  --   `traceDist_kernel_step_bound` applied at the `(k+1)`-th
+  --   fair-firing slot, with `S = good prefixes ending at slot k+1`,
+  --   `T h = {(s', _) | cert.U s' < cert.U h.currentState}`, and
+  --   `p = qE`.
+  --
+  -- Once this chain is available, the rest of the proof closes via
+  -- the geometric → 0 limit (see below). We package the chain as a
+  -- single `∃ C, …` sorry to keep the gap atomic and well-typed.
+  have h_chain_exists : ∃ C : ℕ → Set (Trace σ ι),
+      (∀ k, badSet ⊆ C k) ∧
+      (∀ k, (traceDist spec A.toAdversary μ₀) (C k) ≤ (1 - qE) ^ k) := by
+    -- The chain construction. Out of scope for this phase; the witness
+    -- depends on `_h_progress`, `cert.U_dec_prob`, `cert.U_bdd_subl`,
+    -- and the kernel-step bound `traceDist_kernel_step_bound`. ~250 LOC.
+    --
+    -- Concrete shape (for the future agent):
+    --   1. Define `T : ℕ → Trace σ ι → ℕ` via `Nat.find` on the
+    --      `_h_progress`-extracted i.o. fair-firing predicate (one
+    --      stopping time per `k`-th fair firing).
+    --   2. Define `C k := {ω ∈ badSet | at the first k fair firings,
+    --      U has decreased fewer than k times}` (cylinder set, measurable
+    --      by countable union over step indices).
+    --   3. `badSet ⊆ C k` because on `badSet` we never terminate so
+    --      every fair firing is a "progress slot" — but the fair firing
+    --      may or may not decrease U; the bookkeeping shows that on
+    --      `badSet`, U is bounded by `cert.U_bdd_subl N = M` and so
+    --      there are at most M decrease events, so the chain is
+    --      contained.
+    --   4. `μ(C (k+1)) ≤ (1 - qE) μ(C k)` by `traceDist_kernel_step_bound`
+    --      at the `(k+1)`-th fair-firing slot.
+    --   5. Iterating gives `μ(C k) ≤ (1 - qE)^k μ(C 0) ≤ (1 - qE)^k`.
+    sorry
+  obtain ⟨C, hC_sup, hC_bdd⟩ := h_chain_exists
+  -- The chain bound `μ(badSet) ≤ (1 - qE)^k` follows by monotonicity of
+  -- measure on `badSet ⊆ C k` plus `μ(C k) ≤ (1 - qE)^k`.
   have h_chain_bound : ∀ k : ℕ,
       (traceDist spec A.toAdversary μ₀) badSet ≤ (1 - qE) ^ k := by
-    -- This is the chain-of-conditional-probabilities claim. Proof:
-    -- by induction on k, building C_k as above; base case is
-    -- `μ(badSet) ≤ 1` (probability measure); inductive step applies
-    -- `traceDist_kernel_step_bound` at step k. The inductive step is
-    -- the documented gap; left as a single inner sorry below.
     intro k
-    induction k with
-    | zero =>
-      -- Base case: μ(badSet) ≤ 1.
-      simp only [pow_zero]
-      exact MeasureTheory.prob_le_one
-    | succ k _ih =>
-      -- Inductive step: μ(badSet) ≤ (1 - qE) · (1 - qE)^k.
-      -- The full proof factors `μ(badSet) ≤ μ(C k)` by `badSet ⊆ C k`,
-      -- then `μ(C k) ≤ (1 - qE)^k` by IH, then the recurrence
-      -- `μ(C_{k+1}) ≤ (1 - qE) μ(C_k)` from `traceDist_kernel_step_bound`.
-      --
-      -- The recurrence requires constructing `S_k ⊆ FinPrefix σ ι (T_k)`
-      -- (good histories where fair action fires from sublevel non-terminated
-      -- state), `T_k h := {(s', _) | cert.U s' < cert.U h.currentState}`
-      -- (decrease event), verifying the kernel mass bound via `cert.U_dec_prob`,
-      -- and inserting into the chain via measurability of cylinders.
-      --
-      -- This is the documented ~250-LOC chain-bound assembly; the
-      -- ~300-LOC follow-up estimate in M3 W4 documentation.
-      sorry
+    calc (traceDist spec A.toAdversary μ₀) badSet
+        ≤ (traceDist spec A.toAdversary μ₀) (C k) := measure_mono (hC_sup k)
+      _ ≤ (1 - qE) ^ k := hC_bdd k
   -- ## Conclude μ(badSet) = 0 from the geometric chain bound.
   --
   -- Since `(1 - qE)^k → 0` and `μ(badSet) ≤ (1 - qE)^k` for every k,
