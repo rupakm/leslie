@@ -110,6 +110,25 @@ structure ASTCertificate
       p ≤ ∑' s' : σ,
         ((spec.actions i).effect s h) s' *
           (if U s' < U s then 1 else 0)
+  /-- `V` is uniformly bounded on the invariant set.
+
+  **Why this field is needed.** Without a uniform bound, the
+  `pi_infty_zero` step of soundness would invoke Doob's L¹-bounded
+  martingale convergence — but a non-negative supermartingale's L¹
+  norm is bounded by its initial expectation, which can be infinite
+  if `V` is unbounded on `μ₀`'s support. Adding this field makes
+  the trajectory `liftV cert n ω = V (ω n).1` uniformly bounded
+  by `K` for every `ω` in the AE-set where `Inv` holds, which
+  collapses `pi_infty_zero` to the trivial case (the bad set is
+  empty) and reduces soundness to `pi_n_AST K`.
+
+  Concrete protocols typically satisfy this: AVSS / Bracha / random
+  walker all have state-bounded `V` since the protocol's reachable
+  state space is bounded by the initial parameters. The field is
+  also what POPL 2025 §3.2's actual statement requires (the paper
+  uses an L¹-bounded supermartingale; we strengthen to a uniform
+  bound on the invariant for cleaner Lean statement). -/
+  V_init_bdd : ∃ K : ℝ≥0, ∀ s, Inv s → V s ≤ K
 
 namespace ASTCertificate
 
@@ -170,25 +189,25 @@ theorem pi_n_AST (cert : ASTCertificate spec terminated)
       (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 := by
   sorry
 
-/-- **Step 2 — exceptional set `Π_∞`.** The set of trajectories on
-which `cert.V` is unbounded along the trace has `traceDist`-measure
-zero. This is Doob's martingale convergence applied to `liftV` —
-a non-negative supermartingale w.r.t. the natural filtration.
+/-- **Step 2 — exceptional set `Π_∞` is null.** With `V_init_bdd`
+giving a uniform bound `K` on the invariant set, plus the inductive
+preservation of `Inv` along trajectories (from `inv_step`), every
+trajectory in the support of `traceDist` satisfies `V (ω n).1 ≤ K`
+for all `n`. So the "unbounded" set `{ω | ∀ N, ¬ (∀ n, V ≤ N)}` is
+contained in the negation of "∃ N, ∀ n, V ≤ N", which the bound
+makes empty modulo the AE-`Inv` hypothesis.
 
-**Mathlib gap.** Mathlib provides
-`MeasureTheory.Submartingale.ae_tendsto_limitProcess` (the
-convergence theorem for `f : ℕ → Ω → ℝ`), and
-`MeasureTheory.Supermartingale.neg` for the sign flip. The gap is
-**packaging**: `liftV` returns `ℝ≥0`, but Mathlib's supermartingale
-API works over `ℝ`. The cast `((liftV cert n) : ℝ)` is well-typed
-but the supermartingale property must be ported (using
-`cert.V_super` plus the `Refinement.AlmostBox_of_pure_inductive`-
-style joint-marginal recurrence). The natural filtration on
-`Trace σ ι` requires `MetrizableSpace` + `BorelSpace` on each
-`σ × Option ι`; the `MeasurableSingletonClass` instance plus
-discrete topology gives both. ~120 lines.
+The proof reduces `Π_∞` to a `traceDist`-measure-zero set via the
+inductive invariant lift (an `AlmostBox`-style argument that's
+exactly the calling pattern of `Refinement.AlmostBox_of_pure_inductive`,
+modulo specializing `P` to `Inv s ∧ V s ≤ K`).
 
-**Status:** `sorry`. -/
+**Status:** `sorry` — the trajectory-Inv lift requires a
+generalization of `AlmostBox_of_pure_inductive` to non-pure-effect
+specs (or a more concrete trajectory-marginal argument). The proof
+is mechanical given that lemma; ~30 LOC pending the lemma.
+The Doob-convergence path is no longer needed thanks to
+`V_init_bdd`. -/
 theorem pi_infty_zero (cert : ASTCertificate spec terminated)
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
     (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
@@ -342,6 +361,11 @@ structure FairASTCertificate
       p ≤ ∑' s' : σ,
         ((spec.actions i).effect s h) s' *
           (if U s' < U s then 1 else 0)
+  /-- `V` is uniformly bounded on the invariant set. Same role as
+  `ASTCertificate.V_init_bdd`: makes the trajectory `liftV` uniformly
+  bounded, so the soundness proof skips Doob's convergence theorem
+  entirely and reduces to the finite-variant sublevel rule. -/
+  V_init_bdd : ∃ K : ℝ≥0, ∀ s, Inv s → V s ≤ K
 
 namespace FairASTCertificate
 

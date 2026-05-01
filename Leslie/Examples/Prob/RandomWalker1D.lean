@@ -101,10 +101,12 @@ instance : MeasurableSingletonClass RWAction := ⟨fun _ => trivial⟩
 A single action `step` enabled at `pos > 0` whose effect is the
 Dirac at `⟨pos - 1⟩`. -/
 
-/-- The 1-D random walker's spec: a single action, deterministic
-absorbing-barrier dynamics. -/
-noncomputable def rwSpec : ProbActionSpec RWState RWAction where
-  init := fun _ => True
+/-- The 1-D random walker's spec, parameterized by a maximum
+initial position `N`. The init predicate `s.pos ≤ N` lets the
+certificate's invariant encode a bound on `pos` along trajectories,
+which `V_init_bdd` then uses to skip Doob's convergence theorem. -/
+noncomputable def rwSpec (N : ℕ) : ProbActionSpec RWState RWAction where
+  init := fun s => s.pos ≤ N
   actions := fun .step =>
     { gate := fun s => s.pos > 0
       effect := fun s _ => PMF.pure ⟨s.pos - 1⟩ }
@@ -118,29 +120,34 @@ Every obligation closes by reducing the per-action `tsum` over the
 Dirac PMF to a single term via `tsum_eq_single`, then a one-liner
 numeric inequality on `ℕ` (truncated subtraction). -/
 
-/-- The `ASTCertificate` instance for `rwSpec` against `rwTerminated`.
-All eight field obligations close-form. -/
-noncomputable def rwCert : ASTCertificate rwSpec rwTerminated where
-  Inv := fun _ => True
+/-- The `ASTCertificate` instance for `rwSpec N` against
+`rwTerminated`. The `Inv := s.pos ≤ N` invariant lets `V_init_bdd`
+provide the uniform bound `K = N`, which makes the soundness proof
+skip Doob convergence and reduce to `pi_n_AST` at `K = N`.
+All nine field obligations close-form. -/
+noncomputable def rwCert (N : ℕ) : ASTCertificate (rwSpec N) rwTerminated where
+  Inv := fun s => s.pos ≤ N
   V := fun s => (s.pos : ℝ≥0)
   U := fun s => s.pos
-  inv_init := fun _ _ => trivial
-  inv_step := fun _ _ _ _ _ _ => trivial
+  inv_init := fun _ h => h
+  inv_step := fun _ _ _ hInv s' hs' => by
+    -- `s' = ⟨s.pos - 1⟩`, so `s'.pos ≤ s.pos ≤ N`.
+    have h_supp : s' ∈ (PMF.pure (⟨_ - 1⟩ : RWState)).support := hs'
+    rw [PMF.support_pure] at h_supp
+    rcases h_supp with rfl
+    show _ - 1 ≤ N
+    omega
   V_term := fun s _ ht => by
-    -- `rwTerminated s` says `s.pos = 0`; `V s = (s.pos : ℝ≥0)` then `= 0`.
     show ((s.pos : ℝ≥0) = 0)
     have : s.pos = 0 := ht
     simp [this]
   V_pos := fun s _ ht => by
-    -- `¬ rwTerminated s` says `s.pos ≠ 0`, so `s.pos > 0` and
-    -- `V s = (s.pos : ℝ≥0) > 0`.
     have hne : s.pos ≠ 0 := ht
     have hpos : 0 < s.pos := Nat.pos_of_ne_zero hne
     exact_mod_cast hpos
   V_super := fun i s hgate _ _ => by
-    -- One action: deterministic step `s.pos → s.pos - 1`. The tsum
-    -- collapses to the singleton at `⟨s.pos - 1⟩` and reduces to
-    -- `(s.pos - 1 : ℝ≥0) ≤ s.pos`.
+    -- Dirac kernel: tsum collapses to the singleton at `⟨s.pos - 1⟩`,
+    -- reducing to `(s.pos - 1 : ℝ≥0) ≤ s.pos`.
     cases i
     simp only [rwSpec]
     rw [tsum_eq_single ⟨s.pos - 1⟩]
@@ -150,12 +157,10 @@ noncomputable def rwCert : ASTCertificate rwSpec rwTerminated where
     · intro b hb
       rw [PMF.pure_apply, if_neg hb, zero_mul]
   U_term := fun s _ ht => by
-    -- `rwTerminated s` says `s.pos = 0`, and `U s = s.pos`.
     show s.pos = 0
     exact ht
   U_bdd_subl := fun k => by
-    -- The sublevel set `{V ≤ k}` corresponds to `{s.pos ≤ k}`. With
-    -- `M = ⌈k⌉₊`, every such `s` has `U s = s.pos ≤ M`.
+    -- `M = ⌈k⌉₊`; from `(s.pos : ℝ≥0) ≤ k` deduce `s.pos ≤ M`.
     refine ⟨⌈(k : ℝ≥0)⌉₊, fun s _ hVk => ?_⟩
     have h1 : (s.pos : ℝ≥0) ≤ k := hVk
     have h2 : (s.pos : ℝ) ≤ k := by exact_mod_cast h1
@@ -163,9 +168,7 @@ noncomputable def rwCert : ASTCertificate rwSpec rwTerminated where
       h2.trans (by exact_mod_cast Nat.le_ceil (k : ℝ≥0))
     exact_mod_cast h3
   U_dec_prob := fun _ => by
-    -- Decrease probability is `1`: every gated step strictly
-    -- decreases `U`. The tsum collapses to the singleton and the
-    -- indicator evaluates to `1` since `s.pos - 1 < s.pos`.
+    -- Decrease probability is 1: every gated step strictly decreases U.
     refine ⟨1, by norm_num, fun i s hgate _ _ _ => ?_⟩
     cases i
     simp only [rwSpec]
@@ -177,17 +180,19 @@ noncomputable def rwCert : ASTCertificate rwSpec rwTerminated where
       exact_mod_cast le_refl (1 : ℝ≥0∞)
     · intro b hb
       rw [PMF.pure_apply, if_neg hb, zero_mul]
+  V_init_bdd := ⟨N, fun s h => by exact_mod_cast h⟩
 
 /-! ## §5. Sanity examples -/
 
 /-- The certificate elaborates: every field types correctly. -/
-noncomputable example : ASTCertificate rwSpec rwTerminated := rwCert
+noncomputable example (N : ℕ) : ASTCertificate (rwSpec N) rwTerminated :=
+  rwCert N
 
 /-- The variant value at `⟨5⟩`. -/
-example : rwCert.U ⟨5⟩ = 5 := rfl
+example : (rwCert 100).U ⟨5⟩ = 5 := rfl
 
 /-- The likelihood value at `⟨5⟩`. -/
-example : rwCert.V ⟨5⟩ = (5 : ℝ≥0) := rfl
+example : (rwCert 100).V ⟨5⟩ = (5 : ℝ≥0) := rfl
 
 /-- Termination predicate at `⟨0⟩` (the absorbing state). -/
 example : rwTerminated ⟨0⟩ := rfl
