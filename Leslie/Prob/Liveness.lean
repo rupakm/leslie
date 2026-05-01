@@ -118,23 +118,157 @@ variable [Countable σ] [Countable ι]
   [MeasurableSpace ι] [MeasurableSingletonClass ι]
   {spec : ProbActionSpec σ ι} {terminated : σ → Prop}
 
-/-- AST certificate soundness: under a demonic adversary, every
-execution AE terminates.
+/-! ### Soundness — proof skeleton
 
-**Status (entry gate):** `sorry`. Proof structure mirrors POPL 2025
-§3 proof of Lemma 3.2:
-  1. Partition runs into `Π_n = {sup V ≤ n}` and `Π_∞`.
-  2. On each `Π_n`, apply finite-variant rule using `U_bdd_subl` +
-     `U_dec_prob`; conclude AST on `Π_n`.
-  3. On `Π_∞`, apply Doob's martingale convergence on `V` (via
-     `MeasureTheory.Martingale`) to derive `P(Π_∞) = 0`.
-  4. Conclude AST overall. -/
-theorem sound (cert : ASTCertificate spec terminated)
+The POPL 2025 §3 Lemma 3.2 soundness proof decomposes into four
+named steps. We expose each step as its own intermediate result
+(`pi_n_AST`, `pi_infty_zero`, `partition_almostDiamond`); each
+carries one clearly-scoped Mathlib-side gap that landing closes
+`sound` mechanically via `partition_almostDiamond`. -/
+
+/-- Coordinate-`n` lift of the certificate's likelihood
+supermartingale `cert.V` to the trace measure: `Vₙ ω = cert.V (ω n).1`.
+
+This is the per-coordinate process that the supermartingale
+machinery (`MeasureTheory.Supermartingale`) acts on. The
+supermartingale property under `traceDist spec A μ₀` follows from
+`cert.V_super` plus the joint-marginal recurrence already used in
+`Refinement.AlmostBox_of_pure_inductive`. -/
+noncomputable def liftV (cert : ASTCertificate spec terminated)
+    (n : ℕ) (ω : Trace σ ι) : ℝ≥0 :=
+  cert.V ((ω n).1)
+
+/-- Coordinate-`n` lift of the certificate's distance variant
+`cert.U` to the trace measure: `Uₙ ω = cert.U (ω n).1`. -/
+def liftU (cert : ASTCertificate spec terminated) (n : ℕ)
+    (ω : Trace σ ι) : ℕ :=
+  cert.U ((ω n).1)
+
+/-- **Step 1 — sublevel set `Π_n`.** On the sublevel set
+`{ω | ∀ k, cert.V (ω k).1 ≤ N}`, almost-sure termination follows
+from `U_bdd_subl` plus the standard probabilistic finite-variant
+rule (POPL 2025 §3 Rule 3.1).
+
+Formally: with `U_bdd_subl N = M`, the variant `liftU` is
+uniformly bounded by `M` along the prefix; with `U_dec_prob N = p`,
+each step decreases `U` with probability ≥ `p`. The variant
+strictly decreases at most `M` times before forcing termination,
+so the geometric tail bound gives AST.
+
+**Status:** `sorry`. The proof is the standard finite-variant rule
+applied to the bounded sub-process. Mathlib provides the
+geometric-tail / Borel–Cantelli ingredients
+(`MeasureTheory.measure_eq_zero_of_summable_indicator`,
+`ENNReal.tsum_geometric_lt_top`, etc.) but the assembly into a
+positive-probability-decrease + bounded-variant AST conclusion is
+not packaged. ~80 lines of bookkeeping. -/
+theorem pi_n_AST (cert : ASTCertificate spec terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
+    (A : Adversary σ ι) (N : ℕ) :
+    ∀ᵐ ω ∂(traceDist spec A μ₀),
+      (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 := by
+  sorry
+
+/-- **Step 2 — exceptional set `Π_∞`.** The set of trajectories on
+which `cert.V` is unbounded along the trace has `traceDist`-measure
+zero. This is Doob's martingale convergence applied to `liftV` —
+a non-negative supermartingale w.r.t. the natural filtration.
+
+**Mathlib gap.** Mathlib provides
+`MeasureTheory.Submartingale.ae_tendsto_limitProcess` (the
+convergence theorem for `f : ℕ → Ω → ℝ`), and
+`MeasureTheory.Supermartingale.neg` for the sign flip. The gap is
+**packaging**: `liftV` returns `ℝ≥0`, but Mathlib's supermartingale
+API works over `ℝ`. The cast `((liftV cert n) : ℝ)` is well-typed
+but the supermartingale property must be ported (using
+`cert.V_super` plus the `Refinement.AlmostBox_of_pure_inductive`-
+style joint-marginal recurrence). The natural filtration on
+`Trace σ ι` requires `MetrizableSpace` + `BorelSpace` on each
+`σ × Option ι`; the `MeasurableSingletonClass` instance plus
+discrete topology gives both. ~120 lines.
+
+**Status:** `sorry`. -/
+theorem pi_infty_zero (cert : ASTCertificate spec terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
+    (A : Adversary σ ι) :
+    (traceDist spec A μ₀)
+      {ω | ∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))} = 0 := by
+  sorry
+
+/-- **Step 3 — partition argument.** Combine `pi_n_AST` (AST on
+each sublevel `Π_n`) with `pi_infty_zero` (the unbounded set is
+null) to conclude AST overall.
+
+This is the assembly step: the trajectory space partitions as
+`(⋃ N, {ω | ∀ n, V (ω n).1 ≤ N}) ∪ Π_∞`, and AST holds on each
+`{ω | ∀ n, V ≤ N}` (by `pi_n_AST`) and on the null set `Π_∞`
+trivially. Hence AST holds AE.
+
+The proof is countable-union AE swap (`MeasureTheory.ae_iUnion_iff`)
+plus the partitioning identity. -/
+theorem partition_almostDiamond (cert : ASTCertificate spec terminated)
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
     (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
     (A : Adversary σ ι) :
     AlmostDiamond spec A μ₀ terminated := by
-  sorry
+  -- Combine the partition: every ω is either bounded by some N or in Π_∞.
+  -- On bounded ω (sublevel `Π_N`), `pi_n_AST` gives AST.
+  -- On unbounded ω (`Π_∞`), the measure is zero by `pi_infty_zero`.
+  -- The union of countably many AE-events is still AE.
+  unfold AlmostDiamond
+  -- Use the trichotomy: either ∃ N, ∀ n, V (ω n).1 ≤ N, or ∀ N, ¬(...).
+  -- Filter upwards through `pi_infty_zero` to discard the unbounded set,
+  -- then through `pi_n_AST` over each `N : ℕ` to handle bounded ω.
+  have hbounded_or_unbounded :
+      ∀ ω : Trace σ ι,
+        (∃ N : ℕ, ∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) ∨
+        (∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))) := by
+    intro ω
+    by_cases h : ∃ N : ℕ, ∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)
+    · exact .inl h
+    · refine .inr ?_
+      intro N hbnd
+      exact h ⟨N, hbnd⟩
+  -- The unbounded set has measure zero.
+  have h_inf_null : ∀ᵐ ω ∂(traceDist spec A μ₀),
+      ¬ (∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))) := by
+    rw [ae_iff]
+    have heq : {a : Trace σ ι | ¬ ¬ ∀ N : ℕ, ¬ (∀ n, cert.V (a n).1 ≤ (N : ℝ≥0))} =
+        {ω : Trace σ ι | ∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))} := by
+      ext ω
+      simp
+    rw [heq]
+    exact pi_infty_zero cert μ₀ h_init_inv A
+  -- For each N, AST holds on the sublevel.
+  have h_each_N : ∀ N : ℕ, ∀ᵐ ω ∂(traceDist spec A μ₀),
+      (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 :=
+    fun N => pi_n_AST cert μ₀ h_init_inv A N
+  -- Combine via countable AE swap.
+  rw [← MeasureTheory.ae_all_iff] at h_each_N
+  filter_upwards [h_each_N, h_inf_null] with ω hN h_inf
+  rcases hbounded_or_unbounded ω with ⟨N, hbnd⟩ | hunb
+  · exact hN N hbnd
+  · exact absurd hunb h_inf
+
+/-- AST certificate soundness: under a demonic adversary, every
+execution AE terminates.
+
+**Status (M3 W1):** reduced to two well-identified sorry'd
+lemmas — `pi_n_AST` (sublevel-set finite-variant rule) and
+`pi_infty_zero` (Doob-style supermartingale convergence). The
+top-level partition argument (`partition_almostDiamond`) closes
+without sorry once those two land. The Mathlib-side gap is the
+non-negative-supermartingale-converges-AE specialization plus
+filtration plumbing on the trace measure; documented in each
+intermediate lemma's docstring. -/
+theorem sound (cert : ASTCertificate spec terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
+    (A : Adversary σ ι) :
+    AlmostDiamond spec A μ₀ terminated :=
+  partition_almostDiamond cert μ₀ h_init_inv A
 
 end ASTCertificate
 
