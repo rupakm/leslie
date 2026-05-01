@@ -1,0 +1,62 @@
+/-
+Randomized-leslie extension build root.
+
+This file is the import-aggregator for the randomized-leslie extension.
+It exists so `lake build Leslie.Prob.Index` validates every production
+file in the extension in one shot, instead of relying on per-file
+`lake env lean` invocations.
+
+Default `lake build` (which builds `Leslie.lean`'s import graph) does
+**not** include the randomized-leslie extension — `Leslie.lean` is
+main-branch code and the conservativity gate (`scripts/check-conservative.sh`)
+forbids modifying it from this branch. Once randomized-leslie merges
+to main, a single line `import «Leslie».Prob.Index` in `Leslie.lean`
+will fold the whole extension into the default build.
+
+## Usage
+
+```bash
+lake build Leslie.Prob.Index
+```
+
+Builds every `Leslie.Prob.*` library module and every
+`Leslie.Examples.Prob.*` example. Equivalent to running
+`lake env lean` on each file individually but reuses the build cache.
+
+## What's included
+
+  * **Library** (`Leslie.Prob.*`): the framework — `Action`,
+    `Adversary`, `Coupling`, `Embed`, `PMF`, `Polynomial`, `Refinement`,
+    `Trace`. Sorry-free.
+  * **Examples** (`Leslie.Examples.Prob.*`): protocols + calibration —
+    `BivariateShamir`, `BrachaRBC`, `CouplingDemo`, `ITMAC`, `KnuthDice`,
+    `OneTimePad`, `Shamir`, `Smoke`, `SyncVSS`. One sorry on
+    `BrachaRBC.brbProb_totality_AS_fair` (M3 W1 work).
+
+## What's excluded
+
+  * `Leslie.Prob.Spike.*` — M0 spike / calibration files. `ASTSanity`
+    carries a known sorry that is M3-tracked separately. Spike files
+    are intentionally not part of the production build.
+-/
+
+-- Library
+import Leslie.Prob.Action
+import Leslie.Prob.Adversary
+import Leslie.Prob.Coupling
+import Leslie.Prob.Embed
+import Leslie.Prob.PMF
+import Leslie.Prob.Polynomial
+import Leslie.Prob.Refinement
+import Leslie.Prob.Trace
+
+-- Examples
+import Leslie.Examples.Prob.BivariateShamir
+import Leslie.Examples.Prob.BrachaRBC
+import Leslie.Examples.Prob.CouplingDemo
+import Leslie.Examples.Prob.ITMAC
+import Leslie.Examples.Prob.KnuthDice
+import Leslie.Examples.Prob.OneTimePad
+import Leslie.Examples.Prob.Shamir
+import Leslie.Examples.Prob.Smoke
+import Leslie.Examples.Prob.SyncVSS
