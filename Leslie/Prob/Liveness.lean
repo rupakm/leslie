@@ -425,19 +425,184 @@ variable [Countable σ] [Countable ι]
   {spec : ProbActionSpec σ ι} {F : FairnessAssumptions σ ι}
   {terminated : σ → Prop}
 
-/-- Fair AST certificate soundness: under a weakly-fair adversary,
-every execution AE terminates.
+/-! ### Soundness — proof skeleton
 
-**Status (entry gate):** `sorry`. Proof structure: same as the
-demonic case but the supermartingale convergence argument is
-restricted to fair sub-traces (Doob applied conditional on
-`isWeaklyFair`). -/
-theorem sound (cert : FairASTCertificate spec F terminated)
+The fair POPL 2026 soundness proof decomposes along the same
+`pi_n_AST` / `pi_infty_zero` / `partition_almostDiamond` skeleton
+as the demonic case. The key structural improvement: the
+fair-side `pi_n_AST_fair` does **not** suffer the stuttering-
+adversary issue that blocks demonic `pi_n_AST`. The
+`isWeaklyFair` predicate on `FairAdversary _ F` rules out the
+"always-stutter" trace (which would starve every fair-required
+action), so the sublevel-set finite-variant rule applies cleanly
+on AE traces.
+
+Two of the three pieces close from existing infrastructure:
+
+  * `pi_infty_zero_fair` — closed via `AlmostBox_of_inductive`
+    + `V_init_bdd`, exactly as in the demonic case.
+  * `partition_almostDiamond_fair` — closed by the partition
+    argument once `pi_n_AST_fair` is provided.
+  * `pi_n_AST_fair` — *blocks on Mathlib filtration plumbing*
+    (Borel–Cantelli + positive-probability-decrease assembly).
+    Sorry'd with documented gap. -/
+
+/-- Coordinate-`n` lift of the certificate's likelihood
+supermartingale `cert.V` to the trace measure. -/
+noncomputable def liftV (cert : FairASTCertificate spec F terminated)
+    (n : ℕ) (ω : Trace σ ι) : ℝ≥0 :=
+  cert.V ((ω n).1)
+
+/-- Coordinate-`n` lift of the certificate's distance variant
+`cert.U` to the trace measure. -/
+def liftU (cert : FairASTCertificate spec F terminated) (n : ℕ)
+    (ω : Trace σ ι) : ℕ :=
+  cert.U ((ω n).1)
+
+/-- **Step 1 — sublevel set `Π_n` (fair version).** On the
+sublevel set `{ω | ∀ k, cert.V (ω k).1 ≤ N}`, almost-sure
+termination follows from `U_bdd_subl` plus the fair finite-variant
+rule.
+
+Unlike the demonic counterpart `ASTCertificate.pi_n_AST`, this
+fair version does **not** suffer the stuttering-adversary issue:
+`A : FairAdversary σ ι F` carries the weakly-fair witness
+`A.fair : F.isWeaklyFair A.toAdversary`, which forces every
+fair-required action to fire eventually whenever continuously
+enabled. So the `always-stutter` adversary that breaks
+demonic `pi_n_AST` is excluded by the type signature.
+
+**Status:** `sorry`. The sole remaining gap is the Mathlib-level
+assembly of "positive-probability decrease + bounded variant ⇒
+AS termination" — same gap as `ASTCertificate.pi_n_AST`.
+
+The proof sketch (assuming the assembly):
+  1. From `A.fair`, every fair action is fired infinitely often AE.
+  2. From `cert.U_dec_det` + `cert.U_dec_prob`, on every fair
+     firing, `U` decreases (deterministically or with probability
+     `p > 0` on the sublevel set `{V ≤ N}`).
+  3. From `cert.U_bdd_subl N = M`, `U ≤ M` along the sublevel
+     trajectory.
+  4. Geometric tail bound: after at most `M / p` fair firings AE,
+     `U` reaches `0`, which forces termination via
+     `terminated`-equivalence on `U = 0` (from `cert.V_pos` +
+     `cert.U_term`).
+
+Tracked under M3 W3+. The Mathlib gap is shared with
+`ASTCertificate.pi_n_AST`; closing one closes the other modulo the
+fair-action filtering. -/
+theorem pi_n_AST_fair (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
+    (A : FairAdversary σ ι F) (N : ℕ) :
+    ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+      (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 := by
+  sorry
+
+/-- **Step 2 — exceptional set `Π_∞` is null (fair version).**
+With `V_init_bdd` giving a uniform bound `K` on the invariant set
+and the inductive preservation of `Inv` along trajectories, every
+trajectory in the support of `traceDist` satisfies `V (ω n).1 ≤ K`
+for all `n`.
+
+Proof is identical to `ASTCertificate.pi_infty_zero`: lift `Inv`
+via `AlmostBox_of_inductive`, then bound `V` trajectorywise by
+`⌈K⌉₊`. -/
+theorem pi_infty_zero_fair (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
+    (A : FairAdversary σ ι F) :
+    (traceDist spec A.toAdversary μ₀)
+      {ω | ∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))} = 0 := by
+  -- Extract the uniform `V`-bound `K` on the invariant set.
+  obtain ⟨K, hK⟩ := cert.V_init_bdd
+  -- Lift `cert.Inv` along trajectories via `AlmostBox_of_inductive`.
+  have hbox_inv : AlmostBox spec A.toAdversary μ₀ cert.Inv :=
+    AlmostBox_of_inductive cert.Inv
+      (fun i s h hInv s' hs' => cert.inv_step i s h hInv s' hs')
+      μ₀ h_init_inv A.toAdversary
+  -- Convert AE-Inv to AE-bound on V using the uniform K.
+  have : ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+      ¬ (∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))) := by
+    unfold AlmostBox at hbox_inv
+    filter_upwards [hbox_inv] with ω hInv_all
+    push_neg
+    refine ⟨⌈(K : ℝ≥0)⌉₊, fun n => ?_⟩
+    have h1 : cert.V (ω n).1 ≤ K := hK _ (hInv_all n)
+    have h2 : (K : ℝ≥0) ≤ ((⌈(K : ℝ≥0)⌉₊ : ℕ) : ℝ≥0) := by
+      have : (K : ℝ) ≤ (⌈(K : ℝ≥0)⌉₊ : ℝ) := Nat.le_ceil (K : ℝ≥0)
+      exact_mod_cast this
+    exact h1.trans h2
+  -- Convert AE to measure-zero.
+  rw [MeasureTheory.ae_iff] at this
+  -- The set under `this` simplifies via `not_not` to the target set.
+  have hset : {a : Trace σ ι | ¬ ¬ ∀ N : ℕ, ¬ ∀ n, cert.V (a n).1 ≤ (N : ℝ≥0)} =
+      {ω : Trace σ ι | ∀ N : ℕ, ¬ ∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)} := by
+    ext ω; simp
+  rw [hset] at this
+  exact this
+
+/-- **Step 3 — partition argument (fair version).** Combine
+`pi_n_AST_fair` (AST on each sublevel) with `pi_infty_zero_fair`
+(unbounded set is null) to conclude AST overall.
+
+Proof structure mirrors `ASTCertificate.partition_almostDiamond`. -/
+theorem partition_almostDiamond_fair
+    (cert : FairASTCertificate spec F terminated)
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
     (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
     (A : FairAdversary σ ι F) :
     AlmostDiamond spec A.toAdversary μ₀ terminated := by
-  sorry
+  unfold AlmostDiamond
+  have hbounded_or_unbounded :
+      ∀ ω : Trace σ ι,
+        (∃ N : ℕ, ∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) ∨
+        (∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))) := by
+    intro ω
+    by_cases h : ∃ N : ℕ, ∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)
+    · exact .inl h
+    · refine .inr ?_
+      intro N hbnd
+      exact h ⟨N, hbnd⟩
+  have h_inf_null : ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+      ¬ (∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))) := by
+    rw [ae_iff]
+    have heq : {a : Trace σ ι | ¬ ¬ ∀ N : ℕ, ¬ (∀ n, cert.V (a n).1 ≤ (N : ℝ≥0))} =
+        {ω : Trace σ ι | ∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))} := by
+      ext ω
+      simp
+    rw [heq]
+    exact pi_infty_zero_fair cert μ₀ h_init_inv A
+  have h_each_N : ∀ N : ℕ, ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+      (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 :=
+    fun N => pi_n_AST_fair cert μ₀ h_init_inv A N
+  rw [← MeasureTheory.ae_all_iff] at h_each_N
+  filter_upwards [h_each_N, h_inf_null] with ω hN h_inf
+  rcases hbounded_or_unbounded ω with ⟨N, hbnd⟩ | hunb
+  · exact hN N hbnd
+  · exact absurd hunb h_inf
+
+/-- Fair AST certificate soundness: under a weakly-fair adversary,
+every execution AE terminates.
+
+**Status (M3 W3):** reduced to a single sorry'd lemma —
+`pi_n_AST_fair` (sublevel-set fair-finite-variant rule). The
+companion `pi_infty_zero_fair` is closed via
+`Refinement.AlmostBox_of_inductive` + `cert.V_init_bdd`; the
+partition argument `partition_almostDiamond_fair` closes without
+sorry once `pi_n_AST_fair` lands.
+
+Unlike the demonic counterpart `ASTCertificate.sound` (whose
+`pi_n_AST` is blocked on a *statement-level* stuttering-adversary
+issue), the fair version's `pi_n_AST_fair` is only blocked on the
+*Mathlib-level* filtration plumbing. The fair adversary's
+`isWeaklyFair` predicate rules out the stuttering counterexample. -/
+theorem sound (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
+    (A : FairAdversary σ ι F) :
+    AlmostDiamond spec A.toAdversary μ₀ terminated :=
+  partition_almostDiamond_fair cert μ₀ h_init_inv A
 
 end FairASTCertificate
 
