@@ -56,6 +56,7 @@ import Leslie.Examples.Prob.AVSSStub
 import Leslie.Examples.Prob.BenOrAsync
 import Leslie.Examples.Prob.BivariateShamir
 import Leslie.Examples.Prob.BrachaRBC
+import Leslie.Examples.Prob.CommonCoin
 import Leslie.Examples.Prob.CouplingDemo
 import Leslie.Examples.Prob.ITMAC
 import Leslie.Examples.Prob.KnuthDice
