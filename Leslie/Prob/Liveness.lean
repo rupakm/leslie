@@ -490,11 +490,76 @@ The proof sketch (assuming the assembly):
 
 Tracked under M3 W3+. The Mathlib gap is shared with
 `ASTCertificate.pi_n_AST`; closing one closes the other modulo the
-fair-action filtering. -/
+fair-action filtering.
+
+**Two stacked gaps** (see `docs/randomized-leslie-spike/11-fair-progress-blocker.md`):
+
+  1. *Trajectory-progress witness gap*: `F.isWeaklyFair` has type
+     `Adversary σ ι → Prop`, an opaque predicate. The proof needs
+     "fair actions fire AE i.o. on the trajectory" — a trajectory-
+     level statement. Concrete instances of `FairnessAssumptions`
+     in our codebase (`brbFair`, `boFair`, `avssFair`) all use
+     `isWeaklyFair := True` (placeholder), so the witness isn't
+     extractable. The fix is to either (a) refine
+     `FairnessAssumptions` with a trajectory-form fairness witness,
+     or (b) take a `TrajectoryFairProgress` hypothesis (see
+     `pi_n_AST_fair_with_progress` below).
+  2. *Mathlib Borel–Cantelli + filtration plumbing*: even with the
+     progress witness, assembling the geometric-tail argument
+     requires the natural filtration on `Trace σ ι` and a
+     conditional Borel–Cantelli specialization. ~250 LOC. -/
 theorem pi_n_AST_fair (cert : FairASTCertificate spec F terminated)
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
     (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
     (A : FairAdversary σ ι F) (N : ℕ) :
+    ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+      (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 := by
+  sorry
+
+/-! ### Trajectory progress witness — gap 1 made explicit
+
+This is the proof obligation the abstract `FairnessAssumptions.isWeaklyFair`
+fails to deliver. `TrajectoryFairProgress` says: **AE on the trace
+measure, every fair-required action fires infinitely often.**
+
+POPL 2026 takes a similar trajectory-level fairness condition as
+primitive in its rule statement; our `FairnessAssumptions` keeps
+`isWeaklyFair` opaque to allow per-protocol concrete witnesses.
+
+A future refactor of `FairnessAssumptions` to require a witness of
+this shape would let `pi_n_AST_fair` be proved without an extra
+hypothesis. Meanwhile, `pi_n_AST_fair_with_progress` takes the
+witness explicitly. -/
+
+/-- AE-fairness predicate on the trajectory: every fair-required
+action fires infinitely often. -/
+def TrajectoryFairProgress (spec : ProbActionSpec σ ι)
+    (F : FairnessAssumptions σ ι)
+    (_cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (A : FairAdversary σ ι F) : Prop :=
+  ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+    ∀ N : ℕ, ∃ n ≥ N, ∃ i ∈ F.fair_actions, (ω (n + 1)).2 = some i
+
+/-- **Step 1 — sublevel set `Π_n` (fair version), with explicit
+trajectory progress.**
+
+Same shape as `pi_n_AST_fair` but takes a `TrajectoryFairProgress`
+hypothesis explicitly. This isolates gap 1 (trajectory-level
+fairness witness, opaque from `isWeaklyFair`) from gap 2 (Mathlib
+Borel-Cantelli + filtration plumbing).
+
+**Status:** still `sorry` — gap 2 (Mathlib) remains. But this
+parameterized form is the right shape for downstream callers once
+gap 2 closes: any concrete protocol that supplies a
+`TrajectoryFairProgress` witness gets termination via this lemma. -/
+theorem pi_n_AST_fair_with_progress
+    (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
+    (A : FairAdversary σ ι F)
+    (_h_progress : TrajectoryFairProgress spec F cert μ₀ A)
+    (N : ℕ) :
     ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
       (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 := by
   sorry
