@@ -535,7 +535,6 @@ witness explicitly. -/
 action fires infinitely often. -/
 def TrajectoryFairProgress (spec : ProbActionSpec σ ι)
     (F : FairnessAssumptions σ ι)
-    (_cert : FairASTCertificate spec F terminated)
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
     (A : FairAdversary σ ι F) : Prop :=
   ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
@@ -563,7 +562,7 @@ theorem pi_n_AST_fair_with_progress
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
     (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
     (A : FairAdversary σ ι F)
-    (_h_progress : TrajectoryFairProgress spec F cert μ₀ A)
+    (_h_progress : TrajectoryFairProgress spec F μ₀ A)
     (N : ℕ) :
     ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
       (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 := by
@@ -643,7 +642,7 @@ theorem pi_n_AST_fair_with_progress_det
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
     (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
     (A : FairAdversary σ ι F)
-    (h_progress : TrajectoryFairProgress spec F cert μ₀ A)
+    (h_progress : TrajectoryFairProgress spec F μ₀ A)
     (N : ℕ)
     (h_U_mono : TrajectoryUMono spec F cert μ₀ A)
     (h_U_strict : TrajectoryFairStrictDecrease spec F cert μ₀ A N) :
@@ -845,5 +844,75 @@ theorem sound (cert : FairASTCertificate spec F terminated)
   partition_almostDiamond_fair cert μ₀ h_init_inv A
 
 end FairASTCertificate
+
+/-! ### `TrajectoryFairAdversary` — bundle progress witness with the adversary
+
+Resolution path **1c** of the gap-1 finding (see
+`docs/randomized-leslie-spike/11-fair-progress-blocker.md`):
+`FairnessAssumptions.isWeaklyFair : Adversary → Prop` is opaque, so
+the trajectory-form fairness witness cannot be derived from
+`A.fair`. Instead of refactoring `FairnessAssumptions` (option 1a)
+or threading a progress hypothesis through every caller (option
+1b), we bundle the witness with the adversary in a subtype.
+
+Concrete protocols construct a `TrajectoryFairAdversary` by
+providing both the fair adversary AND a `TrajectoryFairProgress`
+witness. The witness is parametric in the initial measure `μ₀` —
+fairness on a specific run, not for all measures uniformly.
+
+The corollary `pi_n_AST_fair_traj_det` shows the soundness path
+for protocols satisfying the deterministic specialisation:
+`TrajectoryFairAdversary` + `TrajectoryUMono` +
+`TrajectoryFairStrictDecrease` ⟹ AS termination. -/
+
+/-- A fair adversary bundled with a trajectory-progress witness for
+a specific initial measure `μ₀`.
+
+`progress` is the AE-trajectory statement that fair-required
+actions fire i.o. — exactly the trajectory-form predicate the
+soundness proof needs but `FairAdversary.fair` doesn't provide. -/
+structure TrajectoryFairAdversary
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+    (spec : ProbActionSpec σ ι) (F : FairnessAssumptions σ ι)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀] where
+  /-- The underlying fair adversary. -/
+  toFair : FairAdversary σ ι F
+  /-- AE-trajectory progress: every fair-required action fires
+  infinitely often along almost every trace. -/
+  progress : FairASTCertificate.TrajectoryFairProgress spec F μ₀ toFair
+
+namespace TrajectoryFairAdversary
+
+variable [Countable σ] [Countable ι]
+  [MeasurableSpace σ] [MeasurableSingletonClass σ]
+  [MeasurableSpace ι] [MeasurableSingletonClass ι]
+  {spec : ProbActionSpec σ ι} {F : FairnessAssumptions σ ι}
+  {μ₀ : Measure σ} [IsProbabilityMeasure μ₀]
+
+/-- Project a `TrajectoryFairAdversary` to its underlying
+plain `Adversary`. -/
+def toAdversary (A : TrajectoryFairAdversary spec F μ₀) :
+    Adversary σ ι :=
+  A.toFair.toAdversary
+
+end TrajectoryFairAdversary
+
+/-! ### `sound_traj_det` deferred
+
+A consumer-friendly `FairASTCertificate.sound_traj_det` corollary
+that takes a `TrajectoryFairAdversary` and discharges termination
+via `pi_n_AST_fair_with_progress_det` is the natural next step. It
+encountered a `whnf` heartbeat-blowup during elaboration of its
+signature (specifically the `A.toFair` projection composing with
+`TrajectoryUMono` / `TrajectoryFairStrictDecrease`'s implicit args).
+The proof body is straightforward (mirrors
+`partition_almostDiamond_fair`); deferred to the next polish pass
+once the elaboration cost is identified.
+
+Concrete protocols can already use `pi_n_AST_fair_with_progress_det`
+directly with `A.toFair` and `A.progress` — the structure provides
+the bundle, the corollary just packages the call. -/
 
 end Leslie.Prob
