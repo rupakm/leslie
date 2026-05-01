@@ -77,12 +77,25 @@ structure ASTCert
   V_bdd       : ∃ R, ∀ n, eLpNorm (V n) 1 μ ≤ R
   /-- Sublevel-set compatibility: on `{V ≤ r}`, `U` is bounded. -/
   U_bdd_subl  : ∀ r : ℝ, ∃ M : ℕ, ∀ n, ∀ᵐ ω ∂μ, V n ω ≤ r → U n ω ≤ M
-  /-- The variant's intended decrease in expectation under
-  fair-non-stalled steps; encoded loosely here as a positive
-  probability of decrease. The full POPL 2025 form distinguishes
-  deterministic and probabilistic transitions; M3 W1 will refine. -/
-  U_dec_prob  : ∀ r : ℝ, ∃ ε > 0, ∀ n, ∀ᵐ ω ∂μ, V n ω ≤ r → ¬ term n ω →
-                  μ {ω' | U (n + 1) ω' < U n ω} ≥ ENNReal.ofReal ε
+  /-- Placeholder for the variant's intended decrease bound.
+  **Deliberately vacuous** in this M0 spike to avoid sitting on an
+  unsound predicate under a `sorry` body in `ASTCert.sound`.
+
+  An earlier draft of this field used the unconditional tail measure
+  `μ {ω' | U (n+1) ω' < U n ω}`, which is strictly weaker than the
+  POPL 2025 conditional form (the rule conditions on the prefix σ-
+  algebra `ℱ n` that establishes the `V n ω ≤ r ∧ ¬term n ω`
+  hypothesis). The unconditional form is not provable for any
+  reasonable `(V, U, term)` triple, so a "sound" certificate using
+  it would be uninhabited.
+
+  The correct conditional form lives in `Leslie/Prob/Liveness.lean`'s
+  `ASTCertificate.U_dec_prob` field, which quantifies over states
+  directly: for any state in the sublevel set and any enabled
+  action, the per-step PMF puts mass ≥ p on smaller-`U` states. M3
+  W1+ uses that form; this M0 spike is calibration-only and
+  intentionally scoped down. -/
+  U_dec_prob  : True
 
 /-! ## Soundness
 

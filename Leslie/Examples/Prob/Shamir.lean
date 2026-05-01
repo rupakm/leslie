@@ -232,18 +232,21 @@ theorem shamir_secrecy_via_step {t : ℕ}
     fun _ => h_init
   rw [ProbActionSpec.step_eq_some (h_gate s),
       ProbActionSpec.step_eq_some (h_gate s')]
-  -- Goal: some (PMF.map view (effect_s)) = some (PMF.map view (effect_s'))
+  -- After `step_eq_some` the goal is `some _ = some _`; strip the
+  -- `Option.map`/`some` wrapper and reduce to `effect_s.map view =
+  -- effect_s'.map view`. The two `effect` calls reduce definitionally
+  -- to `(uniformWithFixedZero t _).map poly→state`; combine the two
+  -- maps via `PMF.map_comp` and reduce to `shamir_secrecy`.
   simp only [Option.map_some, Option.some_inj]
-  -- Goal: effect_s.map view = effect_s'.map view
-  --       where effect_sec = (uniformWithFixedZero t sec).map poly→state
-  -- Compose maps to reduce to shamir_secrecy.
-  rw [show (((shamirShare t partyPoint).actions (.deal s)).effect initial (h_gate s))
-        = (Leslie.Prob.Polynomial.uniformWithFixedZero t s).map fun f =>
-            { shares := fun i => some (f.eval (partyPoint i)) } from rfl]
-  rw [show (((shamirShare t partyPoint).actions (.deal s')).effect initial (h_gate s'))
-        = (Leslie.Prob.Polynomial.uniformWithFixedZero t s').map fun f =>
-            { shares := fun i => some (f.eval (partyPoint i)) } from rfl]
-  rw [PMF.map_comp, PMF.map_comp]
+  rw [show ((shamirShare t partyPoint).actions (.deal s)).effect initial (h_gate s)
+      = (Leslie.Prob.Polynomial.uniformWithFixedZero t s).map fun f =>
+          ({ shares := fun i => some (f.eval (partyPoint i)) } : ShamirState F n)
+      from rfl,
+      show ((shamirShare t partyPoint).actions (.deal s')).effect initial (h_gate s')
+      = (Leslie.Prob.Polynomial.uniformWithFixedZero t s').map fun f =>
+          ({ shares := fun i => some (f.eval (partyPoint i)) } : ShamirState F n)
+      from rfl,
+      PMF.map_comp, PMF.map_comp]
   exact shamir_secrecy partyPoint h_nz_pp h_F C s s'
 
 end Leslie.Examples.Prob.Shamir
