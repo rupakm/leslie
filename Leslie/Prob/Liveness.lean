@@ -552,7 +552,12 @@ Borel-Cantelli + filtration plumbing).
 **Status:** still `sorry` — gap 2 (Mathlib) remains. But this
 parameterized form is the right shape for downstream callers once
 gap 2 closes: any concrete protocol that supplies a
-`TrajectoryFairProgress` witness gets termination via this lemma. -/
+`TrajectoryFairProgress` witness gets termination via this lemma.
+
+The closed deterministic specialisation `pi_n_AST_fair_with_progress_det`
+below shows what closes once the U-monotonicity + strict-decrease
+witnesses are pushed to trajectory form (which concrete protocols
+can derive from `U_dec_det` + step-kernel support reasoning). -/
 theorem pi_n_AST_fair_with_progress
     (cert : FairASTCertificate spec F terminated)
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
@@ -563,6 +568,176 @@ theorem pi_n_AST_fair_with_progress
     ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
       (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 := by
   sorry
+
+/-! ### Deterministic specialisation — `pi_n_AST_fair_with_progress_det`
+
+For protocols whose distance variant `U` is monotone non-increasing
+along every trajectory step and *strictly* decreases on every fair
+firing (the deterministic special case of `U_dec_det`), the proof of
+`pi_n_AST_fair_with_progress` closes without Borel-Cantelli: a finite
+descent argument suffices. We expose this as a sister lemma, taking the
+two strengthening conditions as **trajectory-form** hypotheses.
+
+The hypotheses are stated AE on the trace measure:
+
+  * `TrajectoryUMono` — `U` is monotone non-increasing at every step.
+  * `TrajectoryFairStrictDecrease` — at every step where a fair-required
+    action fires from a non-terminated state below the V-sublevel, `U`
+    strictly drops.
+
+Concrete protocols can derive these from `U_dec_det` (specialised to
+the deterministic-decrease branch) plus the step-kernel support analysis
+already used in `Refinement.AlmostBox_of_inductive`. That derivation is
+~100-150 LOC of trajectory plumbing; we leave it to per-protocol work
+since it depends on protocol-specific structure (e.g., which non-fair
+actions can fire and how they affect `U`).
+
+The general `pi_n_AST_fair_with_progress` (whose `U_dec_det` allows the
+disjunction "decrease *or* a new fair action becomes enabled") plus the
+probabilistic `U_dec_prob` path requires the natural filtration on
+`Trace σ ι` and conditional Borel-Cantelli — gap 2 of M3 W3, deferred. -/
+
+/-- AE-monotonicity: along every trajectory step, the certificate's
+distance variant `U` is non-increasing. -/
+def TrajectoryUMono (spec : ProbActionSpec σ ι)
+    (F : FairnessAssumptions σ ι)
+    (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (A : FairAdversary σ ι F) : Prop :=
+  ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+    ∀ n : ℕ, cert.U (ω (n + 1)).1 ≤ cert.U (ω n).1
+
+/-- AE-strict-decrease: at every trajectory step where a fair-required
+action fires from a non-terminated state below the V-sublevel, `U`
+strictly drops. -/
+def TrajectoryFairStrictDecrease (spec : ProbActionSpec σ ι)
+    (F : FairnessAssumptions σ ι)
+    (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (A : FairAdversary σ ι F) (N : ℕ) : Prop :=
+  ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+    ∀ n : ℕ, (∃ i ∈ F.fair_actions, (ω (n + 1)).2 = some i) →
+      ¬ terminated (ω n).1 → cert.V (ω n).1 ≤ (N : ℝ≥0) →
+      cert.U (ω (n + 1)).1 < cert.U (ω n).1
+
+/-- **Deterministic specialisation** of `pi_n_AST_fair_with_progress`.
+
+Closes the sublevel-set finite-variant rule under the stronger
+deterministic-decrease conditions: `U` monotone non-increasing and
+strictly decreasing on every fair firing (in trajectory form). The
+proof is a finite-descent argument — no Borel-Cantelli, no filtration
+plumbing.
+
+Uses:
+  * `cert.U_bdd_subl N` for the uniform `M`-bound on `U` along the
+    sublevel.
+  * `Refinement.AlmostBox_of_inductive` to lift `cert.Inv` along the
+    trajectory.
+  * `Nat.find`-style finite descent: pick `M + 2` strictly-increasing
+    fair-firing times via iterated `h_progress`, observe
+    `U` strictly decreases from one fair-firing time to the next
+    (combining strict-decrease at the firing with mono between firings),
+    contradicting `U ≤ M`. -/
+theorem pi_n_AST_fair_with_progress_det
+    (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
+    (A : FairAdversary σ ι F)
+    (h_progress : TrajectoryFairProgress spec F cert μ₀ A)
+    (N : ℕ)
+    (h_U_mono : TrajectoryUMono spec F cert μ₀ A)
+    (h_U_strict : TrajectoryFairStrictDecrease spec F cert μ₀ A N) :
+    ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+      (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 := by
+  -- Extract the uniform `M`-bound on `U` along the sublevel.
+  obtain ⟨M, hM⟩ := cert.U_bdd_subl (N : ℝ≥0)
+  -- Lift `cert.Inv` along trajectories via `AlmostBox_of_inductive`.
+  have hbox_inv : AlmostBox spec A.toAdversary μ₀ cert.Inv :=
+    AlmostBox_of_inductive cert.Inv
+      (fun i s h hInv s' hs' => cert.inv_step i s h hInv s' hs')
+      μ₀ h_init_inv A.toAdversary
+  unfold AlmostBox at hbox_inv
+  unfold TrajectoryFairProgress at h_progress
+  unfold TrajectoryUMono at h_U_mono
+  unfold TrajectoryFairStrictDecrease at h_U_strict
+  -- Filter upwards through all four AE hypotheses.
+  filter_upwards [hbox_inv, h_progress, h_U_mono, h_U_strict] with
+    ω hInv_all hProg hMono hStrict hVbnd
+  -- Goal at this point: ∃ n, terminated (ω n).1.
+  -- Strategy: by contradiction, assume `∀ n, ¬ terminated (ω n).1`,
+  -- then construct M+2 strictly-increasing fair-firing times whose
+  -- U-values form a strictly descending ℕ-sequence below M+1, impossible.
+  by_contra hne
+  push_neg at hne
+  -- hne : ∀ n, ¬ terminated (ω n).1
+  -- Bound U by M along the trajectory.
+  have hU_bdd : ∀ n, cert.U (ω n).1 ≤ M :=
+    fun n => hM _ (hInv_all n) (hVbnd n)
+  -- Define `pickFair n` : a fair-firing time `≥ n`.
+  -- From `hProg n`, we get such a time.
+  -- Use `Classical.choose` to extract.
+  let pickFair : ℕ → ℕ := fun n => Classical.choose (hProg n)
+  have hpickFair_ge : ∀ n, pickFair n ≥ n := fun n =>
+    (Classical.choose_spec (hProg n)).1
+  have hpickFair_fair : ∀ n, ∃ i ∈ F.fair_actions,
+      (ω (pickFair n + 1)).2 = some i := fun n =>
+    (Classical.choose_spec (hProg n)).2
+  -- Build the sequence of fair-firing times: `t 0 = pickFair 0`,
+  -- `t (k+1) = pickFair (t k + 2)`.
+  let t : ℕ → ℕ := fun k => Nat.rec (pickFair 0)
+    (fun _ prev => pickFair (prev + 2)) k
+  -- Concrete recursion for `t`.
+  have ht_zero : t 0 = pickFair 0 := rfl
+  have ht_succ : ∀ k, t (k + 1) = pickFair (t k + 2) := fun _ => rfl
+  -- Each `t k` is a fair-firing time.
+  have ht_fair : ∀ k, ∃ i ∈ F.fair_actions, (ω (t k + 1)).2 = some i := by
+    intro k
+    cases k with
+    | zero => simpa [ht_zero] using hpickFair_fair 0
+    | succ k => simpa [ht_succ k] using hpickFair_fair (t k + 2)
+  -- Each `t k` separates from the previous: `t (k+1) ≥ t k + 2`.
+  have ht_inc : ∀ k, t (k + 1) ≥ t k + 2 := fun k => by
+    rw [ht_succ k]; exact hpickFair_ge _
+  -- At each `t k`, U strictly decreases at the next step.
+  have hU_drop : ∀ k, cert.U (ω (t k + 1)).1 < cert.U (ω (t k)).1 := by
+    intro k
+    refine hStrict (t k) (ht_fair k) (hne _) (hVbnd _)
+  -- Monotonicity iterated: `U (ω (a + j)).1 ≤ U (ω a).1` for all `j`.
+  have hU_mono_iter : ∀ a j, cert.U (ω (a + j)).1 ≤ cert.U (ω a).1 := by
+    intro a j
+    induction j with
+    | zero => simp
+    | succ j ih =>
+      have hstep := hMono (a + j)
+      calc cert.U (ω (a + (j + 1))).1
+          = cert.U (ω (a + j + 1)).1 := by rw [Nat.add_succ]
+        _ ≤ cert.U (ω (a + j)).1 := hstep
+        _ ≤ cert.U (ω a).1 := ih
+  -- Monotonicity gives `U (ω b).1 ≤ U (ω a).1` whenever `a ≤ b`.
+  have hU_mono_le : ∀ a b, a ≤ b → cert.U (ω b).1 ≤ cert.U (ω a).1 := by
+    intro a b hab
+    obtain ⟨j, rfl⟩ := Nat.exists_eq_add_of_le hab
+    exact hU_mono_iter a j
+  -- Combining: U at `t (k+1)` ≤ U at `t k + 1` (since `t (k+1) ≥ t k + 2 ≥ t k + 1`).
+  have hU_step : ∀ k, cert.U (ω (t (k + 1))).1 ≤ cert.U (ω (t k + 1)).1 := by
+    intro k
+    have h1 : t k + 1 ≤ t (k + 1) := by have := ht_inc k; omega
+    exact hU_mono_le (t k + 1) (t (k + 1)) h1
+  -- Combining strict drop + monotonicity: U strictly decreases between fair-firing times.
+  have hU_strict_step : ∀ k, cert.U (ω (t (k + 1))).1 < cert.U (ω (t k)).1 :=
+    fun k => (hU_step k).trans_lt (hU_drop k)
+  -- By induction: `U (ω (t k)).1 + k ≤ U (ω (t 0)).1` for all `k`.
+  have hU_decay : ∀ k, cert.U (ω (t k)).1 + k ≤ cert.U (ω (t 0)).1 := by
+    intro k
+    induction k with
+    | zero => simp
+    | succ k ih =>
+      have hlt := hU_strict_step k
+      omega
+  -- But `U (ω (t (M+1))).1 + (M+1) ≤ U (ω (t 0)).1 ≤ M`, hence `M + 1 ≤ M`. Contradiction.
+  have h_t0_bdd : cert.U (ω (t 0)).1 ≤ M := hU_bdd _
+  have h_decay_M1 := hU_decay (M + 1)
+  omega
 
 /-- **Step 2 — exceptional set `Π_∞` is null (fair version).**
 With `V_init_bdd` giving a uniform bound `K` on the invariant set
