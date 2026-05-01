@@ -39,4 +39,10 @@ noncomputable abbrev condition (μ : PMF α) (s : Set α)
     (h : ∃ a ∈ s, a ∈ μ.support) : PMF α :=
   μ.filter s h
 
+/-! ## Translation-invariance of uniform
+
+The general `PMF.uniform_map_of_bijective` (`α → β`) lives in
+`Leslie.Prob.Polynomial`; it specializes to the `α = β` case
+needed by `Coupling.lean` and the one-time pad. -/
+
 end PMF
