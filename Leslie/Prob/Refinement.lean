@@ -550,6 +550,128 @@ theorem AlmostBox_of_inductive
     rw [ae_map_iff hmeas_eval_succ.aemeasurable hPset] at hae_succ
     exact hae_succ
 
+/-! ### `traceDist_kernel_step_bound` — kernel-step lower bound
+
+Specialises the disintegration identity
+`Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`
+(used in `AlmostBox_of_inductive`) to a per-step kernel-conditional
+probability bound. Used by the chain-of-conditional-probabilities
+closure of `pi_n_AST_fair_with_progress` (Liveness.lean).
+
+Statement: if a "good history" set `S ⊆ FinPrefix σ ι n` puts each
+prefix in a state where the per-step kernel `stepKernel spec A n`
+puts mass ≥ `p` on a successor event `T h` (parameterised by the
+history `h`), then the joint trajectory measure satisfies
+
+  `p · (traceDist) {ω | frestrictLe n ω ∈ S} ≤
+   (traceDist) {ω | frestrictLe n ω ∈ S ∧ ω (n+1) ∈ T (frestrictLe n ω)}`.
+
+This is the "general cylinder" form: `T h` may depend on the history
+`h`, allowing the successor event to be defined by a predicate on
+`(history, next-state)` pairs (e.g., "U decreased at step n+1
+relative to the current state"). The chain argument in
+`pi_n_AST_fair_with_progress` consumes this lemma at each step `k`
+to relate `μ(C_{k+1}) ≤ (1-p) μ(C_k)`. -/
+
+/-- Kernel-step lower bound for `traceDist`: if every history in `S`
+gives the per-step kernel `stepKernel spec A n` mass `≥ p` on the
+history-indexed successor event `T h`, then the joint trajectory
+measure on `{ω | frestrictLe n ω ∈ S ∧ ω (n+1) ∈ T (frestrictLe n ω)}`
+is at least `p` times the trajectory measure on `{ω | frestrictLe n ω ∈ S}`.
+
+Proved via the joint-marginal identity
+`Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`,
+`Measure.compProd_apply`, and `setLIntegral_mono'` for the
+constant-lower-bound integral. -/
+theorem traceDist_kernel_step_bound
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+    {spec : ProbActionSpec σ ι}
+    (A : Adversary σ ι)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (n : ℕ)
+    (S : Set (FinPrefix σ ι n))
+    (T : FinPrefix σ ι n → Set (σ × Option ι))
+    (p : ENNReal)
+    (h_step : ∀ h ∈ S, p ≤ (stepKernel spec A n h) (T h)) :
+    p * (traceDist spec A μ₀)
+        {ω : Trace σ ι | Preorder.frestrictLe n ω ∈ S} ≤
+      (traceDist spec A μ₀)
+        {ω : Trace σ ι | Preorder.frestrictLe n ω ∈ S ∧
+          ω (n + 1) ∈ T (Preorder.frestrictLe n ω)} := by
+  classical
+  have hSset : MeasurableSet S := MeasurableSet.of_discrete
+  set μ₀_full : Measure (σ × Option ι) := μ₀.map (fun s => (s, (none : Option ι)))
+  haveI : IsProbabilityMeasure μ₀_full :=
+    Measure.isProbabilityMeasure_map (by fun_prop)
+  set μtraj := Kernel.trajMeasure (X := fun _ => σ × Option ι) μ₀_full (stepKernel spec A)
+  set ν : Measure (FinPrefix σ ι n) := μtraj.map (Preorder.frestrictLe n)
+  -- Joint marginal at (frestrictLe n, eval (n+1)) factors as ν ⊗ₘ stepKernel.
+  have hjoint_eq :
+      ν ⊗ₘ (stepKernel spec A n) =
+        μtraj.map (fun ω => (Preorder.frestrictLe n ω, ω (n + 1))) :=
+    ProbabilityTheory.Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure
+  have hmeas_pair : Measurable (fun ω : Π _ : ℕ, σ × Option ι =>
+      (Preorder.frestrictLe (π := fun _ : ℕ => σ × Option ι) n ω, ω (n + 1))) := by
+    fun_prop
+  -- Pull events back as preimages of joint cylinders.
+  set ES : Set (Trace σ ι) := {ω | Preorder.frestrictLe n ω ∈ S}
+  set EJ : Set (Trace σ ι) := {ω | Preorder.frestrictLe n ω ∈ S ∧
+      ω (n + 1) ∈ T (Preorder.frestrictLe n ω)}
+  set CylS : Set (FinPrefix σ ι n × (σ × Option ι)) := S ×ˢ Set.univ
+  set Joint : Set (FinPrefix σ ι n × (σ × Option ι)) :=
+    {x | x.1 ∈ S ∧ x.2 ∈ T x.1}
+  have hCylS_meas : MeasurableSet CylS := hSset.prod MeasurableSet.univ
+  have hJoint_meas : MeasurableSet Joint := MeasurableSet.of_discrete
+  have hES_eq : ES = (fun ω => (Preorder.frestrictLe n ω, ω (n + 1))) ⁻¹' CylS := by
+    ext ω; simp [ES, CylS]
+  have hEJ_eq : EJ = (fun ω => (Preorder.frestrictLe n ω, ω (n + 1))) ⁻¹' Joint := by
+    ext ω; simp [EJ, Joint]
+  show p * μtraj ES ≤ μtraj EJ
+  rw [hES_eq, hEJ_eq]
+  rw [← Measure.map_apply hmeas_pair hCylS_meas,
+      ← Measure.map_apply hmeas_pair hJoint_meas]
+  rw [← hjoint_eq]
+  -- Evaluate compProd via `Measure.compProd_apply` (using preimages of cylinders).
+  rw [Measure.compProd_apply hCylS_meas, Measure.compProd_apply hJoint_meas]
+  -- Inner integrals: collapse via `Prod.mk h ⁻¹' (S ×ˢ univ) = univ` on S, `∅` off S;
+  -- and `Prod.mk h ⁻¹' Joint = T h` on S, `∅` off S.
+  have hint_S : (∫⁻ h, (stepKernel spec A n h) (Prod.mk h ⁻¹' CylS) ∂ν) = ν S := by
+    have heq : (fun h => (stepKernel spec A n h) (Prod.mk h ⁻¹' CylS)) =
+        S.indicator 1 := by
+      funext h
+      by_cases hh : h ∈ S
+      · have hpre : Prod.mk h ⁻¹' CylS = Set.univ := by
+          ext y; simp [CylS, hh]
+        rw [hpre, Set.indicator_of_mem hh]
+        show (stepKernel spec A n h) Set.univ = _
+        simp [measure_univ]
+      · have hpre : Prod.mk h ⁻¹' CylS = ∅ := by
+          ext y; simp [CylS, hh]
+        rw [hpre, Set.indicator_of_notMem hh]
+        simp
+    rw [heq, MeasureTheory.lintegral_indicator_one hSset]
+  have hint_J : (∫⁻ h, (stepKernel spec A n h) (Prod.mk h ⁻¹' Joint) ∂ν) =
+      ∫⁻ h in S, (stepKernel spec A n h) (T h) ∂ν := by
+    rw [← MeasureTheory.lintegral_indicator hSset]
+    congr 1; funext h
+    by_cases hh : h ∈ S
+    · have hpre : Prod.mk h ⁻¹' Joint = T h := by
+        ext y; simp [Joint, hh]
+      rw [hpre, Set.indicator_of_mem hh]
+    · have hpre : Prod.mk h ⁻¹' Joint = ∅ := by
+        ext y; simp [Joint, hh]
+      rw [hpre, Set.indicator_of_notMem hh]
+      simp
+  rw [hint_S, hint_J]
+  -- Constant-lower-bound integral: ∫⁻ _ in S, p ∂ν = p * ν S ≤ ∫⁻ h in S, kernel.h(T h) ∂ν.
+  have h_const : (∫⁻ _ in S, (p : ENNReal) ∂ν) ≤
+      ∫⁻ h in S, (stepKernel spec A n h) (T h) ∂ν :=
+    MeasureTheory.setLIntegral_mono' hSset h_step
+  rw [MeasureTheory.setLIntegral_const] at h_const
+  exact h_const
+
 /-! ### Refines_safe
 
 If `Π` refines `Σ` (via `proj`) and `φ` holds always for `Σ`'s
