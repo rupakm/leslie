@@ -30,8 +30,8 @@ Builds every `Leslie.Prob.*` library module and every
     `Trace`. Sorry-free.
   * **Examples** (`Leslie.Examples.Prob.*`): protocols + calibration —
     `BivariateShamir`, `BrachaRBC`, `CouplingDemo`, `ITMAC`, `KnuthDice`,
-    `OneTimePad`, `Shamir`, `Smoke`, `SyncVSS`. One sorry on
-    `BrachaRBC.brbProb_totality_AS_fair` (M3 W1 work).
+    `OneTimePad`, `RandomWalker1D`, `Shamir`, `Smoke`, `SyncVSS`. One
+    sorry on `BrachaRBC.brbProb_totality_AS_fair` (M3 W1 work).
 
 ## What's excluded
 
@@ -59,6 +59,7 @@ import Leslie.Examples.Prob.CouplingDemo
 import Leslie.Examples.Prob.ITMAC
 import Leslie.Examples.Prob.KnuthDice
 import Leslie.Examples.Prob.OneTimePad
+import Leslie.Examples.Prob.RandomWalker1D
 import Leslie.Examples.Prob.Shamir
 import Leslie.Examples.Prob.Smoke
 import Leslie.Examples.Prob.SyncVSS
