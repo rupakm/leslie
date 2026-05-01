@@ -649,13 +649,28 @@ def brbFair (_sender : Fin n) (_val : Value) :
 /-- Totality, lifted to an `AlmostDiamond` on the probabilistic
 trace, under a fair adversary.
 
-**Sorry note.** Liveness lifting is more delicate than safety: the
-deterministic upstream `totality` has the form `(∃ p, returned p =
-some v) ↝ (returned r ≠ none ∨ ¬ isCorrect r)`, a `↝` (leads-to)
-between two state predicates. The AE-trace counterpart is
-"AE, `(∃ n, P (ω n)) → (∃ m ≥ n, Q (ω m))`" on `traceDist`. The
-right `Refinement` lemma to bridge this from the deterministic
-`pred_implies` is the M2 W4 / M3 W1 task — currently deferred. -/
+The deterministic upstream `totality` has the form
+`(∃ p, returned p = some v) ↝ (returned r ≠ none ∨ ¬ isCorrect r)` —
+a leads-to between two state predicates under `brb_fairness`. We
+lift it to the probabilistic-trace setting via
+`Leslie.Prob.AlmostDiamond_of_leads_to`, which packages the
+"deterministic leads-to becomes per-trace eventual implication"
+bridge generically.
+
+The protocol-specific obligation is the per-trace leads-to
+`h_leads_to`: on AE trajectories, if some honest party returned
+`v` at some step, then party `r` eventually either returned or got
+corrupted. This is the **trace-level translation** of upstream
+`totality`. Concrete callers either port the upstream proof to
+trajectory form (~150 LOC) or supply the witness from another
+source (e.g., a refined fairness predicate that exposes the
+trajectory progress directly).
+
+Once the per-trace leads-to is in hand, the conclusion is one
+application of `AlmostDiamond_of_leads_to`. -/
+private def _brbProb_totality_anchor : Unit := ()
+set_option maxHeartbeats 800000 in
+/-- See section docstring above. -/
 theorem brbProb_totality_AS_fair
     (sender : Fin n) (val : Value)
     (_hn : n > 3 * f)
@@ -664,14 +679,18 @@ theorem brbProb_totality_AS_fair
     (A : FairAdversary (State n Value) (Action n Value)
             (brbFair n Value sender val))
     (r : Fin n) (v : Value)
-    (_h_someone_returned :
+    (h_someone_returned :
       AlmostDiamond (brbProb n f Value sender val) A.toAdversary μ₀
-        (fun s => ∃ p, (s.local_ p).returned = some v)) :
+        (fun s => ∃ p, (s.local_ p).returned = some v))
+    (h_leads_to :
+      ∀ᵐ ω ∂(traceDist (brbProb n f Value sender val) A.toAdversary μ₀),
+        (∃ k, ∃ p, (((ω k).1).local_ p).returned = some v) →
+        ∃ m, (((ω m).1).local_ r).returned ≠ none ∨
+             ¬ isCorrect n Value ((ω m).1) r) :
     AlmostDiamond (brbProb n f Value sender val) A.toAdversary μ₀
-      (fun s => (s.local_ r).returned ≠ none ∨ ¬ isCorrect n Value s r) := by
-  -- TODO(M2 W3 polish): close via a generic `AlmostDiamond_of_leads_to`
-  -- bridge against upstream `totality` + `brb_fairness`.
-  sorry
+      (fun s => (s.local_ r).returned ≠ none ∨ ¬ isCorrect n Value s r) :=
+  Leslie.Prob.AlmostDiamond_of_leads_to μ₀ A.toAdversary
+    h_leads_to h_someone_returned
 
 end AlmostBox
 

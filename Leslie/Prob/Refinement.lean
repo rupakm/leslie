@@ -734,4 +734,44 @@ theorem Refines_safe
   rw [h_proj_state ω' n]
   exact h_ae n
 
+/-! ## `AlmostDiamond_of_leads_to`
+
+Liveness analogue of `Refines_safe`: an `AlmostDiamond` "leads-to"
+bridge. If on AE traces, the eventual occurrence of `P` implies the
+eventual occurrence of `Q`, then `AlmostDiamond P` implies
+`AlmostDiamond Q`.
+
+Used by protocol-specific liveness proofs (e.g.,
+`BrachaRBC.brbProb_totality_AS_fair`) to lift deterministic leads-to
+properties (`P ↝ Q` under fairness, in the upstream Leslie TLA
+sense) to the probabilistic-trace setting. The deterministic
+leads-to becomes the AE per-trace implication hypothesis. -/
+
+/-- `AlmostDiamond` is preserved under AE-pointwise eventual
+implication.
+
+This is the trace-level liveness counterpart of `Refines_safe`'s
+invariant lift. The hypothesis `h_lt` packages "deterministic
+leads-to" at the per-trace level: AE on the trace measure, if
+`P` ever holds on the trajectory, then `Q` eventually holds too.
+
+Concrete protocols supply `h_lt` either by porting upstream
+deterministic `pred_implies … ↝ …` lemmas to the trajectory side,
+or by direct trace-level reasoning. -/
+theorem AlmostDiamond_of_leads_to
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+    {spec : ProbActionSpec σ ι}
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (A : Adversary σ ι)
+    {P Q : σ → Prop}
+    (h_lt : ∀ᵐ ω ∂(traceDist spec A μ₀),
+      (∃ n, P ((ω n).1)) → ∃ m, Q ((ω m).1))
+    (h_P : AlmostDiamond spec A μ₀ P) :
+    AlmostDiamond spec A μ₀ Q := by
+  unfold AlmostDiamond at h_P ⊢
+  filter_upwards [h_lt, h_P] with ω h_lt_ω h_P_ω
+  exact h_lt_ω h_P_ω
+
 end Leslie.Prob
