@@ -1901,12 +1901,21 @@ theorem avss_termination_AS_fair
     (sec : F) (corr : Finset (Fin n))
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
     (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
-    (A : FairAdversary (AVSSState n t F) (AVSSAction n F) avssFair) :
+    (A : Leslie.Prob.TrajectoryFairAdversary
+            (avssSpec (t := t) sec corr) avssFair μ₀)
+    (h_U_mono : FairASTCertificate.TrajectoryUMono
+        (avssSpec (t := t) sec corr) avssFair
+        (avssCert (t := t) sec corr) μ₀ A.toFair)
+    (h_U_strict : ∀ N : ℕ, FairASTCertificate.TrajectoryFairStrictDecrease
+        (avssSpec (t := t) sec corr) avssFair
+        (avssCert (t := t) sec corr) μ₀ A.toFair N) :
     AlmostDiamond (avssSpec (t := t) sec corr) A.toAdversary μ₀ terminated := by
   have h_init' : ∀ᵐ s ∂μ₀, (avssCert (t := t) sec corr).Inv s := by
     filter_upwards [h_init] with s hs
     exact (avssCert (t := t) sec corr).inv_init s hs
-  exact FairASTCertificate.sound (avssCert (t := t) sec corr) μ₀ h_init' A
+  exact FairASTCertificate.sound
+    (avssCert (t := t) sec corr) μ₀ h_init' A.toFair A.progress
+    h_U_mono h_U_strict
 
 /-- **Axiom-clean** variant of `avss_termination_AS_fair`.
 

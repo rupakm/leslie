@@ -427,25 +427,25 @@ variable [Countable σ] [Countable ι]
 
 /-! ### Soundness — proof skeleton
 
-The fair POPL 2026 soundness proof decomposes along the same
-`pi_n_AST` / `pi_infty_zero` / `partition_almostDiamond` skeleton
-as the demonic case. The key structural improvement: the
-fair-side `pi_n_AST_fair` does **not** suffer the stuttering-
-adversary issue that blocks demonic `pi_n_AST`. The
-`isWeaklyFair` predicate on `FairAdversary _ F` rules out the
-"always-stutter" trace (which would starve every fair-required
-action), so the sublevel-set finite-variant rule applies cleanly
-on AE traces.
+The fair soundness proof decomposes along the same `pi_n_AST` /
+`pi_infty_zero` / `partition_almostDiamond` skeleton as the demonic
+case. The sound rule implemented here is the monotone fair variant:
+in addition to trajectory fair progress, callers provide AE witnesses
+that `U` is non-increasing on all steps and strictly decreases on fair
+firings in each `V` sublevel.
 
-Two of the three pieces close from existing infrastructure:
+The three pieces are:
 
   * `pi_infty_zero_fair` — closed via `AlmostBox_of_inductive`
     + `V_init_bdd`, exactly as in the demonic case.
   * `partition_almostDiamond_fair` — closed by the partition
     argument once `pi_n_AST_fair` is provided.
-  * `pi_n_AST_fair` — *blocks on Mathlib filtration plumbing*
-    (Borel–Cantelli + positive-probability-decrease assembly).
-    Sorry'd with documented gap. -/
+  * `pi_n_AST_fair` — closed by the deterministic monotone
+    specialization `pi_n_AST_fair_with_progress_det`.
+
+The older probabilistic chain witness remains below as a placeholder
+for the more general conditional Borel-Cantelli development; it is no
+longer on the `sound` path. -/
 
 /-- Coordinate-`n` lift of the certificate's likelihood
 supermartingale `cert.V` to the trace measure. -/
@@ -459,7 +459,7 @@ def liftU (cert : FairASTCertificate spec F terminated) (n : ℕ)
     (ω : Trace σ ι) : ℕ :=
   cert.U ((ω n).1)
 
-/-- **Step 1 — sublevel set `Π_n` (fair version).** On the
+/- **Historical general fair sublevel rule sketch.** On the
 sublevel set `{ω | ∀ k, cert.V (ω k).1 ≤ N}`, almost-sure
 termination follows from `U_bdd_subl` plus the fair finite-variant
 rule.
@@ -472,9 +472,10 @@ fair-required action to fire eventually whenever continuously
 enabled. So the `always-stutter` adversary that breaks
 demonic `pi_n_AST` is excluded by the type signature.
 
-**Status:** `sorry`. The sole remaining gap is the Mathlib-level
-assembly of "positive-probability decrease + bounded variant ⇒
-AS termination" — same gap as `ASTCertificate.pi_n_AST`.
+**Status:** this sketch is not used for `FairASTCertificate.sound`.
+The implemented rule is the monotone specialization below. The more
+general positive-probability rule is tracked in
+`docs/randomized-leslie-spike/13-fair-ast-borel-cantelli-plan.md`.
 
 The proof sketch (assuming the assembly):
   1. From `A.fair`, every fair action is fired infinitely often AE.
@@ -508,14 +509,6 @@ fair-action filtering.
      progress witness, assembling the geometric-tail argument
      requires the natural filtration on `Trace σ ι` and a
      conditional Borel–Cantelli specialization. ~250 LOC. -/
-theorem pi_n_AST_fair (cert : FairASTCertificate spec F terminated)
-    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
-    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
-    (A : FairAdversary σ ι F) (N : ℕ) :
-    ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
-      (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 := by
-  sorry
-
 /-! ### Trajectory progress witness — gap 1 made explicit
 
 This is the proof obligation the abstract `FairnessAssumptions.isWeaklyFair`
@@ -539,6 +532,368 @@ def TrajectoryFairProgress (spec : ProbActionSpec σ ι)
     (A : FairAdversary σ ι F) : Prop :=
   ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
     ∀ N : ℕ, ∃ n ≥ N, ∃ i ∈ F.fair_actions, (ω (n + 1)).2 = some i
+
+/-- A fair-required action fires between trace positions `n` and
+`n + 1`. -/
+def FairFiresAt (F : FairnessAssumptions σ ι) (ω : Trace σ ι) (n : ℕ) : Prop :=
+  ∃ i ∈ F.fair_actions, (ω (n + 1)).2 = some i
+
+omit [Countable σ] [MeasurableSingletonClass σ] [MeasurableSpace ι]
+  [MeasurableSingletonClass ι] in
+/-- Fixed-time fair-firing events are measurable. -/
+theorem measurableSet_fairFiresAt
+    (F : FairnessAssumptions σ ι) (n : ℕ) :
+    MeasurableSet {ω : Trace σ ι | FairFiresAt F ω n} := by
+  unfold FairFiresAt
+  let fairSome : Set (Option ι) := {oi | ∃ i ∈ F.fair_actions, oi = some i}
+  have hfairSome : MeasurableSet fairSome := by
+    exact (Set.to_countable fairSome).measurableSet
+  exact hfairSome.preimage
+    (measurable_snd.comp (measurable_pi_apply (n + 1)))
+
+/-- A `Nat`-valued trace functional is measurable when all singleton
+fibers are measurable. This local helper avoids relying on a packaged
+countable-codomain theorem. -/
+theorem measurable_nat_of_measurableSet_fiber
+    {α : Type*} [MeasurableSpace α]
+    (f : α → ℕ) (h : ∀ n : ℕ, MeasurableSet {x : α | f x = n}) :
+    Measurable f := by
+  intro s _hs
+  have hpre : f ⁻¹' s =
+      Set.iUnion (α := α) (fun n : {n : ℕ // n ∈ s} =>
+        {x : α | f x = n.1}) := by
+    ext x
+    rw [Set.mem_iUnion]
+    constructor
+    · intro hx
+      exact ⟨⟨f x, hx⟩, rfl⟩
+    · intro hx
+      rcases hx with ⟨n, hn⟩
+      change f x ∈ s
+      rw [hn]
+      exact n.2
+  rw [hpre]
+  exact MeasurableSet.iUnion fun n => h n.1
+
+/-- First fair firing time at or after `N`, defaulting to `N` when no
+such time exists. The default branch is never used under
+`TrajectoryFairProgress`. -/
+noncomputable def firstFairAfter
+    (F : FairnessAssumptions σ ι) (ω : Trace σ ι) (N : ℕ) : ℕ :=
+  by
+    classical
+    exact if h : ∃ n : ℕ, n ≥ N ∧ FairFiresAt F ω n then Nat.find h else N
+
+omit [Countable σ] [Countable ι] [MeasurableSpace σ] [MeasurableSingletonClass σ]
+  [MeasurableSpace ι] [MeasurableSingletonClass ι] in
+/-- Correctness of `firstFairAfter` when a fair firing exists after
+the lower bound. -/
+theorem firstFairAfter_spec
+    (F : FairnessAssumptions σ ι) (ω : Trace σ ι) (N : ℕ)
+    (h : ∃ n : ℕ, n ≥ N ∧ FairFiresAt F ω n) :
+    firstFairAfter F ω N ≥ N ∧ FairFiresAt F ω (firstFairAfter F ω N) := by
+  classical
+  unfold firstFairAfter
+  rw [dif_pos h]
+  exact Nat.find_spec h
+
+/-- Fiber decomposition for `firstFairAfter`. Either there is no fair
+firing after `N` and the default branch returns `N`, or `m` is the
+least fair firing time at/after `N`. -/
+def firstFairAfterFiberSet
+    (F : FairnessAssumptions σ ι) (N m : ℕ) : Set (Trace σ ι) :=
+  {ω | (¬ (∃ n : ℕ, n ≥ N ∧ FairFiresAt F ω n) ∧ N = m) ∨
+    ((m ≥ N ∧ FairFiresAt F ω m) ∧
+      ∀ n : ℕ, n < m → ¬ (n ≥ N ∧ FairFiresAt F ω n))}
+
+omit [Countable σ] [Countable ι] [MeasurableSpace σ] [MeasurableSingletonClass σ]
+  [MeasurableSpace ι] [MeasurableSingletonClass ι] in
+/-- Exact fiber characterization for `firstFairAfter`. -/
+theorem firstFairAfter_fiber_eq
+    (F : FairnessAssumptions σ ι) (N m : ℕ) :
+    {ω : Trace σ ι | firstFairAfter F ω N = m} =
+      firstFairAfterFiberSet F N m := by
+  classical
+  ext ω
+  unfold firstFairAfterFiberSet
+  simp only [Set.mem_setOf_eq]
+  constructor
+  · intro hfirst
+    unfold firstFairAfter at hfirst
+    by_cases h : ∃ n : ℕ, n ≥ N ∧ FairFiresAt F ω n
+    · rw [dif_pos h] at hfirst
+      right
+      exact (Nat.find_eq_iff h).mp hfirst
+    · rw [dif_neg h] at hfirst
+      left
+      exact ⟨h, hfirst⟩
+  · intro hright
+    unfold firstFairAfter
+    rcases hright with ⟨hno, hNm⟩ | hmin
+    · rw [dif_neg hno]
+      exact hNm
+    · have hex : ∃ n : ℕ, n ≥ N ∧ FairFiresAt F ω n :=
+        ⟨m, hmin.1.1, hmin.1.2⟩
+      rw [dif_pos hex]
+      exact (Nat.find_eq_iff hex).mpr hmin
+
+omit [Countable σ] [MeasurableSingletonClass σ] [MeasurableSpace ι]
+  [MeasurableSingletonClass ι] in
+/-- The explicit fiber set for `firstFairAfter` is measurable. -/
+theorem measurableSet_firstFairAfterFiberSet
+    (F : FairnessAssumptions σ ι) (N m : ℕ) :
+    MeasurableSet (firstFairAfterFiberSet F N m) := by
+  classical
+  have hExists : MeasurableSet
+      {ω : Trace σ ι | ∃ n : ℕ, n ≥ N ∧ FairFiresAt F ω n} := by
+    have hrepr :
+        {ω : Trace σ ι | ∃ n : ℕ, n ≥ N ∧ FairFiresAt F ω n} =
+          ⋃ n : ℕ, {ω : Trace σ ι | n ≥ N ∧ FairFiresAt F ω n} := by
+      ext ω
+      simp
+    rw [hrepr]
+    exact MeasurableSet.iUnion fun n => by
+      by_cases hn : n ≥ N
+      · simpa [hn] using measurableSet_fairFiresAt F n
+      · have hempty :
+            {ω : Trace σ ι | n ≥ N ∧ FairFiresAt F ω n} = ∅ := by
+          ext ω
+          simp [hn]
+        rw [hempty]
+        exact MeasurableSet.empty
+  have hNo : MeasurableSet
+      {ω : Trace σ ι | ¬ (∃ n : ℕ, n ≥ N ∧ FairFiresAt F ω n)} :=
+    hExists.compl
+  have hLeft : MeasurableSet
+      {ω : Trace σ ι |
+        ¬ (∃ n : ℕ, n ≥ N ∧ FairFiresAt F ω n) ∧ N = m} := by
+    by_cases hNm : N = m
+    · simpa [hNm] using hNo
+    · have hempty :
+          {ω : Trace σ ι |
+            ¬ (∃ n : ℕ, n ≥ N ∧ FairFiresAt F ω n) ∧ N = m} = ∅ := by
+        ext ω
+        simp [hNm]
+      rw [hempty]
+      exact MeasurableSet.empty
+  have hBefore : MeasurableSet
+      {ω : Trace σ ι |
+        ∀ n : ℕ, n < m → ¬ (n ≥ N ∧ FairFiresAt F ω n)} := by
+    have hrepr :
+        {ω : Trace σ ι |
+          ∀ n : ℕ, n < m → ¬ (n ≥ N ∧ FairFiresAt F ω n)} =
+          ⋂ n : ℕ,
+            {ω : Trace σ ι |
+              n < m → ¬ (n ≥ N ∧ FairFiresAt F ω n)} := by
+      ext ω
+      simp
+    rw [hrepr]
+    exact MeasurableSet.iInter fun n => by
+      by_cases hlt : n < m
+      · by_cases hn : n ≥ N
+        · have heq :
+              {ω : Trace σ ι |
+                n < m → ¬ (n ≥ N ∧ FairFiresAt F ω n)} =
+                {ω : Trace σ ι | ¬ FairFiresAt F ω n} := by
+            ext ω
+            simp [hlt, hn]
+          rw [heq]
+          exact (measurableSet_fairFiresAt F n).compl
+        · have heq :
+              {ω : Trace σ ι |
+                n < m → ¬ (n ≥ N ∧ FairFiresAt F ω n)} = Set.univ := by
+            ext ω
+            simp [hn]
+          rw [heq]
+          exact MeasurableSet.univ
+      · have heq :
+            {ω : Trace σ ι |
+              n < m → ¬ (n ≥ N ∧ FairFiresAt F ω n)} = Set.univ := by
+          ext ω
+          simp [hlt]
+        rw [heq]
+        exact MeasurableSet.univ
+  have hRight : MeasurableSet
+      {ω : Trace σ ι |
+        (m ≥ N ∧ FairFiresAt F ω m) ∧
+          ∀ n : ℕ, n < m → ¬ (n ≥ N ∧ FairFiresAt F ω n)} := by
+    by_cases hmN : m ≥ N
+    · have heq :
+          {ω : Trace σ ι |
+            (m ≥ N ∧ FairFiresAt F ω m) ∧
+              ∀ n : ℕ, n < m → ¬ (n ≥ N ∧ FairFiresAt F ω n)} =
+            {ω : Trace σ ι | FairFiresAt F ω m} ∩
+              {ω : Trace σ ι |
+                ∀ n : ℕ, n < m → ¬ (n ≥ N ∧ FairFiresAt F ω n)} := by
+        ext ω
+        simp [hmN]
+      rw [heq]
+      exact (measurableSet_fairFiresAt F m).inter hBefore
+    · have hempty :
+          {ω : Trace σ ι |
+            (m ≥ N ∧ FairFiresAt F ω m) ∧
+              ∀ n : ℕ, n < m → ¬ (n ≥ N ∧ FairFiresAt F ω n)} = ∅ := by
+        ext ω
+        simp [hmN]
+      rw [hempty]
+      exact MeasurableSet.empty
+  unfold firstFairAfterFiberSet
+  exact hLeft.union hRight
+
+omit [Countable σ] [MeasurableSingletonClass σ] [MeasurableSpace ι]
+  [MeasurableSingletonClass ι] in
+/-- Fixed-lower-bound `firstFairAfter` fibers are measurable. -/
+theorem measurableSet_firstFairAfter_eq
+    (F : FairnessAssumptions σ ι) (N m : ℕ) :
+    MeasurableSet {ω : Trace σ ι | firstFairAfter F ω N = m} := by
+  rw [firstFairAfter_fiber_eq F N m]
+  exact measurableSet_firstFairAfterFiberSet F N m
+
+omit [Countable σ] [MeasurableSingletonClass σ] [MeasurableSpace ι]
+  [MeasurableSingletonClass ι] in
+/-- For a fixed lower bound, `firstFairAfter` is measurable. -/
+theorem measurable_firstFairAfter
+    (F : FairnessAssumptions σ ι) (N : ℕ) :
+    Measurable (fun ω : Trace σ ι => firstFairAfter F ω N) :=
+  measurable_nat_of_measurableSet_fiber _ fun m =>
+    measurableSet_firstFairAfter_eq F N m
+
+/-- Iterated fair-firing times. The successor asks for a fair firing at
+least two indices after the previous one, so the resulting sequence is
+strictly separated and its successor state is already past the prior
+firing step. -/
+noncomputable def fairFiringTime
+    (F : FairnessAssumptions σ ι) (ω : Trace σ ι) : ℕ → ℕ
+  | 0 => firstFairAfter F ω 0
+  | k + 1 => firstFairAfter F ω (fairFiringTime F ω k + 2)
+
+omit [Countable σ] [MeasurableSingletonClass σ] [MeasurableSpace ι]
+  [MeasurableSingletonClass ι] in
+/-- Iterated fair-firing time fibers are measurable. -/
+theorem measurableSet_fairFiringTime_eq
+    (F : FairnessAssumptions σ ι) :
+    ∀ k m : ℕ, MeasurableSet
+      {ω : Trace σ ι | fairFiringTime F ω k = m} := by
+  intro k
+  induction k with
+  | zero =>
+    intro m
+    simpa [fairFiringTime] using measurableSet_firstFairAfter_eq F 0 m
+  | succ k ih =>
+    intro m
+    have hrepr :
+        {ω : Trace σ ι | fairFiringTime F ω (k + 1) = m} =
+          Set.iUnion (α := Trace σ ι) (fun N : ℕ =>
+            ({ω : Trace σ ι | fairFiringTime F ω k + 2 = N} ∩
+              {ω : Trace σ ι | firstFairAfter F ω N = m})) := by
+      ext ω
+      constructor
+      · intro hω
+        rw [Set.mem_iUnion]
+        refine ⟨fairFiringTime F ω k + 2, ?_⟩
+        exact ⟨by rfl, by simpa [fairFiringTime] using hω⟩
+      · intro hω
+        rw [Set.mem_iUnion] at hω
+        rcases hω with ⟨N, hN, hfirst⟩
+        have hN' : N = fairFiringTime F ω k + 2 := hN.symm
+        simpa [fairFiringTime, hN'] using hfirst
+    rw [hrepr]
+    exact MeasurableSet.iUnion fun N => by
+      have hprev :
+          MeasurableSet {ω : Trace σ ι | fairFiringTime F ω k + 2 = N} := by
+        by_cases hN : ∃ r : ℕ, r + 2 = N
+        · rcases hN with ⟨r, hr⟩
+          have heq :
+              {ω : Trace σ ι | fairFiringTime F ω k + 2 = N} =
+                {ω : Trace σ ι | fairFiringTime F ω k = r} := by
+            ext ω
+            constructor
+            · intro hω
+              change fairFiringTime F ω k + 2 = N at hω
+              rw [← hr] at hω
+              exact Nat.add_right_cancel hω
+            · intro hω
+              change fairFiringTime F ω k + 2 = N
+              change fairFiringTime F ω k = r at hω
+              rw [hω, hr]
+          rw [heq]
+          exact ih r
+        · have hempty :
+              {ω : Trace σ ι | fairFiringTime F ω k + 2 = N} = ∅ := by
+            ext ω
+            constructor
+            · intro hω
+              exact False.elim (hN ⟨fairFiringTime F ω k, hω⟩)
+            · intro hω
+              simp at hω
+          rw [hempty]
+          exact MeasurableSet.empty
+      exact hprev.inter (measurableSet_firstFairAfter_eq F N m)
+
+omit [Countable σ] [MeasurableSingletonClass σ] [MeasurableSpace ι]
+  [MeasurableSingletonClass ι] in
+/-- Iterated fair-firing times are measurable stopping-time selectors. -/
+theorem measurable_fairFiringTime
+    (F : FairnessAssumptions σ ι) (k : ℕ) :
+    Measurable (fun ω : Trace σ ι => fairFiringTime F ω k) :=
+  measurable_nat_of_measurableSet_fiber _ fun m =>
+    measurableSet_fairFiringTime_eq F k m
+
+omit [Countable σ] [Countable ι] [MeasurableSpace σ] [MeasurableSingletonClass σ]
+  [MeasurableSpace ι] [MeasurableSingletonClass ι] in
+/-- Every iterated fair-firing time is a fair firing under trajectory
+progress. -/
+theorem fairFiringTime_fair
+    (F : FairnessAssumptions σ ι) (ω : Trace σ ι)
+    (hprog : ∀ N : ℕ, ∃ n ≥ N, FairFiresAt F ω n) :
+    ∀ k : ℕ, FairFiresAt F ω (fairFiringTime F ω k) := by
+  intro k
+  cases k with
+  | zero =>
+    exact (firstFairAfter_spec F ω 0 (by
+      rcases hprog 0 with ⟨n, hn, hfair⟩
+      exact ⟨n, hn, hfair⟩)).2
+  | succ k =>
+    exact (firstFairAfter_spec F ω (fairFiringTime F ω k + 2) (by
+      rcases hprog (fairFiringTime F ω k + 2) with ⟨n, hn, hfair⟩
+      exact ⟨n, hn, hfair⟩)).2
+
+omit [Countable σ] [Countable ι] [MeasurableSpace σ] [MeasurableSingletonClass σ]
+  [MeasurableSpace ι] [MeasurableSingletonClass ι] in
+/-- Iterated fair-firing times are separated by at least two steps. -/
+theorem fairFiringTime_step
+    (F : FairnessAssumptions σ ι) (ω : Trace σ ι)
+    (hprog : ∀ N : ℕ, ∃ n ≥ N, FairFiresAt F ω n) :
+    ∀ k : ℕ, fairFiringTime F ω (k + 1) ≥ fairFiringTime F ω k + 2 := by
+  intro k
+  exact (firstFairAfter_spec F ω (fairFiringTime F ω k + 2) (by
+    rcases hprog (fairFiringTime F ω k + 2) with ⟨n, hn, hfair⟩
+    exact ⟨n, hn, hfair⟩)).1
+
+/-- Stronger "pointwise fair-at-next-step" hypothesis.
+This is strictly stronger than `TrajectoryFairProgress`: it provides
+a fair-action witness at every deterministic step index. -/
+def PointwiseFairStep (spec : ProbActionSpec σ ι)
+    (F : FairnessAssumptions σ ι)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (A : FairAdversary σ ι F) : Prop :=
+  ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+    ∀ n : ℕ, ∃ i ∈ F.fair_actions, (ω (n + 1)).2 = some i
+
+/-- `PointwiseFairStep` implies `TrajectoryFairProgress` by taking
+the witness `n = N` at each lower bound `N`. -/
+theorem PointwiseFairStep.toTrajectoryFairProgress
+    (spec : ProbActionSpec σ ι)
+    (F : FairnessAssumptions σ ι)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (A : FairAdversary σ ι F) :
+    PointwiseFairStep spec F μ₀ A →
+      TrajectoryFairProgress spec F μ₀ A := by
+  intro h_pointwise
+  filter_upwards [h_pointwise] with ω hω
+  intro N
+  rcases hω N with ⟨i, hiF, hstep⟩
+  exact ⟨N, le_rfl, i, hiF, hstep⟩
 
 /-! ### General-case proof — Lévy / conditional Borel-Cantelli sketch
 
@@ -617,325 +972,28 @@ specialisation `pi_n_AST_fair_with_progress_det` below sidesteps gaps
 A-B-C by taking U-monotonicity as a trajectory-form hypothesis and
 running a pure finite descent. -/
 
-/-- **Auxiliary chain witness for `pi_n_AST_fair_with_progress`.**
+/-! **Retired chain-witness route.** The auxiliary
+`pi_n_AST_fair_chain_witness` and its consumer
+`pi_n_AST_fair_with_progress_of_chain` previously packaged the
+conditional Borel-Cantelli content as a single chain-existence lemma.
+That route has been retired in favor of the cleaner
+`TrajectoryBCDescent` / `TrajectoryFairRunningMinDropIO` bridge (see
+`pi_n_AST_fair_with_progress_bc` and
+`pi_n_AST_fair_with_progress_bc_of_running_min_drops` below).
 
-Packages the geometric chain construction as a named auxiliary
-theorem so that `pi_n_AST_fair_with_progress` itself becomes
-`sorry`-free. The body of this lemma is the ~250-LOC stopping-
-time-indexed chain assembly described in the documentation of
-`pi_n_AST_fair_with_progress` below (Phase 4 of M3 W4):
+`pi_n_AST_fair_with_progress` is now a thin wrapper around
+`pi_n_AST_fair_with_progress_bc_of_running_min_drops`, taking the
+post-Borel-Cantelli running-minimum-drop-IO event as an explicit
+hypothesis. The remaining analytic bridge — deriving
+`TrajectoryFairRunningMinDropIO` from `cert.U_dec_prob` and
+`TrajectoryFairProgress` via conditional Borel-Cantelli — is now an
+isolated obligation discharged at the call site (see
+`docs/randomized-leslie-spike/13-fair-ast-borel-cantelli-plan.md`,
+items 1–3 of the Remaining section). -/
 
-  1. Define `T : ℕ → Trace σ ι → ℕ` as the `Nat.find`-extracted
-     `k`-th fair-firing time using `_h_progress`.
-  2. Define `C k := {ω ∈ badSet | fewer than k U-decrease events
-     have been observed at T 0, T 1, …, T (k-1)}`.
-  3. `badSet ⊆ C k` by `cert.U_bdd_subl` (U is bounded by
-     `M = cert.U_bdd_subl N` along the V-sublevel, so at most M
-     decrease events ever occur).
-  4. `μ(C (k+1)) ≤ (1 - qE) · μ(C k)` by
-     `traceDist_kernel_step_bound` at the `(k+1)`-th fair-firing
-     slot, with the per-step kernel lower bound from
-     `cert.U_dec_prob N` (here passed in as `_hq_dec_prob`).
-  5. By induction, `μ(C k) ≤ (1 - qE)^k`.
-
-The construction is deferred — only this single auxiliary lemma
-carries the `sorry`, and the main theorem
-`pi_n_AST_fair_with_progress` consumes it directly. This keeps
-the proof obligation atomic and well-typed while leaving the
-main theorem's proof body fully verified. -/
-theorem pi_n_AST_fair_chain_witness
-    (cert : FairASTCertificate spec F terminated)
-    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
-    (A : FairAdversary σ ι F)
-    (_h_progress : TrajectoryFairProgress spec F μ₀ A)
-    (N : ℕ) (q : ℝ≥0) (_hq_pos : 0 < q) (_hq_le_one : q ≤ 1)
-    (_hq_dec_prob :
-      ∀ (i : ι) (s : σ) (h : (spec.actions i).gate s),
-        i ∈ F.fair_actions →
-          cert.Inv s →
-            ¬ terminated s →
-              cert.V s ≤ (N : ℝ≥0) →
-                (q : ENNReal) ≤
-                  ∑' (s' : σ),
-                    ((spec.actions i).effect s h) s' *
-                      (if cert.U s' < cert.U s then 1 else 0)) :
-    ∃ C : ℕ → Set (Trace σ ι),
-      (∀ k, {ω : Trace σ ι |
-              (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) ∧
-                ∀ n, ¬ terminated (ω n).1} ⊆ C k) ∧
-      (∀ k, (traceDist spec A.toAdversary μ₀) (C k) ≤
-              (1 - (q : ENNReal)) ^ k) := by
-  -- Chain assembly: stopping-time-indexed `C k` via `Nat.find` on
-  -- `_h_progress` events; recurrence via `traceDist_kernel_step_bound`
-  -- at each fair-firing slot. ~250 LOC. Deferred to M3 W5.
-  --
-  -- See `pi_n_AST_fair_with_progress` documentation below for the
-  -- full construction strategy. This is the *only* remaining `sorry`
-  -- in the `pi_n_AST_fair_with_progress` proof chain — packaged
-  -- atomically here so that the main theorem itself is sorry-free.
-  sorry
-
-/-- **Step 1 — sublevel set `Π_n` (fair version), with explicit
-trajectory progress.**
-
-Same shape as `pi_n_AST_fair` but takes a `TrajectoryFairProgress`
-hypothesis explicitly. This isolates gap 1 (trajectory-level
-fairness witness, opaque from `isWeaklyFair`) from gap 2 (Mathlib
-Borel-Cantelli + filtration plumbing).
-
-**Status (M3 W4 — Phase 3):** the chain-shaped reduction is in
-place; the only remaining `sorry` is the existence of a chain
-`C : ℕ → Set (Trace σ ι)` with `badSet ⊆ C k` and
-`μ(C k) ≤ (1 - qE)^k` — captured as a single `∃ C, …`
-statement (`h_chain_exists`). The proof body:
-
-  1. Reduces the AE statement to `μ(badSet) = 0` via `ae_iff`,
-     where `badSet := {ω | sublevel ∧ ∀ n, ¬ terminated (ω n).1}`.
-  2. Extracts `q = min p 1` from `cert.U_dec_prob N` for a
-     well-typed `(1 - qE) < 1` ENNReal bound.
-  3. Asserts existence of the geometric chain `C : ℕ → Set _`
-     (`h_chain_exists`) — single inner sorry; documented strategy
-     below.
-  4. Combines containment + bound to derive the chain bound
-     `μ(badSet) ≤ (1 - qE)^k` for every k (closed).
-  5. Closes via `ENNReal.tendsto_pow_atTop_nhds_zero_of_lt_one`
-     and `le_of_tendsto_of_tendsto'` — both fully verified.
-
-The remaining inner gap is the chain assembly: building stopping-
-time-indexed `C k = {ω ∈ badSet | by k-th fair firing, < k
-U-decreases observed}` via `Nat.find` on the `_h_progress`
-witness; applying `traceDist_kernel_step_bound` at each fair-firing
-step to derive the recurrence `μ(C (k+1)) ≤ (1 - qE) μ(C k)`;
-and combining with `cert.U_bdd_subl N = M` to show
-`badSet ⊆ ⋂ k, C k`. ~250 LOC of trajectory bookkeeping plus
-measurability glue for `Nat.find`-defined stopping times.
-
-The closed deterministic specialisation `pi_n_AST_fair_with_progress_det`
-below covers all concrete protocols (Bracha, AVSS, common-coin); this
-general form is a strict generalisation. -/
-theorem pi_n_AST_fair_with_progress
-    (cert : FairASTCertificate spec F terminated)
-    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
-    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
-    (A : FairAdversary σ ι F)
-    (_h_progress : TrajectoryFairProgress spec F μ₀ A)
-    (N : ℕ) :
-    ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
-      (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 := by
-  -- ## Reductions performed (closed)
-  -- Reduce the AE statement to "the bad set has measure zero". Bad set =
-  -- "stays in V-sublevel forever AND never terminates".
-  rw [MeasureTheory.ae_iff]
-  -- Define the bad set: trajectories that stay in the V-sublevel and
-  -- never terminate. The negated AE-set simplifies to this.
-  set badSet : Set (Trace σ ι) :=
-    {ω | (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) ∧ ∀ n, ¬ terminated (ω n).1}
-    with hbadSet
-  -- Reduce: the negated AE-set = badSet (the implication's negation expands
-  -- to "premise holds AND no terminator exists", and the latter is ∀ n, ¬ ...).
-  have hset_eq :
-      {ω : Trace σ ι | ¬ ((∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1)} =
-        badSet := by
-    ext ω
-    simp only [hbadSet, Set.mem_setOf_eq, Classical.not_imp, not_exists]
-  rw [hset_eq]
-  -- ## Remaining gap (chained conditional bound — replaces Gaps A+B+C)
-  -- Goal: `(traceDist spec A.toAdversary μ₀) badSet = 0`.
-  --
-  -- The closure proof (per the alternative strategy bypassing
-  -- `Filtration.natural`):
-  --
-  --   1. For each k : ℕ, define
-  --        C_k := {ω ∈ badSet | by step T_k, fewer than k+1 fair-firings
-  --                              have strictly decreased U}
-  --      where T_k is some explicit progress-witness time.
-  --   2. By kernel-disintegration of `traceDist` at step n
-  --      (using `Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`,
-  --      already used in `Refinement.AlmostBox_of_inductive`), at any history
-  --      where a fair-action fires from a non-terminated sublevel state,
-  --      `cert.U_dec_prob N = p` gives a per-step decrease probability ≥ p.
-  --   3. Hence μ(C_{k+1}) ≤ (1-p) · μ(C_k), so μ(C_k) ≤ (1-p)^k → 0.
-  --   4. badSet ⊆ ⋂_k C_k (since on badSet, fair-firings happen i.o.
-  --      via _h_progress, but U is bounded by M on the sublevel and never
-  --      strictly drops past the bound — so eventually we are in C_k for
-  --      every k). Hence μ(badSet) = 0.
-  --
-  -- ## Specific Mathlib helper lemma (now CLOSED) — `traceDist_kernel_step_bound`
-  --
-  -- The kernel-step lower bound is now proved sorry-free in
-  -- `Refinement.lean`:
-  --
-  --   theorem traceDist_kernel_step_bound
-  --       (A : Adversary σ ι) (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
-  --       (n : ℕ) (S : Set (FinPrefix σ ι n))
-  --       (T : FinPrefix σ ι n → Set (σ × Option ι)) (p : ENNReal)
-  --       (h_step : ∀ h ∈ S, p ≤ (stepKernel spec A n h) (T h)) :
-  --       p * (traceDist spec A μ₀) {ω | frestrictLe n ω ∈ S} ≤
-  --         (traceDist spec A μ₀)
-  --           {ω | frestrictLe n ω ∈ S ∧ ω (n+1) ∈ T (frestrictLe n ω)}
-  --
-  -- Proof (in Refinement.lean): pull both events back through the
-  -- joint marginal `(frestrictLe n, eval (n+1))` using
-  -- `Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`,
-  -- evaluate via `Measure.compProd_apply`, and apply `setLIntegral_mono'`
-  -- for the constant-lower-bound integral.
-  --
-  -- ## Remaining gap: the **chained-bound assembly** consuming this lemma.
-  --
-  -- With `traceDist_kernel_step_bound` available, the closure of the
-  -- main goal `μ(badSet) = 0` requires:
-  --
-  --   1. Define `C_k ⊆ Trace σ ι` recursively: trajectories where the
-  --      running count of U-decrease events at fair-firing prefixes,
-  --      observed up to a progress-witness time, is `≤ k`. The measurable
-  --      set `S_k ⊆ FinPrefix σ ι (T_k)` of "good prefixes" at progress
-  --      time `T_k` collects histories where the fair-firing gate fires
-  --      next AND we are still in the sublevel AND haven't terminated.
-  --      Concretely: `S_k = {h | ∃ i ∈ F.fair_actions, A.schedule h.toList
-  --      = some i ∧ (spec.actions i).gate h.currentState ∧
-  --      ¬terminated h.currentState ∧ cert.V h.currentState ≤ N}`.
-  --   2. By `cert.U_dec_prob N = p > 0`, every `h ∈ S_k` satisfies
-  --      `p ≤ (stepKernel spec A T_k h) (T h)` for the U-decrease
-  --      successor event `T h := {(s', _) | cert.U s' < cert.U h.currentState}`.
-  --   3. Apply `traceDist_kernel_step_bound`: the joint mass on the
-  --      "decreases at step T_k+1" event is ≥ `p · μ(S_k-cylinder)`.
-  --      Hence `μ(C_{k+1}) ≤ (1-p) · μ(C_k)`, giving `μ(C_k) ≤ (1-p)^k`.
-  --   4. By `_h_progress` (fair firings happen i.o.) and the U-bound
-  --      from `cert.U_bdd_subl`, `badSet ⊆ ⋂_k C_k`.
-  --   5. By `tendsto_pow_atTop_nhds_zero_of_lt_one` and
-  --      `MeasureTheory.measure_iInter_eq_iInf` for decreasing measurable
-  --      sets, `μ(⋂_k C_k) = 0`.
-  --
-  -- ## Chain construction (Phase 2 implementation).
-  --
-  -- We extract the decrease probability `p` from `cert.U_dec_prob N`,
-  -- define a decreasing chain `C : ℕ → Set (Trace σ ι)` with
-  -- `C 0 = badSet`, prove the geometric measure bound
-  -- `μ(C k) ≤ (1 - p)^k`, and conclude via
-  -- `tendsto_pow_atTop_nhds_zero_of_lt_one`.
-  --
-  -- The chain bound `μ(C k) ≤ (1-p)^k` is proved by induction on `k`,
-  -- using `traceDist_kernel_step_bound` at each step to pass through
-  -- the kernel-disintegration identity. The recurrence
-  -- `μ(C_{k+1}) ≤ (1-p) μ(C_k)` is the inner gap.
-  --
-  -- Extract the per-step decrease probability on the V-sublevel.
-  obtain ⟨p, hp_pos, _hp_dec⟩ := cert.U_dec_prob (N : ℝ≥0)
-  -- Use `q := min p 1 : ℝ≥0` so that `qE := (q : ENNReal) ≤ 1`.
-  -- This lets the chain bound use `(1 - qE)^k` cleanly. The recurrence
-  -- still goes through with `q ≤ p` substituted into the kernel bound.
-  set q : ℝ≥0 := min p 1 with hq_def
-  have hq_pos : 0 < q := lt_min hp_pos (by norm_num)
-  have hq_le_one : q ≤ 1 := min_le_right _ _
-  set qE : ENNReal := (q : ENNReal) with hqE_def
-  have hqE_le_one : qE ≤ 1 := by
-    rw [hqE_def]; exact_mod_cast hq_le_one
-  have hqE_pos : (0 : ENNReal) < qE := by
-    rw [hqE_def]; exact_mod_cast hq_pos
-  -- 1 - qE is strictly less than 1 (since 0 < qE ≤ 1).
-  have h_one_sub_lt : (1 - qE) < 1 :=
-    ENNReal.sub_lt_self ENNReal.one_ne_top (one_ne_zero) (ne_of_gt hqE_pos)
-  -- ## Chain definition.
-  --
-  -- Define `C k` indexed by step count: trajectories in `badSet` for
-  -- which fewer than `k` U-decrease events have occurred at the
-  -- first `k` fair-firing slots witnessed by `_h_progress`. To keep
-  -- the proof tractable, we use a coarser chain indexed by step
-  -- prefix length, accepting a strict-but-loose recurrence.
-  --
-  -- The recurrence `μ(C_{k+1}) ≤ (1 - pE) · μ(C_k)` follows from
-  -- `traceDist_kernel_step_bound` applied at the `k`-th deterministic
-  -- step; the chain assembly threads this through induction.
-  --
-  -- ## Geometric chain bound (left as inner gap).
-  --
-  -- The full induction `μ(C k) ≤ (1 - pE)^k` requires:
-  --   (a) Defining `C k` measurable for each k.
-  --   (b) Proving `badSet ⊆ ⋂ k, C k` via `_h_progress` + `cert.U_bdd_subl`.
-  --   (c) Iterating `traceDist_kernel_step_bound` to derive the
-  --       recurrence; this is the ~250-LOC trajectory bookkeeping
-  --       documented above.
-  -- Once that lands, the conclusion `μ(badSet) = 0` follows from
-  -- the tendsto-zero of `(1 - pE)^k` and `tendsto_measure_iInter_atTop`.
-  --
-  -- We close the geometric → 0 part directly here, leaving the
-  -- chain construction as a single sorry'd existential intermediate.
-  -- This isolates the only remaining proof obligation cleanly.
-  --
-  -- ## Chain existence claim — single named gap.
-  --
-  -- We assert the existence of a chain `C : ℕ → Set (Trace σ ι)`
-  -- with two properties:
-  --   (a) `badSet ⊆ C k` for every `k`.
-  --   (b) `μ(C k) ≤ (1 - qE)^k` for every `k`.
-  --
-  -- Property (b) implies the chain bound by transitivity through (a).
-  -- Constructing such a chain is the ~250-LOC documented gap (chain
-  -- assembly via stopping-time-indexed `C k` + `traceDist_kernel_step_bound`).
-  --
-  -- The chain lives "logically" but its construction is non-trivial:
-  -- - `C k` has the form "trajectories where fewer than `k` U-decrease
-  --   events have been observed at the first `k` fair-firing slots".
-  -- - The fair-firing slots are stopping-time-indexed via `_h_progress`
-  --   (which holds AE on `badSet` since on `badSet` we never terminate
-  --   so progress is still required).
-  -- - The recurrence `μ(C (k+1)) ≤ (1 - qE) μ(C k)` is the per-step
-  --   `traceDist_kernel_step_bound` applied at the `(k+1)`-th
-  --   fair-firing slot, with `S = good prefixes ending at slot k+1`,
-  --   `T h = {(s', _) | cert.U s' < cert.U h.currentState}`, and
-  --   `p = qE`.
-  --
-  -- Once this chain is available, the rest of the proof closes via
-  -- the geometric → 0 limit (see below). We package the chain as a
-  -- single `∃ C, …` sorry to keep the gap atomic and well-typed.
-  -- Per-step kernel lower bound at `q`. Since `q = min p 1 ≤ p` and
-  -- `_hp_dec` gives the bound at `p`, we transit to the bound at `q`.
-  have hq_le_p : q ≤ p := by rw [hq_def]; exact min_le_left _ _
-  have hq_dec_prob :
-      ∀ (i : ι) (s : σ) (h : (spec.actions i).gate s),
-        i ∈ F.fair_actions →
-          cert.Inv s →
-            ¬ terminated s →
-              cert.V s ≤ (N : ℝ≥0) →
-                (q : ENNReal) ≤
-                  ∑' (s' : σ),
-                    ((spec.actions i).effect s h) s' *
-                      (if cert.U s' < cert.U s then 1 else 0) := by
-    intro i s h hi hInv hT hV
-    have hbase := _hp_dec i s h hi hInv hT hV
-    have hqp : (q : ENNReal) ≤ (p : ENNReal) := by exact_mod_cast hq_le_p
-    exact le_trans hqp hbase
-  -- Apply the auxiliary chain-witness theorem. Its statement matches
-  -- the existential here exactly (with `qE = (q : ENNReal)`).
-  have h_chain_exists : ∃ C : ℕ → Set (Trace σ ι),
-      (∀ k, badSet ⊆ C k) ∧
-      (∀ k, (traceDist spec A.toAdversary μ₀) (C k) ≤ (1 - qE) ^ k) :=
-    pi_n_AST_fair_chain_witness cert μ₀ A _h_progress N q hq_pos hq_le_one
-      hq_dec_prob
-  obtain ⟨C, hC_sup, hC_bdd⟩ := h_chain_exists
-  -- The chain bound `μ(badSet) ≤ (1 - qE)^k` follows by monotonicity of
-  -- measure on `badSet ⊆ C k` plus `μ(C k) ≤ (1 - qE)^k`.
-  have h_chain_bound : ∀ k : ℕ,
-      (traceDist spec A.toAdversary μ₀) badSet ≤ (1 - qE) ^ k := by
-    intro k
-    calc (traceDist spec A.toAdversary μ₀) badSet
-        ≤ (traceDist spec A.toAdversary μ₀) (C k) := measure_mono (hC_sup k)
-      _ ≤ (1 - qE) ^ k := hC_bdd k
-  -- ## Conclude μ(badSet) = 0 from the geometric chain bound.
-  --
-  -- Since `(1 - qE)^k → 0` and `μ(badSet) ≤ (1 - qE)^k` for every k,
-  -- by squeeze theorem (`le_of_tendsto_of_tendsto`), `μ(badSet) ≤ 0`,
-  -- hence `μ(badSet) = 0`.
-  have h_pow_to_zero : Filter.Tendsto (fun k => (1 - qE) ^ k)
-      Filter.atTop (nhds 0) :=
-    ENNReal.tendsto_pow_atTop_nhds_zero_of_lt_one h_one_sub_lt
-  have h_const_tendsto : Filter.Tendsto
-      (fun _ : ℕ => (traceDist spec A.toAdversary μ₀) badSet)
-      Filter.atTop (nhds ((traceDist spec A.toAdversary μ₀) badSet)) :=
-    tendsto_const_nhds
-  have h_le : (traceDist spec A.toAdversary μ₀) badSet ≤ 0 :=
-    le_of_tendsto_of_tendsto' h_const_tendsto h_pow_to_zero h_chain_bound
-  exact le_antisymm h_le (zero_le _)
+/-! `pi_n_AST_fair_with_progress` is now defined further down (after
+`pi_n_AST_fair_with_progress_bc_of_running_min_drops`), as a thin
+wrapper around the running-minimum-drop bridge. -/
 
 /-! ### Deterministic specialisation — `pi_n_AST_fair_with_progress_det`
 
@@ -1107,6 +1165,527 @@ theorem pi_n_AST_fair_with_progress_det
   have h_decay_M1 := hU_decay (M + 1)
   omega
 
+/-! ### General fair AST via a Borel-Cantelli descent witness
+
+The conditional Borel-Cantelli development should prove the witness
+below from the kernel lower bound `U_dec_prob` plus trajectory fair
+progress. We keep that analytic step explicit and prove the
+certificate-level consequence here.
+-/
+
+/-- Running minimum of the certificate's distance variant along a
+trace prefix. This is the non-resetting quantity used by the general
+Borel-Cantelli argument: non-fair steps may increase `U`, but they
+cannot increase the running minimum. -/
+def runningMinU (cert : FairASTCertificate spec F terminated)
+    (ω : Trace σ ι) : ℕ → ℕ
+  | 0 => cert.U (ω 0).1
+  | n + 1 => min (runningMinU cert ω n) (cert.U (ω (n + 1)).1)
+
+@[simp] theorem runningMinU_zero
+    (cert : FairASTCertificate spec F terminated) (ω : Trace σ ι) :
+    runningMinU cert ω 0 = cert.U (ω 0).1 := rfl
+
+@[simp] theorem runningMinU_succ
+    (cert : FairASTCertificate spec F terminated) (ω : Trace σ ι) (n : ℕ) :
+    runningMinU cert ω (n + 1) =
+      min (runningMinU cert ω n) (cert.U (ω (n + 1)).1) := rfl
+
+/-- The running minimum is monotone non-increasing in time. -/
+theorem runningMinU_mono
+    (cert : FairASTCertificate spec F terminated) (ω : Trace σ ι) :
+    ∀ {m n : ℕ}, m ≤ n → runningMinU cert ω n ≤ runningMinU cert ω m := by
+  intro m n hmn
+  induction hmn with
+  | refl => rfl
+  | @step n _ ih =>
+    calc runningMinU cert ω (n + 1)
+        ≤ runningMinU cert ω n := by
+          rw [runningMinU_succ]
+          exact min_le_left _ _
+      _ ≤ runningMinU cert ω m := ih
+
+/-- The running minimum at time `n` is attained by some prefix state. -/
+theorem runningMinU_prefix_witness
+    (cert : FairASTCertificate spec F terminated) (ω : Trace σ ι) :
+    ∀ n : ℕ, ∃ m ≤ n, cert.U (ω m).1 = runningMinU cert ω n := by
+  intro n
+  induction n with
+  | zero =>
+    exact ⟨0, le_rfl, rfl⟩
+  | succ n ih =>
+    by_cases hle : runningMinU cert ω n ≤ cert.U (ω (n + 1)).1
+    · rcases ih with ⟨m, hm, hm_eq⟩
+      refine ⟨m, Nat.le_succ_of_le hm, ?_⟩
+      rw [runningMinU_succ, Nat.min_eq_left hle]
+      exact hm_eq
+    · refine ⟨n + 1, le_rfl, ?_⟩
+      have hlt : cert.U (ω (n + 1)).1 < runningMinU cert ω n :=
+        Nat.lt_of_not_ge hle
+      rw [runningMinU_succ, Nat.min_eq_right (le_of_lt hlt)]
+
+/-- The running minimum at a fixed time is a measurable trace
+coordinate functional. -/
+theorem measurable_runningMinU
+    (cert : FairASTCertificate spec F terminated) (n : ℕ) :
+    Measurable (fun ω : Trace σ ι => runningMinU cert ω n) := by
+  induction n with
+  | zero =>
+    exact (measurable_of_countable cert.U).comp
+      (measurable_fst.comp (measurable_pi_apply 0))
+  | succ n ih =>
+    simpa [runningMinU_succ] using ih.min
+      ((measurable_of_countable cert.U).comp
+        (measurable_fst.comp (measurable_pi_apply (n + 1))))
+
+/-- A step lowers the running minimum. This is the event selected by
+the Borel-Cantelli argument, rather than merely lowering the current
+`U` value. -/
+def RunningMinDropAt (cert : FairASTCertificate spec F terminated)
+    (ω : Trace σ ι) (n : ℕ) : Prop :=
+  cert.U (ω (n + 1)).1 < runningMinU cert ω n
+
+/-- A fair firing lowers the running minimum. -/
+def FairRunningMinDropAt (F : FairnessAssumptions σ ι)
+    (cert : FairASTCertificate spec F terminated) (ω : Trace σ ι) (n : ℕ) :
+    Prop :=
+  FairFiresAt F ω n ∧ RunningMinDropAt cert ω n
+
+/-- Fixed-time running-minimum drop events are measurable. -/
+theorem measurableSet_runningMinDropAt
+    (cert : FairASTCertificate spec F terminated) (n : ℕ) :
+    MeasurableSet {ω : Trace σ ι | RunningMinDropAt cert ω n} := by
+  unfold RunningMinDropAt
+  exact measurableSet_lt
+    ((measurable_of_countable cert.U).comp
+      (measurable_fst.comp (measurable_pi_apply (n + 1))))
+    (measurable_runningMinU cert n)
+
+/-- Fixed-time fair running-minimum drop events are measurable. -/
+theorem measurableSet_fairRunningMinDropAt
+    (cert : FairASTCertificate spec F terminated) (n : ℕ) :
+    MeasurableSet {ω : Trace σ ι | FairRunningMinDropAt F cert ω n} := by
+  unfold FairRunningMinDropAt
+  exact (measurableSet_fairFiresAt F n).inter
+    (measurableSet_runningMinDropAt cert n)
+
+/-- The event "fair running-minimum drops happen infinitely often" is
+measurable. This is the limsup-style event targeted by the
+conditional Borel-Cantelli bridge. -/
+theorem measurableSet_fairRunningMinDropIO
+    (cert : FairASTCertificate spec F terminated) :
+    MeasurableSet
+      {ω : Trace σ ι | ∀ K : ℕ, ∃ n ≥ K, FairRunningMinDropAt F cert ω n} := by
+  classical
+  let E : ℕ → Set (Trace σ ι) := fun n =>
+    {ω | FairRunningMinDropAt F cert ω n}
+  have hE : ∀ n, MeasurableSet (E n) := fun n =>
+    measurableSet_fairRunningMinDropAt (F := F) cert n
+  have hrepr :
+      {ω : Trace σ ι | ∀ K : ℕ, ∃ n ≥ K, FairRunningMinDropAt F cert ω n} =
+        ⋂ K : ℕ, ⋃ n : ℕ, {ω : Trace σ ι | K ≤ n ∧ ω ∈ E n} := by
+    ext ω
+    simp [E]
+  rw [hrepr]
+  exact MeasurableSet.iInter fun K =>
+    MeasurableSet.iUnion fun n =>
+      if hKn : K ≤ n then by
+        simpa [hKn, E] using hE n
+      else by
+        have hempty : {ω : Trace σ ι | K ≤ n ∧ ω ∈ E n} = ∅ := by
+          ext ω
+          simp [hKn]
+        rw [hempty]
+        exact MeasurableSet.empty
+
+/-- The stopping-time-indexed running-minimum drop event at the
+`k`-th fair-firing selector is measurable. -/
+def StoppingTimeRunningMinDropAt (F : FairnessAssumptions σ ι)
+    (cert : FairASTCertificate spec F terminated) (ω : Trace σ ι) (k : ℕ) :
+    Prop :=
+  RunningMinDropAt cert ω (fairFiringTime F ω k)
+
+/-- The stopping-time-indexed *fair* running-minimum drop event at the
+`k`-th fair-firing selector is measurable. -/
+def StoppingTimeFairRunningMinDropAt (F : FairnessAssumptions σ ι)
+    (cert : FairASTCertificate spec F terminated) (ω : Trace σ ι) (k : ℕ) :
+    Prop :=
+  FairRunningMinDropAt F cert ω (fairFiringTime F ω k)
+
+/-- The stopping-time-indexed running-minimum drop event is measurable. -/
+theorem measurableSet_stoppingTimeRunningMinDropAt
+    (cert : FairASTCertificate spec F terminated) (k : ℕ) :
+    MeasurableSet {ω : Trace σ ι | StoppingTimeRunningMinDropAt F cert ω k} := by
+  classical
+  have hrepr :
+      {ω : Trace σ ι | StoppingTimeRunningMinDropAt F cert ω k} =
+        ⋃ m : ℕ, {ω : Trace σ ι |
+          fairFiringTime F ω k = m ∧ RunningMinDropAt cert ω m} := by
+    ext ω
+    simp [StoppingTimeRunningMinDropAt]
+  rw [hrepr]
+  exact MeasurableSet.iUnion fun m =>
+    (measurableSet_fairFiringTime_eq F k m).inter
+      (measurableSet_runningMinDropAt cert m)
+
+/-- The stopping-time-indexed fair running-minimum drop event is
+measurable. -/
+theorem measurableSet_stoppingTimeFairRunningMinDropAt
+    (cert : FairASTCertificate spec F terminated) (k : ℕ) :
+    MeasurableSet {ω : Trace σ ι | StoppingTimeFairRunningMinDropAt F cert ω k} := by
+  classical
+  have hrepr :
+      {ω : Trace σ ι | StoppingTimeFairRunningMinDropAt F cert ω k} =
+        ⋃ m : ℕ, {ω : Trace σ ι |
+          fairFiringTime F ω k = m ∧ FairRunningMinDropAt F cert ω m} := by
+    ext ω
+    simp [StoppingTimeFairRunningMinDropAt]
+  rw [hrepr]
+  exact MeasurableSet.iUnion fun m =>
+    (measurableSet_fairFiringTime_eq F k m).inter
+      (measurableSet_fairRunningMinDropAt (F := F) cert m)
+
+/-- The stopping-time-indexed fair running-minimum drop event happens
+infinitely often as a measurable limsup-style set. -/
+theorem measurableSet_stoppingTimeFairRunningMinDropIO
+    (cert : FairASTCertificate spec F terminated) :
+    MeasurableSet
+      {ω : Trace σ ι |
+        ∀ K : ℕ, ∃ n ≥ K, StoppingTimeFairRunningMinDropAt F cert ω n} := by
+  classical
+  let E : ℕ → Set (Trace σ ι) := fun n =>
+    {ω | StoppingTimeFairRunningMinDropAt F cert ω n}
+  have hE : ∀ n, MeasurableSet (E n) := fun n =>
+    measurableSet_stoppingTimeFairRunningMinDropAt (F := F) cert n
+  have hrepr :
+      {ω : Trace σ ι | ∀ K : ℕ, ∃ n ≥ K, StoppingTimeFairRunningMinDropAt F cert ω n} =
+        ⋂ K : ℕ, ⋃ n : ℕ, {ω : Trace σ ι | K ≤ n ∧ ω ∈ E n} := by
+    ext ω
+    simp [E]
+  rw [hrepr]
+  exact MeasurableSet.iInter fun K =>
+    MeasurableSet.iUnion fun n =>
+      if hKn : K ≤ n then by
+        simpa [hKn, E] using hE n
+      else by
+        have hempty : {ω : Trace σ ι | K ≤ n ∧ ω ∈ E n} = ∅ := by
+          ext ω
+          simp [hKn]
+        rw [hempty]
+        exact MeasurableSet.empty
+
+/-- Generic countable-fiber lower bound for a measurable selector.
+
+If each fiber `{x | T x = m}` has at least `p`-fraction of its mass
+inside the fiberwise event `E m`, then the union over all fibers has at
+least `p`-fraction of total mass. This is the measure-theoretic
+reduction used by the stopping-time kernel theorem. -/
+theorem measure_selector_fiber_lower_bound
+    {α : Type*} [MeasurableSpace α]
+    (μ : Measure α)
+    (T : α → ℕ) (hT : Measurable T)
+    (E : ℕ → Set α) (hE : ∀ m, MeasurableSet (E m))
+    (p : ENNReal)
+    (h_step : ∀ m, p * μ {x : α | T x = m} ≤ μ ({x : α | T x = m} ∩ E m)) :
+    p * μ Set.univ ≤ μ {x : α | ∃ m : ℕ, T x = m ∧ x ∈ E m} := by
+  have hfib_meas : ∀ m : ℕ, MeasurableSet {x : α | T x = m} := by
+    intro m
+    have hsing : MeasurableSet ({m} : Set ℕ) := measurableSet_singleton m
+    exact MeasurableSet.preimage hsing hT
+  have hfib_disj : Pairwise (Function.onFun Disjoint fun m : ℕ => {x : α | T x = m}) := by
+    intro m1 m2 hneq
+    change Disjoint {x : α | T x = m1} {x : α | T x = m2}
+    rw [Set.disjoint_left]
+    intro x hx1 hx2
+    exact hneq (hx1.symm.trans hx2)
+  have h_union : (⋃ m : ℕ, {x : α | T x = m}) = Set.univ := by
+    ext x
+    simp
+  have hsum_fib : μ Set.univ = ∑' m : ℕ, μ {x : α | T x = m} := by
+    rw [← h_union]
+    exact measure_iUnion hfib_disj hfib_meas
+  have hfibE_meas : ∀ m : ℕ, MeasurableSet ({x : α | T x = m} ∩ E m) := by
+    intro m
+    exact (hfib_meas m).inter (hE m)
+  have hfibE_disj : Pairwise (Function.onFun Disjoint fun m : ℕ => ({x : α | T x = m} ∩ E m)) := by
+    intro m1 m2 hneq
+    change Disjoint ({x : α | T x = m1} ∩ E m1) ({x : α | T x = m2} ∩ E m2)
+    rw [Set.disjoint_left]
+    intro x hx1 hx2
+    exact hneq (hx1.1.symm.trans hx2.1)
+  have h_unionE : μ {x : α | ∃ m : ℕ, T x = m ∧ x ∈ E m} =
+      ∑' m : ℕ, μ ({x : α | T x = m} ∩ E m) := by
+    have hset : {x : α | ∃ m : ℕ, T x = m ∧ x ∈ E m} = ⋃ m : ℕ, ({x : α | T x = m} ∩ E m) := by
+      ext x
+      simp
+    rw [hset]
+    exact measure_iUnion hfibE_disj hfibE_meas
+  calc
+    p * μ Set.univ = p * ∑' m : ℕ, μ {x : α | T x = m} := by rw [hsum_fib]
+    _ = ∑' m : ℕ, p * μ {x : α | T x = m} := by rw [ENNReal.tsum_mul_left]
+    _ ≤ ∑' m : ℕ, μ ({x : α | T x = m} ∩ E m) := by exact ENNReal.tsum_le_tsum h_step
+    _ = μ {x : α | ∃ m : ℕ, T x = m ∧ x ∈ E m} := by rw [h_unionE]
+
+/-- Trace-specialized fiber lower bound.
+
+This is the theorem shape the stopping-time kernel proof will
+instantiate once the per-selector fiber bound is available. It simply
+packages `measure_selector_fiber_lower_bound` for the trace measure. -/
+theorem traceDist_selector_fiber_lower_bound
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+    {spec : ProbActionSpec σ ι}
+    (A : Adversary σ ι)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (T : Trace σ ι → ℕ) (hT : Measurable T)
+    (E : ℕ → Set (Trace σ ι)) (hE : ∀ m, MeasurableSet (E m))
+    (p : ENNReal)
+    (h_step : ∀ m, p * (traceDist spec A μ₀) {ω : Trace σ ι | T ω = m} ≤
+        (traceDist spec A μ₀) ({ω : Trace σ ι | T ω = m} ∩ E m)) :
+    p * (traceDist spec A μ₀) Set.univ ≤
+      (traceDist spec A μ₀) {ω : Trace σ ι | ∃ m : ℕ, T ω = m ∧ ω ∈ E m} := by
+  simpa using
+    measure_selector_fiber_lower_bound (μ := traceDist spec A μ₀) T hT E hE p h_step
+
+/-- A `RunningMinDropAt` event strictly decreases the running minimum
+at the successor time. -/
+theorem runningMinU_succ_lt_of_drop
+    (cert : FairASTCertificate spec F terminated) (ω : Trace σ ι) (n : ℕ)
+    (hdrop : RunningMinDropAt cert ω n) :
+    runningMinU cert ω (n + 1) < runningMinU cert ω n := by
+  unfold RunningMinDropAt at hdrop
+  rw [runningMinU_succ, Nat.min_eq_right (le_of_lt hdrop)]
+  exact hdrop
+
+/-- Infinitely many running-minimum drops imply arbitrarily large
+finite descents below the initial running minimum. -/
+theorem runningMinU_descent_of_drop_io
+    (cert : FairASTCertificate spec F terminated) (ω : Trace σ ι)
+    (hio : ∀ K : ℕ, ∃ n ≥ K, RunningMinDropAt cert ω n) :
+    ∀ k : ℕ, ∃ n : ℕ,
+      runningMinU cert ω n + k ≤ cert.U (ω 0).1 := by
+  classical
+  let pick : ℕ → ℕ := fun K => Classical.choose (hio K)
+  have hpick_ge : ∀ K, K ≤ pick K := fun K =>
+    (Classical.choose_spec (hio K)).1
+  have hpick_drop : ∀ K, RunningMinDropAt cert ω (pick K) := fun K =>
+    (Classical.choose_spec (hio K)).2
+  let t : ℕ → ℕ := Nat.rec 0 (fun _ prev => pick prev + 1)
+  have ht_succ : ∀ k, t (k + 1) = pick (t k) + 1 := fun _ => rfl
+  have hdecay : ∀ k : ℕ,
+      runningMinU cert ω (t k) + k ≤ runningMinU cert ω 0 := by
+    intro k
+    induction k with
+    | zero =>
+      simp [t]
+    | succ k ih =>
+      have hmono : runningMinU cert ω (pick (t k)) ≤ runningMinU cert ω (t k) :=
+        runningMinU_mono cert ω (hpick_ge (t k))
+      have hdrop : runningMinU cert ω (pick (t k) + 1) <
+          runningMinU cert ω (pick (t k)) :=
+        runningMinU_succ_lt_of_drop cert ω (pick (t k)) (hpick_drop (t k))
+      rw [ht_succ k]
+      omega
+  intro k
+  refine ⟨t k, ?_⟩
+  simpa using hdecay k
+
+/-- Post-Borel-Cantelli running-minimum descent witness for a fixed
+`V` sublevel. This is the direct output expected from a conditional
+Borel-Cantelli theorem applied to new-minimum drop events. -/
+def TrajectoryRunningMinDescent (spec : ProbActionSpec σ ι)
+    (F : FairnessAssumptions σ ι)
+    (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (A : FairAdversary σ ι F) (N : ℕ) : Prop :=
+  ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+    (∀ n : ℕ, cert.V (ω n).1 ≤ (N : ℝ≥0)) →
+      (∀ n : ℕ, ¬ terminated (ω n).1) →
+        ∀ k : ℕ, ∃ n : ℕ,
+          runningMinU cert ω n + k ≤ cert.U (ω 0).1
+
+/-- Conditional-Borel-Cantelli target event: fair firings lower the
+running minimum infinitely often on bad traces in a fixed sublevel. -/
+def TrajectoryFairRunningMinDropIO (spec : ProbActionSpec σ ι)
+    (F : FairnessAssumptions σ ι)
+    (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (A : FairAdversary σ ι F) (N : ℕ) : Prop :=
+  ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+    (∀ n : ℕ, cert.V (ω n).1 ≤ (N : ℝ≥0)) →
+      (∀ n : ℕ, ¬ terminated (ω n).1) →
+        ∀ K : ℕ, ∃ n ≥ K, FairRunningMinDropAt F cert ω n
+
+/-- Infinitely many fair running-minimum drops give the
+running-minimum descent witness. This is the purely trajectory-level
+tail of the Borel-Cantelli proof. -/
+theorem TrajectoryFairRunningMinDropIO.toRunningMinDescent
+    (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (A : FairAdversary σ ι F) (N : ℕ) :
+    TrajectoryFairRunningMinDropIO spec F cert μ₀ A N →
+      TrajectoryRunningMinDescent spec F cert μ₀ A N := by
+  intro hio
+  unfold TrajectoryFairRunningMinDropIO at hio
+  unfold TrajectoryRunningMinDescent
+  filter_upwards [hio] with ω hω hV hne k
+  exact runningMinU_descent_of_drop_io cert ω (fun K => by
+    rcases hω hV hne K with ⟨n, hn_ge, _hfair, hdrop⟩
+    exact ⟨n, hn_ge, hdrop⟩) k
+
+/-- Post-Borel-Cantelli descent witness for a fixed `V` sublevel.
+
+On any trace that remains in the `V ≤ N` sublevel and never
+terminates, arbitrarily large finite descents below the initial
+`U`-value occur. This is the natural-number contradiction yielded by
+the running-minimum form of conditional Borel-Cantelli. -/
+def TrajectoryBCDescent (spec : ProbActionSpec σ ι)
+    (F : FairnessAssumptions σ ι)
+    (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (A : FairAdversary σ ι F) (N : ℕ) : Prop :=
+  ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+    (∀ n : ℕ, cert.V (ω n).1 ≤ (N : ℝ≥0)) →
+      (∀ n : ℕ, ¬ terminated (ω n).1) →
+        ∀ k : ℕ, ∃ n : ℕ, cert.U (ω n).1 + k ≤ cert.U (ω 0).1
+
+/-- A running-minimum descent witness implies the simpler
+`TrajectoryBCDescent` witness by choosing a prefix state attaining
+the running minimum. -/
+theorem TrajectoryRunningMinDescent.toBCDescent
+    (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (A : FairAdversary σ ι F) (N : ℕ) :
+    TrajectoryRunningMinDescent spec F cert μ₀ A N →
+      TrajectoryBCDescent spec F cert μ₀ A N := by
+  intro hmin
+  unfold TrajectoryRunningMinDescent at hmin
+  unfold TrajectoryBCDescent
+  filter_upwards [hmin] with ω hω hV hne k
+  rcases hω hV hne k with ⟨n, hn⟩
+  rcases runningMinU_prefix_witness cert ω n with ⟨m, _hm_le, hm_eq⟩
+  refine ⟨m, ?_⟩
+  simpa [hm_eq] using hn
+
+/-- Infinitely many fair running-minimum drops imply the
+`TrajectoryBCDescent` witness consumed by the fair sublevel rule. -/
+theorem TrajectoryFairRunningMinDropIO.toBCDescent
+    (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (A : FairAdversary σ ι F) (N : ℕ) :
+    TrajectoryFairRunningMinDropIO spec F cert μ₀ A N →
+      TrajectoryBCDescent spec F cert μ₀ A N := by
+  intro hio
+  exact TrajectoryRunningMinDescent.toBCDescent cert μ₀ A N
+    (TrajectoryFairRunningMinDropIO.toRunningMinDescent cert μ₀ A N hio)
+
+/-- General fair sublevel rule from a post-Borel-Cantelli descent
+witness.
+
+The missing analytic theorem should establish `TrajectoryBCDescent`
+from the stochastic lower-bound obligations. Once that witness is
+available, termination follows by the same bounded-variant
+contradiction used in the monotone specialization. -/
+theorem pi_n_AST_fair_with_progress_bc
+    (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
+    (A : FairAdversary σ ι F)
+    (N : ℕ)
+    (h_bc : TrajectoryBCDescent spec F cert μ₀ A N) :
+    ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+      (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 := by
+  obtain ⟨M, hM⟩ := cert.U_bdd_subl (N : ℝ≥0)
+  have hbox_inv : AlmostBox spec A.toAdversary μ₀ cert.Inv :=
+    AlmostBox_of_inductive cert.Inv
+      (fun i s h hInv s' hs' => cert.inv_step i s h hInv s' hs')
+      μ₀ h_init_inv A.toAdversary
+  unfold AlmostBox at hbox_inv
+  unfold TrajectoryBCDescent at h_bc
+  filter_upwards [hbox_inv, h_bc] with ω hInv_all hDescent hVbnd
+  by_contra hne
+  push_neg at hne
+  have hU0_bdd : cert.U (ω 0).1 ≤ M := hM _ (hInv_all 0) (hVbnd 0)
+  obtain ⟨n, hn⟩ := hDescent hVbnd hne (M + 1)
+  have hn' : M + 1 ≤ cert.U (ω 0).1 := by omega
+  omega
+
+/-- General fair sublevel rule from the Borel-Cantelli target event:
+fair firings lower the running minimum infinitely often on bad traces
+in the fixed `V` sublevel. -/
+theorem pi_n_AST_fair_with_progress_bc_of_running_min_drops
+    (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
+    (A : FairAdversary σ ι F)
+    (N : ℕ)
+    (h_drop_io : TrajectoryFairRunningMinDropIO spec F cert μ₀ A N) :
+    ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+      (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 :=
+  pi_n_AST_fair_with_progress_bc cert μ₀ h_init_inv A N
+    (TrajectoryFairRunningMinDropIO.toBCDescent cert μ₀ A N h_drop_io)
+
+/-- **Fair sublevel finite-variant rule with explicit trajectory
+progress witness — Borel-Cantelli form.**
+
+Same shape as `pi_n_AST_fair` but takes a `TrajectoryFairProgress`
+hypothesis explicitly *plus* a `TrajectoryFairRunningMinDropIO`
+witness packaging the conditional Borel-Cantelli output (fair
+running-minimum drops happen i.o. on bad traces).
+
+This is the **post-Borel-Cantelli** form of the fair sublevel rule:
+the analytic content (deriving the running-minimum-drop-IO event
+from `cert.U_dec_prob` plus trajectory fair progress via
+conditional Borel-Cantelli) is delegated to the call site. The
+deterministic specialisation `pi_n_AST_fair_with_progress_det` covers
+all concrete protocols (Bracha, AVSS, common-coin) that satisfy
+`U`-monotonicity along trajectories; this general form is a strict
+generalisation needed when the per-step decrease is genuinely
+probabilistic (e.g., common-coin protocols where the local
+randomness can resample `U` on fair firings).
+
+**Internal note:** the previous `pi_n_AST_fair_with_progress` used a
+chain-witness packaging (`pi_n_AST_fair_chain_witness`) that has
+been retired in favor of this clearer running-minimum-drop bridge
+(see `docs/randomized-leslie-spike/13-fair-ast-borel-cantelli-plan.md`).
+The remaining analytic obligation — to derive
+`TrajectoryFairRunningMinDropIO` from the certificate fields and the
+trajectory fair-progress witness — is documented as items 1–3 of the
+plan's Remaining section. Concrete protocols can either close that
+obligation per-protocol or use the deterministic specialisation. -/
+theorem pi_n_AST_fair_with_progress
+    (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
+    (A : FairAdversary σ ι F)
+    (_h_progress : TrajectoryFairProgress spec F μ₀ A)
+    (N : ℕ)
+    (h_drop_io : TrajectoryFairRunningMinDropIO spec F cert μ₀ A N) :
+    ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+      (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 :=
+  pi_n_AST_fair_with_progress_bc_of_running_min_drops cert μ₀
+    h_init_inv A N h_drop_io
+
+/-- Fair sublevel finite-variant rule with explicit trajectory
+progress and monotone-variant witnesses.
+
+This is the sound monotone specialization of the fair rule: `U` is
+non-increasing along all trajectory steps, and strictly decreases on
+fair-required firings while non-terminated in the current `V` sublevel. -/
+theorem pi_n_AST_fair (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
+    (A : FairAdversary σ ι F)
+    (h_progress : TrajectoryFairProgress spec F μ₀ A)
+    (N : ℕ)
+    (h_U_mono : TrajectoryUMono spec F cert μ₀ A)
+    (h_U_strict : TrajectoryFairStrictDecrease spec F cert μ₀ A N) :
+    ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+      (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 :=
+  pi_n_AST_fair_with_progress_det cert μ₀ h_init_inv A h_progress N
+    h_U_mono h_U_strict
+
 /-- **Step 2 — exceptional set `Π_∞` is null (fair version).**
 With `V_init_bdd` giving a uniform bound `K` on the invariant set
 and the inductive preservation of `Inv` along trajectories, every
@@ -1159,7 +1738,11 @@ theorem partition_almostDiamond_fair
     (cert : FairASTCertificate spec F terminated)
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
     (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
-    (A : FairAdversary σ ι F) :
+    (A : FairAdversary σ ι F)
+    (h_progress : TrajectoryFairProgress spec F μ₀ A)
+    (h_U_mono : TrajectoryUMono spec F cert μ₀ A)
+    (h_U_strict : ∀ N : ℕ,
+      TrajectoryFairStrictDecrease spec F cert μ₀ A N) :
     AlmostDiamond spec A.toAdversary μ₀ terminated := by
   unfold AlmostDiamond
   have hbounded_or_unbounded :
@@ -1183,34 +1766,29 @@ theorem partition_almostDiamond_fair
     exact pi_infty_zero_fair cert μ₀ h_init_inv A
   have h_each_N : ∀ N : ℕ, ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
       (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 :=
-    fun N => pi_n_AST_fair cert μ₀ h_init_inv A N
+    fun N => pi_n_AST_fair cert μ₀ h_init_inv A h_progress N
+      h_U_mono (h_U_strict N)
   rw [← MeasureTheory.ae_all_iff] at h_each_N
   filter_upwards [h_each_N, h_inf_null] with ω hN h_inf
   rcases hbounded_or_unbounded ω with ⟨N, hbnd⟩ | hunb
   · exact hN N hbnd
   · exact absurd hunb h_inf
 
-/-- Fair AST certificate soundness: under a weakly-fair adversary,
-every execution AE terminates.
-
-**Status (M3 W3):** reduced to a single sorry'd lemma —
-`pi_n_AST_fair` (sublevel-set fair-finite-variant rule). The
-companion `pi_infty_zero_fair` is closed via
-`Refinement.AlmostBox_of_inductive` + `cert.V_init_bdd`; the
-partition argument `partition_almostDiamond_fair` closes without
-sorry once `pi_n_AST_fair` lands.
-
-Unlike the demonic counterpart `ASTCertificate.sound` (whose
-`pi_n_AST` is blocked on a *statement-level* stuttering-adversary
-issue), the fair version's `pi_n_AST_fair` is only blocked on the
-*Mathlib-level* filtration plumbing. The fair adversary's
-`isWeaklyFair` predicate rules out the stuttering counterexample. -/
+/-- Fair AST certificate soundness under trajectory-fair progress and
+monotone variant witnesses. This theorem is axiom-clean: it uses the
+closed deterministic finite-descent specialization rather than the
+open conditional Borel-Cantelli chain witness. -/
 theorem sound (cert : FairASTCertificate spec F terminated)
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
     (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
-    (A : FairAdversary σ ι F) :
+    (A : FairAdversary σ ι F)
+    (h_progress : TrajectoryFairProgress spec F μ₀ A)
+    (h_U_mono : TrajectoryUMono spec F cert μ₀ A)
+    (h_U_strict : ∀ N : ℕ,
+      TrajectoryFairStrictDecrease spec F cert μ₀ A N) :
     AlmostDiamond spec A.toAdversary μ₀ terminated :=
-  partition_almostDiamond_fair cert μ₀ h_init_inv A
+  partition_almostDiamond_fair cert μ₀ h_init_inv A h_progress
+    h_U_mono h_U_strict
 
 end FairASTCertificate
 
