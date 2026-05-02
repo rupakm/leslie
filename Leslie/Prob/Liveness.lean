@@ -64,13 +64,20 @@ POPL 2025 proof. -/
 
 /-- Demonic almost-sure-termination certificate (POPL 2025 Rule 3.2).
 
-The certificate's correctness is captured by `ASTCertificate.sound`:
-a `traceDist`-AE statement asserting that `terminated` eventually
-holds. The fields encode the proof obligations the rule requires.
+The fields encode the proof obligations the POPL 2025 demonic AST
+rule requires.
 
-**Status (entry gate):** field types pinned; proofs of internal
-lemmas and `sound` are sorry'd. The shape is verified to compile
-against `Examples/Prob/AVSSStub.lean`. -/
+**No `sound` theorem is exported for this structure.** The demonic
+rule is provably false under our `Adversary` model because of the
+stuttering schedule (`A.schedule _ = none` everywhere). Concrete
+protocols in this development use `FairASTCertificate` (POPL 2026
+fair extension) instead — fairness rules out indefinite stuttering
+on fair-required actions, restoring soundness. See
+`docs/randomized-leslie-spike/10-stuttering-adversary-finding.md`.
+The structure is retained so calibration tests
+(e.g., `Examples/Prob/RandomWalker1D.lean`) can validate the
+certificate field shape; lifting helpers `liftV` / `liftU` are kept
+for any future demonic-AST development. -/
 structure ASTCertificate
     [Countable σ] [Countable ι]
     [MeasurableSpace σ] [MeasurableSingletonClass σ]
@@ -137,22 +144,40 @@ variable [Countable σ] [Countable ι]
   [MeasurableSpace ι] [MeasurableSingletonClass ι]
   {spec : ProbActionSpec σ ι} {terminated : σ → Prop}
 
-/-! ### Soundness — proof skeleton
+/-! ### Soundness — NOT provided for the demonic version
 
-The POPL 2025 §3 Lemma 3.2 soundness proof decomposes into four
-named steps. We expose each step as its own intermediate result
-(`pi_n_AST`, `pi_infty_zero`, `partition_almostDiamond`); each
-carries one clearly-scoped Mathlib-side gap that landing closes
-`sound` mechanically via `partition_almostDiamond`. -/
+The POPL 2025 §3 Lemma 3.2 demonic AST rule is **provably false**
+under our `Adversary` model, which permits stuttering schedules
+(`A.schedule _ = none` everywhere). On such a stuttering trace the
+state is constant, so any `cert.V (ω n).1 ≤ N` hypothesis is
+trivially satisfied while termination need not hold. The standard
+POPL 2025 statement implicitly assumes a non-stuttering adversary;
+our weaker `Adversary` model makes the rule unsound as-stated.
+
+We therefore **do not export** `ASTCertificate.sound`. Concrete
+protocols use `FairASTCertificate.sound` (the POPL 2026 fair
+extension) instead — fairness rules out indefinite stuttering on
+fair-required actions, restoring soundness. The fair version's
+`sound` is closed (modulo trajectory-form witnesses on the caller's
+side); see `FairASTCertificate.sound_traj_det` for the
+deterministic-protocol consumer-friendly form.
+
+Possible future work: refine `ASTCertificate` with a non-stuttering
+field on the adversary (a `progress`-style hypothesis ruling out
+indefinite stuttering at non-terminated states), restoring the
+demonic rule to soundness. Documented in
+`docs/randomized-leslie-spike/10-stuttering-adversary-finding.md`.
+For now, only the structure `ASTCertificate` itself is exported,
+without a soundness theorem; calibration tests
+(e.g., `Examples/Prob/RandomWalker1D.lean`) construct certificate
+instances to validate the structure's API but don't invoke
+soundness.
+
+The coordinate-lift helpers `liftV` and `liftU` below are kept as
+useful primitives for any future demonic-AST development. -/
 
 /-- Coordinate-`n` lift of the certificate's likelihood
-supermartingale `cert.V` to the trace measure: `Vₙ ω = cert.V (ω n).1`.
-
-This is the per-coordinate process that the supermartingale
-machinery (`MeasureTheory.Supermartingale`) acts on. The
-supermartingale property under `traceDist spec A μ₀` follows from
-`cert.V_super` plus the joint-marginal recurrence already used in
-`Refinement.AlmostBox_of_pure_inductive`. -/
+supermartingale `cert.V` to the trace measure: `Vₙ ω = cert.V (ω n).1`. -/
 noncomputable def liftV (cert : ASTCertificate spec terminated)
     (n : ℕ) (ω : Trace σ ι) : ℝ≥0 :=
   cert.V ((ω n).1)
@@ -162,182 +187,6 @@ noncomputable def liftV (cert : ASTCertificate spec terminated)
 def liftU (cert : ASTCertificate spec terminated) (n : ℕ)
     (ω : Trace σ ι) : ℕ :=
   cert.U ((ω n).1)
-
-/-- **Step 1 — sublevel set `Π_n`.** On the sublevel set
-`{ω | ∀ k, cert.V (ω k).1 ≤ N}`, almost-sure termination follows
-from `U_bdd_subl` plus the standard probabilistic finite-variant
-rule (POPL 2025 §3 Rule 3.1).
-
-Formally: with `U_bdd_subl N = M`, the variant `liftU` is
-uniformly bounded by `M` along the prefix; with `U_dec_prob N = p`,
-each step decreases `U` with probability ≥ `p`. The variant
-strictly decreases at most `M` times before forcing termination,
-so the geometric tail bound gives AST.
-
-**Status:** `sorry`. Two gaps stand between this and a closed proof:
-
-1. **Statement-level**: as written, the theorem is technically *false*
-   under the demonic adversary that always stutters
-   (`A.schedule _ = none` everywhere). On such a trace the state is
-   constant, so `V (ω n).1 = V (ω 0).1` for all `n`, making the
-   hypothesis `∀ n, V (ω n).1 ≤ N` vacuously true for any
-   `N ≥ V (ω 0).1`, while termination need not hold. The fix is a
-   `cert`-level "non-stuttering" / progress field (e.g., a fairness
-   constraint on the adversary, or a `Inv s → ¬terminated s →
-   ∃ i, (spec.actions i).gate s` field) — but adding it requires
-   amending `ASTCertificate`, which is outside the M3 W2 budget and
-   needs design discussion.
-
-2. **Mathlib-level**: even with the missing field, the assembly is
-   the standard finite-variant rule (positive-probability decrease
-   + bounded variant ⇒ AS termination). Mathlib provides the
-   geometric-tail / Borel–Cantelli ingredients
-   (`MeasureTheory.measure_eq_zero_of_summable_indicator`,
-   `ENNReal.tsum_geometric_lt_top`, etc.) but the assembly into a
-   positive-probability-decrease + bounded-variant AST conclusion
-   is not packaged. ~250 LOC of filtration plumbing.
-
-Tracked under M3 W3. Concrete protocols satisfy a deterministic-
-decrease specialisation that closes via the simpler step-counting
-argument; this can be added as a separate lemma `pi_n_AST_det` once
-the statement-level field is added. -/
-theorem pi_n_AST (cert : ASTCertificate spec terminated)
-    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
-    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
-    (A : Adversary σ ι) (N : ℕ) :
-    ∀ᵐ ω ∂(traceDist spec A μ₀),
-      (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 := by
-  sorry
-
-/-- **Step 2 — exceptional set `Π_∞` is null.** With `V_init_bdd`
-giving a uniform bound `K` on the invariant set, plus the inductive
-preservation of `Inv` along trajectories (from `inv_step`), every
-trajectory in the support of `traceDist` satisfies `V (ω n).1 ≤ K`
-for all `n`. So the "unbounded" set `{ω | ∀ N, ¬ (∀ n, V ≤ N)}` is
-contained in the negation of "∃ N, ∀ n, V ≤ N", which the bound
-makes empty modulo the AE-`Inv` hypothesis.
-
-The proof reduces `Π_∞` to a `traceDist`-measure-zero set via the
-inductive invariant lift (an `AlmostBox`-style argument that's
-exactly the calling pattern of `Refinement.AlmostBox_of_pure_inductive`,
-modulo specializing `P` to `Inv s ∧ V s ≤ K`).
-
-**Status:** closed (M3 W2). Uses
-`Refinement.AlmostBox_of_inductive` (non-pure-effect generalisation
-of `AlmostBox_of_pure_inductive`) to lift `cert.Inv` along
-trajectories, then combines with `cert.V_init_bdd` to bound `V`
-trajectorywise by `⌈K⌉₊` for the witness `K`. The Doob-convergence
-path is no longer needed thanks to `V_init_bdd`. -/
-theorem pi_infty_zero (cert : ASTCertificate spec terminated)
-    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
-    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
-    (A : Adversary σ ι) :
-    (traceDist spec A μ₀)
-      {ω | ∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))} = 0 := by
-  -- Extract the uniform `V`-bound `K` on the invariant set.
-  obtain ⟨K, hK⟩ := cert.V_init_bdd
-  -- Lift `cert.Inv` along trajectories via `AlmostBox_of_inductive`.
-  have hbox_inv : AlmostBox spec A μ₀ cert.Inv :=
-    AlmostBox_of_inductive cert.Inv
-      (fun i s h hInv s' hs' => cert.inv_step i s h hInv s' hs')
-      μ₀ h_init_inv A
-  -- Goal: `traceDist .. {ω | ∀ N, ¬ (∀ n, V (ω n).1 ≤ N)} = 0`.
-  -- Equivalent to: `∀ᵐ ω, ¬ (∀ N, ¬ (∀ n, V ≤ N))`.
-  have : ∀ᵐ ω ∂(traceDist spec A μ₀),
-      ¬ (∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))) := by
-    unfold AlmostBox at hbox_inv
-    filter_upwards [hbox_inv] with ω hInv_all
-    push_neg
-    refine ⟨⌈(K : ℝ≥0)⌉₊, fun n => ?_⟩
-    have h1 : cert.V (ω n).1 ≤ K := hK _ (hInv_all n)
-    have h2 : (K : ℝ≥0) ≤ ((⌈(K : ℝ≥0)⌉₊ : ℕ) : ℝ≥0) := by
-      have : (K : ℝ) ≤ (⌈(K : ℝ≥0)⌉₊ : ℝ) := Nat.le_ceil (K : ℝ≥0)
-      exact_mod_cast this
-    exact h1.trans h2
-  -- Convert AE to measure-zero.
-  rw [MeasureTheory.ae_iff] at this
-  -- Now `this : traceDist .. {ω | ¬ ¬ (∀ N, ¬ ..)} = 0`.
-  -- The set under `this` simplifies via `not_not` to the target set.
-  have hset : {a : Trace σ ι | ¬ ¬ ∀ N : ℕ, ¬ ∀ n, cert.V (a n).1 ≤ (N : ℝ≥0)} =
-      {ω : Trace σ ι | ∀ N : ℕ, ¬ ∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)} := by
-    ext ω; simp
-  rw [hset] at this
-  exact this
-
-/-- **Step 3 — partition argument.** Combine `pi_n_AST` (AST on
-each sublevel `Π_n`) with `pi_infty_zero` (the unbounded set is
-null) to conclude AST overall.
-
-This is the assembly step: the trajectory space partitions as
-`(⋃ N, {ω | ∀ n, V (ω n).1 ≤ N}) ∪ Π_∞`, and AST holds on each
-`{ω | ∀ n, V ≤ N}` (by `pi_n_AST`) and on the null set `Π_∞`
-trivially. Hence AST holds AE.
-
-The proof is countable-union AE swap (`MeasureTheory.ae_iUnion_iff`)
-plus the partitioning identity. -/
-theorem partition_almostDiamond (cert : ASTCertificate spec terminated)
-    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
-    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
-    (A : Adversary σ ι) :
-    AlmostDiamond spec A μ₀ terminated := by
-  -- Combine the partition: every ω is either bounded by some N or in Π_∞.
-  -- On bounded ω (sublevel `Π_N`), `pi_n_AST` gives AST.
-  -- On unbounded ω (`Π_∞`), the measure is zero by `pi_infty_zero`.
-  -- The union of countably many AE-events is still AE.
-  unfold AlmostDiamond
-  -- Use the trichotomy: either ∃ N, ∀ n, V (ω n).1 ≤ N, or ∀ N, ¬(...).
-  -- Filter upwards through `pi_infty_zero` to discard the unbounded set,
-  -- then through `pi_n_AST` over each `N : ℕ` to handle bounded ω.
-  have hbounded_or_unbounded :
-      ∀ ω : Trace σ ι,
-        (∃ N : ℕ, ∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) ∨
-        (∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))) := by
-    intro ω
-    by_cases h : ∃ N : ℕ, ∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)
-    · exact .inl h
-    · refine .inr ?_
-      intro N hbnd
-      exact h ⟨N, hbnd⟩
-  -- The unbounded set has measure zero.
-  have h_inf_null : ∀ᵐ ω ∂(traceDist spec A μ₀),
-      ¬ (∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))) := by
-    rw [ae_iff]
-    have heq : {a : Trace σ ι | ¬ ¬ ∀ N : ℕ, ¬ (∀ n, cert.V (a n).1 ≤ (N : ℝ≥0))} =
-        {ω : Trace σ ι | ∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))} := by
-      ext ω
-      simp
-    rw [heq]
-    exact pi_infty_zero cert μ₀ h_init_inv A
-  -- For each N, AST holds on the sublevel.
-  have h_each_N : ∀ N : ℕ, ∀ᵐ ω ∂(traceDist spec A μ₀),
-      (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 :=
-    fun N => pi_n_AST cert μ₀ h_init_inv A N
-  -- Combine via countable AE swap.
-  rw [← MeasureTheory.ae_all_iff] at h_each_N
-  filter_upwards [h_each_N, h_inf_null] with ω hN h_inf
-  rcases hbounded_or_unbounded ω with ⟨N, hbnd⟩ | hunb
-  · exact hN N hbnd
-  · exact absurd hunb h_inf
-
-/-- AST certificate soundness: under a demonic adversary, every
-execution AE terminates.
-
-**Status (M3 W2):** reduced to a single sorry'd lemma —
-`pi_n_AST` (sublevel-set finite-variant rule). The companion
-`pi_infty_zero` is now closed, using the non-pure-effect
-generalisation `Refinement.AlmostBox_of_inductive` to lift
-`cert.Inv` along trajectories and combining with `cert.V_init_bdd`
-to bound `V` trajectorywise (Doob convergence is no longer needed).
-The top-level partition argument (`partition_almostDiamond`) closes
-without sorry once `pi_n_AST` lands. See `pi_n_AST`'s docstring for
-the two outstanding gaps (statement-level non-stuttering field +
-Mathlib-level filtration plumbing). -/
-theorem sound (cert : ASTCertificate spec terminated)
-    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
-    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
-    (A : Adversary σ ι) :
-    AlmostDiamond spec A μ₀ terminated :=
-  partition_almostDiamond cert μ₀ h_init_inv A
 
 end ASTCertificate
 
@@ -464,13 +313,13 @@ sublevel set `{ω | ∀ k, cert.V (ω k).1 ≤ N}`, almost-sure
 termination follows from `U_bdd_subl` plus the fair finite-variant
 rule.
 
-Unlike the demonic counterpart `ASTCertificate.pi_n_AST`, this
-fair version does **not** suffer the stuttering-adversary issue:
+Unlike the (now-removed) demonic counterpart, this fair version
+does **not** suffer the stuttering-adversary issue:
 `A : FairAdversary σ ι F` carries the weakly-fair witness
 `A.fair : F.isWeaklyFair A.toAdversary`, which forces every
 fair-required action to fire eventually whenever continuously
-enabled. So the `always-stutter` adversary that breaks
-demonic `pi_n_AST` is excluded by the type signature.
+enabled. So the `always-stutter` adversary that breaks the
+demonic AST rule is excluded by the type signature.
 
 **Status:** this sketch is not used for `FairASTCertificate.sound`.
 The implemented rule is the monotone specialization below. The more
@@ -489,9 +338,9 @@ The proof sketch (assuming the assembly):
      `terminated`-equivalence on `U = 0` (from `cert.V_pos` +
      `cert.U_term`).
 
-Tracked under M3 W3+. The Mathlib gap is shared with
-`ASTCertificate.pi_n_AST`; closing one closes the other modulo the
-fair-action filtering.
+Tracked under M3 W3+. The general (non-monotone) Mathlib gap is
+the conditional Borel-Cantelli filtration plumbing; see
+`docs/randomized-leslie-spike/14-stopping-time-and-borel-cantelli.md`.
 
 **Two stacked gaps** (see `docs/randomized-leslie-spike/11-fair-progress-blocker.md`):
 
@@ -1692,9 +1541,8 @@ and the inductive preservation of `Inv` along trajectories, every
 trajectory in the support of `traceDist` satisfies `V (ω n).1 ≤ K`
 for all `n`.
 
-Proof is identical to `ASTCertificate.pi_infty_zero`: lift `Inv`
-via `AlmostBox_of_inductive`, then bound `V` trajectorywise by
-`⌈K⌉₊`. -/
+Proof: lift `Inv` via `AlmostBox_of_inductive`, then bound `V`
+trajectorywise by `⌈K⌉₊`. -/
 theorem pi_infty_zero_fair (cert : FairASTCertificate spec F terminated)
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
     (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
@@ -1733,7 +1581,8 @@ theorem pi_infty_zero_fair (cert : FairASTCertificate spec F terminated)
 `pi_n_AST_fair` (AST on each sublevel) with `pi_infty_zero_fair`
 (unbounded set is null) to conclude AST overall.
 
-Proof structure mirrors `ASTCertificate.partition_almostDiamond`. -/
+Proof: countable-union AE swap (`MeasureTheory.ae_iUnion_iff`)
+plus the bounded-vs-unbounded partition. -/
 theorem partition_almostDiamond_fair
     (cert : FairASTCertificate spec F terminated)
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]

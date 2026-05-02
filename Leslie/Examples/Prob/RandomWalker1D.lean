@@ -45,8 +45,10 @@ brevity.
   * Probabilistic branching with multiple support points — that's
     Knuth-Yao's job (`Examples/Prob/KnuthDice.lean`) at the
     single-step level. AVSS-style probabilistic AST is calibrated
-    by the AST soundness proof itself (`ASTCertificate.sound`), not
-    by this example.
+    by `FairASTCertificate.sound` (the fair extension, since the
+    demonic `ASTCertificate` is provably unsound under stuttering
+    adversaries — see `docs/randomized-leslie-spike/10-stuttering-
+    adversary-finding.md`), not by this example.
   * Fairness — that's the fair extension (`FairASTCertificate`),
     calibrated separately at M3 W3 by the Ben-Or-async example.
 -/

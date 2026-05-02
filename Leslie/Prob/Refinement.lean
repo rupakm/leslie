@@ -391,7 +391,8 @@ Generalises `AlmostBox_of_pure_inductive` to arbitrary `PMF` effects:
 instead of requiring every action's effect to be a Dirac, we require
 that an inductive predicate `P` is preserved on the *support* of the
 effect distribution. This is the form needed by
-`ASTCertificate.pi_infty_zero` (where `P` is the certificate's `Inv`).
+`FairASTCertificate.pi_infty_zero_fair` (where `P` is the
+certificate's `Inv`).
 
 Proof structure mirrors `AlmostBox_of_pure_inductive` exactly: the
 only divergence is in the gate-pass branch of the per-step kernel,
