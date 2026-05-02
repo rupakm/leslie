@@ -672,6 +672,64 @@ theorem traceDist_kernel_step_bound
   rw [MeasureTheory.setLIntegral_const] at h_const
   exact h_const
 
+/-! ### Stopping-time kernel lower bound
+
+A "for-every-fixed-m" packaging of `traceDist_kernel_step_bound`.
+Given a per-fiber prefix set family `S : (m : ℕ) → Set (FinPrefix σ ι m)`
+and a per-fiber target family `T : (m : ℕ) → FinPrefix σ ι m → Set (σ × Option ι)`,
+plus a uniform per-step kernel lower bound `p`, the trace measure
+satisfies the per-`m` kernel bound at every step.
+
+This is the input to fiber-sum reductions (see
+`Leslie.Prob.FairASTCertificate.measure_selector_fiber_lower_bound`
+and `traceDist_selector_fiber_lower_bound` in `Liveness.lean`)
+which sum over a measurable stopping time `τ : Trace σ ι → ℕ` to
+obtain the conditional-form lower bound used in the Borel-Cantelli
+proof of general fair AST.
+
+Concretely, callers wanting a stopping-time-form bound can:
+
+1. Use this lemma per-`m` to populate `traceDist_selector_fiber_lower_bound`'s
+   `h_step` hypothesis (intersecting with the τ-fiber `{τ = m}` as needed).
+2. Sum across `m` via the fiber-sum lemma.
+
+The mechanical form is just iterating `traceDist_kernel_step_bound` —
+this lemma is exposed as a named convenience so downstream
+Borel-Cantelli code doesn't have to re-derive the per-fiber bound at
+each call site. -/
+
+/-- **Stopping-time kernel lower bound (per-fiber form).**
+
+For each step index `m`, the trace-measure kernel-disintegration bound
+applies: assuming `p ≤ (stepKernel spec A m h)(T m h)` for every
+prefix `h ∈ S m`, the joint event "prefix in `S m` and the next
+coordinate falls in `T m`" has at least `p`-fraction of the
+prefix-in-`S m` mass.
+
+This is the "fiber" input to summation arguments used in the
+Borel-Cantelli proof of general fair AST. The fiber-sum lemma
+in `Liveness.lean` (`measure_selector_fiber_lower_bound`) takes
+these per-fiber bounds and produces a stopping-time-conditional
+lower bound on the union over fibers `{τ = m}`. -/
+theorem traceDist_kernel_stoppingTime_bound
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+    {spec : ProbActionSpec σ ι}
+    (A : Adversary σ ι)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (S : (m : ℕ) → Set (FinPrefix σ ι m))
+    (T : (m : ℕ) → FinPrefix σ ι m → Set (σ × Option ι))
+    (p : ENNReal)
+    (h_step : ∀ m, ∀ h ∈ S m, p ≤ (stepKernel spec A m h) (T m h))
+    (m : ℕ) :
+    p * (traceDist spec A μ₀)
+        {ω : Trace σ ι | Preorder.frestrictLe m ω ∈ S m} ≤
+      (traceDist spec A μ₀)
+        {ω : Trace σ ι | Preorder.frestrictLe m ω ∈ S m ∧
+          ω (m + 1) ∈ T m (Preorder.frestrictLe m ω)} :=
+  traceDist_kernel_step_bound A μ₀ m (S m) (T m) p (h_step m)
+
 /-! ### Refines_safe
 
 If `Π` refines `Σ` (via `proj`) and `φ` holds always for `Σ`'s
