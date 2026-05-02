@@ -1908,6 +1908,97 @@ theorem avss_termination_AS_fair
     exact (avssCert (t := t) sec corr).inv_init s hs
   exact FairASTCertificate.sound (avssCert (t := t) sec corr) μ₀ h_init' A
 
+/-- **Axiom-clean** variant of `avss_termination_AS_fair`.
+
+Re-discharges termination through the deterministic specialisation
+`FairASTCertificate.pi_n_AST_fair_with_progress_det` (closed sorry-free
+in `Liveness.lean`) plus the closed `pi_infty_zero_fair`, replacing the
+generic sorry-dependent `partition_almostDiamond_fair` route.
+
+Takes three additional witnesses bundled with the adversary:
+
+  * `A : TrajectoryFairAdversary` — bundles a `FairAdversary` with the
+    trajectory-form `TrajectoryFairProgress` witness (AE-i.o. firing of
+    fair actions along the trace).
+  * `h_U_mono : TrajectoryUMono` — `cert.U` is non-increasing along
+    every trajectory step.
+  * `h_U_strict : ∀ N, TrajectoryFairStrictDecrease ... N` — at every
+    step from a state in the V≤N sublevel, a fair firing strictly
+    decreases `cert.U`.
+
+For the deterministic AVSS protocol (every effect is `PMF.pure`) the
+last two witnesses are derivable from `avssCert`'s
+`U_dec_det`/`V_super`/`V_super_fair` fields, but threading the
+derivation here is a separate ~100-LOC trajectory-plumbing exercise.
+The signature here suffices to make the theorem **axiom-clean**:
+`#print axioms` shows `[propext, Classical.choice, Quot.sound]` only,
+no `sorryAx`.
+
+Inlines the body of the would-be `FairASTCertificate.sound_traj_det`
+(deferred in `Liveness.lean` due to a `whnf` heartbeat blowup during
+elaboration of its signature). The proof structure mirrors
+`partition_almostDiamond_fair` with `pi_n_AST_fair` swapped for
+`pi_n_AST_fair_with_progress_det`. -/
+theorem avss_termination_AS_fair_traj
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (A : Leslie.Prob.TrajectoryFairAdversary
+            (avssSpec (t := t) sec corr) avssFair μ₀)
+    (h_U_mono : FairASTCertificate.TrajectoryUMono
+        (avssSpec (t := t) sec corr) avssFair
+        (avssCert (t := t) sec corr) μ₀ A.toFair)
+    (h_U_strict : ∀ N : ℕ, FairASTCertificate.TrajectoryFairStrictDecrease
+        (avssSpec (t := t) sec corr) avssFair
+        (avssCert (t := t) sec corr) μ₀ A.toFair N) :
+    AlmostDiamond (avssSpec (t := t) sec corr) A.toAdversary μ₀ terminated := by
+  -- Build the certificate-level invariant initialisation.
+  have h_init_inv : ∀ᵐ s ∂μ₀, (avssCert (t := t) sec corr).Inv s := by
+    filter_upwards [h_init] with s hs
+    exact (avssCert (t := t) sec corr).inv_init s hs
+  -- Inline the `partition_almostDiamond_fair` argument with
+  -- `pi_n_AST_fair_with_progress_det` in place of `pi_n_AST_fair`.
+  set cert := avssCert (t := t) sec corr with hcertdef
+  unfold AlmostDiamond
+  -- Bounded-or-unbounded dichotomy on V along every trajectory.
+  have hbounded_or_unbounded :
+      ∀ ω : Trace (AVSSState n t F) (AVSSAction n F),
+        (∃ N : ℕ, ∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) ∨
+        (∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))) := by
+    intro ω
+    by_cases h : ∃ N : ℕ, ∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)
+    · exact .inl h
+    · refine .inr ?_
+      intro N hbnd
+      exact h ⟨N, hbnd⟩
+  -- The unbounded set is null (`pi_infty_zero_fair`, closed).
+  have h_inf_null :
+      ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A.toAdversary μ₀),
+      ¬ (∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))) := by
+    rw [ae_iff]
+    have heq :
+        {a : Trace (AVSSState n t F) (AVSSAction n F) |
+            ¬ ¬ ∀ N : ℕ, ¬ (∀ n, cert.V (a n).1 ≤ (N : ℝ≥0))} =
+        {ω : Trace (AVSSState n t F) (AVSSAction n F) |
+            ∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))} := by
+      ext ω; simp
+    rw [heq]
+    -- `A.toAdversary = A.toFair.toAdversary` by definition of
+    -- `TrajectoryFairAdversary.toAdversary`.
+    exact FairASTCertificate.pi_infty_zero_fair cert μ₀ h_init_inv A.toFair
+  -- Each sublevel is AE-terminating (`pi_n_AST_fair_with_progress_det`,
+  -- closed sorry-free).
+  have h_each_N : ∀ N : ℕ,
+      ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A.toAdversary μ₀),
+        (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 :=
+    fun N => FairASTCertificate.pi_n_AST_fair_with_progress_det
+      cert μ₀ h_init_inv A.toFair A.progress N h_U_mono (h_U_strict N)
+  rw [← MeasureTheory.ae_all_iff] at h_each_N
+  filter_upwards [h_each_N, h_inf_null] with ω hN h_inf
+  rcases hbounded_or_unbounded ω with ⟨N, hbnd⟩ | hunb
+  · exact hN N hbnd
+  · exact absurd hunb h_inf
+
 /-! ## §17. Secrecy
 
 Direct passthrough to `BivariateShamir.bivariate_shamir_secrecy`. The
