@@ -29,9 +29,12 @@ Builds every `Leslie.Prob.*` library module and every
     `Adversary`, `Coupling`, `Embed`, `PMF`, `Polynomial`, `Refinement`,
     `Trace`. Sorry-free.
   * **Examples** (`Leslie.Examples.Prob.*`): protocols + calibration —
-    `BivariateShamir`, `BrachaRBC`, `CouplingDemo`, `ITMAC`, `KnuthDice`,
-    `OneTimePad`, `RandomWalker1D`, `Shamir`, `Smoke`, `SyncVSS`. One
-    sorry on `BrachaRBC.brbProb_totality_AS_fair` (M3 W1 work).
+    `AVSS`, `BenOrAsync`, `BivariateShamir`, `BrachaRBC`, `CommonCoin`,
+    `CouplingDemo`, `ITMAC`, `KnuthDice`, `OneTimePad`, `RandomWalker1D`,
+    `Shamir`, `Smoke`, `SyncVSS`. Sorry-free; key liveness theorems
+    (`BrachaRBC.brbProb_totality_AS_fair`, `AVSS.avss_termination_AS_fair`,
+    `AVSS.avss_termination_AS_fair_traj`) are axiom-clean
+    (`[propext, Classical.choice, Quot.sound]`).
 
 ## What's excluded
 

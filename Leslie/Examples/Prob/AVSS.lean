@@ -73,11 +73,9 @@ affect any of the four headline theorem statements).
     A polish-level refinement that tracks individual echo/ready
     messages with explicit thresholds is straightforward but does not
     affect the four headline theorems.
-  * Not the M3 entry gate stub. `AVSSStub.lean` is preserved as a
-    shape-verification artifact; it can be deleted at M3 closeout
-    once this file is reviewed. Its certificate `avssCert` is the
-    one this file functionally subsumes (the sorry there stays —
-    real story is here).
+  * Not the M3 entry gate stub. `AVSSStub.lean` was deleted in the
+    M3 cleanup; this file's `avssCert` functionally subsumes the
+    stub's shape-verification role.
 
 Per implementation plan v2.2 §M3 W5–W6 + design plan v2.2 §M3 AVSS.
 -/
@@ -1891,12 +1889,11 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) :
       exact_mod_cast avssU_le_bound s⟩
 
 /-- Termination as an `AlmostDiamond` under a trajectory-fair
-adversary. Discharged via
-`FairASTCertificate.partition_almostDiamond_fair`. The
-sublevel-finite-variant lemma
-(`FairASTCertificate.pi_n_AST_fair`) is itself sorry'd in
-`Liveness.lean`; this theorem inherits that gap structurally —
-no AVSS-specific sorry on top. -/
+adversary. Discharged via `FairASTCertificate.sound`. Both the
+sublevel-finite-variant lemma `pi_n_AST_fair` and the assembly
+`partition_almostDiamond_fair` are closed sorry-free in
+`Liveness.lean`; this theorem is axiom-clean
+(`[propext, Classical.choice, Quot.sound]`). -/
 theorem avss_termination_AS_fair
     (sec : F) (corr : Finset (Fin n))
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
@@ -1917,12 +1914,14 @@ theorem avss_termination_AS_fair
     (avssCert (t := t) sec corr) μ₀ h_init' A.toFair A.progress
     h_U_mono h_U_strict
 
-/-- **Axiom-clean** variant of `avss_termination_AS_fair`.
+/-- Trajectory-form variant of `avss_termination_AS_fair`.
 
-Re-discharges termination through the deterministic specialisation
-`FairASTCertificate.pi_n_AST_fair_with_progress_det` (closed sorry-free
-in `Liveness.lean`) plus the closed `pi_infty_zero_fair`, replacing the
-generic sorry-dependent `partition_almostDiamond_fair` route.
+Discharges termination through the deterministic specialisation
+`FairASTCertificate.pi_n_AST_fair_with_progress_det` plus
+`pi_infty_zero_fair`, both closed sorry-free in `Liveness.lean`.
+Equivalent in conclusion to `avss_termination_AS_fair` (which uses
+`partition_almostDiamond_fair`); this variant is exposed for
+callers that prefer the explicit deterministic-descent route.
 
 Takes three additional witnesses bundled with the adversary:
 
@@ -1938,16 +1937,17 @@ Takes three additional witnesses bundled with the adversary:
 For the deterministic AVSS protocol (every effect is `PMF.pure`) the
 last two witnesses are derivable from `avssCert`'s
 `U_dec_det`/`V_super`/`V_super_fair` fields, but threading the
-derivation here is a separate ~100-LOC trajectory-plumbing exercise.
-The signature here suffices to make the theorem **axiom-clean**:
-`#print axioms` shows `[propext, Classical.choice, Quot.sound]` only,
-no `sorryAx`.
+derivation here is a separate ~100-LOC trajectory-plumbing
+exercise. Both `avss_termination_AS_fair` and this variant are
+axiom-clean (`#print axioms` shows
+`[propext, Classical.choice, Quot.sound]` only, no `sorryAx`).
 
-Inlines the body of the would-be `FairASTCertificate.sound_traj_det`
-(deferred in `Liveness.lean` due to a `whnf` heartbeat blowup during
-elaboration of its signature). The proof structure mirrors
-`partition_almostDiamond_fair` with `pi_n_AST_fair` swapped for
-`pi_n_AST_fair_with_progress_det`. -/
+The proof structure mirrors `partition_almostDiamond_fair` with
+`pi_n_AST_fair` swapped for `pi_n_AST_fair_with_progress_det`.
+A consumer-friendly `FairASTCertificate.sound_traj_det` corollary
+that packages this is deferred in `Liveness.lean` due to a `whnf`
+heartbeat blowup during signature elaboration; until then concrete
+protocols call this trajectory route directly. -/
 theorem avss_termination_AS_fair_traj
     (sec : F) (corr : Finset (Fin n))
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
@@ -2050,25 +2050,19 @@ theorem avss_secrecy (partyPoint : Fin n → F)
     that route is ~150 LOC of step-kernel plumbing, deferred per the
     M3 W5–W6 acceptance criteria.
 
-  * **Correctness.** Closed (modulo the `rowEval (fun _ => 0)
-    coeffs p 0 = coeffs 0 0` algebraic step, which sorries at one
-    point in the inductive-step preservation; trivially closeable
-    by `unfold` + `simp` once one nails down which `bivEval` lemma
-    Mathlib provides for the `0 ^ ?` simplification).
+  * **Correctness.** Closed sorry-free (`avss_correctness_AS` is
+    axiom-clean). Note this verifies the *abstracted* output rule
+    (`partyOutput` writes `coeffs 0 0` directly to every honest
+    party); a real Canetti-Rabin formalization with per-party
+    row-poly outputs reconstructed via Lagrange is future work.
 
-  * **Output-determined / commitment.** Same as correctness modulo the
-    same `rowEval` step.  Note that the *full* commitment statement
-    (with the disjunction "all honest outputs equal *or* dealer
-    exposed") requires the Bracha-faithful refinement of this
-    abstraction; we record the basic form here.
+  * **Output-determined / commitment.** Closed sorry-free for the
+    abstracted form. The *full* commitment statement (with the
+    disjunction "all honest outputs equal *or* dealer exposed")
+    requires the Bracha-faithful refinement of this abstraction;
+    we record the basic form here.
 
-  * **Secrecy.** Closed (sorry-free) — passes through to
-    `BivariateShamir.bivariate_shamir_secrecy`.
-
-  * **The `AVSSStub.avssCert`.**  This file's `avssCert` (with `(n :=
-    n)` instantiated by Lean's elaboration) functionally subsumes
-    the stub. The stub file is preserved for the entry-gate audit
-    trail; it can be deleted at M3 closeout without affecting any
-    live proof. -/
+  * **Secrecy.** Closed sorry-free — passes through to
+    `BivariateShamir.bivariate_shamir_secrecy`. -/
 
 end Leslie.Examples.Prob.AVSS

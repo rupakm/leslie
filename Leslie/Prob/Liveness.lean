@@ -158,9 +158,13 @@ We therefore **do not export** `ASTCertificate.sound`. Concrete
 protocols use `FairASTCertificate.sound` (the POPL 2026 fair
 extension) instead — fairness rules out indefinite stuttering on
 fair-required actions, restoring soundness. The fair version's
-`sound` is closed (modulo trajectory-form witnesses on the caller's
-side); see `FairASTCertificate.sound_traj_det` for the
-deterministic-protocol consumer-friendly form.
+`sound` is closed (modulo trajectory-form witnesses on the
+caller's side). For deterministic-decrease protocols, callers can
+use `FairASTCertificate.pi_n_AST_fair_with_progress_det` directly
+through a `TrajectoryFairAdversary` bundle (see AVSS's
+`avss_termination_AS_fair_traj` for the worked pattern). A
+consumer-friendly corollary `sound_traj_det` packaging this is
+deferred (see lines 1698–1712).
 
 Possible future work: refine `ASTCertificate` with a non-stuttering
 field on the adversary (a `progress`-style hypothesis ruling out

@@ -33,8 +33,9 @@ actually flip coins.
     as §5; closed via the inductive invariant `brb_inv` from upstream
     `Leslie.Examples.ByzantineReliableBroadcast` plus the same
     `AlmostBox_of_pure_inductive` bridge.
-  * §8 `brbProb_totality_AS_fair` — liveness; still carries a `sorry`
-    pending the `AlmostDiamond` analogue of the bridge.
+  * §8 `brbProb_totality_AS_fair` — liveness; **closed** sorry-free
+    via `Leslie.Prob.AlmostDiamond_of_leads_to`, the `AlmostDiamond`
+    analogue of the `AlmostBox` bridge.
 
 ## Upstream reuse
 
