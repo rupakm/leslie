@@ -26,6 +26,12 @@ Status (M2 W3 polish — sorry-free):
     Dirac (`PMF.pure`). Body proved by countable-AE swap +
     coordinate induction using the joint-marginal lemma
     `Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`.
+  * `AlmostBox_of_inductive` — non-pure-effect generalisation: lifts
+    an inductive predicate `P` along trajectories given preservation
+    on the *support* of every gated action's effect distribution.
+    Uses the same induction skeleton as the pure version, with the
+    gate-pass branch handled via a small `pmf_ae_of_forall_support`
+    helper instead of `ae_dirac_iff`.
   * `Refines_safe` — invariant lift along refinement: a safety
     property `φ` that holds Σ-AE under any abstract execution
     lifts to a Π-AE invariant via `ae_map_iff` on the pushforward.
@@ -379,6 +385,352 @@ theorem AlmostBox_of_pure_inductive
     rw [ae_map_iff hmeas_eval_succ.aemeasurable hPset] at hae_succ
     exact hae_succ
 
+/-! ### `AlmostBox_of_inductive` — non-pure-effect inductive bridge
+
+Generalises `AlmostBox_of_pure_inductive` to arbitrary `PMF` effects:
+instead of requiring every action's effect to be a Dirac, we require
+that an inductive predicate `P` is preserved on the *support* of the
+effect distribution. This is the form needed by
+`FairASTCertificate.pi_infty_zero_fair` (where `P` is the
+certificate's `Inv`).
+
+Proof structure mirrors `AlmostBox_of_pure_inductive` exactly: the
+only divergence is in the gate-pass branch of the per-step kernel,
+where we use `PMF.toMeasure_apply_eq_zero_iff` (via a small support-
+AE helper `pmf_ae_of_forall_support`) instead of `PMF.toMeasure_pure`
++ `ae_dirac_iff`. -/
+
+/-- Helper: if `P` holds on the support of a PMF, then `P` holds
+AE on its `toMeasure`. -/
+private theorem pmf_ae_of_forall_support
+    {α : Type*} [Countable α] [MeasurableSpace α] [MeasurableSingletonClass α]
+    (p : PMF α) (P : α → Prop) (hP : ∀ x ∈ p.support, P x) :
+    ∀ᵐ x ∂p.toMeasure, P x := by
+  rw [ae_iff]
+  have hms : MeasurableSet {a : α | ¬ P a} := MeasurableSet.of_discrete
+  rw [PMF.toMeasure_apply_eq_zero_iff _ hms, Set.disjoint_left]
+  intro x hxsup hxnot
+  exact hxnot (hP x hxsup)
+
+/-- Inductive `P` is preserved AE-along-trajectory under any spec
+and adversary, given `P` is preserved on the support of every gated
+action's effect distribution.
+
+This is the non-pure-effect generalisation of
+`AlmostBox_of_pure_inductive`. The proof structure is identical;
+the only change is in the gate-pass kernel branch, where we use
+`pmf_ae_of_forall_support` instead of `PMF.toMeasure_pure` +
+`ae_dirac_iff`. -/
+theorem AlmostBox_of_inductive
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+    {spec : ProbActionSpec σ ι}
+    (P : σ → Prop)
+    (h_step : ∀ (i : ι) (s : σ) (h : (spec.actions i).gate s),
+        P s → ∀ s' ∈ ((spec.actions i).effect s h).support, P s')
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, P s)
+    (A : Adversary σ ι) :
+    AlmostBox spec A μ₀ P := by
+  -- Predicate measurability via `Countable + MeasurableSingletonClass`.
+  have hPset : MeasurableSet ({x : σ × Option ι | P x.1}) := MeasurableSet.of_discrete
+  have hPset_finPrefix : ∀ a : ℕ,
+      MeasurableSet {h : FinPrefix σ ι a | P (FinPrefix.currentState h)} :=
+    fun _ => MeasurableSet.of_discrete
+  have hPset_state : MeasurableSet {s : σ | P s} := MeasurableSet.of_discrete
+  unfold AlmostBox traceDist
+  set μ₀_full : Measure (σ × Option ι) := μ₀.map (fun s => (s, (none : Option ι)))
+    with hμ₀_full_def
+  haveI : IsProbabilityMeasure μ₀_full :=
+    Measure.isProbabilityMeasure_map (by fun_prop)
+  -- Marginal at coordinate 0 (same proof as in the pure version).
+  have hmarg_zero :
+      (Kernel.trajMeasure (X := fun _ => σ × Option ι) μ₀_full (stepKernel spec A)).map
+        (fun ω => ω 0) = μ₀_full := by
+    unfold Kernel.trajMeasure
+    have hmeas_eval0 : Measurable (fun ω : Π _ : ℕ, σ × Option ι => ω 0) :=
+      measurable_pi_apply 0
+    rw [Measure.map_comp _ _ hmeas_eval0]
+    have hfact : (fun ω : Π _ : ℕ, σ × Option ι => ω 0) =
+        (fun y : Π _ : Finset.Iic 0, σ × Option ι => y ⟨0, by simp⟩) ∘
+          (Preorder.frestrictLe 0) := by
+      funext _; rfl
+    have hmeas_pia : Measurable
+        (fun y : Π _ : Finset.Iic 0, σ × Option ι => y ⟨0, by simp⟩) :=
+      measurable_pi_apply _
+    have hmeas_fl0 : Measurable
+        (Preorder.frestrictLe (π := fun _ : ℕ => σ × Option ι) 0) :=
+      Preorder.measurable_frestrictLe _
+    have hmeas_fl2 : Measurable
+        (Preorder.frestrictLe₂ (π := fun _ : ℕ => σ × Option ι) (le_refl 0)) :=
+      Preorder.measurable_frestrictLe₂ _
+    have hcomp : Measurable
+        ((fun y : Π _ : Finset.Iic 0, σ × Option ι => y ⟨0, by simp⟩) ∘
+          Preorder.frestrictLe₂ (π := fun _ : ℕ => σ × Option ι) (le_refl 0)) :=
+      hmeas_pia.comp hmeas_fl2
+    rw [hfact, Kernel.map_comp_right _ hmeas_fl0 hmeas_pia,
+        ProbabilityTheory.Kernel.traj_map_frestrictLe_of_le (le_refl 0)]
+    rw [Kernel.deterministic_map hmeas_fl2 hmeas_pia]
+    rw [Measure.deterministic_comp_eq_map hcomp]
+    rw [Measure.map_map hcomp (by fun_prop)]
+    convert Measure.map_id (μ := μ₀_full)
+  -- Marginal recurrence at successor.
+  have hmarg_succ : ∀ a : ℕ,
+      (Kernel.trajMeasure (X := fun _ => σ × Option ι) μ₀_full (stepKernel spec A)).map
+        (fun ω => ω (a + 1)) =
+      (stepKernel spec A a) ∘ₘ
+        ((Kernel.trajMeasure (X := fun _ => σ × Option ι)
+            μ₀_full (stepKernel spec A)).map (Preorder.frestrictLe a)) := by
+    intro a
+    have hk : (Kernel.trajMeasure (X := fun _ => σ × Option ι) μ₀_full
+              (stepKernel spec A)).map (Preorder.frestrictLe a) ⊗ₘ stepKernel spec A a =
+        (Kernel.trajMeasure (X := fun _ => σ × Option ι) μ₀_full (stepKernel spec A)).map
+          (fun x => (Preorder.frestrictLe a x, x (a + 1))) :=
+      ProbabilityTheory.Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure
+    have h2 := congrArg Measure.snd hk
+    rw [Measure.snd_compProd] at h2
+    have hmeas_fl_a : Measurable
+        (Preorder.frestrictLe (π := fun _ : ℕ => σ × Option ι) a) :=
+      Preorder.measurable_frestrictLe _
+    rw [Measure.snd_map_prodMk hmeas_fl_a] at h2
+    exact h2.symm
+  rw [MeasureTheory.ae_all_iff]
+  intro n
+  induction n with
+  | zero =>
+    have hae_full : ∀ᵐ x ∂μ₀_full, P x.1 := by
+      rw [hμ₀_full_def, ae_map_iff (Measurable.aemeasurable (by fun_prop)) hPset]
+      exact h_init
+    rw [← hmarg_zero] at hae_full
+    have hmeas_eval0 : Measurable (fun ω : Π _ : ℕ, σ × Option ι => ω 0) :=
+      measurable_pi_apply 0
+    rw [ae_map_iff hmeas_eval0.aemeasurable hPset] at hae_full
+    exact hae_full
+  | succ a ih =>
+    have hmeas_fl_a : Measurable
+        (Preorder.frestrictLe (π := fun _ : ℕ => σ × Option ι) a) :=
+      Preorder.measurable_frestrictLe _
+    have hmeas_eval_succ : Measurable (fun ω : Π _ : ℕ, σ × Option ι => ω (a + 1)) :=
+      measurable_pi_apply (a + 1)
+    have hcurrent : ∀ᵐ h ∂((Kernel.trajMeasure (X := fun _ => σ × Option ι)
+          μ₀_full (stepKernel spec A)).map (Preorder.frestrictLe a)),
+          P (FinPrefix.currentState h) := by
+      rw [ae_map_iff hmeas_fl_a.aemeasurable (hPset_finPrefix a)]
+      filter_upwards [ih] with ω hω
+      exact hω
+    have hkernel_ae : ∀ᵐ h ∂((Kernel.trajMeasure (X := fun _ => σ × Option ι)
+          μ₀_full (stepKernel spec A)).map (Preorder.frestrictLe a)),
+          ∀ᵐ y ∂(stepKernel spec A a h), P y.1 := by
+      filter_upwards [hcurrent] with h hPcurr
+      show ∀ᵐ y ∂(stepKernel spec A a h), P y.1
+      unfold stepKernel
+      rw [Kernel.ofFunOfCountable]
+      simp only [Kernel.coe_mk]
+      rcases h_sched : A.schedule h.toList with _ | i
+      · -- Stutter (no schedule): Dirac at current state.
+        rw [ae_dirac_iff hPset]
+        exact hPcurr
+      · by_cases hgate : (spec.actions i).gate h.currentState
+        · -- Gate-pass: pushforward of `(spec.actions i).effect`'s PMF measure.
+          simp only [hgate, dite_true]
+          rw [ae_map_iff (by fun_prop) hPset]
+          -- Reduce to `∀ᵐ s ∂(effect ..).toMeasure, P s` via the support-AE helper.
+          exact pmf_ae_of_forall_support _ (fun s => P s)
+            (fun s' hs' => h_step i h.currentState hgate hPcurr s' hs')
+        · -- Gate-fail: stutter.
+          simp only [hgate, dite_false]
+          rw [ae_dirac_iff hPset]
+          exact hPcurr
+    have hae_succ : ∀ᵐ y ∂((stepKernel spec A a) ∘ₘ
+          (Kernel.trajMeasure (X := fun _ => σ × Option ι)
+            μ₀_full (stepKernel spec A)).map (Preorder.frestrictLe a)),
+        P y.1 :=
+      Measure.ae_comp_of_ae_ae hPset hkernel_ae
+    rw [← hmarg_succ a] at hae_succ
+    rw [ae_map_iff hmeas_eval_succ.aemeasurable hPset] at hae_succ
+    exact hae_succ
+
+/-! ### `traceDist_kernel_step_bound` — kernel-step lower bound
+
+Specialises the disintegration identity
+`Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`
+(used in `AlmostBox_of_inductive`) to a per-step kernel-conditional
+probability bound. Used by the chain-of-conditional-probabilities
+closure of `pi_n_AST_fair_with_progress` (Liveness.lean).
+
+Statement: if a "good history" set `S ⊆ FinPrefix σ ι n` puts each
+prefix in a state where the per-step kernel `stepKernel spec A n`
+puts mass ≥ `p` on a successor event `T h` (parameterised by the
+history `h`), then the joint trajectory measure satisfies
+
+  `p · (traceDist) {ω | frestrictLe n ω ∈ S} ≤
+   (traceDist) {ω | frestrictLe n ω ∈ S ∧ ω (n+1) ∈ T (frestrictLe n ω)}`.
+
+This is the "general cylinder" form: `T h` may depend on the history
+`h`, allowing the successor event to be defined by a predicate on
+`(history, next-state)` pairs (e.g., "U decreased at step n+1
+relative to the current state"). The chain argument in
+`pi_n_AST_fair_with_progress` consumes this lemma at each step `k`
+to relate `μ(C_{k+1}) ≤ (1-p) μ(C_k)`. -/
+
+/-- Kernel-step lower bound for `traceDist`: if every history in `S`
+gives the per-step kernel `stepKernel spec A n` mass `≥ p` on the
+history-indexed successor event `T h`, then the joint trajectory
+measure on `{ω | frestrictLe n ω ∈ S ∧ ω (n+1) ∈ T (frestrictLe n ω)}`
+is at least `p` times the trajectory measure on `{ω | frestrictLe n ω ∈ S}`.
+
+Proved via the joint-marginal identity
+`Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`,
+`Measure.compProd_apply`, and `setLIntegral_mono'` for the
+constant-lower-bound integral. -/
+theorem traceDist_kernel_step_bound
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+    {spec : ProbActionSpec σ ι}
+    (A : Adversary σ ι)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (n : ℕ)
+    (S : Set (FinPrefix σ ι n))
+    (T : FinPrefix σ ι n → Set (σ × Option ι))
+    (p : ENNReal)
+    (h_step : ∀ h ∈ S, p ≤ (stepKernel spec A n h) (T h)) :
+    p * (traceDist spec A μ₀)
+        {ω : Trace σ ι | Preorder.frestrictLe n ω ∈ S} ≤
+      (traceDist spec A μ₀)
+        {ω : Trace σ ι | Preorder.frestrictLe n ω ∈ S ∧
+          ω (n + 1) ∈ T (Preorder.frestrictLe n ω)} := by
+  classical
+  have hSset : MeasurableSet S := MeasurableSet.of_discrete
+  set μ₀_full : Measure (σ × Option ι) := μ₀.map (fun s => (s, (none : Option ι)))
+  haveI : IsProbabilityMeasure μ₀_full :=
+    Measure.isProbabilityMeasure_map (by fun_prop)
+  set μtraj := Kernel.trajMeasure (X := fun _ => σ × Option ι) μ₀_full (stepKernel spec A)
+  set ν : Measure (FinPrefix σ ι n) := μtraj.map (Preorder.frestrictLe n)
+  -- Joint marginal at (frestrictLe n, eval (n+1)) factors as ν ⊗ₘ stepKernel.
+  have hjoint_eq :
+      ν ⊗ₘ (stepKernel spec A n) =
+        μtraj.map (fun ω => (Preorder.frestrictLe n ω, ω (n + 1))) :=
+    ProbabilityTheory.Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure
+  have hmeas_pair : Measurable (fun ω : Π _ : ℕ, σ × Option ι =>
+      (Preorder.frestrictLe (π := fun _ : ℕ => σ × Option ι) n ω, ω (n + 1))) := by
+    fun_prop
+  -- Pull events back as preimages of joint cylinders.
+  set ES : Set (Trace σ ι) := {ω | Preorder.frestrictLe n ω ∈ S}
+  set EJ : Set (Trace σ ι) := {ω | Preorder.frestrictLe n ω ∈ S ∧
+      ω (n + 1) ∈ T (Preorder.frestrictLe n ω)}
+  set CylS : Set (FinPrefix σ ι n × (σ × Option ι)) := S ×ˢ Set.univ
+  set Joint : Set (FinPrefix σ ι n × (σ × Option ι)) :=
+    {x | x.1 ∈ S ∧ x.2 ∈ T x.1}
+  have hCylS_meas : MeasurableSet CylS := hSset.prod MeasurableSet.univ
+  have hJoint_meas : MeasurableSet Joint := MeasurableSet.of_discrete
+  have hES_eq : ES = (fun ω => (Preorder.frestrictLe n ω, ω (n + 1))) ⁻¹' CylS := by
+    ext ω; simp [ES, CylS]
+  have hEJ_eq : EJ = (fun ω => (Preorder.frestrictLe n ω, ω (n + 1))) ⁻¹' Joint := by
+    ext ω; simp [EJ, Joint]
+  show p * μtraj ES ≤ μtraj EJ
+  rw [hES_eq, hEJ_eq]
+  rw [← Measure.map_apply hmeas_pair hCylS_meas,
+      ← Measure.map_apply hmeas_pair hJoint_meas]
+  rw [← hjoint_eq]
+  -- Evaluate compProd via `Measure.compProd_apply` (using preimages of cylinders).
+  rw [Measure.compProd_apply hCylS_meas, Measure.compProd_apply hJoint_meas]
+  -- Inner integrals: collapse via `Prod.mk h ⁻¹' (S ×ˢ univ) = univ` on S, `∅` off S;
+  -- and `Prod.mk h ⁻¹' Joint = T h` on S, `∅` off S.
+  have hint_S : (∫⁻ h, (stepKernel spec A n h) (Prod.mk h ⁻¹' CylS) ∂ν) = ν S := by
+    have heq : (fun h => (stepKernel spec A n h) (Prod.mk h ⁻¹' CylS)) =
+        S.indicator 1 := by
+      funext h
+      by_cases hh : h ∈ S
+      · have hpre : Prod.mk h ⁻¹' CylS = Set.univ := by
+          ext y; simp [CylS, hh]
+        rw [hpre, Set.indicator_of_mem hh]
+        show (stepKernel spec A n h) Set.univ = _
+        simp [measure_univ]
+      · have hpre : Prod.mk h ⁻¹' CylS = ∅ := by
+          ext y; simp [CylS, hh]
+        rw [hpre, Set.indicator_of_notMem hh]
+        simp
+    rw [heq, MeasureTheory.lintegral_indicator_one hSset]
+  have hint_J : (∫⁻ h, (stepKernel spec A n h) (Prod.mk h ⁻¹' Joint) ∂ν) =
+      ∫⁻ h in S, (stepKernel spec A n h) (T h) ∂ν := by
+    rw [← MeasureTheory.lintegral_indicator hSset]
+    congr 1; funext h
+    by_cases hh : h ∈ S
+    · have hpre : Prod.mk h ⁻¹' Joint = T h := by
+        ext y; simp [Joint, hh]
+      rw [hpre, Set.indicator_of_mem hh]
+    · have hpre : Prod.mk h ⁻¹' Joint = ∅ := by
+        ext y; simp [Joint, hh]
+      rw [hpre, Set.indicator_of_notMem hh]
+      simp
+  rw [hint_S, hint_J]
+  -- Constant-lower-bound integral: ∫⁻ _ in S, p ∂ν = p * ν S ≤ ∫⁻ h in S, kernel.h(T h) ∂ν.
+  have h_const : (∫⁻ _ in S, (p : ENNReal) ∂ν) ≤
+      ∫⁻ h in S, (stepKernel spec A n h) (T h) ∂ν :=
+    MeasureTheory.setLIntegral_mono' hSset h_step
+  rw [MeasureTheory.setLIntegral_const] at h_const
+  exact h_const
+
+/-! ### Stopping-time kernel lower bound
+
+A "for-every-fixed-m" packaging of `traceDist_kernel_step_bound`.
+Given a per-fiber prefix set family `S : (m : ℕ) → Set (FinPrefix σ ι m)`
+and a per-fiber target family `T : (m : ℕ) → FinPrefix σ ι m → Set (σ × Option ι)`,
+plus a uniform per-step kernel lower bound `p`, the trace measure
+satisfies the per-`m` kernel bound at every step.
+
+This is the input to fiber-sum reductions (see
+`Leslie.Prob.FairASTCertificate.measure_selector_fiber_lower_bound`
+and `traceDist_selector_fiber_lower_bound` in `Liveness.lean`)
+which sum over a measurable stopping time `τ : Trace σ ι → ℕ` to
+obtain the conditional-form lower bound used in the Borel-Cantelli
+proof of general fair AST.
+
+Concretely, callers wanting a stopping-time-form bound can:
+
+1. Use this lemma per-`m` to populate `traceDist_selector_fiber_lower_bound`'s
+   `h_step` hypothesis (intersecting with the τ-fiber `{τ = m}` as needed).
+2. Sum across `m` via the fiber-sum lemma.
+
+The mechanical form is just iterating `traceDist_kernel_step_bound` —
+this lemma is exposed as a named convenience so downstream
+Borel-Cantelli code doesn't have to re-derive the per-fiber bound at
+each call site. -/
+
+/-- **Stopping-time kernel lower bound (per-fiber form).**
+
+For each step index `m`, the trace-measure kernel-disintegration bound
+applies: assuming `p ≤ (stepKernel spec A m h)(T m h)` for every
+prefix `h ∈ S m`, the joint event "prefix in `S m` and the next
+coordinate falls in `T m`" has at least `p`-fraction of the
+prefix-in-`S m` mass.
+
+This is the "fiber" input to summation arguments used in the
+Borel-Cantelli proof of general fair AST. The fiber-sum lemma
+in `Liveness.lean` (`measure_selector_fiber_lower_bound`) takes
+these per-fiber bounds and produces a stopping-time-conditional
+lower bound on the union over fibers `{τ = m}`. -/
+theorem traceDist_kernel_stoppingTime_bound
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+    {spec : ProbActionSpec σ ι}
+    (A : Adversary σ ι)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (S : (m : ℕ) → Set (FinPrefix σ ι m))
+    (T : (m : ℕ) → FinPrefix σ ι m → Set (σ × Option ι))
+    (p : ENNReal)
+    (h_step : ∀ m, ∀ h ∈ S m, p ≤ (stepKernel spec A m h) (T m h))
+    (m : ℕ) :
+    p * (traceDist spec A μ₀)
+        {ω : Trace σ ι | Preorder.frestrictLe m ω ∈ S m} ≤
+      (traceDist spec A μ₀)
+        {ω : Trace σ ι | Preorder.frestrictLe m ω ∈ S m ∧
+          ω (m + 1) ∈ T m (Preorder.frestrictLe m ω)} :=
+  traceDist_kernel_step_bound A μ₀ m (S m) (T m) p (h_step m)
+
 /-! ### Refines_safe
 
 If `Π` refines `Σ` (via `proj`) and `φ` holds always for `Σ`'s
@@ -440,5 +792,45 @@ theorem Refines_safe
   filter_upwards [hbox'] with ω' h_ae n
   rw [h_proj_state ω' n]
   exact h_ae n
+
+/-! ## `AlmostDiamond_of_leads_to`
+
+Liveness analogue of `Refines_safe`: an `AlmostDiamond` "leads-to"
+bridge. If on AE traces, the eventual occurrence of `P` implies the
+eventual occurrence of `Q`, then `AlmostDiamond P` implies
+`AlmostDiamond Q`.
+
+Used by protocol-specific liveness proofs (e.g.,
+`BrachaRBC.brbProb_totality_AS_fair`) to lift deterministic leads-to
+properties (`P ↝ Q` under fairness, in the upstream Leslie TLA
+sense) to the probabilistic-trace setting. The deterministic
+leads-to becomes the AE per-trace implication hypothesis. -/
+
+/-- `AlmostDiamond` is preserved under AE-pointwise eventual
+implication.
+
+This is the trace-level liveness counterpart of `Refines_safe`'s
+invariant lift. The hypothesis `h_lt` packages "deterministic
+leads-to" at the per-trace level: AE on the trace measure, if
+`P` ever holds on the trajectory, then `Q` eventually holds too.
+
+Concrete protocols supply `h_lt` either by porting upstream
+deterministic `pred_implies … ↝ …` lemmas to the trajectory side,
+or by direct trace-level reasoning. -/
+theorem AlmostDiamond_of_leads_to
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+    {spec : ProbActionSpec σ ι}
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (A : Adversary σ ι)
+    {P Q : σ → Prop}
+    (h_lt : ∀ᵐ ω ∂(traceDist spec A μ₀),
+      (∃ n, P ((ω n).1)) → ∃ m, Q ((ω m).1))
+    (h_P : AlmostDiamond spec A μ₀ P) :
+    AlmostDiamond spec A μ₀ Q := by
+  unfold AlmostDiamond at h_P ⊢
+  filter_upwards [h_lt, h_P] with ω h_lt_ω h_P_ω
+  exact h_lt_ω h_P_ω
 
 end Leslie.Prob
