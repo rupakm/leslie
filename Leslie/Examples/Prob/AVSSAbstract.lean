@@ -1,12 +1,22 @@
 /-
-M3 W5–W6 — Canetti–Rabin asynchronous verifiable secret sharing.
+M3 W5–W6 — Canetti–Rabin asynchronous verifiable secret sharing
+(**abstracted variant**).
 
 This module models the Canetti–Rabin '93 asynchronous VSS protocol
-(`n` parties, `n ≥ 3t + 1`, `t` Byzantine corruptions) as a
-`Leslie.Prob.ProbActionSpec`, lifts the four classical theorems —
-**termination**, **correctness**, **commitment**, **secrecy** — to
-the probabilistic-trace setting, and discharges the M3 entry-gate
-stub `AVSSStub.avssCert`.
+(`n` parties, `n ≥ 3t + 1`, `t` Byzantine corruptions) at an
+*abstraction level* that's sufficient for the termination /
+correctness / secrecy proofs to go through but does **not** match
+the full protocol structure. Specifically:
+
+  * `partyOutput` writes `s.coeffs 0 0` directly to every honest
+    party (no per-party row-poly output).
+  * `echoesReceived` / `readyReceived` accumulators are tracked but
+    not `n − t`-threshold-checked (no Bracha amplification).
+
+The full Canetti–Rabin protocol with row-poly outputs and Bracha
+thresholds is formalized in `Leslie.Examples.Prob.AVSS` (Option B
+of the M3 review). This file is preserved for the historical audit
+trail and as a reference for the simpler termination certificate.
 
 ## Design choice: randomness in `μ₀`, deterministic step
 
@@ -70,9 +80,11 @@ affect any of the four headline theorem statements).
     The `echoesReceived` / `readyReceived` accumulators are not
     threshold-checked; we model the protocol at the abstraction level
     where "deliver" and "ready→output" are the load-bearing actions.
-    A polish-level refinement that tracks individual echo/ready
-    messages with explicit thresholds is straightforward but does not
-    affect the four headline theorems.
+    The full thresholded variant is in `AVSS.lean`.
+  * Not the per-party-row-poly variant. `partyOutput` here writes
+    `coeffs 0 0` directly. The real Canetti–Rabin per-party share
+    `s_p = bivEval coeffs (partyPoint p) 0` is formalized in
+    `AVSS.lean`.
   * Not the M3 entry gate stub. `AVSSStub.lean` was deleted in the
     M3 cleanup; this file's `avssCert` functionally subsumes the
     stub's shape-verification role.
