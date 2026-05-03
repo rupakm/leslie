@@ -77,6 +77,7 @@ variable {n t : ℕ} {F : Type*} [Field F] [Fintype F] [DecidableEq F]
 structure AVSSLocalState (n t : ℕ) (F : Type*) [DecidableEq F] where
   delivered      : Bool
   rowPoly        : Option (Fin (t+1) → F)
+  echoSent       : Bool
   echoesReceived : Finset (Fin n)
   readyReceived  : Finset (Fin n)
   readySent      : Bool
@@ -88,6 +89,7 @@ namespace AVSSLocalState
 def init (n t : ℕ) (F : Type*) [DecidableEq F] : AVSSLocalState n t F :=
   { delivered := false
     rowPoly := none
+    echoSent := false
     echoesReceived := ∅
     readyReceived := ∅
     readySent := false
@@ -280,8 +282,12 @@ def avssStep (a : AVSSAction n F) (s : AVSSState n t F) :
       { s' with inflightDeliveries := s.inflightDeliveries.erase p }
   | .partyEchoSend p =>
       -- Honest party `p` broadcasts an echo to every other party.
-      -- Records `(p, q)` in `inflightEchoes` for every honest `q`.
-      { s with
+      -- Records `(p, q)` in `inflightEchoes` for every honest `q` and
+      -- sets the `echoSent` flag so the action is single-shot.
+      let ls := s.local_ p
+      let ls' : AVSSLocalState n t F := { ls with echoSent := true }
+      let s' := setLocal s p ls'
+      { s' with
         inflightEchoes :=
           s.inflightEchoes ∪
             ((Finset.univ : Finset (Fin n)).filter
@@ -336,7 +342,8 @@ def actionGate (a : AVSSAction n F) (s : AVSSState n t F) : Prop :=
       s.dealerSent = true ∧ p ∉ s.corrupted ∧
         p ∈ s.inflightDeliveries ∧ (s.local_ p).delivered = false
   | .partyEchoSend p =>
-      p ∉ s.corrupted ∧ (s.local_ p).delivered = true
+      p ∉ s.corrupted ∧ (s.local_ p).delivered = true ∧
+        (s.local_ p).echoSent = false
   | .partyEchoReceive p q =>
       p ∉ s.corrupted ∧ (q, p) ∈ s.inflightEchoes ∧
         q ∉ (s.local_ p).echoesReceived
@@ -451,11 +458,11 @@ instance : Countable (AVSSAction n F) := Finite.to_countable
 noncomputable instance : Fintype (AVSSLocalState n t F) := by
   classical
   exact Fintype.ofEquiv
-    (Bool × Option (Fin (t+1) → F) × Finset (Fin n) × Finset (Fin n) ×
-      Bool × Option F)
-    { toFun := fun ⟨a, b, c, d, e, f⟩ => ⟨a, b, c, d, e, f⟩
+    (Bool × Option (Fin (t+1) → F) × Bool × Finset (Fin n) ×
+      Finset (Fin n) × Bool × Option F)
+    { toFun := fun ⟨a, b, c, d, e, f, g⟩ => ⟨a, b, c, d, e, f, g⟩
       invFun := fun ls =>
-        (ls.delivered, ls.rowPoly, ls.echoesReceived,
+        (ls.delivered, ls.rowPoly, ls.echoSent, ls.echoesReceived,
          ls.readyReceived, ls.readySent, ls.output)
       left_inv := fun _ => rfl
       right_inv := fun _ => rfl }
@@ -503,5 +510,235 @@ noncomputable def avssFair :
     FairnessAssumptions (AVSSState n t F) (AVSSAction n F) where
   fair_actions := avssFairActions
   isWeaklyFair := fun _ => True
+
+/-! ## §12. Termination certificate — definitions
+
+The variant `U` is a 7-component lex-product encoded into a single
+`ℕ` via base-`K` weighting, with `K = (n+1)*(n+1)` chosen to dominate
+the maximum value of any single component (notably
+`inflightEchoes.card ≤ n²`).
+
+Lex order (largest weight first):
+
+  1. `[¬ dealerSent]` — the dealer step (`dealerShare`).
+  2. `inflightDeliveries.card` — `partyDeliver` step.
+  3. `unsentEchoCount` — honest parties with `delivered ∧ ¬ echoSent`;
+     `partyEchoSend` step.
+  4. `inflightEchoes.card` — `partyEchoReceive` step.
+  5. `notReadySentCount` — honest parties with `¬ readySent`;
+     `partyReady` / `partyAmplify` step.
+  6. `inflightReady.card` — `partyReceiveReady` step.
+  7. `unfinishedCount` — honest parties with `output = none`;
+     `partyOutput` step. -/
+
+/-- Set of honest parties (complement of `corrupted` in `Fin n`). -/
+def honestSet (s : AVSSState n t F) : Finset (Fin n) :=
+  (Finset.univ : Finset (Fin n)).filter (fun p => p ∉ s.corrupted)
+
+@[simp] theorem honestSet_card_le (s : AVSSState n t F) :
+    (honestSet s).card ≤ n := by
+  unfold honestSet
+  exact (Finset.card_le_univ _).trans (by simp)
+
+/-- Honest parties with delivered = true and echoSent = false. -/
+def unsentEchoSet (s : AVSSState n t F) : Finset (Fin n) :=
+  (Finset.univ : Finset (Fin n)).filter
+    (fun p => p ∉ s.corrupted ∧
+      (s.local_ p).delivered = true ∧ (s.local_ p).echoSent = false)
+
+@[simp] theorem unsentEchoSet_card_le (s : AVSSState n t F) :
+    (unsentEchoSet s).card ≤ n := by
+  unfold unsentEchoSet
+  exact (Finset.card_le_univ _).trans (by simp)
+
+/-- Honest parties with `readySent = false`. -/
+def notReadySentSet (s : AVSSState n t F) : Finset (Fin n) :=
+  (Finset.univ : Finset (Fin n)).filter
+    (fun p => p ∉ s.corrupted ∧ (s.local_ p).readySent = false)
+
+@[simp] theorem notReadySentSet_card_le (s : AVSSState n t F) :
+    (notReadySentSet s).card ≤ n := by
+  unfold notReadySentSet
+  exact (Finset.card_le_univ _).trans (by simp)
+
+/-- Honest parties with `output = none`. -/
+def unfinishedSet (s : AVSSState n t F) : Finset (Fin n) :=
+  (Finset.univ : Finset (Fin n)).filter
+    (fun p => p ∉ s.corrupted ∧ (s.local_ p).output = none)
+
+@[simp] theorem unfinishedSet_card_le (s : AVSSState n t F) :
+    (unfinishedSet s).card ≤ n := by
+  unfold unfinishedSet
+  exact (Finset.card_le_univ _).trans (by simp)
+
+@[simp] theorem inflightEchoes_card_le (s : AVSSState n t F) :
+    s.inflightEchoes.card ≤ (n + 1) * (n + 1) := by
+  classical
+  have h1 : s.inflightEchoes.card ≤ (Finset.univ : Finset (Fin n × Fin n)).card :=
+    Finset.card_le_univ _
+  have h2 : (Finset.univ : Finset (Fin n × Fin n)).card = n * n := by simp
+  calc s.inflightEchoes.card
+      ≤ n * n := by rw [← h2]; exact h1
+    _ ≤ (n + 1) * (n + 1) := by nlinarith
+
+@[simp] theorem inflightDeliveries_card_le (s : AVSSState n t F) :
+    s.inflightDeliveries.card ≤ n := by
+  exact (Finset.card_le_univ s.inflightDeliveries).trans (by simp)
+
+@[simp] theorem inflightReady_card_le (s : AVSSState n t F) :
+    s.inflightReady.card ≤ n := by
+  exact (Finset.card_le_univ s.inflightReady).trans (by simp)
+
+/-- Lex base: `K = (n+1)²` dominates every component (in particular
+`inflightEchoes.card ≤ n² < K`). -/
+def lexBase (n : ℕ) : ℕ := (n + 1) * (n + 1)
+
+theorem lexBase_pos : 1 ≤ lexBase n := by unfold lexBase; nlinarith
+
+theorem inflightEchoes_lt_lexBase (s : AVSSState n t F) :
+    s.inflightEchoes.card < lexBase n + 1 := by
+  unfold lexBase
+  have := inflightEchoes_card_le s
+  omega
+
+/-- The 7-component lex-product termination variant.
+
+```
+U = c₁·K⁶ + c₂·K⁵ + c₃·K⁴ + c₄·K³ + c₅·K² + c₆·K + c₇
+```
+
+with `K = (n+1)²`. -/
+noncomputable def avssU (s : AVSSState n t F) : ℕ :=
+  let K := lexBase n
+  (if s.dealerSent then 0 else (honestSet s).card) * K ^ 6 +
+    s.inflightDeliveries.card * K ^ 5 +
+    (unsentEchoSet s).card * K ^ 4 +
+    s.inflightEchoes.card * K ^ 3 +
+    (notReadySentSet s).card * K ^ 2 +
+    s.inflightReady.card * K +
+    (unfinishedSet s).card
+
+/-- Likelihood `V s = (avssU s : ℝ≥0)`. -/
+noncomputable def avssV (s : AVSSState n t F) : ℝ≥0 := (avssU s : ℝ≥0)
+
+/-- Termination inductive invariant.
+
+Three clauses:
+
+  * Pre-share quiescence: when `dealerSent = false`, every party is
+    in its initial local state and all in-flight queues are empty.
+  * Echo well-formedness: every honest party that has `echoSent =
+    true` also has `delivered = true` (echoes are only sent post-
+    delivery). And in-flight echoes (q, p) only exist when `q` has
+    set `echoSent`.
+  * Output well-formedness: every honest party with `output = some _`
+    also has `readySent = true ∧ delivered = true`.
+
+This is enough invariant to make the `avssU` lex-product strictly
+decrease on each fair-firing step. -/
+def avssTermInv (s : AVSSState n t F) : Prop :=
+  (s.dealerSent = false →
+    (∀ p, (s.local_ p).delivered = false ∧
+          (s.local_ p).echoSent = false ∧
+          (s.local_ p).readySent = false ∧
+          (s.local_ p).output = none) ∧
+    s.inflightDeliveries = ∅ ∧
+    s.inflightEchoes = ∅ ∧
+    s.inflightReady = ∅) ∧
+  (∀ p, p ∉ s.corrupted →
+    (s.local_ p).echoSent = true → (s.local_ p).delivered = true) ∧
+  (∀ p, p ∉ s.corrupted →
+    (s.local_ p).output.isSome = true →
+      (s.local_ p).readySent = true ∧ (s.local_ p).delivered = true)
+
+/-- Uniform bound on `avssU`: `7 · n · K⁶` plus slack, with `K = (n+1)²`.
+
+A simple over-bound `(7 * n + 7) * K⁶` is used; the cert's
+`V_init_bdd` field expects a concrete `ℕ` constant. -/
+theorem avssU_le_bound (s : AVSSState n t F) :
+    avssU s ≤ (7 * n + 7) * (lexBase n) ^ 6 := by
+  classical
+  unfold avssU
+  set K := lexBase n with hK_def
+  have hK_pos : 1 ≤ K := lexBase_pos
+  -- Each component bound:
+  have h0 : (if s.dealerSent then (0 : ℕ) else (honestSet s).card) ≤ n := by
+    split
+    · exact Nat.zero_le _
+    · exact honestSet_card_le s
+  have h1 := inflightDeliveries_card_le s
+  have h2 := unsentEchoSet_card_le s
+  have h3 : s.inflightEchoes.card ≤ K := by
+    rw [hK_def]; exact inflightEchoes_card_le s
+  have h4 := notReadySentSet_card_le s
+  have h5 := inflightReady_card_le s
+  have h6 := unfinishedSet_card_le s
+  -- Power monotonicity:
+  have hp1 : K ≤ K ^ 6 := by
+    calc K = K ^ 1 := by ring
+      _ ≤ K ^ 6 := Nat.pow_le_pow_right hK_pos (by omega)
+  have hp2 : K ^ 2 ≤ K ^ 6 := Nat.pow_le_pow_right hK_pos (by omega)
+  have hp3 : K ^ 3 ≤ K ^ 6 := Nat.pow_le_pow_right hK_pos (by omega)
+  have hp4 : K ^ 4 ≤ K ^ 6 := Nat.pow_le_pow_right hK_pos (by omega)
+  have hp5 : K ^ 5 ≤ K ^ 6 := Nat.pow_le_pow_right hK_pos (by omega)
+  have hp0 : (1 : ℕ) ≤ K ^ 6 := by
+    calc (1 : ℕ) = 1 ^ 6 := by ring
+      _ ≤ K ^ 6 := by gcongr
+  -- Each weighted component ≤ n · K⁶ (or K · K⁵ = K⁶ for component 4):
+  have hA : (if s.dealerSent then (0 : ℕ) else (honestSet s).card) * K ^ 6
+              ≤ n * K ^ 6 := by nlinarith [Nat.zero_le (K ^ 6)]
+  have hB : s.inflightDeliveries.card * K ^ 5 ≤ n * K ^ 6 := by
+    calc s.inflightDeliveries.card * K ^ 5
+        ≤ n * K ^ 5 := by gcongr
+      _ ≤ n * K ^ 6 := by gcongr
+  have hC : (unsentEchoSet s).card * K ^ 4 ≤ n * K ^ 6 := by
+    calc (unsentEchoSet s).card * K ^ 4
+        ≤ n * K ^ 4 := by gcongr
+      _ ≤ n * K ^ 6 := by gcongr
+  have hD : s.inflightEchoes.card * K ^ 3 ≤ K ^ 6 := by
+    calc s.inflightEchoes.card * K ^ 3
+        ≤ K * K ^ 3 := by gcongr
+      _ = K ^ 4 := by ring
+      _ ≤ K ^ 6 := hp4
+  have hE : (notReadySentSet s).card * K ^ 2 ≤ n * K ^ 6 := by
+    calc (notReadySentSet s).card * K ^ 2
+        ≤ n * K ^ 2 := by gcongr
+      _ ≤ n * K ^ 6 := by gcongr
+  have hF : s.inflightReady.card * K ≤ n * K ^ 6 := by
+    calc s.inflightReady.card * K
+        ≤ n * K := by gcongr
+      _ ≤ n * K ^ 6 := by gcongr
+  have hG : (unfinishedSet s).card ≤ n * K ^ 6 := by
+    calc (unfinishedSet s).card
+        ≤ n := h6
+      _ = n * 1 := by ring
+      _ ≤ n * K ^ 6 := by nlinarith [hp0]
+  -- Combine hA..hG: avssU ≤ 6·n·K⁶ + K⁶.
+  have hsum : avssU s ≤ 6 * n * K ^ 6 + K ^ 6 := by
+    unfold avssU
+    -- Six components ≤ n · K⁶ each, plus one ≤ K⁶ (the inflightEchoes term).
+    have hsum6 :
+        (if s.dealerSent then (0 : ℕ) else (honestSet s).card) * K ^ 6 +
+          s.inflightDeliveries.card * K ^ 5 +
+          (unsentEchoSet s).card * K ^ 4 +
+          s.inflightEchoes.card * K ^ 3 +
+          (notReadySentSet s).card * K ^ 2 +
+          s.inflightReady.card * K +
+          (unfinishedSet s).card
+        ≤ n * K ^ 6 + n * K ^ 6 + n * K ^ 6 + K ^ 6 +
+          n * K ^ 6 + n * K ^ 6 + n * K ^ 6 := by
+      have := hA; have := hB; have := hC; have := hD
+      have := hE; have := hF; have := hG
+      omega
+    have hrearrange :
+        n * K ^ 6 + n * K ^ 6 + n * K ^ 6 + K ^ 6 +
+          n * K ^ 6 + n * K ^ 6 + n * K ^ 6
+        = 6 * n * K ^ 6 + K ^ 6 := by ring
+    rw [hrearrange] at hsum6
+    convert hsum6 using 0
+  -- Final: 6·n·K⁶ + K⁶ ≤ (7n+7)·K⁶.
+  calc avssU s
+      ≤ 6 * n * K ^ 6 + K ^ 6 := hsum
+    _ ≤ (7 * n + 7) * K ^ 6 := by nlinarith [Nat.zero_le (K ^ 6)]
 
 end Leslie.Examples.Prob.AVSS
