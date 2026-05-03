@@ -107,7 +107,7 @@ import Mathlib.Data.Fintype.Sigma
 import Mathlib.Data.Countable.Basic
 import Mathlib.Data.Countable.Defs
 
-namespace Leslie.Examples.Prob.AVSS
+namespace Leslie.Examples.Prob.AVSSAbstract
 
 open Leslie.Prob MeasureTheory NNReal
 
@@ -2077,4 +2077,4 @@ theorem avss_secrecy (partyPoint : Fin n → F)
   * **Secrecy.** Closed sorry-free — passes through to
     `BivariateShamir.bivariate_shamir_secrecy`. -/
 
-end Leslie.Examples.Prob.AVSS
+end Leslie.Examples.Prob.AVSSAbstract
