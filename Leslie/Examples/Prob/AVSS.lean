@@ -4824,4 +4824,72 @@ abbrev AVSSRushingAdversary (n t : ℕ) (F : Type*) [DecidableEq F] [Fintype F]
   Leslie.Prob.RushingAdversary
     (AVSSState n t F) (AVSSAction n F) (AVSSRushingView n t F corr)
 
+/-! ## §19.1. Classical theorems against `RushingAdversary` (Phase 7.3)
+
+Re-statements of the classical AVSS theorems (termination, correctness,
+commitment) against `AVSSRushingAdversary`. Each is a thin wrapper that
+threads `R.toAdversary` into the existing `Adversary`-quantified
+theorem. `avss_reconstruction` is purely algebraic and needs no
+rushing-adversary version.
+
+Recall `avssFair.isWeaklyFair = fun _ => True` (every adversary is
+trivially weakly-fair w.r.t. AVSS's fairness assumptions; the
+substantive condition is `TrajectoryFairProgress`, threaded through
+`TrajectoryFairAdversary`). The termination wrapper accepts the
+trajectory-progress witness directly against `R.toAdversary`. -/
+
+/-- Termination as `AlmostDiamond` under a trajectory-fair *rushing*
+adversary. Re-statement of `avss_termination_AS_fair` with the
+underlying adversary supplied as `R.toAdversary` and fairness/progress
+witnesses formulated against that lift. -/
+theorem avss_termination_AS_fair_rushing
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : AVSSRushingAdversary n t F corr)
+    (h_progress : FairASTCertificate.TrajectoryFairProgress
+      (avssSpec (t := t) sec corr) avssFair μ₀
+      ⟨R.toAdversary, trivial⟩)
+    (h_U_mono : FairASTCertificate.TrajectoryUMono
+      (avssSpec (t := t) sec corr) avssFair
+      (avssCert (t := t) sec corr) μ₀
+      ⟨R.toAdversary, trivial⟩)
+    (h_U_strict : ∀ N : ℕ, FairASTCertificate.TrajectoryFairStrictDecrease
+      (avssSpec (t := t) sec corr) avssFair
+      (avssCert (t := t) sec corr) μ₀
+      ⟨R.toAdversary, trivial⟩ N) :
+    AlmostDiamond (avssSpec (t := t) sec corr) R.toAdversary μ₀ terminated :=
+  avss_termination_AS_fair sec corr μ₀ h_init
+    ⟨⟨R.toAdversary, trivial⟩, h_progress⟩
+    h_U_mono h_U_strict
+
+/-- Honest-dealer correctness against a *rushing* adversary: with an
+honest dealer, every honest party's output equals its per-party share.
+Thin wrapper around `avss_correctness_AS`. -/
+theorem avss_correctness_AS_rushing
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : AVSSRushingAdversary n t F corr) :
+    AlmostBox (avssSpec (t := t) sec corr) R.toAdversary μ₀
+      (fun s => s.dealerHonest = true →
+        ∀ p, p ∉ s.corrupted →
+          ∀ v, (s.local_ p).output = some v →
+            v = bivEval s.coeffs (s.partyPoint p) 0) :=
+  avss_correctness_AS sec corr μ₀ h_init R.toAdversary
+
+/-- Output-determined commitment against a *rushing* adversary: any
+output, when set, equals the per-party share derived from `s.coeffs`
+and `s.partyPoint` (universal in `p`, including corrupt parties whose
+`partyCorruptDeliver` writes the correct row poly). Thin wrapper around
+`avss_commitment_AS`. -/
+theorem avss_commitment_AS_rushing
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : AVSSRushingAdversary n t F corr) :
+    AlmostBox (avssSpec (t := t) sec corr) R.toAdversary μ₀
+      outputDeterminedInv :=
+  avss_commitment_AS sec corr μ₀ h_init R.toAdversary
+
 end Leslie.Examples.Prob.AVSS
