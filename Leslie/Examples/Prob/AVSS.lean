@@ -2245,4 +2245,218 @@ theorem avss_termination_AS_fair_traj
   rcases hbounded_or_unbounded ω with ⟨N, hbnd⟩ | hunb
   · exact hN N hbnd
   · exact absurd hunb h_inf
+
+/-! ## §14. Honest-dealer correctness invariant
+
+For honest dealer, every honest party that has stored a row poly
+(`rowPoly = some rp`) has the *correct* row poly:
+`rp = rowPolyOfDealer s.partyPoint s.coeffs p`.  Combined with the
+fact that `partyOutput`'s effect computes `evalRowPoly rp 0`, this
+gives every honest output equal to `bivEval coeffs (partyPoint p) 0`
+(the per-party share). -/
+
+/-- The honest-dealer correctness invariant. -/
+def honestDealerInv (s : AVSSState n t F) : Prop :=
+  s.dealerHonest = true →
+    (∀ p, p ∉ s.corrupted →
+      (s.local_ p).delivered = true →
+        (s.local_ p).rowPoly =
+          some (rowPolyOfDealer s.partyPoint s.coeffs p)) ∧
+    (∀ p, p ∉ s.corrupted →
+      ∀ v, (s.local_ p).output = some v →
+        v = bivEval s.coeffs (s.partyPoint p) 0)
+
+omit [Fintype F] in
+theorem initPred_honestDealerInv (sec : F) (corr : Finset (Fin n))
+    (s : AVSSState n t F) (h : initPred sec corr s) :
+    honestDealerInv s := by
+  intro _
+  obtain ⟨hloc, _⟩ := h
+  refine ⟨?_, ?_⟩
+  · intro p _ hd
+    rw [hloc p] at hd
+    simp [AVSSLocalState.init] at hd
+  · intro p _ v hv
+    rw [hloc p] at hv
+    simp [AVSSLocalState.init] at hv
+
+set_option maxHeartbeats 800000 in
+omit [Fintype F] in
+/-- `honestDealerInv` is preserved by every gated action.  The hard
+case is `partyOutput`: at the gate, `delivered = true` ensures
+`rowPoly = some (rowPolyOfDealer ...)` (clause 1, pre); the output
+value `evalRowPoly rp 0` then equals `bivEval coeffs (partyPoint p) 0`
+by `evalRowPoly_rowPolyOfDealer`. -/
+theorem avssStep_preserves_honestDealerInv
+    (a : AVSSAction n F) (s : AVSSState n t F)
+    (hgate : actionGate a s) (hinv : honestDealerInv s) :
+    honestDealerInv (avssStep a s) := by
+  intro hh
+  -- `dealerHonest` is preserved by every action.
+  have hh_pre : s.dealerHonest = true := by
+    cases a <;> simp [avssStep, setLocal] at hh <;> exact hh
+  obtain ⟨h_rp_correct, h_out_correct⟩ := hinv hh_pre
+  refine ⟨?_, ?_⟩
+  -- Clause 1: ∀ honest p, post delivered → post rowPoly = some rowPolyOfDealer
+  · intro p hp hd_post
+    cases a with
+    | dealerShare =>
+        simp [avssStep] at hd_post ⊢
+        exact h_rp_correct p hp hd_post
+    | partyDeliver q =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self]
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hd_post ⊢
+          exact h_rp_correct p hp hd_post
+    | partyEchoSend q =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hd_post ⊢
+          exact h_rp_correct p hp hd_post
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hd_post ⊢
+          exact h_rp_correct p hp hd_post
+    | partyEchoReceive q r =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hd_post ⊢
+          exact h_rp_correct p hp hd_post
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hd_post ⊢
+          exact h_rp_correct p hp hd_post
+    | partyReady q =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hd_post ⊢
+          exact h_rp_correct p hp hd_post
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hd_post ⊢
+          exact h_rp_correct p hp hd_post
+    | partyAmplify q =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hd_post ⊢
+          exact h_rp_correct p hp hd_post
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hd_post ⊢
+          exact h_rp_correct p hp hd_post
+    | partyReceiveReady q r =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hd_post ⊢
+          exact h_rp_correct p hp hd_post
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hd_post ⊢
+          exact h_rp_correct p hp hd_post
+    | partyOutput q =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hd_post ⊢
+          exact h_rp_correct p hp hd_post
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hd_post ⊢
+          exact h_rp_correct p hp hd_post
+  -- Clause 2: ∀ honest p, post output = some v → v = bivEval coeffs (partyPoint p) 0
+  · intro p hp v hv
+    cases a with
+    | dealerShare =>
+        simp [avssStep] at hv
+        exact h_out_correct p hp v hv
+    | partyDeliver q =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hv
+          exact h_out_correct p hp v hv
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hv
+          exact h_out_correct p hp v hv
+    | partyEchoSend q =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hv
+          exact h_out_correct p hp v hv
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hv
+          exact h_out_correct p hp v hv
+    | partyEchoReceive q r =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hv
+          exact h_out_correct p hp v hv
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hv
+          exact h_out_correct p hp v hv
+    | partyReady q =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hv
+          exact h_out_correct p hp v hv
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hv
+          exact h_out_correct p hp v hv
+    | partyAmplify q =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hv
+          exact h_out_correct p hp v hv
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hv
+          exact h_out_correct p hp v hv
+    | partyReceiveReady q r =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hv
+          exact h_out_correct p hp v hv
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hv
+          exact h_out_correct p hp v hv
+    | partyOutput q =>
+        -- The hard case: post output_q = some (evalRowPoly rp 0) where
+        -- rp = pre rowPoly q.  By gate (delivered=true) and clause 1,
+        -- pre rowPoly q = some (rowPolyOfDealer ...).  So
+        -- v = evalRowPoly (rowPolyOfDealer ...) 0 = bivEval coeffs ... 0.
+        have hcoeffs : (avssStep (AVSSAction.partyOutput q) s).coeffs = s.coeffs := by
+          simp [avssStep, setLocal]
+        have hpartyPoint :
+            (avssStep (AVSSAction.partyOutput q) s).partyPoint = s.partyPoint := by
+          simp [avssStep, setLocal]
+        rw [hcoeffs, hpartyPoint]
+        by_cases hpq : p = q
+        · subst hpq
+          obtain ⟨_, hd_q, _, _, _⟩ := hgate
+          have hrp_pre : (s.local_ p).rowPoly =
+              some (rowPolyOfDealer s.partyPoint s.coeffs p) :=
+            h_rp_correct p hp hd_q
+          simp [avssStep, setLocal_local_self, hrp_pre] at hv
+          rw [← hv]
+          exact evalRowPoly_rowPolyOfDealer s.partyPoint s.coeffs p 0
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hv
+          exact h_out_correct p hp v hv
+
+/-! ### Honest-dealer correctness as `AlmostBox` -/
+
+set_option maxHeartbeats 800000 in
+/-- Honest-dealer correctness, lifted to `AlmostBox`.  For an honest
+dealer, every honest output equals the per-party share
+`bivEval coeffs (partyPoint p) 0`.  Tolerates *any* adversary
+(demonic or fair). -/
+theorem avss_correctness_AS
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) :
+    AlmostBox (avssSpec (t := t) sec corr) A μ₀
+      (fun s => s.dealerHonest = true →
+        ∀ p, p ∉ s.corrupted →
+          ∀ v, (s.local_ p).output = some v →
+            v = bivEval s.coeffs (s.partyPoint p) 0) := by
+  have h_pure : ∀ (a : AVSSAction n F) (s : AVSSState n t F)
+      (h : ((avssSpec (t := t) sec corr).actions a).gate s),
+      ((avssSpec (t := t) sec corr).actions a).effect s h
+        = PMF.pure (avssStep a s) :=
+    fun _ _ _ => rfl
+  have h_init' : ∀ᵐ s ∂μ₀, honestDealerInv s := by
+    filter_upwards [h_init] with s hs
+    exact initPred_honestDealerInv sec corr s hs
+  have h_inv : AlmostBox (avssSpec (t := t) sec corr) A μ₀ honestDealerInv :=
+    AlmostBox_of_pure_inductive
+      honestDealerInv
+      (fun a s => avssStep a s)
+      h_pure
+      (fun a s hgate hinv =>
+        avssStep_preserves_honestDealerInv a s hgate hinv)
+      μ₀ h_init' A
+  unfold AlmostBox at h_inv ⊢
+  filter_upwards [h_inv] with ω hinv k hh p hp v hv
+  exact (hinv k hh).2 p hp v hv
+
 end Leslie.Examples.Prob.AVSS
