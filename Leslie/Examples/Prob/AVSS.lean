@@ -4900,4 +4900,118 @@ theorem avss_commitment_AS_rushing
       outputDeterminedInv :=
   avss_commitment_AS sec corr μ₀ h_init R.toAdversary
 
+/-! ## §19.2. Phase 7.4 — schedule prefix factors through algebraic view AE
+
+Under a `RushingAdversary` `R` for AVSS, the trace is *fully deterministic*
+given the initial state: each step's effect-PMF is a `pure` (Dirac), and
+the adversary's schedule is a deterministic function of the (state-)
+history. We exploit this to express the trace measure as a deterministic
+pushforward of the initial measure, then read off the AE-factoring of
+the schedule prefix and the operational coalition view through the
+corrupt-coalition's algebraic view at the initial state.
+
+This is the cryptographic-core deliverable that the deferral note in
+`AVSS-MODEL-NOTES.md` §9 calls out: ~300–500 LOC of inductive trace
+plumbing that closes the schedule-leakage half of the headline
+operational-secrecy theorem.  The remaining "algebraic-core" half — the
++200 LOC row-poly-vs-grid secrecy strengthening of
+`BivariateShamir.bivariate_shamir_secrecy` — is still deferred (cf. §17.12);
+the headline theorem `avss_secrecy_AS_view_rushing` (§19.3 below) takes
+that strengthening as an explicit hypothesis. -/
+
+section RushingSimulation
+
+open Classical
+
+/-- Compute the next trace pair given a prior reverse-order prefix list.
+Used as the inductive step of `avssSimulateRev`.  If the prefix is
+empty (unreachable in our recursion), returns the input fallback. -/
+noncomputable def avssSimulateNext (R : AVSSRushingAdversary n t F corr)
+    (fallback : AVSSState n t F)
+    (prev : List (AVSSState n t F × Option (AVSSAction n F))) :
+    AVSSState n t F × Option (AVSSAction n F) :=
+  let s_k : AVSSState n t F := (prev.head?.map Prod.fst).getD fallback
+  match R.toAdversary.schedule prev.reverse with
+  | none => (s_k, (none : Option (AVSSAction n F)))
+  | some i =>
+      if actionGate i s_k then (avssStep i s_k, some i)
+      else (s_k, (none : Option (AVSSAction n F)))
+
+/-- Reverse-order simulated trace prefix at step `k`.  Returns a list
+of length `k+1` ordered as `[step k, step k-1, …, step 0]`.  The
+recursion is structural in `k`. -/
+noncomputable def avssSimulateRev (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) :
+    ℕ → List (AVSSState n t F × Option (AVSSAction n F))
+  | 0 => [(s_0, (none : Option (AVSSAction n F)))]
+  | (k+1) =>
+    let prev := avssSimulateRev R s_0 k
+    (avssSimulateNext R s_0 prev) :: prev
+
+/-- Length of the simulated reverse prefix is `k+1`. -/
+theorem avssSimulateRev_length {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) (k : ℕ) :
+    (avssSimulateRev R s_0 k).length = k + 1 := by
+  induction k with
+  | zero => rfl
+  | succ k ih => simp [avssSimulateRev, ih]
+
+theorem avssSimulateRev_ne_nil {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) (k : ℕ) :
+    avssSimulateRev R s_0 k ≠ [] := by
+  intro h
+  have := avssSimulateRev_length R s_0 k
+  rw [h] at this; simp at this
+
+/-- The simulated trace at step `k`: extract the head of the
+reverse-order prefix list. -/
+noncomputable def avssSimulateTrace (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) (k : ℕ) :
+    AVSSState n t F × Option (AVSSAction n F) :=
+  match avssSimulateRev R s_0 k with
+  | [] => (s_0, (none : Option (AVSSAction n F)))  -- unreachable
+  | x :: _ => x
+
+@[simp] theorem avssSimulateTrace_zero {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) :
+    avssSimulateTrace R s_0 0 = (s_0, (none : Option (AVSSAction n F))) := rfl
+
+@[simp] theorem avssSimulateTrace_zero_fst {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) :
+    (avssSimulateTrace R s_0 0).1 = s_0 := rfl
+
+@[simp] theorem avssSimulateTrace_zero_snd {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) :
+    (avssSimulateTrace R s_0 0).2 = none := rfl
+
+/-- Successor-step structural identity for `avssSimulateTrace`: the
+state-action pair at step `k+1` equals `avssSimulateNext` applied to
+the reverse-order prefix at step `k`. -/
+theorem avssSimulateTrace_succ_eq {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) (k : ℕ) :
+    avssSimulateTrace R s_0 (k+1) =
+      avssSimulateNext R s_0 (avssSimulateRev R s_0 k) := by
+  simp [avssSimulateTrace, avssSimulateRev]
+
+/-- The state at step `k` of the simulate equals the head of the
+reverse-prefix list (when nonempty). -/
+theorem avssSimulateRev_head_eq {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) (k : ℕ) :
+    (avssSimulateRev R s_0 k).head?.map Prod.fst =
+      some (avssSimulateTrace R s_0 k).1 := by
+  unfold avssSimulateTrace
+  -- Case-split on the head of the (nonempty) list.
+  cases h : avssSimulateRev R s_0 k with
+  | nil => exact absurd h (avssSimulateRev_ne_nil R s_0 k)
+  | cons x xs => simp
+
+end RushingSimulation
+
 end Leslie.Examples.Prob.AVSS
