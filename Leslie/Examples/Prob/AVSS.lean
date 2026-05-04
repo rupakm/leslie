@@ -3054,6 +3054,63 @@ theorem avssInitPMF_support_initPred (sec : F) (corr : Finset (Fin n))
   rw [← hs_eq]
   refine ⟨fun _ => rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
+/-! ## §17.5 Coalition view + grid projection (Phase 5 Layer C1)
+
+The trace-level secrecy theorem says: for any `t`-coalition `C` of
+*corrupt* parties, the marginal of the AVSS trace distribution
+projected to `C`'s view is invariant in the secret. To formalise
+this we factor the projection through two definitions:
+
+* `coalitionView C s : C.val → AVSSLocalState n t F` — the local
+  state of every party in coalition `C`.
+* `coalitionGrid C D s : C.val → D.val → Option F` — the grid view
+  of bivariate evaluations: for each row party `p ∈ C` and column
+  party `q ∈ D`, look up `(rowPolyOfDealer s.partyPoint s.coeffs p)
+  evaluated at the partyPoint of `q`. Wrapped in `Option` to mirror
+  `BivariateShamir.gridView`.
+
+Under `outputDeterminedInv`, the grid view at delivered parties
+agrees with `bivEval s.coeffs (s.partyPoint p) (s.partyPoint q)`. -/
+
+/-- The local-state coalition view: project `s.local_` onto `C.val`. -/
+def coalitionView (C : BivariateShamir.Coalition n t)
+    (s : AVSSState n t F) : C.val → AVSSLocalState n t F :=
+  fun p => s.local_ p.val
+
+/-- The grid view of two coalitions `C` (rows) and `D` (columns):
+the bivariate evaluations of the dealer's polynomial at the grid
+`(partyPoint p, partyPoint q)` for `p ∈ C, q ∈ D`. Wrapped in
+`Option` to align with `BivariateShamir.gridView` (where `none`
+indicates "not delivered yet" — though here we always return the
+algebraic value derivable from `s.coeffs`). -/
+def coalitionGrid (C D : BivariateShamir.Coalition n t)
+    (s : AVSSState n t F) : C.val → D.val → Option F :=
+  fun p q => some (bivEval s.coeffs (s.partyPoint p.val) (s.partyPoint q.val))
+
+omit [Fintype F] in
+/-- The grid view depends only on `s.coeffs` and `s.partyPoint`. -/
+theorem coalitionGrid_eq_bivEval (C D : BivariateShamir.Coalition n t)
+    (s : AVSSState n t F) (p : C.val) (q : D.val) :
+    coalitionGrid C D s p q =
+      some (bivEval s.coeffs (s.partyPoint p.val) (s.partyPoint q.val)) := rfl
+
+omit [Fintype F] in
+/-- Under `outputDeterminedInv`, every delivered coalition member's
+stored row poly evaluates to the bivariate value at the grid point.
+This is the bridge from the operational `local_.rowPoly` view to the
+algebraic `bivEval s.coeffs ...` view. -/
+theorem coalitionGrid_eq_evalRowPoly_of_delivered
+    (C D : BivariateShamir.Coalition n t)
+    (s : AVSSState n t F) (hinv : outputDeterminedInv s)
+    (p : C.val) (q : D.val)
+    (hd : (s.local_ p.val).delivered = true) :
+    ∃ rp : Fin (t+1) → F,
+      (s.local_ p.val).rowPoly = some rp ∧
+      coalitionGrid C D s p q = some (evalRowPoly rp (s.partyPoint q.val)) := by
+  refine ⟨rowPolyOfDealer s.partyPoint s.coeffs p.val, hinv.1 p.val hd, ?_⟩
+  rw [coalitionGrid_eq_bivEval]
+  rw [evalRowPoly_rowPolyOfDealer]
+
 /-! ## §17. Secrecy
 
 Direct passthrough to `BivariateShamir.bivariate_shamir_secrecy`.
