@@ -5686,6 +5686,110 @@ theorem traceDist_AE_eq_avssSimulateTrace
     with ω hω
   exact hω k le_rfl
 
+/-! ## §19.2.5. Phase 7.4 — joint factoring through the initial state
+
+Apply the inductive AE-bridge `traceDist_AE_eq_avssSimulateTrace` to
+extract a joint factoring of `(coalitionAlgebraicView, schedulePrefix)`
+through the trace's initial state `(ω 0).1`.  Both components are
+deterministic functions of `(ω 0).1` (and the rushing adversary `R`
+and coalition `C`), so the joint marginal of the trace measure is the
+pushforward of the initial measure through this deterministic
+function.  This is the structural prerequisite for §19.3's discharge
+of `h_aux`. -/
+
+/-- Simulate-derived algebraic view: a deterministic function of the
+initial state `s_0`, equal AE to `coalitionAlgebraicView C ω k` along
+the trace under a rushing adversary `R`.
+
+The first component is the row polynomials at corrupt parties — a
+function of `s_0.partyPoint` and `s_0.coeffs`.  The second is the
+per-step `delivered` bits, computed deterministically from the
+simulate.  -/
+noncomputable def simAlgebraicView (R : AVSSRushingAdversary n t F corr)
+    (C : BivariateShamir.Coalition n t) (k : ℕ) (s_0 : AVSSState n t F) :
+    (C.val → Fin (t+1) → F) × (Fin k → C.val → Bool) :=
+  (fun p => rowPolyOfDealer s_0.partyPoint s_0.coeffs p.val,
+   fun i p => ((avssSimulateTrace R s_0 i.val).1.local_ p.val).delivered)
+
+/-- Simulate-derived schedule prefix: a deterministic function of the
+initial state `s_0`, equal AE to `schedulePrefix ω k` along the trace
+under a rushing adversary `R`. -/
+noncomputable def simSchedulePrefix (R : AVSSRushingAdversary n t F corr)
+    (k : ℕ) (s_0 : AVSSState n t F) :
+    Fin k → Option (AVSSAction n F) :=
+  fun i => (avssSimulateTrace R s_0 i.val).2
+
+/-- **Phase 7.4 joint factoring.** Under a rushing adversary `R`, the
+joint `(coalitionAlgebraicView C ω k, schedulePrefix ω k)` AE-equals
+the simulate's deterministic image of `(ω 0).1`.
+
+This is the cryptographic-core deliverable: it expresses the joint
+operational-view-and-schedule marginal as a pushforward of the
+initial measure through `(simAlgebraicView, simSchedulePrefix)`,
+which is exactly the form needed to apply polynomial-level secrecy
+in §19.3 below. -/
+theorem coalitionAlgebraicView_schedulePrefix_AE_eq_sim
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (R : AVSSRushingAdversary n t F corr)
+    (C : BivariateShamir.Coalition n t) (k : ℕ) :
+    ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀),
+        (coalitionAlgebraicView C ω k, schedulePrefix ω k) =
+          (simAlgebraicView R C k (ω 0).1, simSchedulePrefix R k (ω 0).1) := by
+  classical
+  -- Strong-form prefix matching: `ω i = sim i` for all `i ≤ k`.
+  -- For algView's second component and schedulePrefix, we need every
+  -- `i < k` (i.e., `i ≤ k - 1`).  Use `i ≤ k` for safety — covers all.
+  have h_prefix :=
+    traceDist_AE_eq_avssSimulateTrace_strong (t := t) sec corr μ₀ R k
+  filter_upwards [h_prefix] with ω hω
+  -- The first component (row poly at C parties) depends only on `(ω 0).1`.
+  -- Both algView and simAlgebraicView's first components are literally
+  -- `rowPolyOfDealer (ω 0).1.partyPoint (ω 0).1.coeffs p.val`.
+  -- The second component / schedulePrefix depend on `(ω i).1` / `(ω i).2`,
+  -- which match `avssSimulateTrace R (ω 0).1 i.val` AE.
+  refine Prod.ext (Prod.ext rfl ?_) ?_
+  · -- delivered bits at every (i : Fin k, p ∈ C)
+    funext i p
+    show ((ω i.val).1.local_ p.val).delivered =
+        ((avssSimulateTrace R (ω 0).1 i.val).1.local_ p.val).delivered
+    have hi : i.val ≤ k := le_of_lt i.isLt
+    rw [hω i.val hi]
+  · -- schedulePrefix at every i : Fin k
+    funext i
+    show (ω i.val).2 = (avssSimulateTrace R (ω 0).1 i.val).2
+    have hi : i.val ≤ k := le_of_lt i.isLt
+    rw [hω i.val hi]
+
+/-- Joint factoring of `(coalitionAlgebraicView, schedulePrefix)` through
+the trace's initial state, restated as a deterministic-function form:
+the joint AE-equals `F((ω 0).1)` for `F` the simulate-derived pair.
+
+This is the form actually used by §19.3 below to discharge `h_aux`.
+The brief's preferred form — `schedulePrefix ω k = G(coalitionAlgebraicView)`
+through `coalitionAlgebraicView` alone — is *not* generally provable
+because `R.toAdversary.schedule` depends on `R`'s view of the **full**
+corrupt set `corr`, while `coalitionAlgebraicView C` only carries
+data for `C ⊆ corr`.  When `C ⊊ corr`, two traces with identical
+algebraic views (on `C`) can have distinct schedules.  The factoring
+through `(ω 0).1` is the correct form: it uses the strictly more
+informative initial state, and the §19.3 reduction is via the
+step-0 pair marginal of the trace measure (which equals
+`avssInitMeasure` paired with `none`). -/
+theorem traceDist_algebraicView_schedulePrefix_factors_AE
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (R : AVSSRushingAdversary n t F corr)
+    (C : BivariateShamir.Coalition n t) (k : ℕ) :
+    (traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀).map
+        (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k)) =
+      (traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀).map
+        (fun ω =>
+          (simAlgebraicView R C k (ω 0).1, simSchedulePrefix R k (ω 0).1)) := by
+  refine Measure.map_congr ?_
+  exact coalitionAlgebraicView_schedulePrefix_AE_eq_sim
+    (t := t) sec corr μ₀ R C k
+
 /-! ## §19.3. Phase 7.5 — operational view secrecy under rushing adversary
 
 The headline `avss_secrecy_AS_view_rushing` is a thin composition of
