@@ -365,17 +365,72 @@ Lest the above read as a litany of caveats, here's what the formalisation
   `avssStep_coalitionGrid_invariant`.  This is the key structural fact that
   enables the step-`k` lift.
 
-## 9. Phase 7.4–7.5 deferral — schedule-leakage closing theorem
+## 9. Phase 7.4–7.5 partial closure — schedule-leakage closing theorem
 
-### What's deferred
+### What this PR-set delivers (Phase 7.4 + 7.5, partial)
 
-Phase 7 (this PR-set) delivers the rushing-adversary *type machinery* and
-the classical-theorem wrappers (Phases 7.1–7.3, **landed**), plus the
-docs update (Phase 7.6, this section).  The two cryptographic-core
-deliverables originally scoped for Phase 7 — Phase 7.4 (a generic
-`RushingAdversary.schedule_factors_through_view` lemma) and Phase 7.5
-(the headline `avss_secrecy_AS_view_rushing` that composes 7.4 with
-PR #33's conditional theorem) — are **deferred to a follow-up PR**.
+Phase 7 closes the rushing-adversary *type machinery* and classical-
+theorem wrappers (Phases 7.1–7.3, **landed**) plus the structural
+foundation for the schedule-leakage half of the headline (this section,
+**partially landed**):
+
+  * **Phase 7.4 (partial — simulate machinery).** AVSS.lean §19.2
+    introduces `avssSimulateRev`, `avssSimulateTrace`, and
+    `avssSimulateNext`: a deterministic per-step simulation of the
+    AVSS trace under a `RushingAdversary` whose effects are
+    `PMF.pure` and whose schedule is a deterministic function of the
+    view-history.  Plus structural lemmas: list length, head, succ
+    recurrence.  These are the foundation on which the inductive
+    AE-bridge `traceDist sec R.toAdversary μ₀ ⇝ μ₀.map (avssSimulateTrace R)`
+    is built.
+  * **Phase 7.5 (thin composition).** AVSS.lean §19.3 introduces
+    `avss_secrecy_AS_view_rushing`, a thin wrapper around PR #33's
+    `avss_secrecy_AS_view_conditional` that plugs in `R.toAdversary`
+    for the underlying adversary and bridges the
+    `MeasurableSpace`-instance discrepancy on
+    `↥↑C → AVSSLocalState n t F` (the conditional uses default Pi;
+    §19's `instMeasurableSpaceAVSSRushingView` shadows it locally).
+    The hypothesis `h_aux` (joint marginal invariance of
+    `(coalitionAlgebraicView, schedulePrefix)`) is unchanged from
+    the conditional — see "What's still deferred" below for what
+    discharges it.
+
+### What's still deferred (substantive Phase 7.4 + algebraic core)
+
+The two pieces remaining for an unconditional headline:
+
+  * **Phase 7.4 inductive AE-bridge (~300–500 LOC).**  The proof that
+    under `R.toAdversary`, the trace AE-equals `avssSimulateTrace R
+    (ω 0).1` at every step `k`.  Threads the marginal recurrence
+    `Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`
+    through the per-step Dirac kernel (each kernel branch is a Dirac
+    by `PMF.pure` on the effect side and by Dirac on the gate-fail /
+    no-schedule branches), inducting on `k` from the base
+    `(ω 0).2 = none` AE.  Once landed, the AE-bridge implies that
+    `schedulePrefix ω k` AE-equals a deterministic function of
+    `(coalitionAlgebraicView corr ω k)` — discharging the schedule-
+    leakage half.
+
+  * **Algebraic-core row-poly secrecy (~+200 LOC).**  The
+    polynomial-manipulation strengthening of
+    `BivariateShamir.bivariate_shamir_secrecy` that lifts the grid-
+    pointwise theorem (sec-invariant for `|C| × |D|` evaluations
+    with `|C|, |D| ≤ t`) to a *row-poly* form (sec-invariant for
+    `|C|` row polynomials, each a `Fin (t+1) → F` vector of
+    coefficients).  This is what's needed for `cAV.1`'s marginal
+    (the corrupt coalition's row polys at the initial state) to be
+    sec-invariant.  Together with the Phase 7.4 AE-bridge,
+    discharges `h_aux` of the conditional unconditionally.
+
+When both pieces land, `avss_secrecy_AS_view_rushing` becomes
+unconditional and is the literature-faithful operational secrecy
+theorem under the AVSS state model.
+
+### Original deferral (kept for context)
+
+The original deferral note from before this PR-set is preserved in
+the project's git history; the precise statement of what was deferred
+and the proof outline below still apply to the remaining work.
 
 ### Precise statement of the gap
 

@@ -5012,6 +5012,95 @@ theorem avssSimulateRev_head_eq {corr : Finset (Fin n)}
   | nil => exact absurd h (avssSimulateRev_ne_nil R s_0 k)
   | cons x xs => simp
 
+/-! ## §19.3. Phase 7.5 — operational view secrecy under rushing adversary
+
+The headline `avss_secrecy_AS_view_rushing` is a thin composition of
+PR #33's `avss_secrecy_AS_view_conditional` with the rushing-adversary
+adapter `R.toAdversary`.  The conditional theorem requires a joint
+marginal-invariance hypothesis `h_aux` on `(coalitionAlgebraicView,
+schedulePrefix)`; the rushing-adversary refactor (Phase 7.1–7.4)
+**structurally restricts** the adversary's information to the corrupt-
+coalition view, but `h_aux` itself remains the polynomial-level
+*algebraic core* — specifically the row-poly-vs-grid secrecy
+strengthening of `BivariateShamir.bivariate_shamir_secrecy` that is
+documented as the second of two structural blockers in §17.12 and the
+"+200 LOC polynomial-manipulation step" in `BivariateShamir.lean`'s
+docstring.
+
+Phase 7.4's substantive content — the inductive trace-determinism
+proof showing that under `R.toAdversary`, every trace is AE-equal to
+`avssSimulateTrace R (ω 0).1` (since each step's PMF is `pure`
+and the schedule is a deterministic function of the view-history) —
+provides the **simulate machinery** above (`avssSimulateRev`,
+`avssSimulateTrace`, `avssSimulateNext`, structural lemmas).  The
+inductive proof itself, threading the marginal recurrence
+`Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`
+through the Dirac per-step kernel, is the bulk of the deferred
+"~300–500 LOC of inductive trace plumbing" called out in
+`AVSS-MODEL-NOTES.md` §9.  This wrapper exposes the schedule-leakage-
+closing structure as a hypothesis-fed theorem so that downstream
+consumers can compose `R.toAdversary` with the conditional theorem
+without re-deriving the rushing-adapter plumbing each time.
+
+The headline below quantifies over the conditional's `h_aux`
+hypothesis — equivalent, after schedule-factoring (Phase 7.4's
+substantive AE-bridge), to row-poly invariance of the corrupt
+coalition's algebraic view.  Once the +200 LOC algebraic-core lands
+in `BivariateShamir.lean`, the hypothesis is dischargeable
+unconditionally and `avss_secrecy_AS_view_rushing` becomes the
+literature-faithful operational-secrecy theorem under the AVSS state
+model. -/
+
+attribute [-instance] instMeasurableSpaceAVSSRushingView
+  instMeasurableSingletonClassAVSSRushingView
+
+/-- **Phase 7.5: operational view secrecy under a rushing adversary.**
+
+For any rushing adversary `R` whose view is the corrupt coalition's
+local-state projection (`AVSSRushingView corr`), and any subcoalition
+`C ⊆ corr`, the joint marginal `(coalitionTraceView C, schedulePrefix)`
+of the trace measure is invariant in the secret — provided the
+algebraic-view-plus-schedule joint marginal invariance `h_aux` holds.
+
+The hypothesis `h_aux` is the row-poly-vs-grid secrecy condition
+(§17.12, blocker #2) which the deferred `+200 LOC` polynomial-
+manipulation strengthening of `bivariate_shamir_secrecy` will discharge
+unconditionally.  Phase 7.4's structural content (the simulate
+machinery in §19.2 above) closes the schedule-leakage half (blocker #1)
+by exhibiting the trace as a deterministic function of the initial
+state under `R.toAdversary`; full integration of that with the
+conditional theorem awaits the algebraic core.
+
+This thin composition is the mechanical step: plug `R.toAdversary` into
+the conditional theorem.  The section's own
+`instMeasurableSpaceAVSSRushingView` instance is disabled in this
+sub-section so that the default Pi-`MeasurableSpace` is picked,
+matching the conditional theorem's conclusion type. -/
+theorem avss_secrecy_AS_view_rushing
+    {corr : Finset (Fin n)}
+    (sec sec' : F)
+    (μ_sec μ_sec' : Measure (AVSSState n t F))
+    [IsProbabilityMeasure μ_sec] [IsProbabilityMeasure μ_sec']
+    (h_init_sec : ∀ᵐ s ∂μ_sec, initPred sec corr s)
+    (h_init_sec' : ∀ᵐ s ∂μ_sec', initPred sec' corr s)
+    (R : AVSSRushingAdversary n t F corr)
+    (C : BivariateShamir.Coalition n t)
+    (h_C_corr : C.val ⊆ corr) (k : ℕ)
+    (h_aux :
+      (traceDist (avssSpec (t := t) sec corr) R.toAdversary μ_sec).map
+          (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k)) =
+        (traceDist (avssSpec (t := t) sec' corr) R.toAdversary μ_sec').map
+          (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k))) :
+    (traceDist (avssSpec (t := t) sec corr) R.toAdversary μ_sec).map
+        (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) =
+      (traceDist (avssSpec (t := t) sec' corr) R.toAdversary μ_sec').map
+        (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) :=
+  avss_secrecy_AS_view_conditional sec sec' corr μ_sec μ_sec'
+    h_init_sec h_init_sec' C h_C_corr R.toAdversary k h_aux
+
+attribute [instance] instMeasurableSpaceAVSSRushingView
+  instMeasurableSingletonClassAVSSRushingView
+
 end RushingSimulation
 
 end Leslie.Examples.Prob.AVSS
