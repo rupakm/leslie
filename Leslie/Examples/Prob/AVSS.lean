@@ -4114,7 +4114,7 @@ theorem avssStep_corrupted_invariant (a : AVSSAction n F)
     (avssStep a s).corrupted = s.corrupted := by
   cases a <;> simp [avssStep, setLocal]
 
-section Phase6_StepK
+section Phase6_OperationalView
 
 open scoped ProbabilityTheory
 
@@ -4409,7 +4409,7 @@ theorem coalitionView_corrupt_factors_AE
   have h := h_outdet.1 p.val hd
   rw [h, h_pp_ω, h_co_ω]
 
-end Phase6_StepK
+end Phase6_OperationalView
 
 /-! ## §17.12 Phase 6.3 — operational view secrecy (conditional headline)
 
@@ -4709,6 +4709,17 @@ theorem avss_secrecy_AS_view_conditional
     (measurable_coalitionAlgebraicView C k).prodMk (measurable_schedulePrefix k)
   rw [← Measure.map_map hmeas_G hmeas_av_sp_sec,
       ← Measure.map_map hmeas_G hmeas_av_sp_sec, h_aux]
+
+/-! ## §18. Polynomial-level secrecy (Phase 4, kept for the headline)
+
+Direct passthrough to `BivariateShamir.bivariate_shamir_secrecy`.
+The post-deal grid view at any `t`-coalition is independent of the
+secret. This is the **grid form** — option (b) in the SyncVSS brief.
+The full **row + column** view secrecy (a strict generalisation) is
+the +200 LOC polynomial-manipulation step explicitly deferred in
+`SyncVSS.lean §10`; we inherit the same deferral. See §17.12 for
+the trace-level analogue and `AVSS-MODEL-NOTES.md` for the broader
+adversary-model story. -/
 
 /-- AVSS coalition-view secrecy (grid form). -/
 theorem avss_secrecy (partyPoint : Fin n → F)
