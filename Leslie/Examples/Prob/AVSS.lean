@@ -459,6 +459,8 @@ instance : MeasurableSpace (AVSSState n t F) := ⊤
 instance : MeasurableSingletonClass (AVSSState n t F) := ⟨fun _ => trivial⟩
 instance : MeasurableSpace (AVSSAction n F) := ⊤
 instance : MeasurableSingletonClass (AVSSAction n F) := ⟨fun _ => trivial⟩
+instance : MeasurableSpace (AVSSLocalState n t F) := ⊤
+instance : MeasurableSingletonClass (AVSSLocalState n t F) := ⟨fun _ => trivial⟩
 
 /-- `AVSSAction n F` is `Fintype` under `[Fintype F]`. -/
 noncomputable instance : Fintype (AVSSAction n F) := by
@@ -3799,6 +3801,96 @@ theorem avss_secrecy_AS
     h_nz_pp h_F C D A
 
 end StepKGeneralisation
+
+/-! ## §17.10 Trace-level operational view + schedule prefix (Phase 6.1)
+
+For Phase 6 we project a trace
+`ω : ℕ → AVSSState n t F × Option (AVSSAction n F)` onto two pieces:
+
+* `coalitionTraceView C ω k : Fin k → C.val → AVSSLocalState n t F` —
+  the per-step **operational** view: the corrupt coalition's local
+  state at every step `i < k`.
+* `schedulePrefix ω k : Fin k → Option (AVSSAction n F)` — the action
+  label recorded at every step `i < k`. The 0-th entry is conventionally
+  `none` (no action has fired before step 0); subsequent entries hold
+  the label of the action that fired between steps `i - 1` and `i`.
+
+Both are deterministic functions of the trace and are measurable (each
+is a Pi over `Fin k`-many coordinate projections composed with finite
+state evaluations).
+
+These are the operational analogues of `coalitionGrid (ω k).1` (the
+algebraic-grid view at step `k`) used in the trace-level **grid**
+secrecy theorem `avss_secrecy_AS`. -/
+
+/-- The corrupt coalition's per-step operational view: at every step
+`i < k`, project `(ω i).1.local_` onto the parties of `C`. -/
+def coalitionTraceView (C : BivariateShamir.Coalition n t)
+    (ω : ℕ → AVSSState n t F × Option (AVSSAction n F)) (k : ℕ) :
+    Fin k → C.val → AVSSLocalState n t F :=
+  fun i p => coalitionView C (ω i.val).1 p
+
+/-- The schedule prefix: at every step `i < k`, record the action label
+component of the trace at step `i`. -/
+def schedulePrefix
+    (ω : ℕ → AVSSState n t F × Option (AVSSAction n F)) (k : ℕ) :
+    Fin k → Option (AVSSAction n F) :=
+  fun i => (ω i.val).2
+
+omit [Field F] [Fintype F] in
+@[simp] theorem coalitionTraceView_apply (C : BivariateShamir.Coalition n t)
+    (ω : ℕ → AVSSState n t F × Option (AVSSAction n F)) (k : ℕ)
+    (i : Fin k) (p : C.val) :
+    coalitionTraceView C ω k i p = coalitionView C (ω i.val).1 p := rfl
+
+omit [Field F] [Fintype F] in
+@[simp] theorem schedulePrefix_apply
+    (ω : ℕ → AVSSState n t F × Option (AVSSAction n F)) (k : ℕ) (i : Fin k) :
+    schedulePrefix ω k i = (ω i.val).2 := rfl
+
+omit [Field F] in
+/-- `coalitionTraceView` is measurable: it factors as a Pi of
+coordinate evaluations, each composed with `Prod.fst` and the discrete
+`s.local_ p.val` projection (measurable since `AVSSState` carries the
+top σ-algebra, hence every function out is measurable). -/
+@[fun_prop]
+theorem measurable_coalitionTraceView (C : BivariateShamir.Coalition n t)
+    (k : ℕ) :
+    Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+        coalitionTraceView C ω k) := by
+  classical
+  refine measurable_pi_iff.mpr fun i => measurable_pi_iff.mpr fun p => ?_
+  -- The coordinate map is `ω ↦ (ω i.val).1.local_ p.val`.
+  have h1 : Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+        ω i.val) :=
+    measurable_pi_apply _
+  have h2 : Measurable (Prod.fst :
+      AVSSState n t F × Option (AVSSAction n F) → AVSSState n t F) :=
+    measurable_fst
+  have h3 : Measurable (fun s : AVSSState n t F => s.local_ p.val) :=
+    measurable_of_countable _
+  exact (h3.comp h2).comp h1
+
+omit [Field F] [Fintype F] in
+/-- `schedulePrefix` is measurable: it is a Pi of coordinate
+evaluations followed by `Prod.snd`. -/
+@[fun_prop]
+theorem measurable_schedulePrefix (k : ℕ) :
+    Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+        schedulePrefix ω k) := by
+  refine measurable_pi_iff.mpr fun i => ?_
+  exact measurable_snd.comp (measurable_pi_apply i.val)
+
+omit [Field F] in
+/-- Combined measurability: `(coalitionTraceView, schedulePrefix)` is
+measurable. Used at the headline operational-secrecy theorem (§17.12)
+to push forward the trace measure under the joint projection. -/
+@[fun_prop]
+theorem measurable_coalitionTraceView_schedulePrefix
+    (C : BivariateShamir.Coalition n t) (k : ℕ) :
+    Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+        (coalitionTraceView C ω k, schedulePrefix ω k)) :=
+  (measurable_coalitionTraceView C k).prodMk (measurable_schedulePrefix k)
 
 /-! ## §17. Secrecy
 
