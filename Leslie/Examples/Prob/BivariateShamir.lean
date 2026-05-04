@@ -76,6 +76,38 @@ theorem bivariate_shamir_secrecy_pts {F : Type*} [Field F] [Fintype F] [Decidabl
       Leslie.Prob.Polynomial.bivariate_evals_uniform dx dy s'
         pts_x pts_y h_cx h_cy h_nx h_ny h_Fx h_Fy]
 
+/-- **Full-distribution** analogue of `bivariate_shamir_secrecy_pts`.
+
+For the literature-standard `uniformBivariateFullWithFixedZero` —
+where only the `(0, 0)` coefficient is pinned to `s` and all
+`(dx + 1) * (dy + 1) - 1` other coefficients are independently
+uniform — the joint distribution of bivariate evaluations at the
+off-axis grid `pts_x × pts_y` is independent of the secret.
+Both sides equal `PMF.uniform (pts_x → pts_y → F)` by
+`Leslie.Prob.Polynomial.bivariate_evals_uniform_full`.
+
+This is the version intended for VSS/AVSS secrecy chains;
+contrast `bivariate_shamir_secrecy_pts` which uses the
+*degenerate* axis-zero distribution. -/
+theorem bivariate_shamir_secrecy_pts_full
+    {F : Type*} [Field F] [Fintype F] [DecidableEq F]
+    (dx dy : ℕ) (s s' : F)
+    (pts_x : Finset F) (pts_y : Finset F)
+    (h_cx : pts_x.card ≤ dx) (h_cy : pts_y.card ≤ dy)
+    (h_nx : (0 : F) ∉ pts_x) (h_ny : (0 : F) ∉ pts_y)
+    (h_Fx : dx + 1 ≤ Fintype.card F) (h_Fy : dy + 1 ≤ Fintype.card F) :
+    (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero dx dy s).map
+        (fun f => fun (p : pts_x) (q : pts_y) =>
+          (f.eval (Polynomial.C p.val)).eval q.val)
+      =
+    (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero dx dy s').map
+        (fun f => fun (p : pts_x) (q : pts_y) =>
+          (f.eval (Polynomial.C p.val)).eval q.val) := by
+  rw [Leslie.Prob.Polynomial.bivariate_evals_uniform_full dx dy s
+        pts_x pts_y h_cx h_cy h_nx h_ny h_Fx h_Fy,
+      Leslie.Prob.Polynomial.bivariate_evals_uniform_full dx dy s'
+        pts_x pts_y h_cx h_cy h_nx h_ny h_Fx h_Fy]
+
 /-! ## Bivariate Shamir spec as a `ProbActionSpec`
 
 State: per-party-pair grid shares.
@@ -200,6 +232,62 @@ theorem bivariate_shamir_secrecy {t : ℕ}
     rfl
   rw [h_factor s, h_factor s']
   rw [bivariate_shamir_secrecy_pts t t s s' pts_x pts_y
+        h_card_x h_card_y h_nz_x h_nz_y h_F h_F]
+
+/-- **Full-distribution** analogue of `bivariate_shamir_secrecy`:
+post-deal grid-share secrecy under the literature-standard
+non-degenerate distribution.  Reduces to
+`bivariate_shamir_secrecy_pts_full` exactly as the axis-zero
+variant reduces to `bivariate_shamir_secrecy_pts`. -/
+theorem bivariate_shamir_secrecy_full {t : ℕ}
+    (partyPoint : Fin n → F)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (C D : Coalition n t) (s s' : F) :
+    (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero t t s).map
+        (fun f => fun (i : C.val) (j : D.val) =>
+          some ((f.eval (Polynomial.C (partyPoint i.val))).eval (partyPoint j.val)))
+      =
+    (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero t t s').map
+        (fun f => fun (i : C.val) (j : D.val) =>
+          some ((f.eval (Polynomial.C (partyPoint i.val))).eval (partyPoint j.val))) := by
+  set pts_x : Finset F := C.val.image partyPoint with hpts_x
+  set pts_y : Finset F := D.val.image partyPoint with hpts_y
+  have h_card_x : pts_x.card ≤ t :=
+    le_trans Finset.card_image_le C.property
+  have h_card_y : pts_y.card ≤ t :=
+    le_trans Finset.card_image_le D.property
+  have h_nz_x : (0 : F) ∉ pts_x := by
+    intro h_in
+    rw [hpts_x, Finset.mem_image] at h_in
+    obtain ⟨i, _, h_eq⟩ := h_in
+    exact h_nz_pp i h_eq
+  have h_nz_y : (0 : F) ∉ pts_y := by
+    intro h_in
+    rw [hpts_y, Finset.mem_image] at h_in
+    obtain ⟨i, _, h_eq⟩ := h_in
+    exact h_nz_pp i h_eq
+  have h_mem_x : ∀ (i : C.val), partyPoint i.val ∈ pts_x := fun i => by
+    simp only [pts_x, Finset.mem_image]
+    exact ⟨i.val, i.property, rfl⟩
+  have h_mem_y : ∀ (j : D.val), partyPoint j.val ∈ pts_y := fun j => by
+    simp only [pts_y, Finset.mem_image]
+    exact ⟨j.val, j.property, rfl⟩
+  have h_factor : ∀ (s_sec : F),
+      (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero t t s_sec).map
+          (fun f => fun (i : C.val) (j : D.val) =>
+            some ((f.eval (Polynomial.C (partyPoint i.val))).eval (partyPoint j.val)))
+        =
+      ((Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero t t s_sec).map
+          (fun f => fun (p : pts_x) (q : pts_y) =>
+            (f.eval (Polynomial.C p.val)).eval q.val)).map
+          (fun g i j =>
+            some (g ⟨partyPoint i.val, h_mem_x i⟩ ⟨partyPoint j.val, h_mem_y j⟩)) := by
+    intro s_sec
+    rw [PMF.map_comp]
+    rfl
+  rw [h_factor s, h_factor s']
+  rw [bivariate_shamir_secrecy_pts_full t t s s' pts_x pts_y
         h_card_x h_card_y h_nz_x h_nz_y h_F h_F]
 
 /-! ## State-level secrecy
