@@ -3585,6 +3585,158 @@ theorem avss_secrecy_AS
         (fun ω => coalitionGrid C D (ω 0).1) :=
   avss_secrecy_AS_init sec sec' corr partyPoint dealerHonest h_nz_pp h_F C D A
 
+section StepKGeneralisation
+
+open scoped ProbabilityTheory
+
+/-! ## §17.9 Step-k generalisation of trace-level grid secrecy
+
+The headline theorem `avss_secrecy_AS` above is currently stated at
+step 0. Since `coalitionGrid C D` depends only on `s.coeffs` and
+`s.partyPoint` — both invariant under every `avssStep` action
+(see `avssStep_coalitionGrid_invariant`) — the step-`k` grid view
+AE-equals the step-0 grid view under any trajectory. Pushing this
+through `Measure.map_congr_of_ae_eq` gives the step-`k` form. -/
+
+/-- The per-step kernel of `avssSpec` AE-preserves `coalitionGrid`:
+no matter which branch the kernel takes (no-schedule stutter,
+gate-fail stutter, or gate-pass `avssStep` application), the
+resulting state's grid view equals the input prefix's current-state
+grid view. The gate-pass case uses `avssStep_coalitionGrid_invariant`. -/
+private theorem avssSpec_stepKernel_coalitionGrid_AE
+    (sec : F) (corr : Finset (Fin n))
+    (A : Adversary (AVSSState n t F) (AVSSAction n F))
+    (C D : BivariateShamir.Coalition n t) (k : ℕ)
+    (h : FinPrefix (AVSSState n t F) (AVSSAction n F) k) :
+    ∀ᵐ y ∂(stepKernel (avssSpec (t := t) sec corr) A k h),
+        coalitionGrid C D y.1 = coalitionGrid C D h.currentState := by
+  classical
+  have hPset : MeasurableSet
+      {x : AVSSState n t F × Option (AVSSAction n F) |
+        coalitionGrid C D x.1 = coalitionGrid C D h.currentState} :=
+    MeasurableSet.of_discrete
+  -- The kernel is `Kernel.ofFunOfCountable f` with `f h` the per-history measure.
+  -- After unfolding, the goal becomes a `match` expression we can branch on.
+  unfold stepKernel
+  simp only [ProbabilityTheory.Kernel.ofFunOfCountable, ProbabilityTheory.Kernel.coe_mk]
+  rcases A.schedule h.toList with _ | i
+  · -- Stutter (no schedule).
+    rw [ae_dirac_iff hPset]
+  · by_cases hgate : ((avssSpec (t := t) sec corr).actions i).gate h.currentState
+    · -- Gate-pass: pure-Dirac kernel applies `avssStep i`.
+      simp only [hgate, dite_true]
+      rw [show ((avssSpec (t := t) sec corr).actions i).effect h.currentState hgate
+            = PMF.pure (avssStep i h.currentState) from rfl,
+          PMF.toMeasure_pure, Measure.map_dirac (by fun_prop), ae_dirac_iff hPset]
+      exact avssStep_coalitionGrid_invariant i h.currentState C D
+    · -- Gate-fail stutter.
+      simp only [hgate, dite_false]
+      rw [ae_dirac_iff hPset]
+
+/-- **Step-k AE invariance of the grid view.** Under any adversary
+`A` and initial probability measure `μ₀`, the trace marginal of
+`coalitionGrid C D` at step `k` AE-equals the marginal at step 0.
+
+Proven by induction on `k`. The successor step uses the marginal
+recurrence
+`Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`
+to reduce the step-`(k+1)` AE statement to a per-prefix kernel
+AE statement, which is exactly `avssSpec_stepKernel_coalitionGrid_AE`. -/
+theorem traceDist_coalitionGrid_AE_eq_init
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (A : Adversary (AVSSState n t F) (AVSSAction n F))
+    (C D : BivariateShamir.Coalition n t) (k : ℕ) :
+    ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
+        coalitionGrid C D (ω k).1 = coalitionGrid C D (ω 0).1 := by
+  classical
+  induction k with
+  | zero => exact Filter.Eventually.of_forall fun _ => rfl
+  | succ k ih =>
+    -- Reduce to: ∀ᵐ ω, coalitionGrid (ω (k+1)).1 = coalitionGrid (ω k).1, then chain with ih.
+    suffices hone_step :
+        ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
+          coalitionGrid C D (ω (k+1)).1 = coalitionGrid C D (ω k).1 by
+      filter_upwards [hone_step, ih] with ω h_step h_ih
+      rw [h_step, h_ih]
+    -- Marginal recurrence: pull (frestrictLe k ω, ω (k+1)) marginal from the joint.
+    have hmeas_pair : Measurable
+        (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+          (Preorder.frestrictLe k ω, ω (k+1))) := by fun_prop
+    -- IsProbabilityMeasure instance for the lifted initial measure.
+    haveI : IsProbabilityMeasure
+        (μ₀.map (fun s : AVSSState n t F => (s, (none : Option (AVSSAction n F))))) :=
+      Measure.isProbabilityMeasure_map (by fun_prop)
+    -- ν ⊗ₘ κ = μtraj.map (paired marginal at step k+1).
+    have hk :
+        ((traceDist (avssSpec (t := t) sec corr) A μ₀).map
+            (Preorder.frestrictLe k)) ⊗ₘ
+          (stepKernel (avssSpec (t := t) sec corr) A k) =
+        (traceDist (avssSpec (t := t) sec corr) A μ₀).map
+          (fun ω => (Preorder.frestrictLe k ω, ω (k+1))) := by
+      unfold traceDist
+      exact ProbabilityTheory.Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure
+    -- Inner: for every prefix `h`, the kernel preserves coalitionGrid AE.
+    have h_inner : ∀ᵐ h ∂((traceDist (avssSpec (t := t) sec corr) A μ₀).map
+          (Preorder.frestrictLe k)),
+        ∀ᵐ y ∂(stepKernel (avssSpec (t := t) sec corr) A k h),
+          coalitionGrid C D y.1 = coalitionGrid C D h.currentState :=
+      Filter.Eventually.of_forall fun h =>
+        avssSpec_stepKernel_coalitionGrid_AE sec corr A C D k h
+    -- Lift to AE on the joint measure ν ⊗ₘ κ.
+    have hjoint :
+        ∀ᵐ x ∂(((traceDist (avssSpec (t := t) sec corr) A μ₀).map
+              (Preorder.frestrictLe k)) ⊗ₘ
+            (stepKernel (avssSpec (t := t) sec corr) A k)),
+          coalitionGrid C D x.2.1 = coalitionGrid C D (FinPrefix.currentState x.1) :=
+      Measure.ae_compProd_of_ae_ae MeasurableSet.of_discrete h_inner
+    -- Transfer along hk to get the AE statement on the trace measure.
+    rw [hk] at hjoint
+    rw [ae_map_iff hmeas_pair.aemeasurable MeasurableSet.of_discrete] at hjoint
+    -- `(Preorder.frestrictLe k ω).currentState = (ω k).1` is definitional.
+    exact hjoint
+
+/-- **Trace-level operational secrecy at step `k`.**
+
+For any adversary `A`, any two coalitions `C` (rows) and `D`
+(columns) of size ≤ `t`, and any step index `k`, the marginal of
+the trace distribution projected to `coalitionGrid C D` at step
+`k` is invariant in the secret.
+
+Reduces to `avss_secrecy_AS_init` (the step-0 form) via
+`traceDist_coalitionGrid_AE_eq_init` (the step-`k` AE invariance)
+plus `Measure.map_congr` (AE-equal random variables push forward
+to the same measure). -/
+theorem avss_secrecy_AS_step_k
+    (sec sec' : F) (corr : Finset (Fin n))
+    (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (C D : BivariateShamir.Coalition n t)
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) (k : ℕ) :
+    (traceDist (avssSpec (t := t) sec corr) A
+        (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω k).1) =
+      (traceDist (avssSpec (t := t) sec' corr) A
+        (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω k).1) := by
+  classical
+  -- For each `s ∈ {sec, sec'}`, the step-`k` marginal AE-equals the step-0 marginal.
+  have hstep0 : ∀ s : F,
+      (traceDist (avssSpec (t := t) s corr) A
+          (avssInitMeasure (n := n) (t := t) s corr partyPoint dealerHonest)).map
+          (fun ω => coalitionGrid C D (ω k).1) =
+        (traceDist (avssSpec (t := t) s corr) A
+          (avssInitMeasure (n := n) (t := t) s corr partyPoint dealerHonest)).map
+          (fun ω => coalitionGrid C D (ω 0).1) := by
+    intro s
+    refine Measure.map_congr ?_
+    exact traceDist_coalitionGrid_AE_eq_init s corr _ A C D k
+  rw [hstep0 sec, hstep0 sec']
+  exact avss_secrecy_AS sec sec' corr partyPoint dealerHonest h_nz_pp h_F C D A
+
+end StepKGeneralisation
+
 /-! ## §17. Secrecy
 
 Direct passthrough to `BivariateShamir.bivariate_shamir_secrecy`.
