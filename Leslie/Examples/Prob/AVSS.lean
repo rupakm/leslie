@@ -2687,6 +2687,129 @@ theorem quorum_intersection_card
     Finset.le_card_sdiff corr (Q₁ ∩ Q₂)
   omega
 
+/-! ## §16.5 Reconstruction (Option C)
+
+Given any subset `S` of `t + 1` honest parties whose `partyPoint`s are
+distinct (in particular, distinct in `F`), Lagrange interpolation at
+`0` of their per-party shares recovers the dealer's secret.
+
+Algebraic core: the univariate polynomial `g(x) = bivEval coeffs x 0`
+has degree ≤ `t`. We have `t + 1` evaluations at distinct points (the
+honest parties' shares).  Mathlib's `Lagrange.eq_interpolate_of_eval_eq`
+identifies `g` with its Lagrange interpolant; evaluating at `0`
+recovers `coeffs 0 0`. -/
+
+/-- The univariate polynomial whose evaluation at `partyPoint p`
+equals the per-party share `bivEval coeffs (partyPoint p) 0`.
+
+Concretely `g(x) = Σ_k coeffs k 0 · x^k`: a degree-`≤ t` polynomial
+in `F[x]` carrying the dealer's column-0 coefficients. -/
+noncomputable def reconstructPoly (coeffs : Fin (t+1) → Fin (t+1) → F) :
+    Polynomial F :=
+  ∑ k : Fin (t+1), Polynomial.C (coeffs k 0) * Polynomial.X ^ k.val
+
+omit [Fintype F] [DecidableEq F] in
+theorem reconstructPoly_eval (coeffs : Fin (t+1) → Fin (t+1) → F) (x : F) :
+    (reconstructPoly coeffs).eval x = bivEval coeffs x 0 := by
+  classical
+  unfold reconstructPoly bivEval
+  rw [Polynomial.eval_finset_sum]
+  refine Finset.sum_congr rfl fun k _ => ?_
+  rw [Polynomial.eval_mul, Polynomial.eval_C, Polynomial.eval_pow,
+    Polynomial.eval_X]
+  -- Goal: coeffs k 0 * x ^ k.val = ∑ l, coeffs k l * x ^ k.val * 0 ^ l.val
+  symm
+  rw [Finset.sum_eq_single (0 : Fin (t+1))]
+  · simp
+  · intros l _ hl
+    have hl_pos : 0 < l.val := Nat.pos_of_ne_zero (fun h => hl (Fin.ext h))
+    rw [zero_pow (Nat.pos_iff_ne_zero.mp hl_pos)]
+    ring
+  · intro h; exact absurd (Finset.mem_univ _) h
+
+omit [Fintype F] [DecidableEq F] in
+theorem reconstructPoly_eval_zero (coeffs : Fin (t+1) → Fin (t+1) → F) :
+    (reconstructPoly coeffs).eval 0 = coeffs 0 0 := by
+  classical
+  rw [reconstructPoly_eval]
+  unfold bivEval
+  rw [Finset.sum_eq_single (0 : Fin (t+1))]
+  · rw [Finset.sum_eq_single (0 : Fin (t+1))]
+    · simp
+    · intros l _ hl
+      have hl_pos : 0 < l.val := Nat.pos_of_ne_zero (fun h => hl (Fin.ext h))
+      rw [zero_pow (Nat.pos_iff_ne_zero.mp hl_pos)]
+      ring
+    · intro h; exact absurd (Finset.mem_univ _) h
+  · intros k _ hk
+    have hk_pos : 0 < k.val := Nat.pos_of_ne_zero (fun h => hk (Fin.ext h))
+    rw [zero_pow (Nat.pos_iff_ne_zero.mp hk_pos)]
+    simp
+  · intro h; exact absurd (Finset.mem_univ _) h
+
+omit [Fintype F] [DecidableEq F] in
+theorem reconstructPoly_natDegree_le (coeffs : Fin (t+1) → Fin (t+1) → F) :
+    (reconstructPoly coeffs).natDegree ≤ t := by
+  classical
+  unfold reconstructPoly
+  apply Polynomial.natDegree_sum_le_of_forall_le
+  intro k _
+  calc (Polynomial.C (coeffs k 0) * Polynomial.X^k.val).natDegree
+      ≤ k.val := Polynomial.natDegree_C_mul_X_pow_le _ _
+    _ ≤ t := Nat.le_of_lt_succ k.is_lt
+
+omit [Fintype F] [DecidableEq F] in
+theorem reconstructPoly_degree_lt (coeffs : Fin (t+1) → Fin (t+1) → F) :
+    (reconstructPoly coeffs).degree < (t + 1 : ℕ) := by
+  classical
+  by_cases hp : reconstructPoly coeffs = 0
+  · rw [hp, Polynomial.degree_zero]
+    exact_mod_cast WithBot.bot_lt_coe (t + 1)
+  · rw [Polynomial.degree_eq_natDegree hp]
+    exact_mod_cast Nat.lt_succ_of_le (reconstructPoly_natDegree_le coeffs)
+
+/-- AVSS reconstruction: given any `t + 1` honest parties with
+distinct `partyPoint`s and outputs set, Lagrange interpolation at `0`
+of their outputs recovers `coeffs 0 0` (= the secret, when the dealer
+is honest). Tolerates corrupt dealer — the LHS is `s.coeffs 0 0`,
+not `sec`. -/
+theorem avss_reconstruction
+    (s : AVSSState n t F)
+    (hinv : outputDeterminedInv s)
+    (S : Finset (Fin n))
+    (h_size : S.card = t + 1)
+    (h_inj : Set.InjOn s.partyPoint S)
+    (h_honest : ∀ p ∈ S, p ∉ s.corrupted)
+    (h_outs : ∀ p ∈ S, (s.local_ p).output.isSome) :
+    s.coeffs 0 0 =
+      Polynomial.eval 0
+        (Lagrange.interpolate S s.partyPoint
+          (fun p => Option.getD (s.local_ p).output 0)) := by
+  classical
+  -- The reconstruction polynomial g matches all honest output values.
+  set g := reconstructPoly s.coeffs with hg_def
+  have hg_eval : ∀ p ∈ S,
+      g.eval (s.partyPoint p) = Option.getD (s.local_ p).output 0 := by
+    intro p hp
+    rw [reconstructPoly_eval]
+    have hp_some := h_outs p hp
+    obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp hp_some
+    have hv_eq : v = bivEval s.coeffs (s.partyPoint p) 0 :=
+      hinv.2 p (h_honest p hp) v hv
+    rw [hv]
+    simp [hv_eq]
+  -- Degree bound.
+  have hg_deg : g.degree < S.card := by
+    rw [h_size]
+    exact reconstructPoly_degree_lt s.coeffs
+  -- Identify g with its Lagrange interpolant.
+  have hg_interp : g = Lagrange.interpolate S s.partyPoint
+      (fun p => Option.getD (s.local_ p).output 0) :=
+    Lagrange.eq_interpolate_of_eval_eq
+      (fun p => Option.getD (s.local_ p).output 0) h_inj hg_deg hg_eval
+  -- Evaluate both sides at 0.
+  rw [← hg_interp, reconstructPoly_eval_zero]
+
 /-! ## §17. Secrecy
 
 Direct passthrough to `BivariateShamir.bivariate_shamir_secrecy`.
