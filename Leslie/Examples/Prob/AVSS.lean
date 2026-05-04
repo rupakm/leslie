@@ -45,12 +45,20 @@ This formalisation is sound and useful as a stepping stone toward
 literature-faithful AVSS, but several abstractions matter when
 interpreting the formalised statements.  In particular:
 
-  * The **adversary model** is stronger than the literature's rushing
-    adversary: it has read access to the full global state including
-    `s.coeffs` and honest parties' `local_`. This doesn't falsify the
-    formalised theorems — but it means trace-level secrecy here is at
-    the algebraic grid view (`coalitionGrid`), not at the corrupt
-    parties' operational view (`coalitionView`).
+  * The **adversary model** has been progressively refined.  Two
+    coexisting types are now formalised: the legacy `Adversary` (with
+    read access to the full global state) and the literature-standard
+    `RushingAdversary` (Phase 7.1, generic in `Leslie/Prob/Adversary.lean`)
+    whose strategy is restricted to a measurable projection of the
+    state to the corrupt coalition's view.  AVSS instantiates this via
+    `avssCoalitionView` (Phase 7.2, §19).  The classical theorems
+    re-prove mechanically as `*_rushing` variants (Phase 7.3, §19.1):
+    `avss_termination_AS_fair_rushing`, `avss_correctness_AS_rushing`,
+    `avss_commitment_AS_rushing`.  Trace-level operational secrecy
+    against the rushing adversary (the literature-faithful theorem)
+    is captured as a conditional in Phase 6.3
+    (`avss_secrecy_AS_view_conditional`) whose hypothesis a follow-up
+    Phase 7.4–7.5 PR will discharge — see `AVSS-MODEL-NOTES.md` §9.
   * The **dealer-to-party communication** is abstracted as a single
     global `s.coeffs` field, not per-party row + column polynomials.
     A corrupt dealer cannot deliver inconsistent row polys in this
@@ -59,7 +67,7 @@ interpreting the formalised statements.  In particular:
 
 See `AVSS-MODEL-NOTES.md` (sibling file) for the full abstraction
 inventory, the precise relationship to Canetti–Rabin '93, and the
-roadmap for a literature-faithful refactor (Phases 6–7).
+roadmap (Phases 6–8).
 -/
 
 import Leslie.Examples.Prob.BivariateShamir
