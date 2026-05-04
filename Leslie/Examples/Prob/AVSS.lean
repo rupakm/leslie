@@ -3182,6 +3182,231 @@ theorem uniformBivariate_support_form (sec : F) (dx dy : ℕ)
   obtain ⟨coefs, _, hf_eq⟩ := hf
   exact ⟨coefs, hf_eq.symm⟩
 
+/-- Helper for the polynomial bridge: swap `(k, l) ↔ (i, j)` in a
+4-fold nested Finset sum (over `Fin a × Fin a × Fin b × Fin b`). -/
+private theorem quad_sum_swap {α : Type*} [AddCommMonoid α]
+    (a b : ℕ)
+    (G : Fin a → Fin a → Fin b → Fin b → α) :
+    ∑ k : Fin a, ∑ l : Fin a, ∑ i : Fin b, ∑ j : Fin b, G k l i j =
+      ∑ i : Fin b, ∑ j : Fin b, ∑ k : Fin a, ∑ l : Fin a, G k l i j := by
+  calc ∑ k : Fin a, ∑ l : Fin a, ∑ i : Fin b, ∑ j : Fin b, G k l i j
+      = ∑ k : Fin a, ∑ i : Fin b, ∑ l : Fin a, ∑ j : Fin b, G k l i j := by
+          apply Finset.sum_congr rfl; intros k _; exact Finset.sum_comm
+    _ = ∑ i : Fin b, ∑ k : Fin a, ∑ l : Fin a, ∑ j : Fin b, G k l i j := Finset.sum_comm
+    _ = ∑ i : Fin b, ∑ k : Fin a, ∑ j : Fin b, ∑ l : Fin a, G k l i j := by
+          apply Finset.sum_congr rfl; intros i _
+          apply Finset.sum_congr rfl; intros k _
+          exact Finset.sum_comm
+    _ = ∑ i : Fin b, ∑ j : Fin b, ∑ k : Fin a, ∑ l : Fin a, G k l i j := by
+          apply Finset.sum_congr rfl; intros i _
+          exact Finset.sum_comm
+
+/-- The algebraic core of Layer C2: for `f` in the support of
+`uniformBivariateWithFixedZero t t sec`, the finite-coefficient
+bivariate evaluation `bivEval (polyToCoeffs f) x y` equals the
+polynomial double-evaluation `(f.eval (Polynomial.C x)).eval y`.
+
+This is the bridge that closes Layer C2: it lifts the operational
+`coalitionGrid` view (defined via `bivEval s.coeffs`) to the
+algebraic form used in `BivariateShamir.bivariate_shamir_secrecy`
+(`(f.eval (C x)).eval y`). -/
+theorem bivEval_polyToCoeffs_eq_eval_of_support (sec : F)
+    (f : _root_.Polynomial (_root_.Polynomial F))
+    (hf : f ∈ (Leslie.Prob.Polynomial.uniformBivariateWithFixedZero
+                 (F := F) t t sec).support)
+    (x y : F) :
+    bivEval (t := t) (polyToCoeffs (t := t) f) x y =
+      (f.eval (Polynomial.C x)).eval y := by
+  classical
+  obtain ⟨coefs, rfl⟩ := uniformBivariate_support_form sec t t f hf
+  unfold bivEval polyToCoeffs
+  -- Step 1: explicit formula for `((explicit).coeff k).coeff l`.
+  have h_term :
+      ∀ (i : Fin t) (j : Fin t),
+        (Polynomial.C (Polynomial.C (coefs i j)) *
+          Polynomial.X ^ (i.val + 1) *
+          (Polynomial.C Polynomial.X) ^ (j.val + 1) :
+          _root_.Polynomial (_root_.Polynomial F)) =
+        Polynomial.C (Polynomial.C (coefs i j) * Polynomial.X ^ (j.val + 1)) *
+          Polynomial.X ^ (i.val + 1) := by
+    intro i j
+    have h1 : (Polynomial.C Polynomial.X : _root_.Polynomial (_root_.Polynomial F)) ^ (j.val + 1) =
+              Polynomial.C (Polynomial.X ^ (j.val + 1)) :=
+      (Polynomial.C_pow).symm
+    have h2 : Polynomial.C (Polynomial.C (coefs i j) * Polynomial.X ^ (j.val + 1)) =
+              Polynomial.C (Polynomial.C (coefs i j)) *
+                (Polynomial.C (Polynomial.X ^ (j.val + 1)) :
+                _root_.Polynomial (_root_.Polynomial F)) :=
+      Polynomial.C_mul
+    rw [h1, h2]
+    ring
+  have h_coeff : ∀ (k l : ℕ),
+      ((Polynomial.C (Polynomial.C sec) +
+        ∑ i : Fin t, ∑ j : Fin t,
+          Polynomial.C (Polynomial.C (coefs i j)) *
+            Polynomial.X ^ (i.val + 1) *
+            (Polynomial.C Polynomial.X) ^ (j.val + 1)).coeff k).coeff l =
+      (if k = 0 ∧ l = 0 then sec else 0) +
+      (∑ i : Fin t, ∑ j : Fin t,
+        if k = i.val + 1 ∧ l = j.val + 1 then coefs i j else 0) := by
+    intros k l
+    rw [Polynomial.coeff_add, Polynomial.coeff_add, Polynomial.finset_sum_coeff,
+        Polynomial.finset_sum_coeff]
+    simp only [Polynomial.finset_sum_coeff]
+    congr 1
+    · -- ((C(C sec)).coeff k).coeff l = if k = 0 ∧ l = 0 then sec else 0
+      by_cases hk : k = 0
+      · subst hk
+        rw [Polynomial.coeff_C_zero, Polynomial.coeff_C]
+        by_cases hl : l = 0
+        · subst hl; simp
+        · simp [hl]
+      · rw [Polynomial.coeff_C, if_neg hk, Polynomial.coeff_zero]
+        simp [hk]
+    · apply Finset.sum_congr rfl
+      intro i _
+      apply Finset.sum_congr rfl
+      intro j _
+      rw [h_term i j, Polynomial.coeff_C_mul_X_pow]
+      by_cases h1 : k = i.val + 1
+      · rw [if_pos h1]
+        rw [Polynomial.coeff_C_mul_X_pow]
+        by_cases h2 : l = j.val + 1
+        · rw [if_pos h2, if_pos ⟨h1, h2⟩]
+        · rw [if_neg h2]
+          rw [if_neg]
+          rintro ⟨_, hcontra⟩; exact h2 hcontra
+      · rw [if_neg h1, Polynomial.coeff_zero]
+        rw [if_neg]
+        rintro ⟨hcontra, _⟩; exact h1 hcontra
+  -- Step 2: bivEval picker — extracts a single nonzero (k, l) term.
+  have h_picker : ∀ (p q : Fin (t+1)) (v : F),
+      (∑ k : Fin (t+1), ∑ l : Fin (t+1),
+        (if k.val = p.val ∧ l.val = q.val then v else 0) * x ^ k.val * y ^ l.val) =
+      v * x ^ p.val * y ^ q.val := by
+    intros p q v
+    rw [Finset.sum_eq_single p]
+    · rw [Finset.sum_eq_single q]
+      · simp
+      · intros l _ hl
+        rw [if_neg]; · ring
+        push_neg; intro _ hc; exact hl (Fin.ext hc)
+      · intro h; exact (h (Finset.mem_univ _)).elim
+    · intros k _ hk
+      apply Finset.sum_eq_zero
+      intros l _
+      rw [if_neg]; · ring
+      push_neg; intro hc; exact (hk (Fin.ext hc)).elim
+    · intro h; exact (h (Finset.mem_univ _)).elim
+  -- Step 3: substitute h_coeff into LHS via Finset.sum_congr.
+  rw [show (∑ k : Fin (t+1), ∑ l : Fin (t+1),
+        ((Polynomial.C (Polynomial.C sec) +
+          ∑ i : Fin t, ∑ j : Fin t,
+            Polynomial.C (Polynomial.C (coefs i j)) *
+              Polynomial.X ^ (i.val + 1) *
+              (Polynomial.C Polynomial.X) ^ (j.val + 1)).coeff k.val).coeff l.val *
+        x ^ k.val * y ^ l.val) =
+      (∑ k : Fin (t+1), ∑ l : Fin (t+1),
+        ((if k.val = 0 ∧ l.val = 0 then sec else 0) +
+          (∑ i : Fin t, ∑ j : Fin t,
+            if k.val = i.val + 1 ∧ l.val = j.val + 1 then coefs i j else 0)) *
+        x ^ k.val * y ^ l.val) from by
+      apply Finset.sum_congr rfl
+      intro k _
+      apply Finset.sum_congr rfl
+      intro l _
+      rw [h_coeff k.val l.val]]
+  simp only [add_mul, Finset.sum_add_distrib]
+  -- Step 4: compute RHS via Polynomial.eval_*.
+  have h_RHS : ((Polynomial.C (Polynomial.C sec) +
+                ∑ i : Fin t, ∑ j : Fin t,
+                  Polynomial.C (Polynomial.C (coefs i j)) *
+                    Polynomial.X ^ (i.val + 1) *
+                    (Polynomial.C Polynomial.X) ^ (j.val + 1)).eval
+                (Polynomial.C x)).eval y =
+              sec + ∑ i : Fin t, ∑ j : Fin t,
+                coefs i j * x ^ (i.val + 1) * y ^ (j.val + 1) := by
+    simp only [Polynomial.eval_add, Polynomial.eval_finset_sum, Polynomial.eval_mul,
+               Polynomial.eval_pow, Polynomial.eval_C, Polynomial.eval_X,
+               ← Polynomial.C_pow]
+  rw [h_RHS]
+  -- Step 5: match LHS and RHS via h_picker.
+  congr 1
+  · have := h_picker (0 : Fin (t+1)) (0 : Fin (t+1)) sec
+    simpa using this
+  · rw [show (∑ k : Fin (t+1), ∑ l : Fin (t+1),
+        (∑ i : Fin t, ∑ j : Fin t,
+          (if k.val = i.val + 1 ∧ l.val = j.val + 1 then coefs i j else 0)) *
+        x ^ k.val * y ^ l.val) =
+      (∑ i : Fin t, ∑ j : Fin t,
+        ∑ k : Fin (t+1), ∑ l : Fin (t+1),
+          (if k.val = i.val + 1 ∧ l.val = j.val + 1 then coefs i j else 0) *
+            x ^ k.val * y ^ l.val) from by
+      simp only [Finset.sum_mul]
+      exact quad_sum_swap (a := t+1) (b := t) _]
+    apply Finset.sum_congr rfl
+    intro i _
+    apply Finset.sum_congr rfl
+    intro j _
+    have h_iv : i.val + 1 < t + 1 := by omega
+    have h_jv : j.val + 1 < t + 1 := by omega
+    have := h_picker ⟨i.val + 1, h_iv⟩ ⟨j.val + 1, h_jv⟩ (coefs i j)
+    convert this using 2
+
+/-! ## §17.7 Static initial-grid secrecy (Layer C2 conclusion)
+
+With the polynomial bridge in place, we can now state and prove the
+static initial-grid secrecy theorem: the marginal of `avssInitPMF`
+on the `coalitionGrid` projection is invariant in the secret. This
+is the immediate operational-secrecy consequence of
+`bivariate_shamir_secrecy` applied through the avssInitState wrapper.
+
+The full *trace-level* secrecy theorem `avss_secrecy_AS` (mentioned
+in the original Phase 5 plan) follows from this static version by
+factoring the trace distribution as a pushforward of the initial
+measure (since all `avssSpec` step kernels are `PMF.pure`); that
+final lift is left as follow-on work, not the algebraic core. -/
+
+/-- Static initial-grid secrecy: for any two coalitions `C` (rows)
+and `D` (columns), the marginal of `avssInitPMF` on the
+`coalitionGrid C D` projection is invariant in the secret.
+
+Direct corollary of `bivariate_shamir_secrecy` via the polynomial
+bridge `bivEval_polyToCoeffs_eq_eval_of_support`. -/
+theorem avss_secrecy_initPMF
+    (sec sec' : F) (corr : Finset (Fin n))
+    (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (C D : BivariateShamir.Coalition n t) :
+    (avssInitPMF (n := n) (t := t) sec corr partyPoint dealerHonest).map
+        (coalitionGrid C D) =
+      (avssInitPMF (n := n) (t := t) sec' corr partyPoint dealerHonest).map
+        (coalitionGrid C D) := by
+  classical
+  -- Both sides factor through `uniformBivariateWithFixedZero` ↦ `coalitionGrid`.
+  -- Reduce both to the bivariate-shamir form via the polynomial bridge.
+  have h_form : ∀ s : F,
+      (avssInitPMF (n := n) (t := t) s corr partyPoint dealerHonest).map
+          (coalitionGrid C D) =
+        (Leslie.Prob.Polynomial.uniformBivariateWithFixedZero (F := F) t t s).map
+          (fun f (i : C.val) (j : D.val) =>
+            some ((f.eval (Polynomial.C (partyPoint i.val))).eval
+              (partyPoint j.val))) := by
+    intro s
+    unfold avssInitPMF
+    rw [PMF.map_comp]
+    -- `coalitionGrid C D ∘ (avssInitState ... ∘ polyToCoeffs)` and the
+    -- bivariate-eval form agree pointwise on the support.
+    apply PMF.map_congr_of_support
+    intro f hf
+    funext i j
+    simp only [coalitionGrid, avssInitState, Function.comp_apply]
+    rw [bivEval_polyToCoeffs_eq_eval_of_support (sec := s) f hf]
+  rw [h_form sec, h_form sec']
+  exact BivariateShamir.bivariate_shamir_secrecy
+    partyPoint h_nz_pp h_F C D sec sec'
+
 /-! ## §17. Secrecy
 
 Direct passthrough to `BivariateShamir.bivariate_shamir_secrecy`.
