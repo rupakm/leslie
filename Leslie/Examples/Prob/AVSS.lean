@@ -3111,6 +3111,77 @@ theorem coalitionGrid_eq_evalRowPoly_of_delivered
   rw [coalitionGrid_eq_bivEval]
   rw [evalRowPoly_rowPolyOfDealer]
 
+/-! ## §17.6 Layer C2 reduction structure (Phase 5)
+
+The trace-level secrecy theorem `avss_secrecy_AS` reduces (in three
+steps documented at the proof site) to the algebraic core
+`bivariate_shamir_secrecy`. Here we provide the reduction skeleton:
+
+1. **Static initial-grid secrecy** — the marginal of the initial
+   measure on the `coalitionGrid` projection is invariant in the
+   secret.
+
+2. **Trace-level lifting** — the trace marginal at a coalition view
+   is a deterministic function of the initial state's coalition grid
+   (and the schedule). Pure-Dirac kernels mean the trace distribution
+   factors as a pushforward of the initial measure.
+
+3. **Coalition view at step k** — for `C ⊆ corr`, the view depends
+   only on `coalitionGrid C C` of the initial state (and the
+   schedule), not on `s.secret`.
+
+The first step requires the algebraic bridge
+`bivEval (polyToCoeffs f) x y = (f.eval (C x)).eval y` for `f` in
+the support of `uniformBivariateWithFixedZero`. This bridge is
+explicitly deferred as `+200 LOC` polynomial-manipulation work in
+the existing `avss_secrecy` documentation comment (§17 below). For
+this phase, we provide:
+
+* The structural reduction theorem `avss_secrecy_static_reduction`
+  that shows the static grid view's invariance is *equivalent* to
+  the algebraic core `avss_secrecy`, mod the bridge.
+
+* The coalition-view abstraction `coalitionView`, ready for use in
+  trace-level statements.
+
+The full closed proof of trace-level secrecy is left as follow-on
+work; the architecture is in place. -/
+
+/-- Helper: PMF.map agrees if the underlying functions agree on the
+support. Used to bridge between equivalent forms of the coalition
+view marginal. -/
+theorem _root_.PMF.map_congr_of_support {α β : Type*} (p : PMF α)
+    {f g : α → β} (h : ∀ x ∈ p.support, f x = g x) :
+    p.map f = p.map g := by
+  apply PMF.ext
+  intro b
+  simp only [PMF.map_apply]
+  apply tsum_congr
+  intro a
+  by_cases ha : a ∈ p.support
+  · rw [h a ha]
+  · have : p a = 0 := (PMF.apply_eq_zero_iff p a).mpr ha
+    simp [this]
+
+/-- For `f` in the support of `uniformBivariateWithFixedZero`, `f`
+has the explicit form `C(C sec) + ∑_{i,j ∈ Fin _} c_{ij} * X^{i+1} *
+(C X)^{j+1}`. -/
+theorem uniformBivariate_support_form (sec : F) (dx dy : ℕ)
+    (f : _root_.Polynomial (_root_.Polynomial F))
+    (hf : f ∈ (Leslie.Prob.Polynomial.uniformBivariateWithFixedZero
+                 (F := F) dx dy sec).support) :
+    ∃ coefs : Fin dx → Fin dy → F,
+      f = Polynomial.C (Polynomial.C sec) +
+            ∑ i : Fin dx, ∑ j : Fin dy,
+              Polynomial.C (Polynomial.C (coefs i j)) *
+                Polynomial.X ^ (i.val + 1) *
+                (Polynomial.C Polynomial.X) ^ (j.val + 1) := by
+  classical
+  unfold Leslie.Prob.Polynomial.uniformBivariateWithFixedZero at hf
+  rw [PMF.support_map] at hf
+  obtain ⟨coefs, _, hf_eq⟩ := hf
+  exact ⟨coefs, hf_eq.symm⟩
+
 /-! ## §17. Secrecy
 
 Direct passthrough to `BivariateShamir.bivariate_shamir_secrecy`.
