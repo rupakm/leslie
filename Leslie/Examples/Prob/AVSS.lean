@@ -7491,37 +7491,37 @@ unconditionally is to compose the Phase 7.4 final pieces:
 
   * `bivariate_shamir_secrecy_rowPoly_full` (PR #36) —
     sec-invariance of the corrupt parties' row polynomials under the
-    bivariate `uniformBivariateFullWithFixedZero` distribution.
+    bivariate `uniformBivariateFullWithFixedZero` distribution (in
+    `pts → Fin (t+1) → F` form).
   * `simAlgebraicView_simSchedulePrefix_eq_of_simSyncInv` (this commit) —
     the simulate is deterministic and depends on the initial state
     only through the corrupt-party row polynomials and the structural
     fields.
   * `rowPolyOfDealer_polyToCoeffs_eq_coeff_eval_of_support` (this commit) —
     bridges `rowPolyOfDealer` (AVSS form) with `(f.eval (C ·)).coeff`
-    (polynomial form), letting `bivariate_shamir_secrecy_rowPoly_full`
-    apply.
+    (polynomial form).
   * `avssInitMeasure_AE_initPred` (this commit) — discharges the
-    `h_init_sec` hypothesis of `avss_secrecy_AS_view_rushing_unconditional`
-    automatically when `μ_sec = avssInitMeasure ...`.
+    `h_init_sec` hypothesis automatically.
+  * `simView_simSched_avssInitState_factors` (this commit) — the
+    simulate-derived view-and-schedule pair factors through corrupt
+    row polys.
 
 The remaining work in the headline composition is:
 
-  1. Express `(avssInitMeasure sec ...).map (simAlgebraicView R C k,
-     simSchedulePrefix R k)` as `(uniformBivariateFullWithFixedZero
-     t t sec).toMeasure.map G`, for `G` derived from `simAlgebraicView`,
-     `simSchedulePrefix`, and `avssInitState ∘ polyToCoeffs`.
-  2. By `simAlgebraicView_simSchedulePrefix_eq_of_simSyncInv` plus
-     `simSyncInv_avssInitState`, `G f` depends on `f` only through
-     `corruptRowData(f) = fun p ∈ corr => rowPolyOfDealer partyPoint
-     (polyToCoeffs f) p`.
-  3. Bridge `corruptRowData(f)` with `fun p ∈ pts, l => (f.eval
-     (C p)).coeff l` via `rowPolyOfDealer_polyToCoeffs_eq_coeff_eval_of_support`,
-     transporting between `corr → Fin (t+1) → F` and `pts → Fin (t+1) → F`
-     via the injection `partyPoint`.
-  4. Apply `bivariate_shamir_secrecy_rowPoly_full` to conclude.
+  1. Express both sides as PMF pushforwards via `unfold avssInitMeasure`
+     + `PMF.toMeasure_map`.
+  2. Apply `PMF.map_congr_of_support` to convert the AVSS-form `simAlgView`
+     to the polynomial-form `(f.eval (C ·)).coeff` via the bridge.
+  3. Note that `simView_simSched` factors through the corrupt rowPoly
+     data; this lets us decompose `μ.map view = μ.map (K ∘ corruptRowMap)`.
+  4. By `bivariate_shamir_secrecy_rowPoly_full`, `μ_sec.map corruptRowMap
+     = μ_sec'.map corruptRowMap`.  Apply `Measure.map_congr` to lift
+     to the full view.
 
-The remaining ~150 LOC of measure-transport plumbing is the
-mechanical-but-detailed final step. -/
+The composition involves transporting between `corr → Fin (t+1) → F`
+and `pts → Fin (t+1) → F` (via `partyPoint` injection), then composing
+the deterministic reconstruction step.  This is the remaining
+~150 LOC of measure-transport plumbing. -/
 
 attribute [instance] instMeasurableSpaceAVSSRushingView
   instMeasurableSingletonClassAVSSRushingView
