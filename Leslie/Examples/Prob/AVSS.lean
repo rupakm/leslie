@@ -367,9 +367,14 @@ def actionGate (a : AVSSAction n F) (s : AVSSState n t F) : Prop :=
 /-! ## §8. Terminated predicate -/
 
 /-- A state is terminated iff every honest party has snapped output
-**and** all in-flight queues are drained. -/
+**and** echoed, **and** all in-flight queues are drained. The
+`echoSent = true` requirement ensures the variant `avssU` reaches
+`0` at terminated states — without it an honest party could output
+via `partyAmplify` (which only requires `readyReceived ≥ t + 1`)
+without ever echoing, leaving `unsentEchoSet` nonempty. -/
 def terminated (s : AVSSState n t F) : Prop :=
   (∀ p, p ∉ s.corrupted → (s.local_ p).output.isSome) ∧
+  (∀ p, p ∉ s.corrupted → (s.local_ p).echoSent = true) ∧
   s.inflightDeliveries = ∅ ∧
   s.inflightEchoes = ∅ ∧
   s.inflightReady = ∅
@@ -1912,5 +1917,252 @@ theorem avssU_step_lt_of_fair (a : AVSSAction n F) (s : AVSSState n t F)
       have := avssU_step_partyReceiveReady_lt s p q h hinv; omega
   | partyOutput p =>
       have := avssU_step_partyOutput_lt s p h hinv; omega
+
+
+/-! ### Phase 2d: variant value at terminated and at non-terminated states -/
+
+omit [Fintype F] in
+/-- Under `avssTermInv s` and `terminated s`, `avssU s = 0`. -/
+theorem avssU_eq_zero_of_terminated (s : AVSSState n t F)
+    (hinv : avssTermInv s) (ht : terminated s) :
+    avssU s = 0 := by
+  classical
+  unfold avssU
+  obtain ⟨ht_out, ht_echo, ht_ifd, ht_ife, ht_ifr⟩ := ht
+  -- c2, c4, c6 = 0 from queues = ∅.
+  have hifd_card : s.inflightDeliveries.card = 0 := by rw [ht_ifd]; rfl
+  have hife_card : s.inflightEchoes.card = 0 := by rw [ht_ife]; rfl
+  have hifr_card : s.inflightReady.card = 0 := by rw [ht_ifr]; rfl
+  -- c7 = 0 from `unfinishedSet = ∅`.
+  have hunfin : (unfinishedSet s).card = 0 := by
+    apply Finset.card_eq_zero.mpr
+    apply Finset.filter_eq_empty_iff.mpr
+    intro p _ ⟨hp_h, hp_none⟩
+    have := ht_out p hp_h
+    rw [hp_none] at this
+    simp at this
+  -- c3 = 0 from `unsentEchoSet = ∅` via `ht_echo`.
+  have huss : (unsentEchoSet s).card = 0 := by
+    apply Finset.card_eq_zero.mpr
+    apply Finset.filter_eq_empty_iff.mpr
+    intro p _ ⟨hp_h, _, hp_es⟩
+    have := ht_echo p hp_h
+    rw [this] at hp_es
+    cases hp_es
+  -- c5 = 0 from inv clause 3 (output.isSome → readySent) + ht_out.
+  have hnrs : (notReadySentSet s).card = 0 := by
+    apply Finset.card_eq_zero.mpr
+    apply Finset.filter_eq_empty_iff.mpr
+    intro p _ ⟨hp_h, hp_nrs⟩
+    have hsome : (s.local_ p).output.isSome = true := ht_out p hp_h
+    have := (hinv.2.2 p hp_h hsome).1
+    rw [this] at hp_nrs
+    cases hp_nrs
+  -- c1 = 0: dealerSent = true OR honestSet = ∅.
+  have hdom : (if s.dealerSent then (0 : ℕ) else (honestSet s).card) = 0 := by
+    by_cases hds : s.dealerSent = true
+    · simp [hds]
+    · have hds' : s.dealerSent = false := by
+        cases h_ds : s.dealerSent with
+        | true => exact absurd h_ds hds
+        | false => rfl
+      have hi := hinv.1 hds'
+      have hne : honestSet s = ∅ := by
+        apply Finset.eq_empty_of_forall_notMem
+        intro p hp
+        have hp_h : p ∉ s.corrupted := by
+          simp [honestSet, Finset.mem_filter] at hp; exact hp
+        have hp_init := hi.1 p
+        have hp_out_init : (s.local_ p).output = none := by
+          rw [hp_init]; rfl
+        have hp_some : (s.local_ p).output.isSome = true := ht_out p hp_h
+        rw [hp_out_init] at hp_some
+        simp at hp_some
+      simp [hds', hne]
+  rw [hdom, hifd_card, huss, hife_card, hnrs, hifr_card, hunfin]
+  ring
+
+omit [Fintype F] in
+/-- `V_term` field: under `Inv` and `terminated`, `avssV s = 0`. -/
+theorem avssCert_V_term (s : AVSSState n t F)
+    (hinv : avssTermInv s) (ht : terminated s) :
+    avssV s = 0 := by
+  show (avssU s : ℝ≥0) = 0
+  rw [avssU_eq_zero_of_terminated s hinv ht]
+  simp
+
+omit [Fintype F] in
+/-- `U_term` field: under `Inv` and `terminated`, `avssU s = 0`. -/
+theorem avssCert_U_term (s : AVSSState n t F)
+    (hinv : avssTermInv s) (ht : terminated s) :
+    avssU s = 0 :=
+  avssU_eq_zero_of_terminated s hinv ht
+
+omit [Fintype F] in
+/-- `V_pos` field: at non-terminated states, `avssV s > 0`. -/
+theorem avssCert_V_pos (s : AVSSState n t F)
+    (hinv : avssTermInv s) (hnt : ¬ terminated s) :
+    0 < avssV s := by
+  show 0 < (avssU s : ℝ≥0)
+  classical
+  by_contra hcon
+  push_neg at hcon
+  have hU0_real : (avssU s : ℝ≥0) = 0 := le_antisymm hcon (zero_le _)
+  have hU0 : avssU s = 0 := by exact_mod_cast hU0_real
+  unfold avssU at hU0
+  -- Decompose the sum of nonnegative ℕ-terms.  Each term must be 0.
+  have hK_pos : 1 ≤ lexBase n := lexBase_pos
+  obtain ⟨hU0', hunfin_t⟩ := Nat.add_eq_zero.mp hU0
+  obtain ⟨hU0', hifr_t⟩ := Nat.add_eq_zero.mp hU0'
+  obtain ⟨hU0', hnrs_t⟩ := Nat.add_eq_zero.mp hU0'
+  obtain ⟨hU0', hife_t⟩ := Nat.add_eq_zero.mp hU0'
+  obtain ⟨hU0', huss_t⟩ := Nat.add_eq_zero.mp hU0'
+  obtain ⟨_hdom_t, hifd_t⟩ := Nat.add_eq_zero.mp hU0'
+  -- For each `t * K^k = 0` with `K^k ≥ 1`, deduce `t = 0`.
+  have hifd_card : s.inflightDeliveries.card = 0 := by
+    rcases Nat.mul_eq_zero.mp hifd_t with h | h
+    · exact h
+    · have : 1 ≤ lexBase n ^ 5 := Nat.one_le_pow _ _ hK_pos; omega
+  have huss_card : (unsentEchoSet s).card = 0 := by
+    rcases Nat.mul_eq_zero.mp huss_t with h | h
+    · exact h
+    · have : 1 ≤ lexBase n ^ 4 := Nat.one_le_pow _ _ hK_pos; omega
+  have hife_card : s.inflightEchoes.card = 0 := by
+    rcases Nat.mul_eq_zero.mp hife_t with h | h
+    · exact h
+    · have : 1 ≤ lexBase n ^ 3 := Nat.one_le_pow _ _ hK_pos; omega
+  have hnrs_card : (notReadySentSet s).card = 0 := by
+    rcases Nat.mul_eq_zero.mp hnrs_t with h | h
+    · exact h
+    · have : 1 ≤ lexBase n ^ 2 := Nat.one_le_pow _ _ hK_pos; omega
+  have hifr_card : s.inflightReady.card = 0 := by
+    rcases Nat.mul_eq_zero.mp hifr_t with h | h
+    · exact h
+    · omega
+  have hunfin_card : (unfinishedSet s).card = 0 := hunfin_t
+  -- Now derive `terminated`.
+  have hifd_emp : s.inflightDeliveries = ∅ := Finset.card_eq_zero.mp hifd_card
+  have hife_emp : s.inflightEchoes = ∅ := Finset.card_eq_zero.mp hife_card
+  have hifr_emp : s.inflightReady = ∅ := Finset.card_eq_zero.mp hifr_card
+  have hunfin_emp : unfinishedSet s = ∅ := Finset.card_eq_zero.mp hunfin_card
+  have huss_emp : unsentEchoSet s = ∅ := Finset.card_eq_zero.mp huss_card
+  have h_out : ∀ p, p ∉ s.corrupted → (s.local_ p).output.isSome := by
+    intro p hp
+    by_contra hnone
+    have hp_in : p ∈ unfinishedSet s := by
+      simp only [unfinishedSet, Finset.mem_filter, Finset.mem_univ, true_and]
+      refine ⟨hp, ?_⟩
+      cases h_o : (s.local_ p).output with
+      | none => rfl
+      | some _ => simp [h_o] at hnone
+    rw [hunfin_emp] at hp_in
+    exact (Finset.notMem_empty _) hp_in
+  have h_echo : ∀ p, p ∉ s.corrupted → (s.local_ p).echoSent = true := by
+    intro p hp
+    by_contra hbad
+    have hes : (s.local_ p).echoSent = false := by
+      cases h_es : (s.local_ p).echoSent with
+      | true => exact absurd h_es hbad
+      | false => rfl
+    -- Need delivered = true to put p in unsentEchoSet.
+    have hsome := h_out p hp
+    have hdel : (s.local_ p).delivered = true := (hinv.2.2 p hp hsome).2
+    have hp_in : p ∈ unsentEchoSet s := by
+      simp only [unsentEchoSet, Finset.mem_filter, Finset.mem_univ, true_and]
+      exact ⟨hp, hdel, hes⟩
+    rw [huss_emp] at hp_in
+    exact (Finset.notMem_empty _) hp_in
+  exact hnt ⟨h_out, h_echo, hifd_emp, hife_emp, hifr_emp⟩
+
+/-! ### Phase 2d: FairASTCertificate instance -/
+
+/-- The 12-field `FairASTCertificate` instance for AVSS. The variant
+analysis is built from the per-action lemmas: `V_super` from
+`avssU_step_le`, `V_super_fair` and `U_dec_prob` from
+`avssU_step_lt_of_fair`. The Dirac kernel collapses every
+supermartingale tsum to a single term, reducing the variant analysis
+to a `ℕ`-arithmetic exercise. -/
+noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) :
+    FairASTCertificate (avssSpec (t := t) sec corr) avssFair terminated where
+  Inv := avssTermInv
+  V := avssV
+  U := avssU
+  inv_init := fun s hinit => by
+    obtain ⟨hloc, _, _, hidl, hie, hird, _, _⟩ := hinit
+    refine ⟨?_, ?_, ?_⟩
+    · intro _
+      refine ⟨hloc, hidl, hie, hird⟩
+    · intro p _ hes
+      rw [hloc p] at hes
+      simp [AVSSLocalState.init] at hes
+    · intro p _ hsome
+      rw [hloc p] at hsome
+      simp [AVSSLocalState.init] at hsome
+  inv_step := avssTermInv_step
+  V_term := avssCert_V_term
+  V_pos := avssCert_V_pos
+  V_super := fun a s h hinv _hnt => by
+    classical
+    have heff : ((avssSpec (t := t) sec corr).actions a).effect s h
+                = PMF.pure (avssStep a s) := rfl
+    rw [heff]
+    rw [tsum_eq_single (avssStep a s)]
+    · rw [PMF.pure_apply, if_pos rfl, one_mul]
+      have h_le : avssU (avssStep a s) ≤ avssU s := avssU_step_le a s h hinv
+      have : avssV (avssStep a s) ≤ avssV s := by
+        show (avssU (avssStep a s) : ℝ≥0) ≤ (avssU s : ℝ≥0)
+        exact_mod_cast h_le
+      exact_mod_cast this
+    · intro b hb
+      rw [PMF.pure_apply, if_neg hb, zero_mul]
+  V_super_fair := fun a s h hfair hinv _hnt => by
+    classical
+    have heff : ((avssSpec (t := t) sec corr).actions a).effect s h
+                = PMF.pure (avssStep a s) := rfl
+    rw [heff]
+    rw [tsum_eq_single (avssStep a s)]
+    · rw [PMF.pure_apply, if_pos rfl, one_mul]
+      have hfair' : a ∈ avssFairActions := hfair
+      have hlt : avssU (avssStep a s) < avssU s :=
+        avssU_step_lt_of_fair a s h hfair' hinv
+      have : avssV (avssStep a s) < avssV s := by
+        show (avssU (avssStep a s) : ℝ≥0) < (avssU s : ℝ≥0)
+        exact_mod_cast hlt
+      exact_mod_cast this
+    · intro b hb
+      rw [PMF.pure_apply, if_neg hb, zero_mul]
+  U_term := avssCert_U_term
+  U_dec_det := fun a s h hfair hinv _hnt s' hs' => by
+    classical
+    have heff : ((avssSpec (t := t) sec corr).actions a).effect s h
+                = PMF.pure (avssStep a s) := rfl
+    rw [heff] at hs'
+    rw [PMF.support_pure] at hs'
+    have hs_eq : s' = avssStep a s := by simpa using hs'
+    subst hs_eq
+    left
+    have hfair' : a ∈ avssFairActions := hfair
+    exact avssU_step_lt_of_fair a s h hfair' hinv
+  U_bdd_subl := fun _ =>
+    ⟨(7 * n + 7) * (lexBase n) ^ 6, fun s _ _ => avssU_le_bound s⟩
+  U_dec_prob := fun _ => by
+    refine ⟨1, by norm_num, fun a s h hfair hinv _hnt _ => ?_⟩
+    classical
+    have heff : ((avssSpec (t := t) sec corr).actions a).effect s h
+                = PMF.pure (avssStep a s) := rfl
+    rw [heff]
+    rw [tsum_eq_single (avssStep a s)]
+    · rw [PMF.pure_apply, if_pos rfl, one_mul]
+      have hfair' : a ∈ avssFairActions := hfair
+      have hlt : avssU (avssStep a s) < avssU s :=
+        avssU_step_lt_of_fair a s h hfair' hinv
+      rw [if_pos hlt]
+      simp
+    · intro b hb
+      rw [PMF.pure_apply, if_neg hb, zero_mul]
+  V_init_bdd :=
+    ⟨(((7 * n + 7) * (lexBase n) ^ 6 : ℕ) : ℝ≥0), fun s _ => by
+      show ((avssU s : ℝ≥0)) ≤ (((7 * n + 7) * (lexBase n) ^ 6 : ℕ) : ℝ≥0)
+      exact_mod_cast avssU_le_bound s⟩
 
 end Leslie.Examples.Prob.AVSS
