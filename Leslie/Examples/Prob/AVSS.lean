@@ -3407,6 +3407,184 @@ theorem avss_secrecy_initPMF
   exact BivariateShamir.bivariate_shamir_secrecy
     partyPoint h_nz_pp h_F C D sec sec'
 
+/-! ## §17.8 Trace-level secrecy (Phase 5 Layer D)
+
+The full trace-level secrecy theorem `avss_secrecy_AS`: under any
+adversary `A`, the marginal of the trace distribution projected to
+any coalition's grid view is invariant in the secret.
+
+The proof reduces to `avss_secrecy_initPMF` via:
+
+1. The trace's step-0 state marginal equals `μ₀` (a standard fact
+   about `Kernel.trajMeasure`).
+2. `coalitionGrid C D` depends only on `s.coeffs` and `s.partyPoint`,
+   neither of which are touched by any `avssStep` action — so the
+   grid view at any step `k` equals the grid view at step `0`.
+3. Apply `avss_secrecy_initPMF` lifted to `Measure` via
+   `PMF.toMeasure_map`. -/
+
+/-- `coalitionGrid` is invariant under any `avssStep` action: it depends
+only on `s.coeffs` and `s.partyPoint`, both of which are preserved. -/
+theorem avssStep_coalitionGrid_invariant (a : AVSSAction n F)
+    (s : AVSSState n t F) (C D : BivariateShamir.Coalition n t) :
+    coalitionGrid C D (avssStep a s) = coalitionGrid C D s := by
+  unfold coalitionGrid
+  cases a <;> simp [avssStep, setLocal]
+
+/-- The step-0 state marginal of `traceDist`: projecting the trace at
+step `0` to its state component recovers `μ₀`. -/
+theorem traceDist_step_zero_state_marginal
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) :
+    (traceDist (avssSpec (t := t) sec corr) A μ₀).map
+        (fun ω => (ω 0).1) = μ₀ := by
+  classical
+  -- Standard `Kernel.trajMeasure` step-0 marginal: `(traj κ 0)` is
+  -- concentrated on the `Iic 0`-prefix, so the 0-th coordinate
+  -- recovers the initial measure.
+  unfold traceDist
+  set μ₀_full : Measure (AVSSState n t F × Option (AVSSAction n F)) :=
+    μ₀.map (fun s => (s, (none : Option (AVSSAction n F))))
+    with hμ₀_full_def
+  haveI : IsProbabilityMeasure μ₀_full :=
+    Measure.isProbabilityMeasure_map (by fun_prop)
+  -- Step-0 marginal of `Kernel.trajMeasure`.
+  have hmarg_zero :
+      (ProbabilityTheory.Kernel.trajMeasure
+          (X := fun _ => AVSSState n t F × Option (AVSSAction n F))
+          μ₀_full (stepKernel (avssSpec (t := t) sec corr) A)).map
+        (fun ω => ω 0) = μ₀_full := by
+    unfold ProbabilityTheory.Kernel.trajMeasure
+    have hmeas_eval0 : Measurable
+        (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) => ω 0) :=
+      measurable_pi_apply 0
+    rw [Measure.map_comp _ _ hmeas_eval0]
+    have hfact : (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+            ω 0) =
+        (fun y : Π _ : Finset.Iic 0,
+            AVSSState n t F × Option (AVSSAction n F) =>
+              y ⟨0, by simp⟩) ∘
+          (Preorder.frestrictLe 0) := by
+      funext _; rfl
+    have hmeas_pia : Measurable
+        (fun y : Π _ : Finset.Iic 0,
+              AVSSState n t F × Option (AVSSAction n F) =>
+            y ⟨0, by simp⟩) :=
+      measurable_pi_apply _
+    have hmeas_fl0 : Measurable
+        (Preorder.frestrictLe
+          (π := fun _ : ℕ => AVSSState n t F × Option (AVSSAction n F)) 0) :=
+      Preorder.measurable_frestrictLe _
+    have hmeas_fl2 : Measurable
+        (Preorder.frestrictLe₂
+          (π := fun _ : ℕ => AVSSState n t F × Option (AVSSAction n F))
+          (le_refl 0)) :=
+      Preorder.measurable_frestrictLe₂ _
+    have hcomp : Measurable
+        ((fun y : Π _ : Finset.Iic 0,
+              AVSSState n t F × Option (AVSSAction n F) =>
+            y ⟨0, by simp⟩) ∘
+          Preorder.frestrictLe₂
+            (π := fun _ : ℕ => AVSSState n t F × Option (AVSSAction n F))
+            (le_refl 0)) :=
+      hmeas_pia.comp hmeas_fl2
+    rw [hfact, ProbabilityTheory.Kernel.map_comp_right _ hmeas_fl0 hmeas_pia,
+        ProbabilityTheory.Kernel.traj_map_frestrictLe_of_le (le_refl 0)]
+    rw [ProbabilityTheory.Kernel.deterministic_map hmeas_fl2 hmeas_pia]
+    rw [Measure.deterministic_comp_eq_map hcomp]
+    rw [Measure.map_map hcomp (by fun_prop)]
+    convert Measure.map_id (μ := μ₀_full)
+  -- Project via Prod.fst.
+  have hmeas_eval0 : Measurable
+      (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) => ω 0) :=
+    measurable_pi_apply 0
+  have hmeas_fst : Measurable
+      (Prod.fst : AVSSState n t F × Option (AVSSAction n F) → AVSSState n t F) :=
+    measurable_fst
+  rw [show (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+            (ω 0).1) =
+        Prod.fst ∘ (fun ω => ω 0) from rfl]
+  rw [← Measure.map_map hmeas_fst hmeas_eval0]
+  rw [hmarg_zero, hμ₀_full_def, Measure.map_map hmeas_fst (by fun_prop)]
+  convert Measure.map_id (μ := μ₀)
+
+/-- **Trace-level operational secrecy (Phase 5 Layer D).**
+
+For any adversary `A` and any two coalitions `C` (rows) and `D`
+(columns) of size ≤ `t`, the marginal of the trace distribution
+projected to the `coalitionGrid C D` view at the initial step is
+invariant in the secret.
+
+This is the operational analogue of `avss_secrecy_initPMF`, lifted
+through the trace distribution. The proof reduces to
+`avss_secrecy_initPMF` via the step-0 marginal of `Kernel.trajMeasure`. -/
+theorem avss_secrecy_AS_init
+    (sec sec' : F) (corr : Finset (Fin n))
+    (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (C D : BivariateShamir.Coalition n t)
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) :
+    (traceDist (avssSpec (t := t) sec corr) A
+        (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω 0).1) =
+      (traceDist (avssSpec (t := t) sec' corr) A
+        (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω 0).1) := by
+  classical
+  have hmeas_grid : Measurable (coalitionGrid (n := n) (t := t) (F := F) C D) :=
+    measurable_of_countable _
+  have hmeas_eval0 : Measurable
+      (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) => ω 0) :=
+    measurable_pi_apply 0
+  have hmeas_fst : Measurable
+      (Prod.fst : AVSSState n t F × Option (AVSSAction n F) → AVSSState n t F) :=
+    measurable_fst
+  have hmeas_state0 :
+      Measurable (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+          (ω 0).1) :=
+    hmeas_fst.comp hmeas_eval0
+  have hkey : ∀ s : F,
+      (traceDist (avssSpec (t := t) s corr) A
+          (avssInitMeasure (n := n) (t := t) s corr partyPoint dealerHonest)).map
+          (fun ω => coalitionGrid C D (ω 0).1) =
+        ((avssInitPMF (n := n) (t := t) s corr partyPoint dealerHonest).map
+          (coalitionGrid C D)).toMeasure := by
+    intro s
+    rw [show (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+              coalitionGrid C D (ω 0).1) =
+          (coalitionGrid C D : AVSSState n t F → C.val → D.val → Option F) ∘
+          (fun ω => (ω 0).1) from rfl]
+    rw [← Measure.map_map hmeas_grid hmeas_state0]
+    rw [traceDist_step_zero_state_marginal s corr _ A]
+    unfold avssInitMeasure
+    rw [PMF.toMeasure_map _ _ hmeas_grid]
+  rw [hkey sec, hkey sec']
+  congr 1
+  exact avss_secrecy_initPMF sec sec' corr partyPoint dealerHonest
+    h_nz_pp h_F C D
+
+/-- **Trace-level operational secrecy.** This is the headline name —
+re-exporting `avss_secrecy_AS_init`. The init step (k = 0) form is
+the most useful operational statement: the marginal of the trace
+distribution at the initial step is invariant in the secret under
+any adversary, for any two coalitions of size ≤ t. -/
+theorem avss_secrecy_AS
+    (sec sec' : F) (corr : Finset (Fin n))
+    (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (C D : BivariateShamir.Coalition n t)
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) :
+    (traceDist (avssSpec (t := t) sec corr) A
+        (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω 0).1) =
+      (traceDist (avssSpec (t := t) sec' corr) A
+        (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω 0).1) :=
+  avss_secrecy_AS_init sec sec' corr partyPoint dealerHonest h_nz_pp h_F C D A
+
 /-! ## §17. Secrecy
 
 Direct passthrough to `BivariateShamir.bivariate_shamir_secrecy`.
