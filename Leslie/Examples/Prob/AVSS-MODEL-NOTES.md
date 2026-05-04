@@ -426,6 +426,111 @@ When both pieces land, `avss_secrecy_AS_view_rushing` becomes
 unconditional and is the literature-faithful operational secrecy
 theorem under the AVSS state model.
 
+### Why "row-poly secrecy" is *structurally false* under the current distribution (audit, 2026-05-04)
+
+A direct attempt to discharge `h_aux` under the current AVSS
+distribution **cannot succeed**, and the obstruction is at the
+distribution-design level, not the proof-engineering level.  Recording
+the audit here so a future attempt does not repeat it.
+
+**Observation.**
+`Polynomial.uniformBivariateWithFixedZero t t sec` (the distribution
+that `avssInitMeasure` couples to) is **not** the standard "uniform
+polynomial of bidegree ≤ (t, t) with `f(0, 0) = sec`".  Its def at
+`Leslie/Prob/Polynomial.lean:247–253` is:
+
+```
+(PMF.uniform (Fin dx → Fin dy → F)).map fun coefs =>
+    Polynomial.C (Polynomial.C s) +
+      ∑ i : Fin dx, ∑ j : Fin dy,
+        Polynomial.C (Polynomial.C (coefs i j)) *
+          Polynomial.X ^ (i.val + 1) *
+          (Polynomial.C Polynomial.X) ^ (j.val + 1)
+```
+
+Every monomial in the sum has both `X`-degree `≥ 1` *and* `Y`-degree
+`≥ 1`.  So all "axis" coefficients are forced to zero except the
+constant `(0, 0)` — which is `sec`.  Concretely:
+
+  * `coeffs(0, 0) = sec`
+  * `coeffs(k, 0) = 0` for every `k ≥ 1`
+  * `coeffs(0, l) = 0` for every `l ≥ 1`
+  * `coeffs(k, l)` for `k, l ≥ 1` is uniform random
+
+Equivalently, `f(x, 0) = sec` for **all** `x`, and symmetrically
+`f(0, y) = sec`.  This is why `Polynomial.bivariate_evals_uniform`
+carries the `0 ∉ pts_x ∪ pts_y` precondition: the axes are constants
+of `sec`, not uniformly distributed, and the proof's
+`step1 ∘ step2` factoring relies on the off-axis-only structure.
+
+**Consequence for `coalitionAlgebraicView.1`.**
+`rowPolyOfDealer pp coeffs p l = ∑_k coeffs(k, l) · pp(p)^k`.  At
+`l = 0` this evaluates to
+
+```
+rowPolyOfDealer pp coeffs p 0 = coeffs(0, 0) + ∑_{k ≥ 1} coeffs(k, 0) · pp(p)^k = sec
+```
+
+— **identically `sec` for every party `p`**.  Hence the `l = 0` row of
+`(coalitionAlgebraicView C ω k).1` is `Dirac (sec, sec, …, sec)` and
+
+```
+(traceDist sec).map (fun ω => coalitionAlgebraicView C ω k)
+≠
+(traceDist sec').map (fun ω => coalitionAlgebraicView C ω k)
+   for sec ≠ sec'
+```
+
+so `h_aux` of `avss_secrecy_AS_view_conditional` is **false** under
+the current distribution whenever `sec ≠ sec'`.  The conclusion of
+the conditional is also false (since the operational `coalitionView`
+stores the full `rowPoly`, including the leaked `sec` constant).
+The conditional theorem holds vacuously (its hypothesis is false),
+not as a discharge target.
+
+**The fix is in the distribution, not the proof.**
+A literature-faithful row-poly secrecy needs:
+
+  1. A **true** uniform bivariate `f` of bidegree ≤ (t, t) with the
+     single constraint `f(0, 0) = sec` — i.e., all `(t + 1)² − 1`
+     other coefficients independently uniform in `F`.  Under that
+     distribution `f(x, 0)` is a Shamir polynomial in `x` with secret
+     `sec`, so by univariate Shamir secrecy `(f(x_p, 0))_{p ∈ corr}`
+     for `corr.card ≤ t` and distinct nonzero `partyPoint`s has
+     sec-invariant marginal — the row poly's constant is no longer
+     constant-`sec`.
+  2. Re-prove `bivariate_evals_uniform` under that distribution.  The
+     existing factoring (`step1 ∘ step2`) does not apply; a
+     Vandermonde + Lagrange argument does.
+  3. Re-prove `BivariateShamir.bivariate_shamir_secrecy_pts` against
+     the new distribution (it currently calls
+     `bivariate_evals_uniform` directly).
+  4. Migrate `avssInitState ∘ polyToCoeffs` to the new distribution
+     so `s.coeffs` carries the random axis coefficients (which then
+     propagate into `rowPolyOfDealer p 0`).
+
+**Scope.**
+Step 1 lives in `Leslie/Prob/Polynomial.lean` (owned).
+Step 2 lives in `Leslie/Prob/Polynomial.lean` (owned).
+Step 3 lives in `Leslie/Examples/Prob/BivariateShamir.lean`
+(**read-only** per the worker brief), so completing the chain in a
+single PR violates the constraint.  An additive path that adds
+`uniformBivariateFullWithFixedZero` and a parallel proof family
+without modifying `BivariateShamir.lean` is feasible (≈ 250–400 LOC)
+but lives in parallel to the existing infrastructure and requires a
+separate `avssInitMeasureFull` plus an alternate conditional /
+headline; it has not been pursued in this PR-set.
+
+**Bottom line.**
+The "+200 LOC algebraic-core" deferral cannot be discharged purely
+inside `BivariateShamir.bivariate_shamir_secrecy`'s grid form: the
+row-poly form is provably false under the current distribution, and
+the fix requires a distribution change that crosses an off-limits
+file.  Either the worker brief's read-only constraint on
+`BivariateShamir.lean` needs to be lifted, or the additive
+parallel-distribution path described above needs to be sanctioned,
+before this work item can be closed.
+
 ### Original deferral (kept for context)
 
 The original deferral note from before this PR-set is preserved in
