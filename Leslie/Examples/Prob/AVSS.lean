@@ -626,11 +626,14 @@ noncomputable def avssV (s : AVSSState n t F) : ℝ≥0 := (avssU s : ℝ≥0)
 Three clauses:
 
   * Pre-share quiescence: when `dealerSent = false`, every party is
-    in its initial local state and all in-flight queues are empty.
+    in its initial local state (all 7 fields = `AVSSLocalState.init`)
+    and all three in-flight queues are empty. The full-init form is
+    needed to rule out `partyAmplify`'s `readyReceived.card ≥ t + 1`
+    gate: if pre-state has `dealerSent = false`, then any honest
+    party's `readyReceived` is `∅`, so the gate is infeasible.
   * Echo well-formedness: every honest party that has `echoSent =
     true` also has `delivered = true` (echoes are only sent post-
-    delivery). And in-flight echoes (q, p) only exist when `q` has
-    set `echoSent`.
+    delivery).
   * Output well-formedness: every honest party with `output = some _`
     also has `readySent = true ∧ delivered = true`.
 
@@ -638,10 +641,7 @@ This is enough invariant to make the `avssU` lex-product strictly
 decrease on each fair-firing step. -/
 def avssTermInv (s : AVSSState n t F) : Prop :=
   (s.dealerSent = false →
-    (∀ p, (s.local_ p).delivered = false ∧
-          (s.local_ p).echoSent = false ∧
-          (s.local_ p).readySent = false ∧
-          (s.local_ p).output = none) ∧
+    (∀ p, s.local_ p = AVSSLocalState.init n t F) ∧
     s.inflightDeliveries = ∅ ∧
     s.inflightEchoes = ∅ ∧
     s.inflightReady = ∅) ∧
@@ -740,5 +740,242 @@ theorem avssU_le_bound (s : AVSSState n t F) :
   calc avssU s
       ≤ 6 * n * K ^ 6 + K ^ 6 := hsum
     _ ≤ (7 * n + 7) * K ^ 6 := by nlinarith [Nat.zero_le (K ^ 6)]
+
+/-! ### Inductive invariant — step preservation (Phase 2b) -/
+
+omit [Fintype F] in
+/-- `avssTermInv` is preserved by every gated action.
+
+For clause 1 (`dealerSent = false → quiescence`): every action either
+flips `dealerSent` to `true` (`dealerShare`) or has its gate falsified
+by the strengthened pre-share clause (`s.local_ p = init` plus empty
+in-flight queues). The new `partyAmplify` action would otherwise
+threaten the invariant — its `readyReceived.card ≥ t + 1` gate is
+ruled out because `init.readyReceived = ∅`.
+
+For clauses 2 (`echoSent → delivered`) and 3 (`output.isSome →
+readySent ∧ delivered`): the only actions that can establish either
+antecedent are `partyEchoSend` and `partyOutput`, whose gates already
+guarantee the consequent. Other actions either don't touch the
+relevant fields or don't shift them in a problematic direction. -/
+theorem avssTermInv_step
+    (a : AVSSAction n F) (s : AVSSState n t F)
+    (h : actionGate a s) (hinv : avssTermInv s)
+    (s' : AVSSState n t F)
+    (hs' : s' ∈ (PMF.pure (avssStep a s)).support) :
+    avssTermInv s' := by
+  classical
+  -- Pure step: `s' = avssStep a s`.
+  have hs_eq : s' = avssStep a s := by
+    have hsupp : (PMF.pure (avssStep a s)).support = {avssStep a s} :=
+      PMF.support_pure _
+    rw [hsupp] at hs'
+    simpa using hs'
+  subst hs_eq
+  obtain ⟨hpre, hecho, hout⟩ := hinv
+  refine ⟨?_, ?_, ?_⟩
+  -- ===== Clause 1: dealerSent post = false → all-init + queues empty post =====
+  · intro hds'
+    cases a with
+    | dealerShare =>
+        simp [avssStep] at hds'
+    | partyDeliver p =>
+        have hpre_ds : s.dealerSent = true := h.1
+        simp [avssStep, setLocal] at hds'
+        rw [hpre_ds] at hds'
+        cases hds'
+    | partyEchoSend p =>
+        have hpre_ds : s.dealerSent = false := by
+          simpa [avssStep, setLocal] using hds'
+        have hi := hpre hpre_ds
+        have hp_init : s.local_ p = AVSSLocalState.init n t F := hi.1 p
+        have hgate_del : (s.local_ p).delivered = true := h.2.1
+        rw [hp_init] at hgate_del
+        simp [AVSSLocalState.init] at hgate_del
+    | partyEchoReceive p q =>
+        have hpre_ds : s.dealerSent = false := by
+          simpa [avssStep, setLocal] using hds'
+        have hi := hpre hpre_ds
+        have hgate_in : (q, p) ∈ s.inflightEchoes := h.2.1
+        rw [hi.2.2.1] at hgate_in
+        exact absurd hgate_in (Finset.notMem_empty _)
+    | partyReady p =>
+        have hpre_ds : s.dealerSent = false := by
+          simpa [avssStep, setLocal] using hds'
+        have hi := hpre hpre_ds
+        have hp_init : s.local_ p = AVSSLocalState.init n t F := hi.1 p
+        have hgate_del : (s.local_ p).delivered = true := h.2.1
+        rw [hp_init] at hgate_del
+        simp [AVSSLocalState.init] at hgate_del
+    | partyAmplify p =>
+        have hpre_ds : s.dealerSent = false := by
+          simpa [avssStep, setLocal] using hds'
+        have hi := hpre hpre_ds
+        have hp_init : s.local_ p = AVSSLocalState.init n t F := hi.1 p
+        have hgate_rr : (s.local_ p).readyReceived.card ≥ t + 1 := h.2.2
+        rw [hp_init] at hgate_rr
+        simp [AVSSLocalState.init] at hgate_rr
+    | partyReceiveReady p q =>
+        have hpre_ds : s.dealerSent = false := by
+          simpa [avssStep, setLocal] using hds'
+        have hi := hpre hpre_ds
+        have hgate_in : q ∈ s.inflightReady := h.2.1
+        rw [hi.2.2.2] at hgate_in
+        exact absurd hgate_in (Finset.notMem_empty _)
+    | partyOutput p =>
+        have hpre_ds : s.dealerSent = false := by
+          simpa [avssStep, setLocal] using hds'
+        have hi := hpre hpre_ds
+        have hp_init : s.local_ p = AVSSLocalState.init n t F := hi.1 p
+        have hgate_del : (s.local_ p).delivered = true := h.2.1
+        rw [hp_init] at hgate_del
+        simp [AVSSLocalState.init] at hgate_del
+  -- ===== Clause 2: ∀ honest p, echoSent post = true → delivered post = true =====
+  · intro p hp hes
+    cases a with
+    | dealerShare =>
+        -- `dealerShare` doesn't touch any party's local state.
+        simp only [avssStep] at hes ⊢
+        exact hecho p hp hes
+    | partyDeliver q =>
+        simp only [avssStep] at hes ⊢
+        by_cases hpq : p = q
+        · subst hpq
+          rw [setLocal_local_self] at hes ⊢
+        -- Goal closed by `rw`: post `delivered := true` is rfl.
+        · rw [setLocal_local_ne _ _ _ _ hpq] at hes ⊢
+          exact hecho p hp hes
+    | partyEchoSend q =>
+        simp only [avssStep] at hes ⊢
+        by_cases hpq : p = q
+        · subst hpq
+          rw [setLocal_local_self] at hes ⊢
+          -- Post echoSent = true (set), post delivered = pre delivered.
+          -- Gate: pre delivered = true (= h.2.1).
+          simp
+          exact h.2.1
+        · rw [setLocal_local_ne _ _ _ _ hpq] at hes ⊢
+          exact hecho p hp hes
+    | partyEchoReceive q r =>
+        simp only [avssStep] at hes ⊢
+        by_cases hpq : p = q
+        · subst hpq
+          rw [setLocal_local_self] at hes ⊢
+          simp at hes ⊢
+          exact hecho p hp hes
+        · rw [setLocal_local_ne _ _ _ _ hpq] at hes ⊢
+          exact hecho p hp hes
+    | partyReady q =>
+        simp only [avssStep] at hes ⊢
+        by_cases hpq : p = q
+        · subst hpq
+          rw [setLocal_local_self] at hes ⊢
+          simp at hes ⊢
+          exact hecho p hp hes
+        · rw [setLocal_local_ne _ _ _ _ hpq] at hes ⊢
+          exact hecho p hp hes
+    | partyAmplify q =>
+        simp only [avssStep] at hes ⊢
+        by_cases hpq : p = q
+        · subst hpq
+          rw [setLocal_local_self] at hes ⊢
+          simp at hes ⊢
+          exact hecho p hp hes
+        · rw [setLocal_local_ne _ _ _ _ hpq] at hes ⊢
+          exact hecho p hp hes
+    | partyReceiveReady q r =>
+        simp only [avssStep] at hes ⊢
+        by_cases hpq : p = q
+        · subst hpq
+          rw [setLocal_local_self] at hes ⊢
+          simp at hes ⊢
+          exact hecho p hp hes
+        · rw [setLocal_local_ne _ _ _ _ hpq] at hes ⊢
+          exact hecho p hp hes
+    | partyOutput q =>
+        simp only [avssStep] at hes ⊢
+        by_cases hpq : p = q
+        · subst hpq
+          rw [setLocal_local_self] at hes ⊢
+          simp at hes ⊢
+          exact hecho p hp hes
+        · rw [setLocal_local_ne _ _ _ _ hpq] at hes ⊢
+          exact hecho p hp hes
+  -- ===== Clause 3: ∀ honest p, output.isSome = true → readySent ∧ delivered =====
+  · intro p hp hsome
+    cases a with
+    | dealerShare =>
+        simp only [avssStep] at hsome ⊢
+        exact hout p hp hsome
+    | partyDeliver q =>
+        simp only [avssStep] at hsome ⊢
+        by_cases hpq : p = q
+        · subst hpq
+          rw [setLocal_local_self] at hsome ⊢
+          -- Post sets delivered := true, output unchanged.
+          -- After simp: goal becomes `(s.local_ p).readySent = true`.
+          simp at hsome ⊢
+          exact (hout p hp hsome).1
+        · rw [setLocal_local_ne _ _ _ _ hpq] at hsome ⊢
+          exact hout p hp hsome
+    | partyEchoSend q =>
+        simp only [avssStep] at hsome ⊢
+        by_cases hpq : p = q
+        · subst hpq
+          rw [setLocal_local_self] at hsome ⊢
+          simp at hsome ⊢
+          exact hout p hp hsome
+        · rw [setLocal_local_ne _ _ _ _ hpq] at hsome ⊢
+          exact hout p hp hsome
+    | partyEchoReceive q r =>
+        simp only [avssStep] at hsome ⊢
+        by_cases hpq : p = q
+        · subst hpq
+          rw [setLocal_local_self] at hsome ⊢
+          simp at hsome ⊢
+          exact hout p hp hsome
+        · rw [setLocal_local_ne _ _ _ _ hpq] at hsome ⊢
+          exact hout p hp hsome
+    | partyReady q =>
+        simp only [avssStep] at hsome ⊢
+        by_cases hpq : p = q
+        · subst hpq
+          rw [setLocal_local_self] at hsome ⊢
+          -- Post sets readySent := true; output unchanged.
+          -- After simp: goal becomes `(s.local_ p).delivered = true`.
+          simp at hsome ⊢
+          exact (hout p hp hsome).2
+        · rw [setLocal_local_ne _ _ _ _ hpq] at hsome ⊢
+          exact hout p hp hsome
+    | partyAmplify q =>
+        simp only [avssStep] at hsome ⊢
+        by_cases hpq : p = q
+        · subst hpq
+          rw [setLocal_local_self] at hsome ⊢
+          -- Same shape as partyReady: post readySent := true.
+          simp at hsome ⊢
+          exact (hout p hp hsome).2
+        · rw [setLocal_local_ne _ _ _ _ hpq] at hsome ⊢
+          exact hout p hp hsome
+    | partyReceiveReady q r =>
+        simp only [avssStep] at hsome ⊢
+        by_cases hpq : p = q
+        · subst hpq
+          rw [setLocal_local_self] at hsome ⊢
+          simp at hsome ⊢
+          exact hout p hp hsome
+        · rw [setLocal_local_ne _ _ _ _ hpq] at hsome ⊢
+          exact hout p hp hsome
+    | partyOutput q =>
+        simp only [avssStep] at hsome ⊢
+        by_cases hpq : p = q
+        · subst hpq
+          rw [setLocal_local_self] at hsome ⊢
+          -- Post output := some _, readySent and delivered unchanged.
+          -- Gate: pre readySent = true ∧ pre delivered = true.
+          simp
+          exact ⟨h.2.2.1, h.2.1⟩
+        · rw [setLocal_local_ne _ _ _ _ hpq] at hsome ⊢
+          exact hout p hp hsome
 
 end Leslie.Examples.Prob.AVSS
