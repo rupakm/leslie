@@ -2687,4 +2687,30 @@ theorem quorum_intersection_card
     Finset.le_card_sdiff corr (Q₁ ∩ Q₂)
   omega
 
+/-! ## §17. Secrecy
+
+Direct passthrough to `BivariateShamir.bivariate_shamir_secrecy`.
+The post-deal grid view at any `t`-coalition is independent of the
+secret. This is the **grid form** — option (b) in the SyncVSS brief,
+the same form `bivariate_evals_uniform` directly delivers. The full
+**row + column** view secrecy (a strict generalisation) is the
+`+200 LOC` polynomial-manipulation step explicitly deferred in
+`SyncVSS.lean §10`; we inherit the same deferral here. -/
+
+/-- AVSS coalition-view secrecy (grid form). -/
+theorem avss_secrecy (partyPoint : Fin n → F)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (C D : BivariateShamir.Coalition n t) (sec sec' : F) :
+    (Leslie.Prob.Polynomial.uniformBivariateWithFixedZero t t sec).map
+        (fun f => fun (i : C.val) (j : D.val) =>
+          some ((f.eval (Polynomial.C (partyPoint i.val))).eval
+            (partyPoint j.val)))
+      =
+    (Leslie.Prob.Polynomial.uniformBivariateWithFixedZero t t sec').map
+        (fun f => fun (i : C.val) (j : D.val) =>
+          some ((f.eval (Polynomial.C (partyPoint i.val))).eval
+            (partyPoint j.val))) :=
+  BivariateShamir.bivariate_shamir_secrecy partyPoint h_nz_pp h_F C D sec sec'
+
 end Leslie.Examples.Prob.AVSS
