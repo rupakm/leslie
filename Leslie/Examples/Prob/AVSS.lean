@@ -38,6 +38,28 @@ The four classical theorems lift to the probabilistic-trace setting:
 
 Per implementation plan v2.2 §M3 W5–W6 + design plan v2.2 §M3 AVSS,
 threshold-faithful refinement.
+
+## Important: model abstractions vs. literature
+
+This formalisation is sound and useful as a stepping stone toward
+literature-faithful AVSS, but several abstractions matter when
+interpreting the formalised statements.  In particular:
+
+  * The **adversary model** is stronger than the literature's rushing
+    adversary: it has read access to the full global state including
+    `s.coeffs` and honest parties' `local_`. This doesn't falsify the
+    formalised theorems — but it means trace-level secrecy here is at
+    the algebraic grid view (`coalitionGrid`), not at the corrupt
+    parties' operational view (`coalitionView`).
+  * The **dealer-to-party communication** is abstracted as a single
+    global `s.coeffs` field, not per-party row + column polynomials.
+    A corrupt dealer cannot deliver inconsistent row polys in this
+    model (they're consistent by construction).
+  * **Static corruption** only: `corrupted` is fixed at `μ₀`-time.
+
+See `AVSS-MODEL-NOTES.md` (sibling file) for the full abstraction
+inventory, the precise relationship to Canetti–Rabin '93, and the
+roadmap for a literature-faithful refactor (Phases 6–7).
 -/
 
 import Leslie.Examples.Prob.BivariateShamir
