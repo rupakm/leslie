@@ -2165,4 +2165,84 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) :
       show ((avssU s : ℝ≥0)) ≤ (((7 * n + 7) * (lexBase n) ^ 6 : ℕ) : ℝ≥0)
       exact_mod_cast avssU_le_bound s⟩
 
+/-! ## §13. Termination theorems (Phase 3) -/
+
+/-- Termination as `AlmostDiamond` under a trajectory-fair adversary,
+discharged via `FairASTCertificate.sound`.  Every fair execution
+almost-surely reaches a terminated state (every honest party has
+output, echoed, and all queues are drained). -/
+theorem avss_termination_AS_fair
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (A : Leslie.Prob.TrajectoryFairAdversary
+            (avssSpec (t := t) sec corr) avssFair μ₀)
+    (h_U_mono : FairASTCertificate.TrajectoryUMono
+        (avssSpec (t := t) sec corr) avssFair
+        (avssCert (t := t) sec corr) μ₀ A.toFair)
+    (h_U_strict : ∀ N : ℕ, FairASTCertificate.TrajectoryFairStrictDecrease
+        (avssSpec (t := t) sec corr) avssFair
+        (avssCert (t := t) sec corr) μ₀ A.toFair N) :
+    AlmostDiamond (avssSpec (t := t) sec corr) A.toAdversary μ₀ terminated := by
+  have h_init' : ∀ᵐ s ∂μ₀, (avssCert (t := t) sec corr).Inv s := by
+    filter_upwards [h_init] with s hs
+    exact (avssCert (t := t) sec corr).inv_init s hs
+  exact FairASTCertificate.sound
+    (avssCert (t := t) sec corr) μ₀ h_init' A.toFair A.progress
+    h_U_mono h_U_strict
+
+/-- Trajectory-form termination via the deterministic monotone
+specialisation `pi_n_AST_fair_with_progress_det`.  Equivalent in
+conclusion to `avss_termination_AS_fair`; this variant is exposed for
+callers that prefer the explicit deterministic-descent route. -/
+theorem avss_termination_AS_fair_traj
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (A : Leslie.Prob.TrajectoryFairAdversary
+            (avssSpec (t := t) sec corr) avssFair μ₀)
+    (h_U_mono : FairASTCertificate.TrajectoryUMono
+        (avssSpec (t := t) sec corr) avssFair
+        (avssCert (t := t) sec corr) μ₀ A.toFair)
+    (h_U_strict : ∀ N : ℕ, FairASTCertificate.TrajectoryFairStrictDecrease
+        (avssSpec (t := t) sec corr) avssFair
+        (avssCert (t := t) sec corr) μ₀ A.toFair N) :
+    AlmostDiamond (avssSpec (t := t) sec corr) A.toAdversary μ₀ terminated := by
+  have h_init_inv : ∀ᵐ s ∂μ₀, (avssCert (t := t) sec corr).Inv s := by
+    filter_upwards [h_init] with s hs
+    exact (avssCert (t := t) sec corr).inv_init s hs
+  set cert := avssCert (t := t) sec corr with hcertdef
+  unfold AlmostDiamond
+  have hbounded_or_unbounded :
+      ∀ ω : Trace (AVSSState n t F) (AVSSAction n F),
+        (∃ N : ℕ, ∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) ∨
+        (∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))) := by
+    intro ω
+    by_cases h : ∃ N : ℕ, ∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)
+    · exact .inl h
+    · refine .inr ?_
+      intro N hbnd
+      exact h ⟨N, hbnd⟩
+  have h_inf_null :
+      ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A.toAdversary μ₀),
+      ¬ (∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))) := by
+    rw [ae_iff]
+    have heq :
+        {a : Trace (AVSSState n t F) (AVSSAction n F) |
+            ¬ ¬ ∀ N : ℕ, ¬ (∀ n, cert.V (a n).1 ≤ (N : ℝ≥0))} =
+        {ω : Trace (AVSSState n t F) (AVSSAction n F) |
+            ∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))} := by
+      ext ω; simp
+    rw [heq]
+    exact FairASTCertificate.pi_infty_zero_fair cert μ₀ h_init_inv A.toFair
+  have h_each_N : ∀ N : ℕ,
+      ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A.toAdversary μ₀),
+        (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 :=
+    fun N => FairASTCertificate.pi_n_AST_fair_with_progress_det
+      cert μ₀ h_init_inv A.toFair A.progress N h_U_mono (h_U_strict N)
+  rw [← MeasureTheory.ae_all_iff] at h_each_N
+  filter_upwards [h_each_N, h_inf_null] with ω hN h_inf
+  rcases hbounded_or_unbounded ω with ⟨N, hbnd⟩ | hunb
+  · exact hN N hbnd
+  · exact absurd hunb h_inf
 end Leslie.Examples.Prob.AVSS
