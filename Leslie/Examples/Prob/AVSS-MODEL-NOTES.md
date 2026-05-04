@@ -18,15 +18,28 @@ literature or when AVSS is used as a primitive for downstream protocols.
 | Adversary information | Rushing — sees corrupt-coalition view + in-flight messages | **Two adversary types coexist**: plain `Adversary` (full-state access; legacy) and `RushingAdversary` (view-restricted; Phase 7.1, generic in `Adversary.lean`). The classical AVSS theorems are restated against both (Phase 7.3) |
 | Static vs. adaptive corruption | Both treated; usually adaptive | Static (`corrupted` fixed at `μ₀` time) |
 | Dealer-to-party communication | Per-party row + column polys, possibly inconsistent under corrupt dealer | Single global `s.coeffs` field; consistent by construction |
-| Dealer's distribution choice | Honest = uniform with `f(0,0) = sec`; corrupt = adversarial | Both honest and corrupt dealer get uniform `coeffs` from `μ₀` |
-| Secrecy granularity | Trace-level on corrupt parties' actual observable view | Trace-level on the algebraic ideal grid `bivEval coeffs ...` |
+| Dealer's distribution choice | Honest = uniform of bidegree ≤ (t,t) with `f(0,0) = sec`; corrupt = adversarial | **`Polynomial.uniformBivariateWithFixedZero` is degenerate** — fixes all axis coefficients to 0, not just `f(0,0)`. Honest output equals `sec` directly (every share is `sec`), and corrupt-party row poly's constant term is `sec`. See §10 below |
+| Secrecy granularity | Trace-level on corrupt parties' actual observable view | Trace-level on the **algebraic ideal grid** `bivEval coeffs ...` at non-axis points (axis points are degenerate by point above). Operational view secrecy is **vacuously true** under the degenerate distribution — see §9–§10 |
 | Network model | Asynchronous with arbitrary delays, point-to-point messages | `Finset`-based in-flight queues; eventual delivery via fairness |
-| Cryptographic strength | Information-theoretic | Information-theoretic (aligned) |
+| Cryptographic strength | Information-theoretic | Information-theoretic (aligned in design) |
 
 The formalisation is sound and useful as a stepping stone, but the gap between
 its statements and the literature's statements is non-trivial.  Consumers of
 this module should consult the relevant section below before relying on a
 particular property.
+
+⚠ **Important since the May 2026 audit (§9–§10):** the polynomial distribution
+`Polynomial.uniformBivariateWithFixedZero` is structurally degenerate: it
+samples polynomials with **only** non-axis monomials random, so `f(x, 0) = sec`
+for all `x`. Under this distribution the formalised classical theorems
+(`avss_correctness_AS`, `avss_commitment_AS`, `avss_reconstruction`) collapse
+to the *simple* VSS form ("all honest shares = `sec`"), and the conditional
+operational-secrecy theorems (`avss_secrecy_AS_view_conditional`,
+`avss_secrecy_AS_view_rushing`) hold **vacuously** because their `h_aux`
+hypothesis is provably false. A planned **distribution refactor** (§10)
+fixes this; readers who care about the operational secrecy story should
+either wait for the refactor or read §9–§10 carefully before citing the
+existing theorems.
 
 ## 1. Adversary model
 
@@ -242,17 +255,31 @@ Two distinct secrecy theorems are formalised:
   versions agree pointwise, and both reduce to the polynomial-level theorem.
 
 - Operational view secrecy at the corrupt-coalition's actual observable
-  state (`coalitionView` projecting onto `local_` fields) is **not yet
-  formalised**.  See **Future directions**.
+  state (`coalitionView` projecting onto `local_` fields) is formalised
+  in conditional form: `avss_secrecy_AS_view_conditional` (PR #33) and
+  `avss_secrecy_AS_view_rushing` (PR #35) both take an auxiliary
+  hypothesis `h_aux` about joint marginal invariance of
+  `(coalitionAlgebraicView, schedulePrefix)`.  ⚠ Under the current
+  polynomial distribution this hypothesis is **provably false**; see
+  §9 and §10.  The conditional theorems hold vacuously and do not
+  carry useful operational content until §10's distribution refactor
+  lands.
 
 ### Implication
 
 `avss_secrecy_AS` is well-named only with the qualifier *"of the algebraic
-grid view"*.  It's a meaningful step (in particular, it lifts the polynomial-
-level secrecy through the `traceDist` infrastructure) but it doesn't say
-anything about what corrupt parties *operationally* observe.  In particular
-it's silent on what `(s.local_ p).rowPoly` distribution looks like for
-corrupt `p` after `partyCorruptDeliver` fires.
+grid view at non-axis points"*.  It's a meaningful step (it lifts the
+polynomial-level secrecy through the `traceDist` infrastructure) but it
+doesn't say anything about what corrupt parties *operationally* observe.
+The conditional theorems that target the operational view (`coalitionView`
+projecting `local_` including `rowPoly`) are vacuously true because of
+§10 — the constant term of every honest party's row poly is exactly
+`sec` under the current degenerate distribution, observable to any
+corrupt party that runs `partyCorruptDeliver`.
+
+The upshot: until §10 lands, **the only meaningful trace-level secrecy
+statement we have is at the algebraic grid view, not the operational
+local-state view**.
 
 ## 5. Network model
 
@@ -615,6 +642,79 @@ the only remaining gap (relative to a literature-faithful AVSS) is
 per-party dealer messages (§2 above) — the classical "row + column
 secrecy" formulation which `BivariateShamir`'s deferred +200 LOC
 polynomial-manipulation work will eventually supply.
+
+## 10. Distribution refactor (planned, follows from §9 audit)
+
+§9's audit identified that `Polynomial.uniformBivariateWithFixedZero`
+is degenerate — every random monomial has both `X`-degree ≥ 1 and
+`Y`-degree ≥ 1, forcing all axis coefficients to zero and making
+`f(x, 0) = sec` for all `x`.  This blocks the operational-view secrecy
+story at the polynomial level.
+
+This section records the **planned distribution refactor** that
+unblocks the chain.
+
+### Target distribution
+
+```lean
+noncomputable def uniformBivariateFullWithFixedZero (dx dy : ℕ) (s : F) :
+    PMF (Polynomial (Polynomial F)) :=
+  -- (PMF.uniform (Fin (dx+1) → Fin (dy+1) → F)).map fun coefs =>
+  --   ∑ i, ∑ j,
+  --     Polynomial.C (Polynomial.C (if (i, j) = (0, 0) then s else coefs i j))
+  --       * X^i.val * (C X)^j.val
+  ...
+```
+
+i.e., a true uniform bidegree-`(dx, dy)` bivariate polynomial with
+**only the `(0, 0)` coefficient pinned to `s`** and all other
+`(dx + 1) * (dy + 1) - 1` coefficients independently uniform.
+
+Under this distribution, `f(α_p, 0) = ∑_k coeffs(k, 0) · α_p^k` is a
+genuine degree-`dx` Shamir polynomial in `α_p` with constant term
+`coeffs(0, 0) = s`.  For any `t` distinct nonzero evaluation points
+`(α_p)_{p ∈ corr}` with `corr.card ≤ t`, univariate Shamir secrecy
+gives that the marginal `(f(α_p, 0))_{p ∈ corr}` is sec-invariant.
+
+### Refactor plan (~250–400 LOC, 4 commits)
+
+| Step | File | LOC |
+|---|---|---|
+| 1. Add `uniformBivariateFullWithFixedZero` + show it's a probability measure | `Leslie/Prob/Polynomial.lean` | ~80 |
+| 2. Re-prove `bivariate_evals_uniform_full` (analogue of `bivariate_evals_uniform` for the new distribution; the marginal is uniform on `(pts_x → pts_y → F)` for any `pts_x, pts_y` with `0 ∉ pts_x` and `pts_x.card + 1 ≤ Fintype.card F`, etc.). The proof is by Vandermonde + Lagrange in each direction; replaces the existing `step1 ∘ step2` factoring | `Leslie/Prob/Polynomial.lean` | ~150 |
+| 3. Re-prove `BivariateShamir.bivariate_shamir_secrecy_pts` against the new distribution. **Requires lifting the read-only constraint on `BivariateShamir.lean`** — sanctioned for this work | `Leslie/Examples/Prob/BivariateShamir.lean` | ~80 |
+| 4. Migrate `avssInitMeasure` (and `avssInitPMF`, `polyToCoeffs`) to use the new distribution.  Update affected theorem preconditions in AVSS.lean (the existing `avss_secrecy_initPMF` and trace-level secrecy theorems retain the `0 ∉ partyPoint(C ∪ D)` precondition; the operational-view conditional theorems' `h_aux` becomes provable) | `Leslie/Examples/Prob/AVSS.lean` | ~50 |
+
+### What changes after the refactor
+
+| Theorem | Before refactor (current state) | After refactor |
+|---|---|---|
+| `avss_correctness_AS` | honest output = `bivEval coeffs (pp p) 0`, which collapses to `sec` for all `p` (degenerate) | honest output = `bivEval coeffs (pp p) 0`, which is the *per-party Shamir share* — different `p` get different shares |
+| `avss_commitment_AS` | every honest output = `coeffs 0 0` (collapses) | every honest output = `bivEval coeffs (pp p) 0` (per-party share) |
+| `avss_reconstruction` | trivial since all shares = `sec` | genuine Lagrange interpolation: `t + 1` distinct shares recover `coeffs 0 0` (and reconstruction across fewer shares is information-theoretically impossible by Shamir secrecy) |
+| `avss_secrecy` | grid form at non-axis points; meaningful but doesn't say anything about axis row-poly contents | unchanged, but now reads as the foundational ingredient for operational secrecy |
+| `avss_secrecy_AS_view_conditional` / `_rushing` | vacuously true (h_aux false) | genuinely meaningful — h_aux becomes provable, and the conditional becomes the real operational secrecy statement |
+
+### Phase 7.4 inductive AE-bridge (still required)
+
+Even after the distribution refactor, the inductive AE-bridge proof
+sketched in §9's "Path forward" remains: the proof that under a
+`RushingAdversary`, the schedule prefix at step `k` AE-equals a
+deterministic function of the algebraic-coalition view at step `k`.
+This proof was Phase 7.4's substantive form; it consumes the
+simulate machinery (PR #35 commit `39b24d0`).  Estimated ~300–500
+additional LOC of inductive trace plumbing.
+
+### Why the current PR-set didn't do the refactor
+
+The original worker brief made `BivariateShamir.lean` read-only.  The
+worker correctly stopped at the boundary and recorded the finding
+(commit `2de1f2b`) rather than violate the constraint.  Future workers
+on this refactor need explicit authorisation to modify
+`BivariateShamir.lean` (and the parallel-distribution path —
+add `uniformBivariateFullWithFixedZero` without touching the existing
+infrastructure — is the secondary fallback if `BivariateShamir.lean`
+remains off-limits).
 
 ## Future directions
 
