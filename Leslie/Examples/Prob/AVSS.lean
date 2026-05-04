@@ -3113,9 +3113,10 @@ theorem coalitionGrid_eq_evalRowPoly_of_delivered
 
 /-! ## §17.6 Layer C2 reduction structure (Phase 5)
 
-The trace-level secrecy theorem `avss_secrecy_AS` reduces (in three
-steps documented at the proof site) to the algebraic core
-`bivariate_shamir_secrecy`. Here we provide the reduction skeleton:
+The trace-level grid-secrecy theorem `avss_secrecy_AS` (canonical
+step-`k` form in §17.9) reduces (in three steps documented at the
+proof site) to the algebraic core `bivariate_shamir_secrecy`. Here
+we provide the reduction skeleton:
 
 1. **Static initial-grid secrecy** — the marginal of the initial
    measure on the `coalitionGrid` projection is invariant in the
@@ -3361,11 +3362,11 @@ on the `coalitionGrid` projection is invariant in the secret. This
 is the immediate operational-secrecy consequence of
 `bivariate_shamir_secrecy` applied through the avssInitState wrapper.
 
-The full *trace-level* secrecy theorem `avss_secrecy_AS` (mentioned
-in the original Phase 5 plan) follows from this static version by
+The full *trace-level* grid-secrecy theorem `avss_secrecy_AS` (the
+step-`k` form, in §17.9) follows from this static version by
 factoring the trace distribution as a pushforward of the initial
-measure (since all `avssSpec` step kernels are `PMF.pure`); that
-final lift is left as follow-on work, not the algebraic core. -/
+measure (since all `avssSpec` step kernels are `PMF.pure` and
+`coalitionGrid` is invariant under every `avssStep`). -/
 
 /-- Static initial-grid secrecy: for any two coalitions `C` (rows)
 and `D` (columns), the marginal of `avssInitPMF` on the
@@ -3407,11 +3408,20 @@ theorem avss_secrecy_initPMF
   exact BivariateShamir.bivariate_shamir_secrecy
     partyPoint h_nz_pp h_F C D sec sec'
 
-/-! ## §17.8 Trace-level secrecy (Phase 5 Layer D)
+/-! ## §17.8 Trace-level grid secrecy (Phase 5 Layer D)
 
-The full trace-level secrecy theorem `avss_secrecy_AS`: under any
-adversary `A`, the marginal of the trace distribution projected to
-any coalition's grid view is invariant in the secret.
+The trace-level **grid-view** secrecy theorem (canonical name
+`avss_secrecy_AS`, after the step-k lift in §17.9): under any
+adversary `A` and any step `k`, the marginal of the trace
+distribution projected to `coalitionGrid C D (ω k).1` is invariant
+in the secret. Stated against the **algebraic grid view** (bivariate
+polynomial evaluations derivable from `s.coeffs` + `s.partyPoint`),
+**not** against the corrupt parties' operational view (the
+`coalitionView`-based local-state projection — Phase 6).
+
+This section closes the step-0 form `avss_secrecy_AS_step_zero_grid`
+(originally `avss_secrecy_AS_init`); §17.9 below lifts it to the
+canonical step-`k` form.
 
 The proof reduces to `avss_secrecy_initPMF` via:
 
@@ -3419,7 +3429,8 @@ The proof reduces to `avss_secrecy_initPMF` via:
    about `Kernel.trajMeasure`).
 2. `coalitionGrid C D` depends only on `s.coeffs` and `s.partyPoint`,
    neither of which are touched by any `avssStep` action — so the
-   grid view at any step `k` equals the grid view at step `0`.
+   grid view at any step `k` equals the grid view at step `0`
+   (formalised as `traceDist_coalitionGrid_AE_eq_init` in §17.9).
 3. Apply `avss_secrecy_initPMF` lifted to `Measure` via
    `PMF.toMeasure_map`. -/
 
@@ -3565,12 +3576,23 @@ theorem avss_secrecy_AS_init
   exact avss_secrecy_initPMF sec sec' corr partyPoint dealerHonest
     h_nz_pp h_F C D
 
-/-- **Trace-level operational secrecy.** This is the headline name —
-re-exporting `avss_secrecy_AS_init`. The init step (k = 0) form is
-the most useful operational statement: the marginal of the trace
-distribution at the initial step is invariant in the secret under
-any adversary, for any two coalitions of size ≤ t. -/
-theorem avss_secrecy_AS
+/-- **Step-0 trace-level grid secrecy.**
+
+The marginal of the trace distribution at step 0 projected to
+`coalitionGrid C D` is invariant in the secret. Direct re-export of
+`avss_secrecy_AS_init`, kept as a separate name so the step-k
+generalisation `avss_secrecy_AS` (below) can call it without name
+clash.
+
+**Scope.** `coalitionGrid C D s := fun p q => some (bivEval s.coeffs
+(s.partyPoint p) (s.partyPoint q))` is the **algebraic grid view**:
+the bivariate polynomial evaluations at the row × column grid,
+derivable from `s.coeffs` and `s.partyPoint` alone. This is **not**
+the corrupt parties' operational view (the `coalitionView`-based
+local-state projection, which uses `s.local_` and is sensitive to
+adversary scheduling). The operational-view secrecy theorem is the
+remaining work for Phase 6. -/
+theorem avss_secrecy_AS_step_zero_grid
     (sec sec' : F) (corr : Finset (Fin n))
     (partyPoint : Fin n → F) (dealerHonest : Bool)
     (h_nz_pp : ∀ i, partyPoint i ≠ 0)
@@ -3591,12 +3613,17 @@ open scoped ProbabilityTheory
 
 /-! ## §17.9 Step-k generalisation of trace-level grid secrecy
 
-The headline theorem `avss_secrecy_AS` above is currently stated at
-step 0. Since `coalitionGrid C D` depends only on `s.coeffs` and
-`s.partyPoint` — both invariant under every `avssStep` action
-(see `avssStep_coalitionGrid_invariant`) — the step-`k` grid view
-AE-equals the step-0 grid view under any trajectory. Pushing this
-through `Measure.map_congr_of_ae_eq` gives the step-`k` form. -/
+The step-0 form `avss_secrecy_AS_step_zero_grid` (above) lifts to a
+step-`k` form (the canonical `avss_secrecy_AS`, below): for every
+step `k`, the marginal of the trace distribution projected to
+`coalitionGrid C D (ω k).1` is invariant in the secret.
+
+The argument is straightforward: `coalitionGrid C D` depends only on
+`s.coeffs` and `s.partyPoint` — both invariant under every `avssStep`
+action (see `avssStep_coalitionGrid_invariant`). So the step-`k`
+grid view AE-equals the step-0 grid view under any trajectory.
+Pushing this AE equality through `Measure.map_congr` gives the
+step-`k` form, which then reduces to the step-0 form. -/
 
 /-- The per-step kernel of `avssSpec` AE-preserves `coalitionGrid`:
 no matter which branch the kernel takes (no-schedule stutter,
@@ -3696,18 +3723,31 @@ theorem traceDist_coalitionGrid_AE_eq_init
     -- `(Preorder.frestrictLe k ω).currentState = (ω k).1` is definitional.
     exact hjoint
 
-/-- **Trace-level operational secrecy at step `k`.**
+/-- **Trace-level grid secrecy.** This is the canonical `avss_secrecy_AS`:
+the step-`k` form of operational secrecy on the algebraic grid view.
 
 For any adversary `A`, any two coalitions `C` (rows) and `D`
 (columns) of size ≤ `t`, and any step index `k`, the marginal of
-the trace distribution projected to `coalitionGrid C D` at step
-`k` is invariant in the secret.
+the trace distribution projected to `coalitionGrid C D (ω k).1` is
+invariant in the secret.
 
-Reduces to `avss_secrecy_AS_init` (the step-0 form) via
-`traceDist_coalitionGrid_AE_eq_init` (the step-`k` AE invariance)
-plus `Measure.map_congr` (AE-equal random variables push forward
-to the same measure). -/
-theorem avss_secrecy_AS_step_k
+**Scope.** This is the **algebraic grid view** secrecy:
+`coalitionGrid C D s := fun p q => some (bivEval s.coeffs
+(s.partyPoint p) (s.partyPoint q))` is derivable from `s.coeffs`
+and `s.partyPoint` alone, both of which are immutable across actions
+(see `avssStep_coalitionGrid_invariant`).
+
+This is **not** the corrupt parties' operational view — i.e. the
+`coalitionView`-based local-state projection (`coalitionView C s :=
+fun p => s.local_ p.val`), which depends on adversary scheduling
+through `s.local_`. The operational-view secrecy theorem is the
+remaining work for Phase 6.
+
+Proof: reduces to the step-0 form `avss_secrecy_AS_step_zero_grid`
+via `traceDist_coalitionGrid_AE_eq_init` (the step-`k` AE invariance
+of the grid view) plus `Measure.map_congr` (AE-equal random variables
+push forward to the same measure). -/
+theorem avss_secrecy_AS
     (sec sec' : F) (corr : Finset (Fin n))
     (partyPoint : Fin n → F) (dealerHonest : Bool)
     (h_nz_pp : ∀ i, partyPoint i ≠ 0)
@@ -3733,7 +3773,8 @@ theorem avss_secrecy_AS_step_k
     refine Measure.map_congr ?_
     exact traceDist_coalitionGrid_AE_eq_init s corr _ A C D k
   rw [hstep0 sec, hstep0 sec']
-  exact avss_secrecy_AS sec sec' corr partyPoint dealerHonest h_nz_pp h_F C D A
+  exact avss_secrecy_AS_step_zero_grid sec sec' corr partyPoint dealerHonest
+    h_nz_pp h_F C D A
 
 end StepKGeneralisation
 
