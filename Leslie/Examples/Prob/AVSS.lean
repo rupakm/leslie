@@ -2952,6 +2952,108 @@ theorem avss_reconstruction
   -- Evaluate both sides at 0.
   rw [← hg_interp, reconstructPoly_eval_zero]
 
+/-! ## §17. Operational μ₀ (Phase 5 Layer B)
+
+The `avssInitMeasure` couples the AVSS initial-state distribution to
+`uniformBivariateWithFixedZero t t sec` via a deterministic state
+builder `avssInitState` and a coefficient-extraction map
+`polyToCoeffs`. -/
+
+/-- Extract a coefficient grid `Fin (t+1) → Fin (t+1) → F` from a
+bivariate polynomial `f : Polynomial (Polynomial F)` by indexing into
+the doubly-graded coefficient structure: `polyToCoeffs f k l =
+(f.coeff k.val).coeff l.val`. For `f` sampled from
+`uniformBivariateWithFixedZero t t sec`, the resulting grid satisfies
+`grid 0 0 = sec` (other diagonal/off-diagonal cells are determined by
+the polynomial structure). -/
+noncomputable def polyToCoeffs
+    (f : _root_.Polynomial (_root_.Polynomial F)) :
+    Fin (t+1) → Fin (t+1) → F :=
+  fun k l => (f.coeff k.val).coeff l.val
+
+/-- Deterministic builder for the AVSS initial state from a
+coefficient grid, party-point function, secret, corruption set, and
+dealer-honest flag. All in-flight queues are empty, all locals are
+in their `init` state, and `dealerSent = false`. -/
+def avssInitState (sec : F) (corr : Finset (Fin n))
+    (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (coeffs : Fin (t+1) → Fin (t+1) → F) : AVSSState n t F :=
+  { coeffs := coeffs
+    partyPoint := partyPoint
+    secret := sec
+    local_ := fun _ => AVSSLocalState.init n t F
+    corrupted := corr
+    dealerHonest := dealerHonest
+    inflightDeliveries := ∅
+    inflightCorruptDeliveries := ∅
+    inflightEchoes := ∅
+    inflightReady := ∅
+    dealerSent := false }
+
+/-- Operational initial PMF for AVSS, pulled back from
+`uniformBivariateWithFixedZero` through `avssInitState ∘ polyToCoeffs`.
+This is the structural anchor of Phase 5: the secret is sampled at
+`(0,0)` of the coefficient grid via the bivariate polynomial. -/
+noncomputable def avssInitPMF (sec : F) (corr : Finset (Fin n))
+    (partyPoint : Fin n → F) (dealerHonest : Bool) :
+    PMF (AVSSState n t F) :=
+  (Leslie.Prob.Polynomial.uniformBivariateWithFixedZero t t sec).map
+    (fun f => avssInitState (n := n) sec corr partyPoint dealerHonest
+      (polyToCoeffs f))
+
+/-- Operational initial measure for AVSS: the `Measure` form of
+`avssInitPMF`. Suitable to feed into `traceDist`. -/
+noncomputable def avssInitMeasure (sec : F) (corr : Finset (Fin n))
+    (partyPoint : Fin n → F) (dealerHonest : Bool) :
+    Measure (AVSSState n t F) :=
+  (avssInitPMF (n := n) (t := t) sec corr partyPoint dealerHonest).toMeasure
+
+/-- `avssInitMeasure` is a probability measure. -/
+instance avssInitMeasure_isProbabilityMeasure (sec : F) (corr : Finset (Fin n))
+    (partyPoint : Fin n → F) (dealerHonest : Bool) :
+    IsProbabilityMeasure
+        (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest) := by
+  unfold avssInitMeasure
+  exact PMF.toMeasure.isProbabilityMeasure _
+
+/-- Coupling: the marginal of `avssInitMeasure` on `s.coeffs` is the
+pushforward of `uniformBivariateWithFixedZero` under `polyToCoeffs`,
+viewed as a PMF on the coefficient grid type. -/
+theorem avssInitPMF_coeffs_map (sec : F) (corr : Finset (Fin n))
+    (partyPoint : Fin n → F) (dealerHonest : Bool) :
+    (avssInitPMF (n := n) (t := t) sec corr partyPoint dealerHonest).map
+        (fun s => s.coeffs) =
+      (Leslie.Prob.Polynomial.uniformBivariateWithFixedZero (F := F) t t sec).map
+        polyToCoeffs := by
+  classical
+  unfold avssInitPMF
+  rw [PMF.map_comp]
+  rfl
+
+/-- AVSS initial states (in the support of `avssInitPMF`) all satisfy
+the structural part of `initPred` — empty queues, all-init locals,
+`dealerSent = false`. The dealer-honest constraint `coeffs 0 0 = sec`
+holds because `polyToCoeffs` extracts the constant term, which is
+always `sec` in the support of `uniformBivariateWithFixedZero`. -/
+theorem avssInitPMF_support_initPred (sec : F) (corr : Finset (Fin n))
+    (partyPoint : Fin n → F) (dealerHonest : Bool) :
+    ∀ s ∈ (avssInitPMF (n := n) (t := t) sec corr partyPoint dealerHonest).support,
+      (∀ p, s.local_ p = AVSSLocalState.init n t F) ∧
+      s.secret = sec ∧
+      s.corrupted = corr ∧
+      s.inflightDeliveries = ∅ ∧
+      s.inflightCorruptDeliveries = ∅ ∧
+      s.inflightEchoes = ∅ ∧
+      s.inflightReady = ∅ ∧
+      s.dealerSent = false := by
+  classical
+  intro s hs
+  unfold avssInitPMF at hs
+  rw [PMF.support_map] at hs
+  obtain ⟨_, _, hs_eq⟩ := hs
+  rw [← hs_eq]
+  refine ⟨fun _ => rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+
 /-! ## §17. Secrecy
 
 Direct passthrough to `BivariateShamir.bivariate_shamir_secrecy`.
