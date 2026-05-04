@@ -243,7 +243,14 @@ noncomputable def uniformWithFixedZero (d : ℕ) (s : F) :
 /-- A uniform random bivariate polynomial of bidegree ≤ (dx, dy)
 with constant term `s`. Built as `Polynomial (Polynomial F)` —
 the inner ring is `Polynomial F` and its constants are coefficients
-in the outer `X` variable. -/
+in the outer `X` variable.
+
+⚠ **Degenerate for VSS.** This distribution forces *every* axis
+coefficient (both `(i, 0)` for `i ≥ 1` and `(0, j)` for `j ≥ 1`)
+to zero, so `f(x, 0) = s` for **all** `x` and `f(0, y) = s` for
+all `y`. See `Leslie/Examples/Prob/AVSS-MODEL-NOTES.md` §9–§10.
+For the literature-standard distribution, use
+`uniformBivariateFullWithFixedZero` below. -/
 noncomputable def uniformBivariateWithFixedZero (dx dy : ℕ) (s : F) :
     PMF (_root_.Polynomial (_root_.Polynomial F)) :=
   (PMF.uniform (Fin dx → Fin dy → F)).map fun coefs =>
@@ -251,6 +258,39 @@ noncomputable def uniformBivariateWithFixedZero (dx dy : ℕ) (s : F) :
       Polynomial.C (Polynomial.C (coefs i j)) *
         Polynomial.X ^ (i.val + 1) *
         (Polynomial.C Polynomial.X) ^ (j.val + 1)
+
+/-- A uniform random bivariate polynomial of bidegree ≤ `(dx, dy)`
+with **only** the constant `(0, 0)` coefficient pinned to `s`. All
+other `(dx + 1) * (dy + 1) - 1` coefficients are independently and
+uniformly distributed in `F`.
+
+Sampled in three independent pieces:
+* an *interior* matrix `coefs : Fin dx → Fin dy → F` —
+  the coefficients at `(i.val + 1, j.val + 1)` (i.e. both axes ≥ 1);
+* an *axis-X* vector `axisX : Fin dx → F` —
+  the coefficients at `(i.val + 1, 0)`;
+* an *axis-Y* vector `axisY : Fin dy → F` —
+  the coefficients at `(0, j.val + 1)`.
+
+This is the literature-standard distribution for bivariate Shamir
+secret-sharing: under it, `f(α, 0) = s + ∑_{i} axisX_i α^{i+1}` is
+a genuine degree-`dx` Shamir polynomial in `α` with constant
+term `s`.  Compare with `uniformBivariateWithFixedZero` (axis-zero
+variant) which forces every axis coefficient to zero — degenerate
+for VSS purposes; see `AVSS-MODEL-NOTES.md` §9–§10. -/
+noncomputable def uniformBivariateFullWithFixedZero (dx dy : ℕ) (s : F) :
+    PMF (_root_.Polynomial (_root_.Polynomial F)) :=
+  (PMF.uniform ((Fin dx → Fin dy → F) × (Fin dx → F) × (Fin dy → F))).map
+    fun ⟨coefs, axisX, axisY⟩ =>
+      Polynomial.C (Polynomial.C s) +
+      (∑ i : Fin dx, Polynomial.C (Polynomial.C (axisX i)) *
+        Polynomial.X ^ (i.val + 1)) +
+      (∑ j : Fin dy, Polynomial.C (Polynomial.C (axisY j)) *
+        (Polynomial.C Polynomial.X) ^ (j.val + 1)) +
+      ∑ i : Fin dx, ∑ j : Fin dy,
+        Polynomial.C (Polynomial.C (coefs i j)) *
+          Polynomial.X ^ (i.val + 1) *
+          (Polynomial.C Polynomial.X) ^ (j.val + 1)
 
 /-! ## Headline theorems (proofs deferred)
 
