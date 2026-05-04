@@ -7484,44 +7484,299 @@ theorem simView_simSched_avssInitState_factors
     simAlgebraicView_simSchedulePrefix_eq_of_simSyncInv R h_R C h_C_corr _ _ h_sync k
   exact Prod.ext h_view.1 h_view.2
 
-/-! ## §19.4.5 — final headline (left as next-step delivery)
+/-! ## §19.4.5 — fully unconditional headline
 
-The next-step delivery to close `avss_secrecy_AS_view_rushing` fully
-unconditionally is to compose the Phase 7.4 final pieces:
+This section composes Phase 7.4's structural pieces with PR #36's
+`bivariate_shamir_secrecy_rowPoly_full` to deliver the
+**fully unconditional** operational view-secrecy headline against a
+rushing adversary.
 
-  * `bivariate_shamir_secrecy_rowPoly_full` (PR #36) —
-    sec-invariance of the corrupt parties' row polynomials under the
-    bivariate `uniformBivariateFullWithFixedZero` distribution (in
-    `pts → Fin (t+1) → F` form).
-  * `simAlgebraicView_simSchedulePrefix_eq_of_simSyncInv` (this commit) —
-    the simulate is deterministic and depends on the initial state
-    only through the corrupt-party row polynomials and the structural
-    fields.
-  * `rowPolyOfDealer_polyToCoeffs_eq_coeff_eval_of_support` (this commit) —
-    bridges `rowPolyOfDealer` (AVSS form) with `(f.eval (C ·)).coeff`
-    (polynomial form).
-  * `avssInitMeasure_AE_initPred` (this commit) — discharges the
-    `h_init_sec` hypothesis automatically.
-  * `simView_simSched_avssInitState_factors` (this commit) — the
-    simulate-derived view-and-schedule pair factors through corrupt
-    row polys.
+The composition proceeds in three steps.
 
-The remaining work in the headline composition is:
+  * **Step A** (`avssInitMeasure_simView_factors_through_corrRow`) —
+    factor the joint `(simAlgebraicView, simSchedulePrefix)` pushforward
+    of `avssInitMeasure` through a corrupt-rowpoly extractor at the
+    bivariate-polynomial level.  Uses
+    `simView_simSched_avssInitState_factors` (the §19.4.2 factoring
+    lemma) to define a deterministic post-composition map `K`.
+  * **Step B** (`avssInitMeasure_simView_sec_invariant`) — by Step A
+    plus `bivariate_shamir_secrecy_rowPoly_full` lifted from the
+    `pts → Fin (t+1) → F` form to the `corr → Fin (t+1) → F` form via
+    the `partyPoint` injection (`h_inj`), conclude sec-invariance of
+    the joint pushforward.
+  * **Step C** (`avss_secrecy_AS_view_rushing_clean`) — combine Step B
+    with `avss_secrecy_AS_view_rushing_unconditional` (and the AE
+    `initPred` discharge from `avssInitMeasure_AE_initPred`) to deliver
+    the headline. -/
 
-  1. Express both sides as PMF pushforwards via `unfold avssInitMeasure`
-     + `PMF.toMeasure_map`.
-  2. Apply `PMF.map_congr_of_support` to convert the AVSS-form `simAlgView`
-     to the polynomial-form `(f.eval (C ·)).coeff` via the bridge.
-  3. Note that `simView_simSched` factors through the corrupt rowPoly
-     data; this lets us decompose `μ.map view = μ.map (K ∘ corruptRowMap)`.
-  4. By `bivariate_shamir_secrecy_rowPoly_full`, `μ_sec.map corruptRowMap
-     = μ_sec'.map corruptRowMap`.  Apply `Measure.map_congr` to lift
-     to the full view.
+/-- The bivariate-polynomial-level corrupt-rowpoly extractor:
+sends a polynomial `f` to the row polynomials at corrupt parties, in
+the AVSS form (using `rowPolyOfDealer` on `polyToCoeffs f`). -/
+noncomputable def corrRowMap (corr : Finset (Fin n)) (partyPoint : Fin n → F)
+    (f : _root_.Polynomial (_root_.Polynomial F)) :
+    corr → Fin (t+1) → F :=
+  fun p l => rowPolyOfDealer (n := n) (t := t) partyPoint (polyToCoeffs f) p.val l
 
-The composition involves transporting between `corr → Fin (t+1) → F`
-and `pts → Fin (t+1) → F` (via `partyPoint` injection), then composing
-the deterministic reconstruction step.  This is the remaining
-~150 LOC of measure-transport plumbing. -/
+/-- The bivariate-polynomial-level corrupt-rowpoly extractor in the
+*polynomial form* (using `(f.eval (C p)).coeff`). For `f` in the
+support of `uniformBivariateFullWithFixedZero`, this agrees pointwise
+with `corrRowMap`. -/
+noncomputable def corrRowMapEval (corr : Finset (Fin n)) (partyPoint : Fin n → F)
+    (f : _root_.Polynomial (_root_.Polynomial F)) :
+    corr → Fin (t+1) → F :=
+  fun p l => (f.eval (Polynomial.C (partyPoint p.val))).coeff l.val
+
+/-- `corrRowMap` and `corrRowMapEval` agree on the support of
+`uniformBivariateFullWithFixedZero`. -/
+theorem corrRowMap_eq_corrRowMapEval_of_support
+    (sec : F) (corr : Finset (Fin n)) (partyPoint : Fin n → F)
+    (f : _root_.Polynomial (_root_.Polynomial F))
+    (hf : f ∈ (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero
+                 (F := F) t t sec).support) :
+    corrRowMap (n := n) (t := t) corr partyPoint f =
+      corrRowMapEval (n := n) (t := t) corr partyPoint f := by
+  funext p l
+  exact rowPolyOfDealer_polyToCoeffs_eq_coeff_eval_of_support sec partyPoint f hf p.val l
+
+/-- Sec-invariance of the corrupt-rowpoly marginal in the AVSS form,
+lifted from `bivariate_shamir_secrecy_rowPoly_full` via the
+`partyPoint`-injection bridge. The polynomial-form corrupt-rowpoly
+extractor `corrRowMapEval` postcomposes the `pts`-form row-poly map
+(used by `bivariate_shamir_secrecy_rowPoly_full`) with the embedding
+`corr → corr.image partyPoint` (well-defined when `partyPoint` is
+injective on `corr`). -/
+theorem corrRowMap_uniform_sec_invariant
+    (sec sec' : F) (corr : Finset (Fin n)) (partyPoint : Fin n → F)
+    (h_inj : Set.InjOn partyPoint corr)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (h_corr : corr.card ≤ t) :
+    (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero
+        (F := F) t t sec).map (corrRowMap (n := n) (t := t) corr partyPoint) =
+      (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero
+        (F := F) t t sec').map (corrRowMap (n := n) (t := t) corr partyPoint) := by
+  classical
+  -- Step 1: `corrRowMap` agrees with `corrRowMapEval` on the support.
+  have hL :
+      (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero
+          (F := F) t t sec).map (corrRowMap (n := n) (t := t) corr partyPoint) =
+        (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero
+          (F := F) t t sec).map (corrRowMapEval (n := n) (t := t) corr partyPoint) := by
+    apply PMF.map_congr_of_support
+    intro f hf
+    exact corrRowMap_eq_corrRowMapEval_of_support sec corr partyPoint f hf
+  have hR :
+      (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero
+          (F := F) t t sec').map (corrRowMap (n := n) (t := t) corr partyPoint) =
+        (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero
+          (F := F) t t sec').map (corrRowMapEval (n := n) (t := t) corr partyPoint) := by
+    apply PMF.map_congr_of_support
+    intro f hf
+    exact corrRowMap_eq_corrRowMapEval_of_support sec' corr partyPoint f hf
+  rw [hL, hR]
+  -- Step 2: `corrRowMapEval` factors as `(· ∘ embed) ∘ ptsRowPolyEval`
+  -- where `embed : corr → pts := fun p => ⟨partyPoint p.val, ...⟩`.
+  -- Define the `pts`-form map and the post-composition.
+  set pts : Finset F := corr.image partyPoint with hpts_def
+  have h_card_pts : pts.card ≤ t := by
+    rw [hpts_def, Finset.card_image_of_injOn h_inj]
+    exact h_corr
+  have h_nz_pts : (0 : F) ∉ pts := by
+    rw [hpts_def]
+    intro h_mem
+    rw [Finset.mem_image] at h_mem
+    obtain ⟨i, _, h_eq⟩ := h_mem
+    exact h_nz_pp i h_eq
+  -- Polynomial-form pts-row-poly map (from `bivariate_shamir_secrecy_rowPoly_full`).
+  let ptsRowPolyEval :
+      _root_.Polynomial (_root_.Polynomial F) → pts → Fin (t+1) → F :=
+    fun f (q : pts) (l : Fin (t+1)) =>
+      (f.eval (Polynomial.C q.val)).coeff l.val
+  -- Embedding `corr → pts`.
+  have h_embed_mem : ∀ (p : corr), partyPoint p.val ∈ pts := by
+    intro p
+    rw [hpts_def]; exact Finset.mem_image.mpr ⟨p.val, p.property, rfl⟩
+  let embed : corr → pts := fun p => ⟨partyPoint p.val, h_embed_mem p⟩
+  -- Post-composition map: `(g : pts → Fin (t+1) → F) ↦ (fun p => g (embed p))`.
+  let postComp :
+      (pts → Fin (t+1) → F) → (corr → Fin (t+1) → F) :=
+    fun g p => g (embed p)
+  -- Identity: `corrRowMapEval = postComp ∘ ptsRowPolyEval`.
+  have h_factor :
+      corrRowMapEval (n := n) (t := t) corr partyPoint =
+        postComp ∘ ptsRowPolyEval := by
+    funext f p l
+    rfl
+  rw [h_factor, ← PMF.map_comp _ _ _, ← PMF.map_comp _ _ _]
+  -- Apply `bivariate_shamir_secrecy_rowPoly_full` at `pts` and post-compose.
+  have hbase :
+      (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero
+          (F := F) t t sec).map ptsRowPolyEval =
+        (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero
+          (F := F) t t sec').map ptsRowPolyEval :=
+    Leslie.Prob.Polynomial.bivariate_shamir_secrecy_rowPoly_full t sec sec'
+      pts h_card_pts h_nz_pts h_F
+  rw [hbase]
+
+/-- The deterministic post-composition map used to factor the
+`(simAlgebraicView, simSchedulePrefix)` pushforward through the
+corrupt-rowpoly extractor `corrRowMap`.
+
+For a given corrupt-rowpoly profile `rp`, picks a canonical bivariate-
+coefficient grid `chooseC rp` (via `Classical.epsilon`) realizing `rp`
+at corrupt parties, then evaluates the simulate-derived view-and-
+schedule pair at the canonical `avssInitState (sec := 0)` built from
+that grid.
+
+This map is **secret-independent**: it depends only on `R`, `C`, `k`,
+`partyPoint`, `dealerHonest`, `corr`. -/
+noncomputable def avssSimViewK {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (C : BivariateShamir.Coalition n t)
+    (partyPoint : Fin n → F) (dealerHonest : Bool) (k : ℕ) :
+    (corr → Fin (t+1) → F) →
+      ((C.val → Fin (t+1) → F) × (Fin k → C.val → Bool)) ×
+      (Fin k → Option (AVSSAction n F)) :=
+  fun rp =>
+    let chooseC : Fin (t+1) → Fin (t+1) → F :=
+      Classical.epsilon
+        (fun c => ∀ (p : corr), rowPolyOfDealer (n := n) (t := t)
+          partyPoint c p.val = rp p)
+    (simAlgebraicView R C k
+        (avssInitState (n := n) (0 : F) corr partyPoint dealerHonest chooseC),
+      simSchedulePrefix R k
+        (avssInitState (n := n) (0 : F) corr partyPoint dealerHonest chooseC))
+
+/-- **Step A — factor through corrupt rowpolys.**
+
+The pushforward of `avssInitMeasure sec corr partyPoint dealerHonest`
+through `(simAlgebraicView R C k, simSchedulePrefix R k)` factors as
+a post-composition of the corrupt-rowpoly extractor `corrRowMap`
+applied to `uniformBivariateFullWithFixedZero t t sec`, with
+post-composition map `avssSimViewK` (secret-independent). -/
+theorem avssInitMeasure_simView_factors_through_corrRow
+    (sec : F) {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (h_R : R.toProtocolView = avssCoalitionView corr)
+    (C : BivariateShamir.Coalition n t) (h_C_corr : C.val ⊆ corr)
+    (partyPoint : Fin n → F) (dealerHonest : Bool) (k : ℕ) :
+    (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest).map
+        (fun s_0 =>
+          (simAlgebraicView R C k s_0, simSchedulePrefix R k s_0)) =
+      (((Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero
+          (F := F) t t sec).map
+            (corrRowMap (n := n) (t := t) corr partyPoint)).map
+          (avssSimViewK R C partyPoint dealerHonest k)).toMeasure := by
+  classical
+  unfold avssInitMeasure
+  rw [PMF.toMeasure_map _ _ (measurable_of_countable _)]
+  congr 1
+  rw [PMF.map_comp]
+  unfold avssInitPMF
+  rw [PMF.map_comp]
+  apply PMF.map_congr_of_support
+  intro f hf
+  -- Goal: (simView, simSched)(avssInitState sec corr pp dh (polyToCoeffs f)) =
+  --       avssSimViewK ... (corrRowMap ... f).
+  show (simAlgebraicView R C k
+      (avssInitState (n := n) sec corr partyPoint dealerHonest (polyToCoeffs f)),
+        simSchedulePrefix R k
+      (avssInitState (n := n) sec corr partyPoint dealerHonest (polyToCoeffs f))) =
+    avssSimViewK R C partyPoint dealerHonest k
+      (corrRowMap (n := n) (t := t) corr partyPoint f)
+  -- Unfold avssSimViewK.
+  unfold avssSimViewK
+  -- Apply simView_simSched_avssInitState_factors with c = polyToCoeffs f,
+  -- c' = chooseC (corrRowMap f).
+  apply simView_simSched_avssInitState_factors R h_R C h_C_corr
+  intro p hp
+  -- chooseC (corrRowMap f) realizes corrRowMap f at every corrupt party
+  -- (by Classical.epsilon_spec, witness = polyToCoeffs f).
+  have h_witness :
+      ∃ c : Fin (t+1) → Fin (t+1) → F,
+        ∀ (p_c : corr), rowPolyOfDealer (n := n) (t := t)
+          partyPoint c p_c.val =
+            corrRowMap (n := n) (t := t) corr partyPoint f p_c := by
+    refine ⟨polyToCoeffs f, ?_⟩
+    intro p_c
+    rfl
+  have h_eps :
+      ∀ (p_c : corr),
+        rowPolyOfDealer (n := n) (t := t) partyPoint
+          (Classical.epsilon
+            (fun c => ∀ (p_c : corr), rowPolyOfDealer (n := n) (t := t)
+              partyPoint c p_c.val =
+                corrRowMap (n := n) (t := t) corr partyPoint f p_c))
+          p_c.val =
+            corrRowMap (n := n) (t := t) corr partyPoint f p_c :=
+    Classical.epsilon_spec h_witness
+  exact (h_eps ⟨p, hp⟩).symm
+
+set_option maxHeartbeats 400000 in
+/-- **Step B — sec-invariance of the joint marginal.**
+
+Combine Step A with `corrRowMap_uniform_sec_invariant` to conclude
+sec-invariance of the joint `(simAlgebraicView, simSchedulePrefix)`
+pushforward of `avssInitMeasure`. -/
+theorem avssInitMeasure_simView_sec_invariant
+    (sec sec' : F) {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (h_R : R.toProtocolView = avssCoalitionView corr)
+    (C : BivariateShamir.Coalition n t) (h_C_corr : C.val ⊆ corr)
+    (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_inj : Set.InjOn partyPoint corr)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (h_corr : corr.card ≤ t) (k : ℕ) :
+    (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest).map
+        (fun s_0 => (simAlgebraicView R C k s_0, simSchedulePrefix R k s_0)) =
+      (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest).map
+        (fun s_0 => (simAlgebraicView R C k s_0, simSchedulePrefix R k s_0)) := by
+  -- Apply Step A at sec and at sec' (with the SAME K = avssSimViewK ...).
+  rw [avssInitMeasure_simView_factors_through_corrRow
+        (n := n) (t := t) sec R h_R C h_C_corr partyPoint dealerHonest k,
+      avssInitMeasure_simView_factors_through_corrRow
+        (n := n) (t := t) sec' R h_R C h_C_corr partyPoint dealerHonest k]
+  -- The two pushforwards differ only in the sec parameter of `uniform`;
+  -- apply `corrRowMap_uniform_sec_invariant`.
+  congr 2
+  exact corrRowMap_uniform_sec_invariant sec sec' corr partyPoint
+    h_inj h_nz_pp h_F h_corr
+
+/-- **Step C — fully unconditional headline.**
+
+Operational view-secrecy for the AVSS protocol against a rushing
+adversary, with NO algebraic-core or initial-measure-invariance
+hypotheses: just the structural conditions
+(`corr.card ≤ t`, `partyPoint` injective on `corr`, nonzero, field
+size).  This is the literature-faithful operational-secrecy theorem
+under the AVSS state model. -/
+theorem avss_secrecy_AS_view_rushing_clean
+    {corr : Finset (Fin n)}
+    (sec sec' : F) (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_inj : Set.InjOn partyPoint corr)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (h_corr : corr.card ≤ t)
+    (R : AVSSRushingAdversary n t F corr)
+    (h_R : R.toProtocolView = avssCoalitionView corr)
+    (C : BivariateShamir.Coalition n t)
+    (h_C_corr : C.val ⊆ corr) (k : ℕ) :
+    (traceDist (avssSpec (t := t) sec corr) R.toAdversary
+        (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest)).map
+        (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) =
+      (traceDist (avssSpec (t := t) sec' corr) R.toAdversary
+        (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)).map
+        (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) := by
+  apply avss_secrecy_AS_view_rushing_unconditional sec sec'
+    (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest)
+    (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)
+    (avssInitMeasure_AE_initPred sec corr partyPoint dealerHonest)
+    (avssInitMeasure_AE_initPred sec' corr partyPoint dealerHonest)
+    R C h_C_corr k
+  exact avssInitMeasure_simView_sec_invariant (n := n) (t := t)
+    sec sec' R h_R C h_C_corr partyPoint dealerHonest
+    h_inj h_nz_pp h_F h_corr k
 
 attribute [instance] instMeasurableSpaceAVSSRushingView
   instMeasurableSingletonClassAVSSRushingView
