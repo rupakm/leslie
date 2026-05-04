@@ -5876,6 +5876,145 @@ theorem avss_secrecy_AS_view_rushing
   avss_secrecy_AS_view_conditional sec sec' corr μ_sec μ_sec'
     h_init_sec h_init_sec' C h_C_corr R.toAdversary k h_aux
 
+/-! ## §19.4. Phase 7.4 — discharge of `h_aux` from initial-state invariance
+
+This section delivers the structural reduction from the trace-level
+`h_aux` to a polynomial-level invariance hypothesis at the
+`avssInitMeasure` level.  Combined with PR #36's polynomial-level
+secrecy infrastructure (`uniformBivariateFullWithFixedZero` +
+`bivariate_evals_uniform_full`) and a forthcoming row-poly secrecy
+lemma (the "+200 LOC algebraic core"), this gives an unconditional
+operational-secrecy headline.
+
+The reduction proceeds in two steps:
+
+* **Step 1** (`traceDist_jointMarginal_eq_init`) — the trace-level
+  joint marginal `(coalitionAlgebraicView, schedulePrefix)` equals
+  the pushforward of the initial measure through the simulate-derived
+  function `(simAlgebraicView, simSchedulePrefix)`.  Uses Phase 7.4's
+  AE-bridge from §19.2.4 plus the step-0 state marginal of `traceDist`.
+
+* **Step 2** (`traceDist_algebraicView_schedulePrefix_invariant`) —
+  given that the *initial-measure* pushforward through
+  `(simAlgebraicView, simSchedulePrefix)` is sec-invariant, the
+  trace-level pushforward is sec-invariant.  Direct application of
+  Step 1 + measure transport.
+
+* **Step 3** (`avss_secrecy_AS_view_rushing_unconditional`) — combine
+  Step 2 with `avss_secrecy_AS_view_conditional` to get the
+  operational-view secrecy headline.
+
+The remaining work to make the headline truly unconditional (without
+the init-marginal hypothesis) is to prove that the initial-measure
+pushforward through `(simAlgebraicView, simSchedulePrefix)` is
+sec-invariant.  By the structure of `simAlgebraicView` /
+`simSchedulePrefix` and the initial measure, this reduces to
+**row-poly secrecy at `corr`** under
+`uniformBivariateFullWithFixedZero` (i.e., the row polynomials of the
+bivariate polynomial at the corrupt coalition's partyPoints have a
+sec-invariant joint distribution, when `corr.card ≤ t` and `partyPoint`
+avoids zero).  This is the deferred `+200 LOC algebraic core` step
+called out in `AVSS-MODEL-NOTES.md` §9. -/
+
+/-- **Step 1.** The trace-level joint marginal of
+`(coalitionAlgebraicView, schedulePrefix)` equals the pushforward of
+the initial measure through the simulate-derived deterministic
+function.
+
+Combines Phase 7.4's AE-bridge (§19.2.5,
+`coalitionAlgebraicView_schedulePrefix_AE_eq_sim`) with the step-0
+state marginal of `traceDist` (`traceDist_step_zero_state_marginal`,
+PR #32) to express the trace-level joint as a pushforward of the
+initial measure. -/
+theorem traceDist_jointMarginal_eq_init
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (R : AVSSRushingAdversary n t F corr)
+    (C : BivariateShamir.Coalition n t) (k : ℕ) :
+    (traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀).map
+        (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k)) =
+      μ₀.map (fun s_0 =>
+        (simAlgebraicView R C k s_0, simSchedulePrefix R k s_0)) := by
+  classical
+  -- AE form: trace-level joint matches simulate-derived joint.
+  rw [traceDist_algebraicView_schedulePrefix_factors_AE
+    (t := t) sec corr μ₀ R C k]
+  -- Now: rewrite as pushforward through (ω 0).1.
+  have hmeas_simView : Measurable
+      (fun s_0 : AVSSState n t F =>
+        (simAlgebraicView R C k s_0, simSchedulePrefix R k s_0)) :=
+    measurable_of_countable _
+  have hmeas_state0 : Measurable
+      (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+        (ω 0).1) := by fun_prop
+  rw [show (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+            (simAlgebraicView R C k (ω 0).1, simSchedulePrefix R k (ω 0).1)) =
+        (fun s_0 : AVSSState n t F =>
+            (simAlgebraicView R C k s_0, simSchedulePrefix R k s_0)) ∘
+          (fun ω => (ω 0).1) from rfl]
+  rw [← Measure.map_map hmeas_simView hmeas_state0]
+  rw [traceDist_step_zero_state_marginal sec corr μ₀ R.toAdversary]
+
+/-- **Step 2.** Given sec-invariance at the initial-measure level
+(through the simulate-derived deterministic function), conclude
+sec-invariance at the trace level. -/
+theorem traceDist_algebraicView_schedulePrefix_invariant
+    (sec sec' : F) (corr : Finset (Fin n))
+    (μ_sec μ_sec' : Measure (AVSSState n t F))
+    [IsProbabilityMeasure μ_sec] [IsProbabilityMeasure μ_sec']
+    (R : AVSSRushingAdversary n t F corr)
+    (C : BivariateShamir.Coalition n t) (k : ℕ)
+    (h_init_invariant :
+        μ_sec.map (fun s_0 =>
+          (simAlgebraicView R C k s_0, simSchedulePrefix R k s_0)) =
+          μ_sec'.map (fun s_0 =>
+            (simAlgebraicView R C k s_0, simSchedulePrefix R k s_0))) :
+    (traceDist (avssSpec (t := t) sec corr) R.toAdversary μ_sec).map
+        (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k)) =
+      (traceDist (avssSpec (t := t) sec' corr) R.toAdversary μ_sec').map
+        (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k)) := by
+  rw [traceDist_jointMarginal_eq_init (t := t) sec corr μ_sec R C k,
+      traceDist_jointMarginal_eq_init (t := t) sec' corr μ_sec' R C k]
+  exact h_init_invariant
+
+/-- **Step 3 (Phase 7.4 headline).**  Operational view secrecy under a
+rushing adversary, given the initial-measure invariance hypothesis.
+
+Compared to `avss_secrecy_AS_view_rushing`, this version replaces the
+abstract trace-level `h_aux` with a more concrete initial-measure
+invariance — a polynomial-level hypothesis that is closer to the
+existing `bivariate_shamir_secrecy_full` from PR #36.  When the
+forthcoming row-poly secrecy lemma at `corr` (the "+200 LOC algebraic
+core") lands, this hypothesis becomes provable, making the headline
+truly unconditional.
+
+Compose this with PR #36's `bivariate_shamir_secrecy_full` plus a
+row-poly variant of the same to discharge `h_init_invariant` and
+recover an unconditional `avss_secrecy_AS_view_rushing`. -/
+theorem avss_secrecy_AS_view_rushing_unconditional
+    {corr : Finset (Fin n)}
+    (sec sec' : F)
+    (μ_sec μ_sec' : Measure (AVSSState n t F))
+    [IsProbabilityMeasure μ_sec] [IsProbabilityMeasure μ_sec']
+    (h_init_sec : ∀ᵐ s ∂μ_sec, initPred sec corr s)
+    (h_init_sec' : ∀ᵐ s ∂μ_sec', initPred sec' corr s)
+    (R : AVSSRushingAdversary n t F corr)
+    (C : BivariateShamir.Coalition n t)
+    (h_C_corr : C.val ⊆ corr) (k : ℕ)
+    (h_init_invariant :
+        μ_sec.map (fun s_0 =>
+          (simAlgebraicView R C k s_0, simSchedulePrefix R k s_0)) =
+          μ_sec'.map (fun s_0 =>
+            (simAlgebraicView R C k s_0, simSchedulePrefix R k s_0))) :
+    (traceDist (avssSpec (t := t) sec corr) R.toAdversary μ_sec).map
+        (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) =
+      (traceDist (avssSpec (t := t) sec' corr) R.toAdversary μ_sec').map
+        (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) := by
+  apply avss_secrecy_AS_view_rushing sec sec' μ_sec μ_sec'
+    h_init_sec h_init_sec' R C h_C_corr k
+  exact traceDist_algebraicView_schedulePrefix_invariant
+    (t := t) sec sec' corr μ_sec μ_sec' R C k h_init_invariant
+
 attribute [instance] instMeasurableSpaceAVSSRushingView
   instMeasurableSingletonClassAVSSRushingView
 

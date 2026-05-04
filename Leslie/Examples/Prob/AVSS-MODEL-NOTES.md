@@ -399,64 +399,95 @@ Lest the above read as a litany of caveats, here's what the formalisation
 
 ## 9. Phase 7.4–7.5 partial closure — schedule-leakage closing theorem
 
-### What this PR-set delivers (Phase 7.4 + 7.5, partial)
+### What Phases 7.4–7.5 deliver
 
 Phase 7 closes the rushing-adversary *type machinery* and classical-
-theorem wrappers (Phases 7.1–7.3, **landed**) plus the structural
-foundation for the schedule-leakage half of the headline (this section,
-**partially landed**):
+theorem wrappers (Phases 7.1–7.3, **landed**) plus the schedule-leakage
+half of the headline (this section, **landed**):
 
-  * **Phase 7.4 (partial — simulate machinery).** AVSS.lean §19.2
+  * **Phase 7.4 simulate machinery (landed).** AVSS.lean §19.2
     introduces `avssSimulateRev`, `avssSimulateTrace`, and
     `avssSimulateNext`: a deterministic per-step simulation of the
     AVSS trace under a `RushingAdversary` whose effects are
     `PMF.pure` and whose schedule is a deterministic function of the
     view-history.  Plus structural lemmas: list length, head, succ
-    recurrence.  These are the foundation on which the inductive
-    AE-bridge `traceDist sec R.toAdversary μ₀ ⇝ μ₀.map (avssSimulateTrace R)`
-    is built.
-  * **Phase 7.5 (thin composition).** AVSS.lean §19.3 introduces
-    `avss_secrecy_AS_view_rushing`, a thin wrapper around PR #33's
-    `avss_secrecy_AS_view_conditional` that plugs in `R.toAdversary`
-    for the underlying adversary and bridges the
-    `MeasurableSpace`-instance discrepancy on
-    `↥↑C → AVSSLocalState n t F` (the conditional uses default Pi;
-    §19's `instMeasurableSpaceAVSSRushingView` shadows it locally).
-    The hypothesis `h_aux` (joint marginal invariance of
-    `(coalitionAlgebraicView, schedulePrefix)`) is unchanged from
-    the conditional — see "What's still deferred" below for what
-    discharges it.
-
-### What's still deferred (substantive Phase 7.4 + algebraic core)
-
-The two pieces remaining for an unconditional headline:
-
-  * **Phase 7.4 inductive AE-bridge (~300–500 LOC).**  The proof that
-    under `R.toAdversary`, the trace AE-equals `avssSimulateTrace R
-    (ω 0).1` at every step `k`.  Threads the marginal recurrence
+    recurrence, `avssSimulateRev_reverse_eq_ofFn` (index-form
+    characterisation matching `FinPrefix.toList`).
+  * **Phase 7.4 inductive AE-bridge (landed).** AVSS.lean §19.2.4
+    proves `traceDist_AE_eq_avssSimulateTrace`: under `R.toAdversary`,
+    every step's trace AE-equals `avssSimulateTrace R (ω 0).1` at
+    that step.  Threads the marginal recurrence
     `Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`
-    through the per-step Dirac kernel (each kernel branch is a Dirac
-    by `PMF.pure` on the effect side and by Dirac on the gate-fail /
-    no-schedule branches), inducting on `k` from the base
-    `(ω 0).2 = none` AE.  Once landed, the AE-bridge implies that
-    `schedulePrefix ω k` AE-equals a deterministic function of
-    `(coalitionAlgebraicView corr ω k)` — discharging the schedule-
-    leakage half.
+    through the per-step Dirac kernel (each branch is Dirac by
+    `PMF.pure` on the effect side and by Dirac on stutter branches),
+    using a strong induction-form
+    `traceDist_AE_eq_avssSimulateTrace_strong` over the entire
+    prefix.  Per-prefix Dirac-identification lemma
+    `avssSpec_R_stepKernel_AE_simulate` factors the kernel through
+    the simulate's `avssSimulateNext` under prefix-matching
+    hypothesis.
+  * **Phase 7.4 joint factoring (landed).** AVSS.lean §19.2.5 defines
+    `simAlgebraicView` and `simSchedulePrefix` as deterministic
+    functions of `s_0`, then proves
+    `coalitionAlgebraicView_schedulePrefix_AE_eq_sim` (AE form) and
+    `traceDist_algebraicView_schedulePrefix_factors_AE` (pushforward
+    form).  Combined with the step-0 state marginal
+    (`traceDist_step_zero_state_marginal`, PR #32), expresses the
+    trace-level joint marginal as a pushforward of the initial
+    measure through `(simAlgebraicView, simSchedulePrefix)` —
+    `traceDist_jointMarginal_eq_init` (§19.4).
+  * **Phase 7.5 (thin composition, landed).** AVSS.lean §19.3
+    introduces `avss_secrecy_AS_view_rushing`, a thin wrapper around
+    PR #33's `avss_secrecy_AS_view_conditional` that plugs in
+    `R.toAdversary` for the underlying adversary.  Hypothesis
+    `h_aux` (trace-level joint marginal invariance) is reduced to
+    `h_init_invariant` (initial-measure pushforward invariance) via
+    `traceDist_algebraicView_schedulePrefix_invariant` (§19.4).
+  * **Phase 7.4 headline (landed).** AVSS.lean §19.4 introduces
+    `avss_secrecy_AS_view_rushing_unconditional`, taking
+    `h_init_invariant` (a polynomial-level initial-measure
+    invariance) as a hypothesis instead of the abstract trace-level
+    `h_aux`.  When the algebraic-core row-poly secrecy lemma lands
+    (see "What's still deferred" below), `h_init_invariant` becomes
+    provable and the headline is fully unconditional.
+
+### What's still deferred (algebraic-core row-poly secrecy)
+
+The single piece remaining for a fully unconditional headline:
 
   * **Algebraic-core row-poly secrecy (~+200 LOC).**  The
     polynomial-manipulation strengthening of
-    `BivariateShamir.bivariate_shamir_secrecy` that lifts the grid-
-    pointwise theorem (sec-invariant for `|C| × |D|` evaluations
-    with `|C|, |D| ≤ t`) to a *row-poly* form (sec-invariant for
-    `|C|` row polynomials, each a `Fin (t+1) → F` vector of
-    coefficients).  This is what's needed for `cAV.1`'s marginal
-    (the corrupt coalition's row polys at the initial state) to be
-    sec-invariant.  Together with the Phase 7.4 AE-bridge,
-    discharges `h_aux` of the conditional unconditionally.
+    `BivariateShamir.bivariate_shamir_secrecy_full` that lifts the
+    grid-pointwise theorem (sec-invariant for `|C| × |D|`
+    bivariate-evaluations with `|C|, |D| ≤ t`) to a *row-poly*
+    form (sec-invariant for `|S|` row polynomials at corrupt
+    coalition `S` with `|S| ≤ t`, each row poly a `Fin (t+1) → F`
+    vector of coefficients).  This is what's needed for
+    `(simAlgebraicView, simSchedulePrefix)`'s initial-measure
+    pushforward to be sec-invariant.
 
-When both pieces land, `avss_secrecy_AS_view_rushing` becomes
-unconditional and is the literature-faithful operational secrecy
-theorem under the AVSS state model.
+    Concretely: under `uniformBivariateFullWithFixedZero t t sec`
+    (PR #36), for any `S : Finset (Fin n)` with `S.card ≤ t` and
+    `partyPoint` avoiding zero, the joint distribution of
+    `(rowPolyOfDealer partyPoint (polyToCoeffs f) q)_{q ∈ S}` is
+    uniform on `S → Fin (t+1) → F` — and hence sec-invariant.
+    Sketch: decompose `uniformBivariateFullWithFixedZero` into
+    independent column polynomials `g_l(x)` for `l ∈ Fin (t+1)`;
+    `g_0` has Shamir-secret structure with secret `sec` (uniform
+    by `evals_uniform`), `g_l` for `l ≥ 1` is fully uniform.
+    Combine via product-of-uniforms.
+
+    Modular composition: when this lemma lands as a separate PR,
+    `h_init_invariant` becomes provable via
+    `traceDist_jointMarginal_eq_init` plus the row-poly secrecy
+    plus the structural fact that `(simAlgebraicView,
+    simSchedulePrefix)` factors through `(rowPolyOfDealer at corr)`
+    (provable via simulate's view-history-only dependence).
+
+When this piece lands, `avss_secrecy_AS_view_rushing_unconditional`
+becomes truly unconditional (no `h_init_invariant` hypothesis),
+yielding the literature-faithful operational secrecy theorem under
+the AVSS state model — completing Phase 7.
 
 ### Why "row-poly secrecy" is *structurally false* under the current distribution (audit, 2026-05-04)
 
