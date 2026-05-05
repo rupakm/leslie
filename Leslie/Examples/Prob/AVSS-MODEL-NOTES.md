@@ -16,7 +16,7 @@ literature or when AVSS is used as a primitive for downstream protocols.
 | Aspect | Canetti–Rabin literature | This formalisation |
 |---|---|---|
 | Adversary information | Rushing — sees corrupt-coalition view + in-flight messages | **Two adversary types coexist**: plain `Adversary` (full-state access; legacy) and `RushingAdversary` (view-restricted; Phase 7.1, generic in `Adversary.lean`). The classical AVSS theorems are restated against both (Phase 7.3) |
-| Adversary *power* (what corrupt parties can do/observe) | Rushing adversary controls all corrupt-party messages and observes every honest broadcast on corrupt receivers | ⚠ **Strictly weaker.** Corrupt parties cannot send echoes/readys/amplify (C1); they never receive honest echoes/readys (C2). C3 (dealer-share fairness) **resolved by Phase B** — `dealerShare` is now in `avssFairActions`. See **§11** |
+| Adversary *power* (what corrupt parties can do/observe) | Rushing adversary controls all corrupt-party messages and observes every honest broadcast on corrupt receivers; corrupt dealer can selectively short-share honest parties | ⚠ **Strictly weaker.** Corrupt parties cannot send echoes/readys/amplify (C1); they never receive honest echoes/readys (C2); selective non-broadcast not modelled — `dealerShare` always sends to all honest parties (C4). C3 (dealer-share fairness) **resolved by Phase B** — `dealerShare` is now in `avssFairActions`. See **§11** |
 | Static vs. adaptive corruption | Both treated; usually adaptive | Static (`corrupted` fixed at `μ₀` time) |
 | Dealer-to-party communication | Per-party row + column polys, possibly inconsistent under corrupt dealer | Single global `s.coeffs` field; consistent by construction |
 | Dealer's distribution choice | Honest = uniform of bidegree ≤ (t,t) with `f(0,0) = sec`; corrupt = adversarial | **`Polynomial.uniformBivariateWithFixedZero` is degenerate** — fixes all axis coefficients to 0, not just `f(0,0)`. Honest output equals `sec` directly (every share is `sec`), and corrupt-party row poly's constant term is `sec`. See §10 below |
@@ -947,7 +947,104 @@ content.  Phase A's docs commit flagged the issue; this PR's
 Phase B commit chose Option B2 (fold `dealerShare` into
 `avssFairActions`).
 
-### 11.4. Correctness/commitment subtlety (per-party share, not the secret)
+### 11.4. C4 — Selective non-broadcast and the load-bearing role of Bracha amplification
+
+⚠ **Closely related to §2 (Dealer-to-party communication) but worth
+spelling out separately**: in CR '93, a corrupt dealer's adversarial
+power includes choosing *which subset of parties* to send shares to,
+not just whether to broadcast at all.
+
+#### What CR '93 actually models
+
+The CR adversary controlling the dealer can:
+
+  1. Refuse to broadcast entirely (handled by C3's fix in our model
+     by forcing `dealerShare` via fairness).
+  2. **Send shares to only some honest parties** (selective non-
+     broadcast — what we call C4).
+  3. Send *inconsistent* shares to different parties (handled by §2's
+     deferred per-party messages).
+
+For (2), CR distinguishes two regimes:
+
+  * **At least `n − t` honest parties receive consistent shares**:
+    Bracha amplification fires.  The honest parties who received
+    shares broadcast echoes; those who didn't receive shares but
+    observe `≥ n − t` echoes amplify via the `readyReceived ≥ t + 1`
+    rule (`partyAmplify` in our model).  All honest parties output
+    values jointly consistent with some bivariate polynomial.
+  * **Fewer than `n − t` honest parties receive shares**: no echo
+    cascade, no amplification, no termination.  The protocol simply
+    doesn't decide.  CR's termination theorem is conditional on the
+    first regime.
+
+The protocol **is correct in both regimes** — there are no
+incorrect outputs in the no-termination case (output is `none`,
+not "wrong"), and in the termination case Bracha amplification's
+joint-consistency property holds.  What's *not* unconditional is
+termination.
+
+#### What our model captures and what it doesn't
+
+`dealerShare`'s effect (post-Phase-B) at `AVSS.lean:319–323`
+populates `s.inflightDeliveries` with **all** honest parties:
+
+```
+| .dealerShare =>
+    { s with
+      dealerSent := true
+      inflightDeliveries :=
+        (Finset.univ : Finset (Fin n)).filter (fun p => p ∉ s.corrupted) }
+```
+
+So in our model every honest party always receives a share, and
+selective non-broadcast is impossible — the adversary cannot choose
+which parties to short.  Consequence:
+
+  * The `partyAmplify` action exists in the state machine and the
+    variant analysis treats it as fair-required, but in practice
+    every honest party can take the direct path
+    `partyDeliver → partyEchoSend → partyReady → partyOutput`
+    since they all receive shares.  `partyAmplify` is never
+    operationally load-bearing in our reachable traces.
+  * Bracha amplification's role — letting parties *without* a direct
+    share output via echo cascade — is not exercised.
+  * Termination becomes unconditional under fair scheduling
+    (post-Phase-B), where in CR it would be conditional on the
+    `≥ n − t` consistent-share regime.
+
+#### Implication for the formalised theorems
+
+  * **Termination**: stronger than CR — our model forces the dealer
+    to broadcast to all honest parties, so the "fewer than `n − t`"
+    regime is unreachable.  CR's conditional termination is bypassed
+    rather than proved.
+  * **Correctness/commitment**: weaker threat model — selective
+    non-broadcast and inconsistent-broadcast attacks are not
+    considered.
+  * **Secrecy**: orthogonal — selective non-broadcast doesn't change
+    what corrupt parties learn about `sec`, only whether honest
+    parties terminate.  The secrecy theorems remain meaningful.
+
+#### Phase 8 closes C4
+
+The per-party dealer messages refactor (Phase 8, scoped separately)
+addresses C4 directly:
+
+  * `dealerMessages : Fin n → Option DealerPayload` — the dealer's
+    output to each party, possibly `none` (corrupt dealer chose to
+    skip this party) or `some payload`.
+  * `partyDeliver p` reads from `dealerMessages p` rather than a
+    global `coeffs`.
+  * Honest parties without a direct share rely on `partyAmplify`.
+  * Termination becomes conditional on "≥ `n − t` honest parties got
+    consistent shares" — the genuine CR statement.
+
+Phase 8 also addresses §2 (per-party messages), C1 (corrupt-party
+sends), and C2 (honest broadcasts to corrupt receivers) — all four
+gaps are entangled and a single refactor closes them together.
+
+### 11.5. Correctness/commitment subtlety (per-party share, not the secret)
 
 This is not strictly an *adversary-power* restriction — it's a
 restatement subtlety that affects how readers should interpret the
