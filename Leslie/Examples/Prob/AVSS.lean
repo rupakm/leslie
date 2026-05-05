@@ -5676,21 +5676,19 @@ private theorem traceDist_AE_eq_avssSimulateTrace_strong
     (R : AVSSRushingAdversary n t F corr) (k : ℕ) :
     ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀),
         ∀ i, i ≤ k → ω i = avssSimulateTrace R (ω 0).1 i := by
-  classical
   induction k with
   | zero =>
-    have h := traceDist_AE_eq_avssSimulateTrace (t := t) sec corr μ₀ R 0
-    filter_upwards [h] with ω hω i hi
+    filter_upwards [traceDist_AE_eq_avssSimulateTrace (t := t) sec corr μ₀ R 0]
+      with ω hω i hi
     interval_cases i
     exact hω
   | succ k ih =>
-    have h_succ := traceDist_AE_eq_avssSimulateTrace (t := t) sec corr μ₀ R (k+1)
-    filter_upwards [ih, h_succ] with ω h_ih h_step i hi
-    rcases Nat.lt_or_ge i (k+1) with h_lt | h_ge
+    filter_upwards [ih,
+        traceDist_AE_eq_avssSimulateTrace (t := t) sec corr μ₀ R (k+1)]
+      with ω h_ih h_step i hi
+    by_cases h : i = k + 1
+    · exact h.symm ▸ h_step
     · exact h_ih i (by omega)
-    · have hi_eq : i = k + 1 := by omega
-      subst hi_eq
-      exact h_step
 
 /-! ### Removed in Phase 10.3
 
