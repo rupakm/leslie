@@ -1200,6 +1200,94 @@ This tracker is the source of truth for Phase 8 status.  As each PR lands:
 
 If the plan changes in the middle (e.g., a worker discovers a structural issue that re-scopes a PR), the affected row's status reverts to 🚧 with a footnote describing the change.
 
+## 14. Phase 10 — Generic deterministic-simulate meta-theorem
+
+The Phase 7.4 inductive AE-bridge `traceDist_AE_eq_avssSimulateTrace`
+currently lives in `AVSS.lean` §19.2.  Reviewing the proof: nothing
+in it depends on AVSS-specific semantics.  The bridge is a fact about
+**deterministic state-machine specs** (every effect is `PMF.pure`) and
+**deterministic adversary strategies** — the AVSS instantiation is
+the consumer, not the source of any structural reasoning.
+
+Promoting the bridge to a meta-theorem in `Leslie/Prob/`
+(a) shrinks `AVSS.lean` §19.2 to a one-page instantiation,
+(b) makes the same machinery reusable by `BrachaRBC`, `SyncVSS`,
+`AVSSAbstract`, and any future deterministic-spec protocol, and
+(c) cleanly demarcates "protocol determinism" (structural,
+generic) from "cryptographic security" (substantive, AVSS-specific).
+
+Closely related to Phase 9 (randomised-adversary lifting): both
+phases promote framework-level reasoning out of `AVSS.lean` and into
+`Leslie/Prob/`.  Phase 10's meta-bridge holds for any
+`(DeterministicProbActionSpec, Adversary)` pair; Phase 9's meta-lift
+takes any such ∀-deterministic theorem to randomised.  Stacked
+together: deterministic protocols get both for free.
+
+### 14.1. Status tracker
+
+| PR | Title | Scope | LOC | Status |
+|---|---|---|---|---|
+| **10.1** | `DeterministicProbActionSpec` + simulate machinery (data) | Define `DeterministicProbActionSpec σ ι := { gate, step }` in new file `Leslie/Prob/DeterministicSimulate.lean`; provide `toProbActionSpec` adapter; define generic `simulateNext` / `simulateRev` / `simulateTrace` reading only `gate`, `step`, and `Adversary.schedule`.  Plus structural `_length`, `_ne_nil`, `_succ_eq`, `_head_eq`, `_zero` simp lemmas. | ~150 | ⏳ pending |
+| **10.2** | The meta-bridge `traceDist_AE_eq_simulateTrace` | The substantive proof: for any `D : DeterministicProbActionSpec` and `A : Adversary` and any step `k`, `∀ᵐ ω ∂(traceDist D.toProbActionSpec A μ₀), ω k = simulateTrace D A (ω 0).1 k`.  Pure transcription of the existing AVSS-specific proof, with all references to `avssStep`, `avssSpec`, `actionGate` replaced by `D.step`, `D.toProbActionSpec`, `D.gate`. | ~200 | ⏳ pending |
+| **10.3** | AVSS instantiation: shrink §19.2 | Define `avssDeterministic := { gate := actionGate, step := avssStep }`. Prove `avssSpec sec corr = (avssDeterministic sec corr).toProbActionSpec` (rfl). Replace `avssSimulateNext`/`avssSimulateRev`/`avssSimulateTrace` with one-line wrappers around the generic versions. Replace `traceDist_AE_eq_avssSimulateTrace` with one-line application of the generic meta-theorem. | ~50 (shrinks AVSS.lean by ~370 LOC) | ⏳ pending |
+
+**Total**: ~400 LOC across 3 PRs.  Net effect on AVSS.lean: shrinks by ~370 LOC.  Net effect on the codebase: +400 framework, -370 example = +30 LOC, but vastly more reusable.
+
+### 14.2. Sequencing
+
+  * **PR 10.1** depends on nothing else — can be dispatched immediately.
+  * **PR 10.2** depends on 10.1 (needs the data definitions).
+  * **PR 10.3** depends on 10.2 (needs the meta-theorem to apply).
+
+Phase 10 is **independent of Phase 8 and Phase 9**: PRs 10.1–10.3 can ship in parallel with both, since:
+  - Phase 8 modifies `AVSSState` and AVSS actions; Phase 10 is generic over the state/action types.
+  - Phase 9 lifts deterministic theorems to randomised; Phase 10 *produces* a deterministic theorem (the AE-bridge) that 9's lifter can then handle.
+
+When all three phases land, the AVSS chain reads:
+
+```
+(deterministic spec, det. adversary)              [Phase 10 meta-bridge]
+  → trace AE-equals simulateTrace
+  → (per-property pointwise reasoning, via rushing-adversary projection)
+  → (deterministic theorem)                        [Phase 9 meta-lift]
+  → (randomised theorem)
+```
+
+Each link is a one-shot meta-theorem; AVSS-specific content is only the
+projection-and-composition step in the middle.
+
+### 14.3. Why this is worth doing concretely
+
+1. **Reuse**.  At least three other state-machine protocols in the library have `PMF.pure` effects:
+   - `BrachaRBC` — no protocol-internal randomness; reliable broadcast.
+   - `SyncVSS` — synchronous VSS, deterministic transitions.
+   - `AVSSAbstract` — the simpler abstraction that predates the threshold-faithful AVSS.
+   Each of these currently re-derives or hand-writes any trace-determinism reasoning it needs.  Once the meta-bridge lands, those proofs collapse to one-line instantiations.
+
+2. **Composability with Phase 9**.  The two abstractions stack cleanly: any `(DeterministicProbActionSpec, Adversary)` pair gets the AE-bridge from Phase 10; any `∀ Adversary, P` theorem lifts to `∀ RandomisedAdversary, P` via Phase 9.  Each protocol gets both for free without further engineering.
+
+3. **Sharper statement of what AVSS contributes cryptographically**.  Once the bridge is generic, the AVSS section is left holding only the cryptographic content: Shamir/bivariate row-poly secrecy + the polynomial-pushforward composition.  That's the right separation: protocol determinism is structural; cryptographic security is the substance.
+
+4. **Demarcation of where randomness becomes load-bearing**.  As soon as a future protocol introduces a non-pure effect (a common-coin step, a random oracle), it stops fitting the `DeterministicProbActionSpec` abstraction — and that's the right place for the type system to register the obstruction, rather than the failure cropping up deep inside a protocol-specific lemma.
+
+### 14.4. Subtlety — fallback parameter
+
+The current `avssSimulateNext` takes a `fallback : AVSSState` argument used in the unreachable `prev = []` case (Lean totality).  In the meta-version this becomes `fallback : σ`.  If we want to remove it cleanly, the alternative is to define `simulateRev 0 := [(s_0, none)]` (already the base case) and take `head` as well-defined by the structural fact that the list is non-empty (`avssSimulateRev_ne_nil` already proves this).  Generalising it lets the meta-version state `simulateTrace` without a fallback.  Worth doing for cleanliness; not load-bearing.  Decide during PR 10.1.
+
+### 14.5. Maintenance protocol
+
+Same as §12.5 / §13.5 but for Phase 10: each PR's commit message updates the corresponding row of §14.1 (statuses ⏳ → 🚧 → ✅).  After Phase 10 completes, AVSS.lean §19.2 should be marked "✅ generalised — see `Leslie/Prob/DeterministicSimulate.lean`".
+
+### 14.6. AVSS-side projections that stay AVSS-specific
+
+The simulate machinery is generic; the projections downstream of it are not.  These remain in `AVSS.lean` even after Phase 10:
+
+  * `simAlgebraicView R C k s_0 := (rowPolyOfDealer s_0.partyPoint s_0.coeffs ·, fun i p => (sim ... .local_).delivered)` — references `partyPoint`, `coeffs`, `local_.delivered`, `rowPolyOfDealer`.  AVSS-specific.
+  * `simSchedulePrefix` — generic in shape, but its consumers in AVSS-side proofs reference AVSS-specific structure.
+  * `coalitionTraceView`, `coalitionAlgebraicView`, `coalitionGrid` — all reference AVSS-specific types.
+
+Phase 10 generalises the structural bridge between trace and simulate; the cryptographic projection of simulate onto the corrupt-coalition view remains AVSS-specific (and rightly so).
+
 ## How to read the formalised theorems
 
 If you're using AVSS as a black box for downstream protocol verification:
