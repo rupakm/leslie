@@ -3003,6 +3003,124 @@ theorem avssStep_preserves_honestDealerInv
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hv
           exact h_out_correct p hp v hv
 
+/-! ## §14.5 Existential-witness honest-dealer correctness (Phase 8.2)
+
+The honest-dealer invariant `honestDealerInv` (§14) ties payloads and
+outputs to the *state field* `s.coeffs`.  Phase 8.5 will move
+`s.coeffs` out of state and into `μ₀`, at which point the
+`s.coeffs`-referencing form is no longer well-typed at the protocol
+state level.
+
+This sub-section introduces an *existential-witness* form that
+survives the migration: the dealer's polynomial is asserted to
+*exist* (as a proof-level witness), with no in-state reference.  In
+the current Phase 8.2 model the witness is supplied by `s.coeffs`
+itself; once Phase 8.5 lands, the witness will be the polynomial
+sampled into `μ₀`. -/
+
+omit [Fintype F] in
+/-- Bookkeeping invariant: under honest dealer, the bivariate
+polynomial's constant term equals the protocol-level secret.
+
+Trivially preserved because `coeffs`, `secret`, and `dealerHonest`
+are unchanged by every action.  The init clause comes directly from
+`initPred`'s `s.dealerHonest = true → s.coeffs 0 0 = sec`
+combined with `s.secret = sec`. -/
+def coeffsSecretInv (s : AVSSState n t F) : Prop :=
+  s.dealerHonest = true → s.coeffs 0 0 = s.secret
+
+omit [Fintype F] in
+theorem initPred_coeffsSecretInv (sec : F) (corr : Finset (Fin n))
+    (s : AVSSState n t F) (h : initPred sec corr s) :
+    coeffsSecretInv s := by
+  intro hh
+  obtain ⟨_, hsec, _, _, _, _, _, _, _, hc⟩ := h
+  rw [hsec]; exact hc hh
+
+omit [Fintype F] in
+theorem avssStep_preserves_coeffsSecretInv
+    (a : AVSSAction n F) (s : AVSSState n t F)
+    (_hgate : actionGate a s) (hinv : coeffsSecretInv s) :
+    coeffsSecretInv (avssStep a s) := by
+  intro hh
+  -- All three of `coeffs`, `secret`, `dealerHonest` are preserved.
+  have hc : (avssStep a s).coeffs = s.coeffs := by
+    cases a <;> simp [avssStep, setLocal]
+  have hsec : (avssStep a s).secret = s.secret := by
+    cases a <;> simp [avssStep, setLocal]
+  have hh_pre : s.dealerHonest = true := by
+    cases a <;> simp [avssStep, setLocal] at hh <;> exact hh
+  rw [hc, hsec]
+  exact hinv hh_pre
+
+/-- The existential-witness honest-dealer correctness invariant.
+
+For an honest dealer, *there exists* a bivariate polynomial
+`witness` such that:
+
+  * `witness 0 0 = s.secret` (the witness's constant term is the
+    protocol-level secret);
+  * every honest party's populated dealer payload carries the
+    canonical row polynomial derived from `witness`.
+
+The column-poly slot is left unconstrained here (Phase 8.4 will
+start using it for cross-check verification).
+
+In the current Phase 8.2 model the witness is `s.coeffs`; the
+existential phrasing is what survives PR 8.5 (where `s.coeffs`
+moves out of state into `μ₀`). -/
+def honestDealerConsistencyInv (s : AVSSState n t F) : Prop :=
+  s.dealerHonest = true →
+    ∃ (witness : Fin (t+1) → Fin (t+1) → F),
+      witness 0 0 = s.secret ∧
+        ∀ p, p ∉ s.corrupted →
+          ∀ payload, s.dealerMessages p = some payload →
+            payload.rowPoly = rowPolyOfDealer s.partyPoint witness p
+
+omit [Fintype F] in
+theorem initPred_honestDealerConsistencyInv
+    (sec : F) (corr : Finset (Fin n))
+    (s : AVSSState n t F) (h : initPred sec corr s) :
+    honestDealerConsistencyInv s := by
+  intro hh
+  obtain ⟨_, hsec, _, _, _, _, _, _, hdm, hc⟩ := h
+  refine ⟨s.coeffs, ?_, ?_⟩
+  · rw [hsec]; exact hc hh
+  · intro p _ payload hpay
+    rw [hdm] at hpay
+    cases hpay
+
+omit [Fintype F] in
+/-- Preservation: the witness for the post-state is `s.coeffs`
+(equivalently, `(avssStep a s).coeffs`).  The secret-position
+constraint comes from `coeffsSecretInv`; the per-payload constraint
+comes from `dealerMessagesInv` applied to the post-state, which
+gives `payload.rowPoly = rowPolyOfDealer post.partyPoint post.coeffs p`
+for every populated post-payload. -/
+theorem avssStep_preserves_honestDealerConsistencyInv
+    (a : AVSSAction n F) (s : AVSSState n t F)
+    (hgate : actionGate a s) (hcs : coeffsSecretInv s)
+    (hcons : dealerMessagesInv s) :
+    honestDealerConsistencyInv (avssStep a s) := by
+  intro hh
+  have hh_pre : s.dealerHonest = true := by
+    cases a <;> simp [avssStep, setLocal] at hh <;> exact hh
+  have hc : (avssStep a s).coeffs = s.coeffs := by
+    cases a <;> simp [avssStep, setLocal]
+  have hsec : (avssStep a s).secret = s.secret := by
+    cases a <;> simp [avssStep, setLocal]
+  -- Post-state's dealerMessagesInv (already proved in §13.5).
+  have hcons_post : dealerMessagesInv (avssStep a s) :=
+    avssStep_preserves_dealerMessagesInv a s hgate hcons
+  refine ⟨s.coeffs, ?_, ?_⟩
+  · rw [hsec]; exact hcs hh_pre
+  · intro p _ payload hpay
+    have h := hcons_post p payload hpay
+    -- h : payload.rowPoly = rowPolyOfDealer post.partyPoint post.coeffs p
+    -- goal : payload.rowPoly = rowPolyOfDealer post.partyPoint s.coeffs p
+    rw [hc] at h
+    exact h
+
 /-! ### Honest-dealer correctness as `AlmostBox` -/
 
 set_option maxHeartbeats 800000 in
@@ -3056,6 +3174,71 @@ theorem avss_correctness_AS
   unfold AlmostBox at h_inv ⊢
   filter_upwards [h_inv] with ω hinv k hh p hp v hv
   exact ((hinv k).1 hh).2 p hp v hv
+
+set_option maxHeartbeats 800000 in
+/-- Honest-dealer correctness in *existential-witness* form (Phase
+8.2).  For an honest dealer, *there exists* a bivariate polynomial
+`witness` such that `witness 0 0 = s.secret` and every honest
+output equals `bivEval witness (s.partyPoint p) 0`.
+
+This is the literature-faithful re-statement of `avss_correctness_AS`:
+the dealer's polynomial is asserted as a proof-level witness, not a
+state field.  In the current model the witness is supplied by
+`s.coeffs`; PR 8.5 will move `s.coeffs` out of state into `μ₀` and
+the existential will then range over the `μ₀`-sample.  The
+*statement* of this theorem is unchanged across that migration. -/
+theorem avss_correctness_AS_existential
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) :
+    AlmostBox (avssSpec (t := t) sec corr) A μ₀
+      (fun s => s.dealerHonest = true →
+        ∃ (witness : Fin (t+1) → Fin (t+1) → F),
+          witness 0 0 = s.secret ∧
+            ∀ p, p ∉ s.corrupted →
+              ∀ v, (s.local_ p).output = some v →
+                v = bivEval witness (s.partyPoint p) 0) := by
+  have h_pure : ∀ (a : AVSSAction n F) (s : AVSSState n t F)
+      (h : ((avssSpec (t := t) sec corr).actions a).gate s),
+      ((avssSpec (t := t) sec corr).actions a).effect s h
+        = PMF.pure (avssStep a s) :=
+    fun _ _ _ => rfl
+  -- Joint invariant: `honestDealerInv` (gives clause-2 per-party
+  -- bivEval bound), `coeffsSecretInv` (witness's secret position),
+  -- `dealerMessagesInv` (needed for `honestDealerConsistencyInv`'s
+  -- preservation), and `honestDealerConsistencyInv` itself
+  -- (verified preserved as the new Phase-8.2 invariant).
+  have h_init' : ∀ᵐ s ∂μ₀,
+      honestDealerInv s ∧ coeffsSecretInv s ∧ dealerMessagesInv s
+        ∧ honestDealerConsistencyInv s := by
+    filter_upwards [h_init] with s hs
+    exact ⟨initPred_honestDealerInv sec corr s hs,
+           initPred_coeffsSecretInv sec corr s hs,
+           initPred_dealerMessagesInv sec corr s hs,
+           initPred_honestDealerConsistencyInv sec corr s hs⟩
+  have h_inv : AlmostBox (avssSpec (t := t) sec corr) A μ₀
+      (fun s => honestDealerInv s ∧ coeffsSecretInv s
+                  ∧ dealerMessagesInv s ∧ honestDealerConsistencyInv s) :=
+    AlmostBox_of_pure_inductive
+      (fun s => honestDealerInv s ∧ coeffsSecretInv s
+                  ∧ dealerMessagesInv s ∧ honestDealerConsistencyInv s)
+      (fun a s => avssStep a s)
+      h_pure
+      (fun a s hgate ⟨hhd, hcs, hcons, _hhdc⟩ =>
+        ⟨avssStep_preserves_honestDealerInv a s hgate hhd hcons,
+         avssStep_preserves_coeffsSecretInv a s hgate hcs,
+         avssStep_preserves_dealerMessagesInv a s hgate hcons,
+         avssStep_preserves_honestDealerConsistencyInv a s hgate hcs hcons⟩)
+      μ₀ h_init' A
+  unfold AlmostBox at h_inv ⊢
+  filter_upwards [h_inv] with ω hω k hh
+  -- Witness := s.coeffs.  Secret position via coeffsSecretInv;
+  -- per-party output bound via honestDealerInv clause 2.
+  obtain ⟨hhd, hcs, _, _⟩ := hω k
+  refine ⟨((ω k).1).coeffs, hcs hh, ?_⟩
+  intro p hp v hv
+  exact (hhd hh).2 p hp v hv
 
 /-! ## §15. Output-determined invariant (commitment proxy)
 
@@ -5656,6 +5839,24 @@ theorem avss_correctness_AS_rushing
           ∀ v, (s.local_ p).output = some v →
             v = bivEval s.coeffs (s.partyPoint p) 0) :=
   avss_correctness_AS sec corr μ₀ h_init R.toAdversary
+
+/-- Honest-dealer correctness in *existential-witness* form against a
+*rushing* adversary (Phase 8.2).  Thin wrapper around
+`avss_correctness_AS_existential`.  This is the literature-faithful
+re-statement that survives the Phase-8.5 `coeffs`-into-`μ₀` migration. -/
+theorem avss_correctness_AS_existential_rushing
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : AVSSRushingAdversary n t F corr) :
+    AlmostBox (avssSpec (t := t) sec corr) R.toAdversary μ₀
+      (fun s => s.dealerHonest = true →
+        ∃ (witness : Fin (t+1) → Fin (t+1) → F),
+          witness 0 0 = s.secret ∧
+            ∀ p, p ∉ s.corrupted →
+              ∀ v, (s.local_ p).output = some v →
+                v = bivEval witness (s.partyPoint p) 0) :=
+  avss_correctness_AS_existential sec corr μ₀ h_init R.toAdversary
 
 /-- Output-determined commitment against a *rushing* adversary: any
 output, when set, equals the per-party share derived from `s.coeffs`
