@@ -5841,6 +5841,65 @@ theorem measurable_reconstruct_pair
         reconstructCoalitionTraceView (C := C) (k := k) rd.1 rd.2) :=
   measurable_of_countable _
 
+/-! ### Phase 8.5b forward-looking infrastructure: `TrivialView`
+
+Phase 8.5b plans to weaken `corruptLocalInv` to drop the
+`{echoSent, echoesReceived, readySent, readyReceived} = ∅` clauses
+(once corrupt parties may fire send/receive actions and produce
+non-trivial values for these fields).  The structural bridge
+`coalitionTraceView_eq_reconstruct_AE` then needs to factor through a
+new `coalitionTrivialView` projection that captures these
+schedule-derived fields per step per corrupt party.
+
+This section defines the `TrivialView` carrier type and the
+`coalitionTrivialView` projection, with measurability lemmas, ahead
+of the actual model surgery.  The current model still has corrupt
+parties' trivial fields pinned at their `init` values (by the strong
+form of `corruptLocalInv`), so `coalitionTrivialView` evaluates to
+the constant tuple `(false, ∅, false, ∅)` at every step in every
+reachable trace; the infrastructure becomes load-bearing only in
+Phase 8.5b's gate weakening + `corruptLocalInv` weakening, where
+these fields gain schedule-dependent values. -/
+
+/-- Carrier for the schedule-derived trivial-field view of a corrupt
+party's local state at one step: `(echoSent, echoesReceived,
+readySent, readyReceived)`. -/
+abbrev TrivialView (n : ℕ) : Type :=
+  Bool × Finset (Fin n) × Bool × Finset (Fin n)
+
+instance : MeasurableSpace (TrivialView n) := ⊤
+instance : MeasurableSingletonClass (TrivialView n) := ⟨fun _ => trivial⟩
+
+/-- The corrupt coalition's per-step trivial-field view.  Reads the
+schedule-derived fields directly from the trace.  Pinned at
+`(false, ∅, false, ∅)` everywhere under the current (pre-8.5b)
+`corruptLocalInv`, but designed to admit non-trivial values once
+Phase 8.5b weakens the invariant. -/
+def coalitionTrivialView (C : BivariateShamir.Coalition n t)
+    (ω : ℕ → AVSSState n t F × Option (AVSSAction n F)) (k : ℕ) :
+    Fin k → C.val → TrivialView n :=
+  fun i p =>
+    let ls := (ω i.val).1.local_ p.val
+    (ls.echoSent, ls.echoesReceived, ls.readySent, ls.readyReceived)
+
+omit [Field F] in
+@[fun_prop]
+theorem measurable_coalitionTrivialView
+    (C : BivariateShamir.Coalition n t) (k : ℕ) :
+    Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+        coalitionTrivialView C ω k) := by
+  classical
+  refine measurable_pi_iff.mpr fun i => measurable_pi_iff.mpr fun p => ?_
+  have h1 : Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+      ω i.val) := measurable_pi_apply _
+  have h2 : Measurable (Prod.fst :
+      AVSSState n t F × Option (AVSSAction n F) → AVSSState n t F) := measurable_fst
+  have h3 : Measurable (fun s : AVSSState n t F =>
+      ((s.local_ p.val).echoSent, (s.local_ p.val).echoesReceived,
+       (s.local_ p.val).readySent, (s.local_ p.val).readyReceived)) :=
+    measurable_of_countable _
+  exact (h3.comp h2).comp h1
+
 /-- **Phase 6.2 → 6.3 structural bridge.** Almost surely along the
 trace, `coalitionTraceView` matches `reconstructCoalitionTraceView`
 applied to the components of `coalitionAlgebraicView`. -/
