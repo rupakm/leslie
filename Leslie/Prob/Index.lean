@@ -51,6 +51,7 @@ import Leslie.Prob.Embed
 import Leslie.Prob.Liveness
 import Leslie.Prob.PMF
 import Leslie.Prob.Polynomial
+import Leslie.Prob.RandomisedAdversary
 import Leslie.Prob.Refinement
 import Leslie.Prob.Trace
 
