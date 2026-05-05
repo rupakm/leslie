@@ -17,9 +17,9 @@ secrecy at three levels of abstraction:
     actually uses the spec, the step semantics, and `coalitionView`
     together.
 
-Modulo the deferred `evals_uniform` body (M1 W3 sorry), Shamir
-secrecy is fully proved at all three levels — zero sorries in this
-file.
+Shamir secrecy is fully proved at all three levels (zero sorries
+in this file or in `Leslie/Prob/Polynomial.lean`'s `evals_uniform`
+/ `bivariate_evals_uniform`).
 
 ## Model assumptions
 

@@ -1,8 +1,14 @@
 # M1 W3 polish task — close `bivariate_evals_uniform`
 
+> **Status: ✅ landed in commit `1eb647e`** ("feat(M1 W3): close
+> bivariate_evals_uniform via row-then-column reduction"). The
+> theorem is sorry-free in `Leslie/Prob/Polynomial.lean` with the
+> field-size hypotheses described below. This document is retained
+> as the historical briefing.
+
 This document is the briefing for a focused proving session that
-closes the deferred `sorry` in `Leslie/Prob/Polynomial.lean`'s
-`bivariate_evals_uniform`. With `evals_uniform` now proved (commit
+closed the deferred `sorry` in `Leslie/Prob/Polynomial.lean`'s
+`bivariate_evals_uniform`. With `evals_uniform` proved (commit
 `c8ad591`), the bivariate version reduces to two applications of the
 univariate result.
 

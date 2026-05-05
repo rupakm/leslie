@@ -626,6 +626,12 @@ proof should be one application of `coupling_bijection`.
   (The bivariate version is M2's algebraic core; getting the
   univariate version rock-solid is the M1 goal.)
 
+**W3 status (PR #25):** both `evals_uniform` (commit `c8ad591`) and
+`bivariate_evals_uniform` (commit `1eb647e`, via row-then-column
+reduction) are proved sorry-free. The optional M2 deferral is no
+longer in effect; field-size hypotheses `d + 1 ≤ Fintype.card F`
+are required on each axis.
+
 ### Week 4: Shamir secrecy + conservativity (level-2)
 
 **Files created:** `Examples/Prob/Shamir.lean` (~150 lines).

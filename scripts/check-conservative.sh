@@ -22,6 +22,17 @@
 #   allowlist is robust against new top-level files anywhere in the
 #   repo and against the addition of new nested directories.
 #
+# Self-protection / trust model:
+#   `scripts/` and `.github/` ARE in the allowlist (so this gate can
+#   evolve), but the allowlist alone is not what makes the gate safe:
+#   a PR could otherwise weaken the regex while modifying a protected
+#   file. Safety comes from `.github/workflows/conservativity.yml`
+#   running this script via `pull_request_target`, which reads both
+#   the workflow YAML and `scripts/check-conservative.sh` from the
+#   base branch (main), not the PR head. The PR head is consumed
+#   only as a list of changed paths, never sourced. See the workflow
+#   header for the full trust model.
+#
 # Usage:
 #   bash scripts/check-conservative.sh
 #

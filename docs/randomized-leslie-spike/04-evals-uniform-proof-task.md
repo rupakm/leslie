@@ -1,9 +1,15 @@
 # M1 W3 polish task — close `evals_uniform`
 
-This document is the briefing for a focused proving session that
-closes the deferred `sorry` in `Leslie/Prob/Polynomial.lean`'s
-`evals_uniform`. It captures the proof strategy I mapped out, the
-exact Mathlib lemmas to use, and the acceptance criteria.
+> **Status: ✅ landed in commit `c8ad591`** ("feat(M1 W3): close
+> evals_uniform — algebraic core of Shamir secrecy"). The follow-up
+> task for `bivariate_evals_uniform` (originally noted below as
+> "deferred to M2") also landed, in commit `1eb647e`. This document
+> is retained as the historical briefing.
+
+This document is the briefing for the focused proving session that
+closed the deferred `sorry` in `Leslie/Prob/Polynomial.lean`'s
+`evals_uniform`. It captures the proof strategy mapped out, the
+exact Mathlib lemmas used, and the acceptance criteria.
 
 ## Goal
 
@@ -20,8 +26,10 @@ theorem evals_uniform (d : ℕ) (s : F)
       = PMF.uniform (pts → F)
 ```
 
-`bivariate_evals_uniform` may remain `sorry` (deferred to M2 per
-implementation plan v2.2 §M1 W3).
+`bivariate_evals_uniform` was originally permitted to remain
+`sorry` (deferred to M2 per implementation plan v2.2 §M1 W3). It
+has since been closed in commit `1eb647e` via row-then-column
+reduction; see `docs/randomized-leslie-spike/05-bivariate-evals-uniform-task.md`.
 
 ## Repository state
 

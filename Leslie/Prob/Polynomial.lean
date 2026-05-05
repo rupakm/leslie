@@ -18,13 +18,15 @@ equality. For `pts.card < d`, extend `pts` to `pts'` of size `d` in
 equal-card case to `pts'`, then project — using a constant-fiber
 surjection helper.
 
-Status (M1 W3 polish):
+Status (M1 W3, sorry-free):
   * Helper `PMF.uniform_map_of_bijective` proved.
   * Helper `PMF.uniform_map_of_surjective_constFiber` proved
     (pushforward under constant-fiber surjection is uniform).
   * `uniformWithFixedZero`, `uniformBivariateWithFixedZero` defined.
   * `evals_uniform` proved (with extra hypothesis `d + 1 ≤ Fintype.card F`).
-  * `bivariate_evals_uniform` deferred to M2 per plan v2.2.
+  * `bivariate_evals_uniform` proved (row-then-column reduction to
+    univariate `evals_uniform`; same field-size hypothesis applied
+    to each axis).
 
 Per implementation plan v2.2 §M1 W3.
 -/
@@ -252,26 +254,23 @@ noncomputable def uniformBivariateWithFixedZero (dx dy : ℕ) (s : F) :
         Polynomial.X ^ (i.val + 1) *
         (Polynomial.C Polynomial.X) ^ (j.val + 1)
 
-/-! ## Headline theorems (proofs deferred)
+/-! ## Headline theorems
 
-Both `evals_uniform` and `bivariate_evals_uniform` reduce to
-Lagrange-interpolation bijections via `Lagrange.funEquivDegreeLT`
-(in `Mathlib.LinearAlgebra.Lagrange`):
+Both `evals_uniform` and `bivariate_evals_uniform` are proved
+sorry-free below.
 
-```
-def funEquivDegreeLT (hvs : Set.InjOn v s) : degreeLT F #s ≃ₗ[F] s → F
-```
+The univariate `evals_uniform` argument: the eval map
+`(Fin d → F) → (pts → F)` is injective in the equal-cardinality
+case (any two coefficient vectors agreeing on `pts ∪ {0}`, of size
+`d + 1`, produce a polynomial of degree ≤ d with `d + 1` zeros,
+which is zero), and bijectivity follows from card equality.
+The strict-subcardinality case extends `pts` to a set of size `d`
+inside `F \ ({0} ∪ pts)` (using `d + 1 ≤ Fintype.card F`) and
+projects via a constant-fiber surjection.
 
-This linear equivalence between polynomials of degree `< #s` and
-functions on `s` is exactly the bijection we need. Restricting to
-the affine subspace `{f : f(0) = s}` — i.e., adding `0` to the point
-set — pushes the parametrization down by one dimension, leaving a
-bijection between sample-space coefficients (`Fin d → F`) and
-evaluations on the points (`pts → F`). Pushforward of uniform under
-a linear bijection is uniform (`PMF.uniform_map_of_bijective`).
-
-The full proof is M1 W3 polish work; the structural deliverables
-(definitions and statements) are above. -/
+`bivariate_evals_uniform` reduces to univariate `evals_uniform`
+applied row-then-column, using the factoring
+`f(p,q) = s + ∑_i (∑_j coefs(i,j) * q^(j+1)) * p^(i+1)`. -/
 
 /-! ## Injectivity of the evaluation map (equal-cardinality case)
 
