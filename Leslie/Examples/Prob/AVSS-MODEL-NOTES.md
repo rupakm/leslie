@@ -40,7 +40,7 @@ content of `avss_correctness_AS`, `avss_commitment_AS`, and
 `avss_reconstruction` is no longer trivially-`sec`.  The
 conditional operational-secrecy theorems
 (`avss_secrecy_AS_view_conditional`,
-`avss_secrecy_AS_view_rushing`)' `h_aux` becomes provable in
+`avss_secrecy_AS_view_rushing_via_aux`)' `h_aux` becomes provable in
 principle (Phase 7.4 inductive AE-bridge remains the substantive
 ~300–500 LOC follow-on work).  See §10 below for the per-theorem
 "after refactor" semantics; §9's audit is preserved for historical
@@ -147,9 +147,12 @@ A literature-faithful operational secrecy theorem (Phases 6–7, see
 - ✅ Re-proving termination / correctness / commitment against the new
   adversary type (Phase 7.3, **landed** — `*_rushing` variants of the
   classical theorems).
-- ⏳ A *cryptographic-core* lemma "schedule prefix factors through the
-  coalition's algebraic view" (Phase 7.4, **deferred**) and the
-  composition `avss_secrecy_AS_view_rushing` (Phase 7.5, **deferred**)
+- ✅ A *cryptographic-core* lemma "schedule prefix factors through the
+  coalition's algebraic view" (Phase 7.4, **landed**) and the
+  composition `avss_secrecy_AS_view_rushing` (Phase 7.5, **landed** —
+  fully unconditional in §19.4.5; intermediates
+  `avss_secrecy_AS_view_rushing_via_aux` and
+  `avss_secrecy_AS_view_rushing_via_init_invariant` retained)
   that closes the schedule-leakage caveat from Phase 6 by discharging
   the `h_aux` hypothesis of `avss_secrecy_AS_view_conditional`.  The
   proof is an inductive argument on `k` showing that, under the rushing
@@ -262,7 +265,7 @@ Two distinct secrecy theorems are formalised:
 - Operational view secrecy at the corrupt-coalition's actual observable
   state (`coalitionView` projecting onto `local_` fields) is formalised
   in conditional form: `avss_secrecy_AS_view_conditional` (PR #33) and
-  `avss_secrecy_AS_view_rushing` (PR #35) both take an auxiliary
+  `avss_secrecy_AS_view_rushing_via_aux` (PR #35) both take an auxiliary
   hypothesis `h_aux` about joint marginal invariance of
   `(coalitionAlgebraicView, schedulePrefix)`.  ⚠ Under the current
   polynomial distribution this hypothesis is **provably false**; see
@@ -437,19 +440,19 @@ half of the headline (this section, **landed**):
     measure through `(simAlgebraicView, simSchedulePrefix)` —
     `traceDist_jointMarginal_eq_init` (§19.4).
   * **Phase 7.5 (thin composition, landed).** AVSS.lean §19.3
-    introduces `avss_secrecy_AS_view_rushing`, a thin wrapper around
-    PR #33's `avss_secrecy_AS_view_conditional` that plugs in
+    introduces `avss_secrecy_AS_view_rushing_via_aux`, a thin wrapper
+    around PR #33's `avss_secrecy_AS_view_conditional` that plugs in
     `R.toAdversary` for the underlying adversary.  Hypothesis
     `h_aux` (trace-level joint marginal invariance) is reduced to
     `h_init_invariant` (initial-measure pushforward invariance) via
     `traceDist_algebraicView_schedulePrefix_invariant` (§19.4).
   * **Phase 7.4 headline (landed).** AVSS.lean §19.4 introduces
-    `avss_secrecy_AS_view_rushing_unconditional`, taking
+    `avss_secrecy_AS_view_rushing_via_init_invariant`, taking
     `h_init_invariant` (a polynomial-level initial-measure
     invariance) as a hypothesis instead of the abstract trace-level
-    `h_aux`.  When the algebraic-core row-poly secrecy lemma lands
-    (see "What's still deferred" below), `h_init_invariant` becomes
-    provable and the headline is fully unconditional.
+    `h_aux`.  Composed with the row-poly secrecy lemma, §19.4.5
+    discharges `h_init_invariant` and yields the canonical
+    fully-unconditional headline `avss_secrecy_AS_view_rushing`.
 
 ### What's still deferred (algebraic-core row-poly secrecy)
 
@@ -484,10 +487,11 @@ The single piece remaining for a fully unconditional headline:
     simSchedulePrefix)` factors through `(rowPolyOfDealer at corr)`
     (provable via simulate's view-history-only dependence).
 
-When this piece lands, `avss_secrecy_AS_view_rushing_unconditional`
-becomes truly unconditional (no `h_init_invariant` hypothesis),
-yielding the literature-faithful operational secrecy theorem under
-the AVSS state model — completing Phase 7.
+This piece has landed (`bivariate_shamir_secrecy_rowPoly_full`),
+discharging `h_init_invariant` and yielding the canonical
+literature-faithful operational secrecy theorem
+`avss_secrecy_AS_view_rushing` under the AVSS state model —
+completing Phase 7.
 
 ### Why "row-poly secrecy" is *structurally false* under the current distribution (audit, 2026-05-04)
 
@@ -622,8 +626,11 @@ Under a `RushingAdversary R` with `R.toAdversary` plugged into
 of the corrupt-coalition view-history.  Combined with Phase 6.2's
 bridge (corrupt local states factor through `algebraicView`) and
 Phase 5 step-`k` algebraic-view secrecy, this forces `h_aux` to hold.
-The theorem `avss_secrecy_AS_view_rushing` should then follow by
-`apply avss_secrecy_AS_view_conditional`.
+The theorem `avss_secrecy_AS_view_rushing_via_aux` then follows by
+`apply avss_secrecy_AS_view_conditional`; composition with the
+initial-measure invariance (§19.4) and the row-poly secrecy lemma
+(§19.4.5) yields the canonical fully-unconditional
+`avss_secrecy_AS_view_rushing`.
 
 ### Why the proof is non-trivial
 
@@ -788,10 +795,12 @@ trajectory — has four components, each shippable as a separate PR:
    `avss_reconstruction` is purely algebraic, no rushing version
    needed.  **Landed in this PR.**
 
-5. ⏳ **Phase 7.4 + 7.5: schedule-leakage-closing theorem.**  See
+5. ✅ **Phase 7.4 + 7.5: schedule-leakage-closing theorem.**  See
    §9 above — the cryptographic-core composition that produces the
-   unconditional `avss_secrecy_AS_view_rushing`.  Deferred to a
-   follow-up PR.
+   unconditional `avss_secrecy_AS_view_rushing` (canonical name).
+   Intermediate variants `avss_secrecy_AS_view_rushing_via_aux` and
+   `avss_secrecy_AS_view_rushing_via_init_invariant` are retained
+   as the conditional building blocks.  **Landed.**
 
 6. ⏳ **Phase 8: Per-party dealer messages.**  Replace `s.coeffs` with
    per-party messages `dealerMessages : Fin n → (RowPoly × ColPoly)`.

@@ -5065,10 +5065,11 @@ receive-action fires for a corrupt party.
 This generalises `coalitionView` (Phase 5/6) from a size-`t`
 `BivariateShamir.Coalition` to an arbitrary `Finset (Fin n)`.
 
-The headline theorem `avss_secrecy_AS_view_rushing` (Phase 7.5)
-discharges the `h_aux` hypothesis of `avss_secrecy_AS_view_conditional`
-by invoking `RushingAdversary.schedule_factors_through_view`
-(Phase 7.4) plus Phase 5's step-`k` algebraic-view secrecy. -/
+The canonical headline theorem `avss_secrecy_AS_view_rushing`
+(§19.4.5) discharges the `h_aux` hypothesis of
+`avss_secrecy_AS_view_conditional` unconditionally, by composing
+Phase 7.4's schedule-factoring AE-bridge with Phase 5's step-`k`
+algebraic-view secrecy and the row-poly secrecy lemma. -/
 
 /-- The view of an AVSS state visible to the corrupt coalition `corr`:
 the local states of every corrupt party.
@@ -5213,8 +5214,8 @@ plumbing that closes the schedule-leakage half of the headline
 operational-secrecy theorem.  The remaining "algebraic-core" half — the
 +200 LOC row-poly-vs-grid secrecy strengthening of
 `BivariateShamir.bivariate_shamir_secrecy` — is still deferred (cf. §17.12);
-the headline theorem `avss_secrecy_AS_view_rushing` (§19.3 below) takes
-that strengthening as an explicit hypothesis. -/
+the headline theorem `avss_secrecy_AS_view_rushing_via_aux` (§19.3 below)
+takes that strengthening as an explicit hypothesis. -/
 
 section RushingSimulation
 
@@ -5674,8 +5675,10 @@ and the schedule is a deterministic function of the view-history.
 This is the structural content of Phase 7.4.  Combined with Phase 5's
 algebraic-view AE invariance (in §19.2.5 below), it discharges the
 `h_aux` hypothesis of `avss_secrecy_AS_view_conditional` and yields
-the unconditional headline operational-secrecy theorem
-`avss_secrecy_AS_view_rushing_unconditional` (§19.3 below). -/
+the operational-secrecy theorem
+`avss_secrecy_AS_view_rushing_via_init_invariant` (§19.4 below);
+in §19.4.5 this is composed with the row-poly secrecy lemma to give
+the fully unconditional headline `avss_secrecy_AS_view_rushing`. -/
 theorem traceDist_AE_eq_avssSimulateTrace
     (sec : F) (corr : Finset (Fin n))
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
@@ -5792,7 +5795,7 @@ theorem traceDist_algebraicView_schedulePrefix_factors_AE
 
 /-! ## §19.3. Phase 7.5 — operational view secrecy under rushing adversary
 
-The headline `avss_secrecy_AS_view_rushing` is a thin composition of
+The §19.3 wrapper `avss_secrecy_AS_view_rushing_via_aux` is a thin composition of
 PR #33's `avss_secrecy_AS_view_conditional` with the rushing-adversary
 adapter `R.toAdversary`.  The conditional theorem requires a joint
 marginal-invariance hypothesis `h_aux` on `(coalitionAlgebraicView,
@@ -5823,16 +5826,17 @@ without re-deriving the rushing-adapter plumbing each time.
 The headline below quantifies over the conditional's `h_aux`
 hypothesis — equivalent, after schedule-factoring (Phase 7.4's
 substantive AE-bridge), to row-poly invariance of the corrupt
-coalition's algebraic view.  Once the +200 LOC algebraic-core lands
-in `BivariateShamir.lean`, the hypothesis is dischargeable
-unconditionally and `avss_secrecy_AS_view_rushing` becomes the
+coalition's algebraic view.  In §19.4.5, the row-poly secrecy lemma
+discharges this hypothesis unconditionally, yielding the canonical
+fully-unconditional `avss_secrecy_AS_view_rushing` — the
 literature-faithful operational-secrecy theorem under the AVSS state
 model. -/
 
 attribute [-instance] instMeasurableSpaceAVSSRushingView
   instMeasurableSingletonClassAVSSRushingView
 
-/-- **Phase 7.5: operational view secrecy under a rushing adversary.**
+/-- **Phase 7.5: operational view secrecy under a rushing adversary
+(abstract-`h_aux` variant).**
 
 For any rushing adversary `R` whose view is the corrupt coalition's
 local-state projection (`AVSSRushingView corr`), and any subcoalition
@@ -5841,20 +5845,20 @@ of the trace measure is invariant in the secret — provided the
 algebraic-view-plus-schedule joint marginal invariance `h_aux` holds.
 
 The hypothesis `h_aux` is the row-poly-vs-grid secrecy condition
-(§17.12, blocker #2) which the deferred `+200 LOC` polynomial-
-manipulation strengthening of `bivariate_shamir_secrecy` will discharge
-unconditionally.  Phase 7.4's structural content (the simulate
+(§17.12, blocker #2).  Phase 7.4's structural content (the simulate
 machinery in §19.2 above) closes the schedule-leakage half (blocker #1)
 by exhibiting the trace as a deterministic function of the initial
-state under `R.toAdversary`; full integration of that with the
-conditional theorem awaits the algebraic core.
+state under `R.toAdversary`.  The two halves are composed and the
+hypothesis is discharged unconditionally in §19.4 (initial-measure
+form) and §19.4.5 (canonical fully-unconditional headline
+`avss_secrecy_AS_view_rushing`).
 
 This thin composition is the mechanical step: plug `R.toAdversary` into
 the conditional theorem.  The section's own
 `instMeasurableSpaceAVSSRushingView` instance is disabled in this
 sub-section so that the default Pi-`MeasurableSpace` is picked,
 matching the conditional theorem's conclusion type. -/
-theorem avss_secrecy_AS_view_rushing
+theorem avss_secrecy_AS_view_rushing_via_aux
     {corr : Finset (Fin n)}
     (sec sec' : F)
     (μ_sec μ_sec' : Measure (AVSSState n t F))
@@ -5900,7 +5904,7 @@ The reduction proceeds in two steps:
   trace-level pushforward is sec-invariant.  Direct application of
   Step 1 + measure transport.
 
-* **Step 3** (`avss_secrecy_AS_view_rushing_unconditional`) — combine
+* **Step 3** (`avss_secrecy_AS_view_rushing_via_init_invariant`) — combine
   Step 2 with `avss_secrecy_AS_view_conditional` to get the
   operational-view secrecy headline.
 
@@ -5980,18 +5984,14 @@ theorem traceDist_algebraicView_schedulePrefix_invariant
 /-- **Step 3 (Phase 7.4 headline).**  Operational view secrecy under a
 rushing adversary, given the initial-measure invariance hypothesis.
 
-Compared to `avss_secrecy_AS_view_rushing`, this version replaces the
+Compared to `avss_secrecy_AS_view_rushing_via_aux`, this version replaces the
 abstract trace-level `h_aux` with a more concrete initial-measure
 invariance — a polynomial-level hypothesis that is closer to the
-existing `bivariate_shamir_secrecy_full` from PR #36.  When the
-forthcoming row-poly secrecy lemma at `corr` (the "+200 LOC algebraic
-core") lands, this hypothesis becomes provable, making the headline
-truly unconditional.
-
-Compose this with PR #36's `bivariate_shamir_secrecy_full` plus a
-row-poly variant of the same to discharge `h_init_invariant` and
-recover an unconditional `avss_secrecy_AS_view_rushing`. -/
-theorem avss_secrecy_AS_view_rushing_unconditional
+existing `bivariate_shamir_secrecy_full` from PR #36.  The row-poly
+secrecy lemma at `corr` (`bivariate_shamir_secrecy_rowPoly_full`)
+discharges this hypothesis, and §19.4.5 composes the two to obtain
+the canonical fully-unconditional `avss_secrecy_AS_view_rushing`. -/
+theorem avss_secrecy_AS_view_rushing_via_init_invariant
     {corr : Finset (Fin n)}
     (sec sec' : F)
     (μ_sec μ_sec' : Measure (AVSSState n t F))
@@ -6010,7 +6010,7 @@ theorem avss_secrecy_AS_view_rushing_unconditional
         (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) =
       (traceDist (avssSpec (t := t) sec' corr) R.toAdversary μ_sec').map
         (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) := by
-  apply avss_secrecy_AS_view_rushing sec sec' μ_sec μ_sec'
+  apply avss_secrecy_AS_view_rushing_via_aux sec sec' μ_sec μ_sec'
     h_init_sec h_init_sec' R C h_C_corr k
   exact traceDist_algebraicView_schedulePrefix_invariant
     (t := t) sec sec' corr μ_sec μ_sec' R C k h_init_invariant
@@ -6019,7 +6019,7 @@ theorem avss_secrecy_AS_view_rushing_unconditional
 
 This section completes the operational view-secrecy story by closing
 the last hypothesis `h_init_invariant` of
-`avss_secrecy_AS_view_rushing_unconditional`.
+`avss_secrecy_AS_view_rushing_via_init_invariant`.
 
 The goal is to show that for `μ_sec = avssInitMeasure sec corr partyPoint
 dealerHonest` and similarly `μ_sec'`, the pushforward through
@@ -7504,8 +7504,8 @@ The composition proceeds in three steps.
     `pts → Fin (t+1) → F` form to the `corr → Fin (t+1) → F` form via
     the `partyPoint` injection (`h_inj`), conclude sec-invariance of
     the joint pushforward.
-  * **Step C** (`avss_secrecy_AS_view_rushing_clean`) — combine Step B
-    with `avss_secrecy_AS_view_rushing_unconditional` (and the AE
+  * **Step C** (`avss_secrecy_AS_view_rushing`) — combine Step B
+    with `avss_secrecy_AS_view_rushing_via_init_invariant` (and the AE
     `initPred` discharge from `avssInitMeasure_AE_initPred`) to deliver
     the headline. -/
 
@@ -7743,15 +7743,19 @@ theorem avssInitMeasure_simView_sec_invariant
   exact corrRowMap_uniform_sec_invariant sec sec' corr partyPoint
     h_inj h_nz_pp h_F h_corr
 
-/-- **Step C — fully unconditional headline.**
+/-- **Canonical headline — fully unconditional operational view-secrecy
+under a rushing adversary.**
 
 Operational view-secrecy for the AVSS protocol against a rushing
 adversary, with NO algebraic-core or initial-measure-invariance
 hypotheses: just the structural conditions
 (`corr.card ≤ t`, `partyPoint` injective on `corr`, nonzero, field
 size).  This is the literature-faithful operational-secrecy theorem
-under the AVSS state model. -/
-theorem avss_secrecy_AS_view_rushing_clean
+under the AVSS state model — Step C of §19.4.5, composing
+`avss_secrecy_AS_view_rushing_via_init_invariant` with
+`avssInitMeasure_simView_sec_invariant` (which itself rests on the
+row-poly secrecy lemma `bivariate_shamir_secrecy_rowPoly_full`). -/
+theorem avss_secrecy_AS_view_rushing
     {corr : Finset (Fin n)}
     (sec sec' : F) (partyPoint : Fin n → F) (dealerHonest : Bool)
     (h_inj : Set.InjOn partyPoint corr)
@@ -7768,7 +7772,7 @@ theorem avss_secrecy_AS_view_rushing_clean
       (traceDist (avssSpec (t := t) sec' corr) R.toAdversary
         (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)).map
         (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) := by
-  apply avss_secrecy_AS_view_rushing_unconditional sec sec'
+  apply avss_secrecy_AS_view_rushing_via_init_invariant sec sec'
     (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest)
     (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)
     (avssInitMeasure_AE_initPred sec corr partyPoint dealerHonest)
