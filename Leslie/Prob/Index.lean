@@ -29,9 +29,12 @@ Builds every `Leslie.Prob.*` library module and every
     `Adversary`, `Coupling`, `Embed`, `PMF`, `Polynomial`, `Refinement`,
     `Trace`. Sorry-free.
   * **Examples** (`Leslie.Examples.Prob.*`): protocols + calibration —
-    `BivariateShamir`, `BrachaRBC`, `CouplingDemo`, `ITMAC`, `KnuthDice`,
-    `OneTimePad`, `Shamir`, `Smoke`, `SyncVSS`. One sorry on
-    `BrachaRBC.brbProb_totality_AS_fair` (M3 W1 work).
+    `AVSS`, `BenOrAsync`, `BivariateShamir`, `BrachaRBC`, `CommonCoin`,
+    `CouplingDemo`, `ITMAC`, `KnuthDice`, `OneTimePad`, `RandomWalker1D`,
+    `Shamir`, `Smoke`, `SyncVSS`. Sorry-free; key liveness theorems
+    (`BrachaRBC.brbProb_totality_AS_fair`, `AVSS.avss_termination_AS_fair`,
+    `AVSS.avss_termination_AS_fair_traj`) are axiom-clean
+    (`[propext, Classical.choice, Quot.sound]`).
 
 ## What's excluded
 
@@ -45,18 +48,24 @@ import Leslie.Prob.Action
 import Leslie.Prob.Adversary
 import Leslie.Prob.Coupling
 import Leslie.Prob.Embed
+import Leslie.Prob.Liveness
 import Leslie.Prob.PMF
 import Leslie.Prob.Polynomial
 import Leslie.Prob.Refinement
 import Leslie.Prob.Trace
 
 -- Examples
+import Leslie.Examples.Prob.AVSS
+import Leslie.Examples.Prob.AVSSAbstract
+import Leslie.Examples.Prob.BenOrAsync
 import Leslie.Examples.Prob.BivariateShamir
 import Leslie.Examples.Prob.BrachaRBC
+import Leslie.Examples.Prob.CommonCoin
 import Leslie.Examples.Prob.CouplingDemo
 import Leslie.Examples.Prob.ITMAC
 import Leslie.Examples.Prob.KnuthDice
 import Leslie.Examples.Prob.OneTimePad
+import Leslie.Examples.Prob.RandomWalker1D
 import Leslie.Examples.Prob.Shamir
 import Leslie.Examples.Prob.Smoke
 import Leslie.Examples.Prob.SyncVSS
