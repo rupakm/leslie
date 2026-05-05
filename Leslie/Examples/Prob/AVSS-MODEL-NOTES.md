@@ -1286,15 +1286,19 @@ adversary-type level.  Either can be done first.
 | **9.1** | `RandomisedAdversary` type + mixture trace measure | Define `RandomisedAdversary σ ι` as `History → PMF (Option ι)` in `Leslie/Prob/RandomisedAdversary.lean` (new file).  Define the mixture trace measure `randomisedTraceDist` via the same `Kernel.trajMeasure` plumbing as `traceDist` but with the per-step kernel sampling the strategy's PMF.  Adapter `Adversary.toRandomised : Adversary σ ι → RandomisedAdversary σ ι` lifts deterministic strategies (Dirac PMF on `Option ι`).  Sanity theorem `randomisedTraceDist_toRandomised` shows the lift agrees with `traceDist`.  Plus `@[simp]` lemmas `toRandomised_strategy` / `toRandomised_corrupt`. | ~230 | ✅ landed (PR #41) |
 | **9.2** | Three lifting meta-theorems | `AlmostBoxRandomised_of_inductive` / `AlmostBox.lift_to_randomised`: per-step inductive preservation lifts to randomised AS-Box.  `randomisedTraceDist_map_eq_of_deterministic_at_zero`: secrecy form for coord-0 projections (the AVSS use case).  `AlmostDiamond.lift_to_randomised`: AS-Diamond from inductive data.  Heart of the proofs is the per-step kernel mixture identity `randomisedStepKernel_apply_tsum`.  Inductive-form hypothesis selected over the abstract Fubini-tape form (worker-task §1) since the latter would require Mathlib infrastructure on infinite product measures over countable index sets — see comments in `RandomisedAdversary.lean`'s Phase 9.2 header. | ~310 | ✅ landed (PR #46) |
 | **9.3** | AVSS-side restatements (partial coverage) | `avss_correctness_AS_randomised` and `avss_commitment_AS_randomised` via `AlmostBoxRandomised_of_inductive` (re-feeding the same per-step preservation data used by the deterministic versions); `avss_secrecy_AS_step_zero_grid_randomised` via `randomisedTraceDist_map_eq_of_deterministic_at_zero` (coord-0 form). `avss_termination_AS_fair_randomised` is **NOT** lifted in this PR because PR #46's `AlmostDiamond.lift_to_randomised` is degenerate (`exact ⟨0, hω 0⟩` only); termination is deferred to Phase 9.4. Closes C5 for correctness, commitment, and coord-0 secrecy. | ~150 | ✅ landed (PR #47) |
+| **9.3-existential** | Existential-witness `_randomised` analogs | `avss_correctness_AS_existential_randomised` (joint inv: `honestDealerInv` ∧ static `coeffs 0 0 = secret`) and `avss_commitment_AS_corrupt_dealer_randomised` (with `honestOutputCount`-precondition gate, witness from `s.coeffs`). Migration-stable: when a future PR moves `s.coeffs` out of state into `μ₀`, the existential-witness forms continue to hold (witness sourced from initial-state sample); the `s.coeffs`-direct forms from PR #47 will become stale. Closes the literature-faithful `_randomised` gap that PR #47 missed. | ~50 | ✅ landed (PR #48) |
 | **9.4** | Termination lifting (deferred from 9.3) | Randomised analog of `avss_termination_AS_fair`: introduce `RandomisedTrajectoryFairAdversary`, redo the `FairASTCertificate.sound` supermartingale + Borel-Cantelli argument under the schedule PMF, expose `avss_termination_AS_fair_randomised`. Also folds in the step-`k` general `avss_secrecy_AS_randomised` (coord-`k` form) via the same machinery. See §13.4 for the full plan. | ~250 | ⏳ pending |
 
-**Total**: ~500 LOC, 4 PRs.  Estimated worker time: 12–16 hours.
+**Total**: ~550 LOC, 5 PRs.  Estimated worker time: 14–18 hours.
 
 ### 13.2. Sequencing
 
   * **PR 9.1** depends on nothing else — can be dispatched immediately.
   * **PR 9.2** depends on 9.1 (needs the type + mixture trace measure).
   * **PR 9.3** depends on 9.2 (needs the lifting meta-theorems to compose).
+  * **PR 9.3-existential** depends on 9.3 (re-uses the lift pattern
+    and per-step preservation lemmas from PR #47); ships the
+    literature-faithful existential-witness analogs missing from PR #47.
   * **PR 9.4** depends on 9.3 (needs the partial-coverage AVSS lifts in place
     so the termination machinery slots into the same restatement pattern);
     independent of Phase 8 and Phase 10.
@@ -1343,6 +1347,28 @@ of the AS-Box invariants (`avss_correctness_AS_randomised`,
 `avss_commitment_AS_randomised`) and the coord-0 secrecy form
 (`avss_secrecy_AS_step_zero_grid_randomised`) but **explicitly
 defers** the termination restatement.
+
+**Existential-witness gap (closed post-9.3 by PR #48).** PR #47
+targeted the `s.coeffs`-direct forms of correctness and commitment.
+The literature-faithful existential-witness forms from the parallel
+Phase 8.2 / 8.3 sister-branch chain (which assert `∃ witness, ...`
+rather than naming `s.coeffs` directly) were missing from PR #47 and
+are now landed in PR #48 as a follow-up:
+
+  * `avss_correctness_AS_existential_randomised` — same lift pattern
+    as PR #47, joint invariant `honestDealerInv ∧ (dealerHonest →
+    coeffs 0 0 = secret)`.  Witness `(ω k).1.coeffs`.
+  * `avss_commitment_AS_corrupt_dealer_randomised` — derived from
+    `avss_commitment_AS_randomised`, gated by `honestOutputCount s ≥
+    t + 1`, witness `(ω k).1.coeffs`.
+
+These existential-witness forms are migration-stable: when a future PR
+moves `s.coeffs` out of state into `μ₀`, the existential analogs
+continue to hold (witness sourced from initial-state sample) while the
+`s.coeffs`-direct lifts from PR #47 will become stale.  Phase 9.4 will
+similarly target the existential-witness form of termination
+(quorum-of-honest-outputs phrased as `honestOutputCount ≥ t + 1`)
+rather than `s.coeffs`-direct.
 
 Phase 9.4 introduces:
 

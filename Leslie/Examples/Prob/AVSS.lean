@@ -5539,6 +5539,142 @@ theorem avss_secrecy_AS_step_zero_grid_randomised
     (fun A => avss_secrecy_AS_init sec sec' corr partyPoint dealerHonest
       h_nz_pp h_F C D A) R
 
+/-! ## §19.1.6 Phase 9.3 follow-up — existential-witness `_randomised` analogs
+
+The `_randomised` lifts in §19.1.5 above target the older
+`s.coeffs`-direct forms of correctness and commitment. The
+**literature-faithful** existential-witness forms (introduced by the
+parallel Phase 8.2 / 8.3 PR chain on a sister branch) are
+migration-stable: when a future PR moves `s.coeffs` out of state into
+`μ₀`, the `s.coeffs`-direct lifts above will become stale, but the
+existential-witness forms continue to hold cleanly with the witness
+sourced from `μ₀`'s sample.
+
+This sub-section adds the existential-witness `_randomised` analogs,
+keeping the same lift pattern as §19.1.5 but with the witness
+existential introduced at the surface conclusion. The proofs reuse
+the per-step preservation already established for `honestDealerInv`
+(correctness) and `outputDeterminedInv` (commitment); the additional
+content is the trivial static preservation of `s.coeffs`, `s.secret`,
+and `s.dealerHonest` (none of which is touched by any `avssStep`
+branch). -/
+
+/-- Honest-output count: the number of honest parties that have
+written an output. Used as the Bracha-quorum gate in the
+literature-faithful existential-witness commitment statement
+(`avss_commitment_AS_corrupt_dealer_randomised`). The gate
+`honestOutputCount s ≥ t + 1` is stricter than necessary in this
+model — the existential witness `s.coeffs` exists structurally — but
+keeping the gate aligns the surface statement with the literature
+form of corrupt-dealer commitment. -/
+def honestOutputCount (s : AVSSState n t F) : ℕ :=
+  ((Finset.univ : Finset (Fin n)).filter
+    (fun p => p ∉ s.corrupted ∧ (s.local_ p).output.isSome)).card
+
+/-- **Honest-dealer correctness, existential-witness form, against a
+randomised adversary.** Literature-faithful analog of
+`avss_correctness_AS_randomised`: with an honest dealer, there exists
+a witness bivariate `f : Fin (t+1) → Fin (t+1) → F` whose constant
+term equals the dealer's secret and whose evaluations at the per-party
+points coincide with every honest output, almost surely under the
+mixture trace measure for any randomised adversary.
+
+Proof: lift the joint invariant `honestDealerInv ∧ (dealerHonest =
+true → coeffs 0 0 = secret)` via `AlmostBoxRandomised_of_inductive`.
+The first conjunct's preservation comes from
+`avssStep_preserves_honestDealerInv` (re-used from PR #47); the
+second conjunct's preservation is trivial because every gated
+`avssStep` branch is static in `coeffs`, `secret`, and `dealerHonest`.
+The witness `(ω k).1.coeffs` is then read off the trace at any
+coordinate.
+
+Migration-stable: when a future PR moves `s.coeffs` out of state into
+`μ₀`, the existential witness will be sourced from the initial-state
+sample (rather than read off the trace's static `coeffs` field), and
+the surface statement above continues to hold. -/
+theorem avss_correctness_AS_existential_randomised
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : RandomisedAdversary (AVSSState n t F) (AVSSAction n F)) :
+    AlmostBoxRandomised (avssSpec (t := t) sec corr) R μ₀
+      (fun s => s.dealerHonest = true →
+        ∃ (witness : Fin (t+1) → Fin (t+1) → F),
+          witness 0 0 = s.secret ∧
+            ∀ p, p ∉ s.corrupted →
+              ∀ v, (s.local_ p).output = some v →
+                v = bivEval witness (s.partyPoint p) 0) := by
+  set P : AVSSState n t F → Prop := fun s =>
+    honestDealerInv s ∧ (s.dealerHonest = true → s.coeffs 0 0 = s.secret)
+  have h_init' : ∀ᵐ s ∂μ₀, P s := by
+    filter_upwards [h_init] with s hs
+    refine ⟨initPred_honestDealerInv sec corr s hs, ?_⟩
+    intro hh
+    obtain ⟨_, hsec, _, _, _, _, _, _, hch⟩ := hs
+    rw [hch hh, hsec]
+  have h_step : ∀ (a : AVSSAction n F) (s : AVSSState n t F)
+      (h : ((avssSpec (t := t) sec corr).actions a).gate s),
+      P s →
+      ∀ s' ∈ ((avssSpec (t := t) sec corr).actions a).effect s h |>.support,
+        P s' := by
+    intro a s hgate hp s' hsupp
+    rw [show ((avssSpec (t := t) sec corr).actions a).effect s hgate
+          = PMF.pure (avssStep a s) from rfl,
+        PMF.support_pure, Set.mem_singleton_iff] at hsupp
+    subst hsupp
+    refine ⟨avssStep_preserves_honestDealerInv a s hgate hp.1, ?_⟩
+    intro hh
+    have hh_pre : s.dealerHonest = true := by
+      cases a <;> simp [avssStep, setLocal] at hh <;> exact hh
+    have hcoeffs : (avssStep a s).coeffs = s.coeffs := avssStep_coeffs_invariant a s
+    have hsecret : (avssStep a s).secret = s.secret := by
+      cases a <;> simp [avssStep, setLocal]
+    rw [hcoeffs, hsecret]
+    exact hp.2 hh_pre
+  have h_inv : AlmostBoxRandomised (avssSpec (t := t) sec corr) R μ₀ P :=
+    AlmostBoxRandomised_of_inductive P h_step μ₀ h_init' R
+  unfold AlmostBoxRandomised at h_inv ⊢
+  filter_upwards [h_inv] with ω hP k hh
+  refine ⟨(ω k).1.coeffs, (hP k).2 hh, ?_⟩
+  intro p hp v hv
+  exact ((hP k).1 hh).2 p hp v hv
+
+/-- **Corrupt-dealer commitment, existential-witness form, against a
+randomised adversary.** Literature-faithful analog of
+`avss_commitment_AS_randomised`: at any quorum-of-honest-outputs
+coordinate, there exists a witness bivariate whose evaluations at the
+per-party points coincide with every honest output. The witness
+`(ω k).1.coeffs` works structurally because `s.coeffs` is in state in
+this model; the precondition `honestOutputCount s ≥ t + 1` is the
+literature-faithful Bracha-quorum gate from PR #45's deterministic
+version, kept here for migration stability with sister-branch
+existential forms.
+
+Proof: derived directly from `avss_commitment_AS_randomised`
+(`outputDeterminedInv` lift); the existential is satisfied with
+`witness := (ω k).1.coeffs` and the per-party clause is exactly
+`outputDeterminedInv`'s second conjunct. The
+`honestOutputCount`-precondition is trivially satisfiable in our
+model (we don't need it for existence) but appears in the surface
+statement to align with the literature form. -/
+theorem avss_commitment_AS_corrupt_dealer_randomised
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : RandomisedAdversary (AVSSState n t F) (AVSSAction n F)) :
+    AlmostBoxRandomised (avssSpec (t := t) sec corr) R μ₀
+      (fun s => honestOutputCount s ≥ t + 1 →
+        ∃ (witness : Fin (t+1) → Fin (t+1) → F),
+          ∀ p, p ∉ s.corrupted →
+            ∀ v, (s.local_ p).output = some v →
+              v = bivEval witness (s.partyPoint p) 0) := by
+  have hcomm := avss_commitment_AS_randomised sec corr μ₀ h_init R
+  unfold AlmostBoxRandomised at hcomm ⊢
+  filter_upwards [hcomm] with ω hP k _hquorum
+  refine ⟨(ω k).1.coeffs, ?_⟩
+  intro p hp v hv
+  exact (hP k).2 p hp v hv
+
 /-! ## §19.2. Phase 7.4 — schedule prefix factors through algebraic view AE
 
 Under a `RushingAdversary` `R` for AVSS, the trace is *fully deterministic*
