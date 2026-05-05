@@ -16,7 +16,7 @@ literature or when AVSS is used as a primitive for downstream protocols.
 | Aspect | Canetti–Rabin literature | This formalisation |
 |---|---|---|
 | Adversary information | Rushing — sees corrupt-coalition view + in-flight messages | **Two adversary types coexist**: plain `Adversary` (full-state access; legacy) and `RushingAdversary` (view-restricted; Phase 7.1, generic in `Adversary.lean`). The classical AVSS theorems are restated against both (Phase 7.3) |
-| Adversary *power* (what corrupt parties can do/observe) | Rushing adversary controls all corrupt-party messages and observes every honest broadcast on corrupt receivers | ⚠ **Strictly weaker.** Corrupt parties cannot send echoes/readys/amplify (C1); they never receive honest echoes/readys (C2); fairness does not require `dealerShare` (C3). See **§11** |
+| Adversary *power* (what corrupt parties can do/observe) | Rushing adversary controls all corrupt-party messages and observes every honest broadcast on corrupt receivers | ⚠ **Strictly weaker.** Corrupt parties cannot send echoes/readys/amplify (C1); they never receive honest echoes/readys (C2). C3 (dealer-share fairness) **resolved by Phase B** — `dealerShare` is now in `avssFairActions`. See **§11** |
 | Static vs. adaptive corruption | Both treated; usually adaptive | Static (`corrupted` fixed at `μ₀` time) |
 | Dealer-to-party communication | Per-party row + column polys, possibly inconsistent under corrupt dealer | Single global `s.coeffs` field; consistent by construction |
 | Dealer's distribution choice | Honest = uniform of bidegree ≤ (t,t) with `f(0,0) = sec`; corrupt = adversarial | **`Polynomial.uniformBivariateWithFixedZero` is degenerate** — fixes all axis coefficients to 0, not just `f(0,0)`. Honest output equals `sec` directly (every share is `sec`), and corrupt-party row poly's constant term is `sec`. See §10 below |
@@ -879,22 +879,23 @@ def avssFairActions : Set (AVSSAction n F) :=
         | _ => False }
 ```
 
-`dealerShare` and `partyCorruptDeliver` fall into the catch-all
-`_ => False` and are not fair-required.
+**(Pre-Phase-B history, kept for context.)** Pre-Phase-B,
+`dealerShare` and `partyCorruptDeliver` both fell into the catch-all
+`_ => False` and were not fair-required.
 
-Consequence: a "fair adversary" in this model is *not required* to
-ever fire `dealerShare`.  A stalling adversary that never fires it
-keeps `s.dealerSent = false` forever; every fair action's gate then
-fails (`partyDeliver` requires `s.dealerSent = true`); no honest
-party outputs; `terminated` is unreachable.
+Consequence (pre-Phase-B): a "fair adversary" was *not required* to
+ever fire `dealerShare`.  A stalling adversary that never fired it
+kept `s.dealerSent = false` forever; every fair action's gate then
+failed (`partyDeliver` requires `s.dealerSent = true`); no honest
+party output; `terminated` was unreachable.
 
-The termination theorem (`avss_termination_AS_fair`) is still
+The termination theorem (`avss_termination_AS_fair`) was still
 logically sound — for such a stalling adversary, the user-supplied
-`h_U_mono` / `h_U_strict` certificate witnesses *cannot be
-discharged*, so the theorem holds vacuously for that input.  But the
-theorem carries no operational content in that case.  A naive reader
-might infer "the formalised model implies an honest dealer's
-protocol always terminates"; the precise statement is "the protocol
+`h_U_mono` / `h_U_strict` certificate witnesses *could not be
+discharged*, so the theorem held vacuously for that input.  But the
+theorem carried no operational content in that case.  A naive reader
+might have inferred "the formalised model implies an honest dealer's
+protocol always terminates"; the precise statement was "the protocol
 terminates *if the adversary eventually fires `dealerShare` and the
 fair-progress certificate is dischargeable*".
 
@@ -902,7 +903,34 @@ In CR '93 an honest dealer broadcasts by definition (the dealer's
 share-out step is part of the protocol script, not the adversary's
 schedule).
 
-**Bridge to literature.**  Two clean fixes:
+#### Phase B fix landed
+
+✅ **Resolved.** Phase B (this PR) folds `dealerShare` into
+`avssFairActions` (Option B2 from the original plan).  The new
+strict-decrease witness `avssU_step_dealerShare_lt` requires
+`(honestSet s).card ≥ 1`; the helper
+`honestSet_pos_of_not_terminated_pre_share` derives this from
+`¬ terminated s ∧ avssTermInv s ∧ s.dealerSent = false`.  When
+`honestSet.card = 0`, every honest-party conjunct of `terminated`
+is vacuous and the queue conjuncts follow from inv clause 1, so
+`terminated s` already holds — the strict-decrease witness is only
+needed off-terminated, exactly the context of `avssCert.U_dec_det`.
+
+`avssU_step_lt_of_fair` was extended with a `(hnt : ¬ terminated s)`
+premise to thread the helper into the dealerShare case; the three
+call sites in `avssCert` (`V_super_fair`, `U_dec_det`,
+`U_dec_prob`) all already had the `_hnt` parameter unused, so the
+threading was mechanical.
+
+For corrupt-dealer scenarios, folding `dealerShare` into the fair
+set is conservative: under fair scheduling, even a corrupt dealer
+is forced to broadcast.  Real-CR allows a corrupt dealer to refuse
+to broadcast, in which case CR's termination is conditional on the
+dealer's behaviour.  A future Phase 8 with per-party dealer
+messages would distinguish honest- vs. corrupt-dealer fairness
+more precisely.
+
+**Bridge to literature.**  Two clean fixes were considered:
 
   1. **Phase B (small):** add the hypothesis "honest dealer ⇒
      `dealerShare` eventually fires" at the call site of
@@ -915,8 +943,9 @@ schedule).
      unconditional.
 
 Either fix is local; neither requires changes to the cryptographic
-content.  The Phase A docs commit (this PR's docs commit) flags the
-issue; a follow-on Phase B commit will adjust the model.
+content.  Phase A's docs commit flagged the issue; this PR's
+Phase B commit chose Option B2 (fold `dealerShare` into
+`avssFairActions`).
 
 ### 11.4. Correctness/commitment subtlety (per-party share, not the secret)
 

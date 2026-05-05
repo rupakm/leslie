@@ -560,13 +560,26 @@ end Measurable
 
 /-! ## §11. Fairness assumptions -/
 
-/-- Set of fair-required actions. `partyCorruptDeliver` is intentionally
-NOT fair — it's an action available to the adversary (modelling corrupt
-parties acquiring their shares for the secrecy view), but we don't require
-fair scheduling to fire it. Honest-party fairness (and termination) are
-unaffected by whether corrupt parties have received their shares. -/
+/-- Set of fair-required actions.
+
+`dealerShare` is fair: under fair scheduling, the dealer must
+eventually broadcast — otherwise no honest party would ever deliver,
+echo, or output, and `terminated` would be unreachable. Folding
+`dealerShare` into the fair set makes the model's termination claim
+unconditional under fair scheduling (Phase B fix to caveat C3 in
+`AVSS-MODEL-NOTES.md` §11). After `dealerShare` fires once, its gate
+becomes false (`dealerSent` flips to `true`), so weak fairness is
+trivially preserved.
+
+`partyCorruptDeliver` is intentionally NOT fair — it's an action
+available to the adversary (modelling corrupt parties acquiring their
+shares for the secrecy view), but we don't require fair scheduling
+to fire it. Honest-party fairness (and termination of the honest
+parties) are unaffected by whether corrupt parties have received
+their shares. -/
 def avssFairActions : Set (AVSSAction n F) :=
   { a | match a with
+        | .dealerShare => True
         | .partyDeliver _ => True
         | .partyEchoSend _ => True
         | .partyEchoReceive _ _ => True
@@ -2021,6 +2034,110 @@ theorem avssU_step_dealerShare_le (s : AVSSState n t F)
   linarith [h_mul]
 
 omit [Fintype F] in
+/-- `dealerShare` step: avssU strictly decreases under the additional
+hypothesis `(honestSet s).card ≥ 1` (i.e., at least one honest party
+exists). The K⁶ mass at c1 (`honestSet.card * K⁶` since dealerSent=false)
+shifts to K⁵ mass at c2 (`honestSet.card * K⁵` from new
+inflightDeliveries), giving a strict decrease of `honestSet.card *
+K⁵ * (K − 1) ≥ 1` whenever the honest set is non-empty.
+
+When `honestSet.card = 0` (all parties corrupt), `terminated s` holds
+vacuously already (every honest-party conjunct quantifies over an
+empty set), so the strict-decrease witness only needs to fire from
+non-terminated states — which is exactly the call context in
+`avssCert.U_dec_det`. -/
+theorem avssU_step_dealerShare_lt (s : AVSSState n t F)
+    (hgate : actionGate (AVSSAction.dealerShare) s)
+    (hinv : avssTermInv s)
+    (h_honest_pos : 1 ≤ (honestSet s).card) :
+    avssU (avssStep (AVSSAction.dealerShare) s) + 1 ≤ avssU s := by
+  classical
+  have hds_pre : s.dealerSent = false := hgate
+  have hi := hinv.1 hds_pre
+  obtain ⟨_hloc_init, hifd_emp, hife_emp, hifr_emp⟩ := hi
+  -- n ≥ 1 from honestSet ⊆ Fin n with cardinality ≥ 1.
+  have hn_pos : 1 ≤ n := by
+    rcases Nat.eq_zero_or_pos n with hn | hn
+    · subst hn
+      have : (honestSet s).card = 0 := by
+        have : honestSet s = ∅ := by
+          apply Finset.eq_empty_of_forall_notMem
+          intro p _; exact p.elim0
+        rw [this]; rfl
+      omega
+    · exact hn
+  have hK_ge : 4 ≤ lexBase n := by unfold lexBase; nlinarith
+  -- Frame.
+  have hds_post : (avssStep (AVSSAction.dealerShare) s).dealerSent = true := by
+    simp [avssStep]
+  have hcorr : (avssStep (AVSSAction.dealerShare) s).corrupted =
+      s.corrupted := by simp [avssStep]
+  have hifd_post : (avssStep (AVSSAction.dealerShare) s).inflightDeliveries =
+      (Finset.univ : Finset (Fin n)).filter (fun p => p ∉ s.corrupted) := by
+    simp [avssStep]
+  have hife_post : (avssStep (AVSSAction.dealerShare) s).inflightEchoes =
+      s.inflightEchoes := by simp [avssStep]
+  have hifr_post : (avssStep (AVSSAction.dealerShare) s).inflightReady =
+      s.inflightReady := by simp [avssStep]
+  have hloc_post : ∀ x : Fin n,
+      (avssStep (AVSSAction.dealerShare) s).local_ x = s.local_ x := by
+    intro x; simp [avssStep]
+  -- Set equalities.
+  have hH : honestSet (avssStep (AVSSAction.dealerShare) s) = honestSet s := by
+    apply Finset.ext; intro x
+    simp only [honestSet, Finset.mem_filter, Finset.mem_univ, true_and]
+    rw [hcorr]
+  have huss : unsentEchoSet (avssStep (AVSSAction.dealerShare) s) =
+      unsentEchoSet s := by
+    apply Finset.ext; intro x
+    simp only [unsentEchoSet, Finset.mem_filter, Finset.mem_univ, true_and]
+    rw [hcorr, hloc_post x]
+  have hnrs : notReadySentSet (avssStep (AVSSAction.dealerShare) s) =
+      notReadySentSet s := by
+    apply Finset.ext; intro x
+    simp only [notReadySentSet, Finset.mem_filter, Finset.mem_univ, true_and]
+    rw [hcorr, hloc_post x]
+  have hunfin : unfinishedSet (avssStep (AVSSAction.dealerShare) s) =
+      unfinishedSet s := by
+    apply Finset.ext; intro x
+    simp only [unfinishedSet, Finset.mem_filter, Finset.mem_univ, true_and]
+    rw [hcorr, hloc_post x]
+  -- Pre-state queue cards = 0; post inflightDeliveries = honestSet.
+  have hifd_pre_card : s.inflightDeliveries.card = 0 := by
+    rw [hifd_emp]; rfl
+  have hife_pre_card : s.inflightEchoes.card = 0 := by
+    rw [hife_emp]; rfl
+  have hifr_pre_card : s.inflightReady.card = 0 := by
+    rw [hifr_emp]; rfl
+  have hifd_post_eq_H :
+      (avssStep (AVSSAction.dealerShare) s).inflightDeliveries = honestSet s := by
+    rw [hifd_post]; rfl
+  have hifd_post_card :
+      ((avssStep (AVSSAction.dealerShare) s).inflightDeliveries).card =
+      (honestSet s).card := by rw [hifd_post_eq_H]
+  unfold avssU
+  rw [hds_post, hife_post, hifr_post, hH, huss, hnrs, hunfin,
+      hifd_post_card, hds_pre, hifd_pre_card, hife_pre_card, hifr_pre_card]
+  simp only [Bool.false_eq_true, if_false, if_true, zero_mul, Nat.zero_add,
+    Nat.add_zero]
+  set K := lexBase n with hK_def
+  set h := (honestSet s).card
+  -- Goal: h * K^5 + uss*K^4 + nrs*K^2 + unfin + 1 ≤ h * K^6 + uss*K^4 + nrs*K^2 + unfin
+  -- ⟺ h*K^5 + 1 ≤ h*K^6.
+  -- Chain: h*K^6 = K * (h * K^5) ≥ 4 * (h * K^5) = (h*K^5) + 3*(h*K^5) ≥ h*K^5 + 3.
+  have hK5_pos : 1 ≤ K^5 := Nat.one_le_pow _ _ (by omega)
+  have h_hK5_pos : 1 ≤ h * K^5 := by nlinarith [hK5_pos, h_honest_pos]
+  have hK6_eq : h * K^6 = K * (h * K^5) := by ring
+  have h_4hK5 : 4 * (h * K^5) ≤ K * (h * K^5) := Nat.mul_le_mul_right _ hK_ge
+  have h_4hK5' : 4 * (h * K^5) = h * K^5 + 3 * (h * K^5) := by ring
+  have h_3hK5 : 3 ≤ 3 * (h * K^5) := by nlinarith [h_hK5_pos]
+  -- So h*K^5 + 3 ≤ 4 * (h * K^5) ≤ K * (h * K^5) = h * K^6.
+  have h_diff : h * K^5 + 1 ≤ h * K^6 := by
+    rw [hK6_eq]
+    linarith [h_4hK5, h_4hK5', h_3hK5]
+  linarith [h_diff]
+
+omit [Fintype F] in
 /-- Composite ≤: every gated action keeps avssU non-increasing. -/
 theorem avssU_step_le (a : AVSSAction n F) (s : AVSSState n t F)
     (h : actionGate a s) (hinv : avssTermInv s) :
@@ -2045,13 +2162,62 @@ theorem avssU_step_le (a : AVSSAction n F) (s : AVSSState n t F)
       have := avssU_step_partyOutput_lt s p h hinv; omega
 
 omit [Fintype F] in
-/-- For every fair-firing action, avssU strictly decreases. -/
+/-- Helper: at a non-terminated state with `dealerSent = false` and the
+inductive invariant, the honest set must be non-empty. Otherwise
+`terminated s` would hold vacuously (every conjunct of `terminated`
+that quantifies over honest parties is vacuous when no honest party
+exists; queue conjuncts are guaranteed by inv clause 1).
+
+Used in `avssU_step_lt_of_fair` to dispatch the `dealerShare` case
+to `avssU_step_dealerShare_lt`, which requires the honest-set bound. -/
+theorem honestSet_pos_of_not_terminated_pre_share
+    (s : AVSSState n t F) (hinv : avssTermInv s)
+    (hds : s.dealerSent = false) (hnt : ¬ terminated s) :
+    1 ≤ (honestSet s).card := by
+  classical
+  by_contra hbad
+  push_neg at hbad
+  have hzero : (honestSet s).card = 0 := by omega
+  have hempty : honestSet s = ∅ := Finset.card_eq_zero.mp hzero
+  -- From `honestSet s = ∅`, every party is corrupted, so all honest-party
+  -- conjuncts of `terminated` are vacuous. Combined with queues empty
+  -- (from inv clause 1 since dealerSent = false), `terminated s` holds.
+  have hi := hinv.1 hds
+  obtain ⟨_, hifd_emp, hife_emp, hifr_emp⟩ := hi
+  apply hnt
+  refine ⟨?_, ?_, hifd_emp, hife_emp, hifr_emp⟩
+  · -- ∀ p, p ∉ corrupted → output.isSome — vacuous since no honest p.
+    intro p hp
+    have hp_in : p ∈ honestSet s := by
+      simp only [honestSet, Finset.mem_filter, Finset.mem_univ, true_and]; exact hp
+    rw [hempty] at hp_in
+    exact absurd hp_in (Finset.notMem_empty _)
+  · -- ∀ p, p ∉ corrupted → echoSent = true — also vacuous.
+    intro p hp
+    have hp_in : p ∈ honestSet s := by
+      simp only [honestSet, Finset.mem_filter, Finset.mem_univ, true_and]; exact hp
+    rw [hempty] at hp_in
+    exact absurd hp_in (Finset.notMem_empty _)
+
+omit [Fintype F] in
+/-- For every fair-firing action, avssU strictly decreases. The
+`hnt : ¬ terminated s` premise is needed for the new `dealerShare`
+case (added to `avssFairActions` in Phase B): strict decrease of
+the K⁶ → K⁵ shift requires `(honestSet s).card ≥ 1`, which follows
+from `¬ terminated s` via `honestSet_pos_of_not_terminated_pre_share`. -/
 theorem avssU_step_lt_of_fair (a : AVSSAction n F) (s : AVSSState n t F)
     (h : actionGate a s) (hfair : a ∈ avssFairActions)
-    (hinv : avssTermInv s) :
+    (hinv : avssTermInv s) (hnt : ¬ terminated s) :
     avssU (avssStep a s) < avssU s := by
   cases a with
-  | dealerShare => simp [avssFairActions] at hfair
+  | dealerShare =>
+      -- Phase B (Option B2): dealerShare is now in `avssFairActions`.
+      -- Strict decrease from `avssU_step_dealerShare_lt` requires
+      -- `(honestSet s).card ≥ 1`, which follows from `¬ terminated s`
+      -- via `honestSet_pos_of_not_terminated_pre_share`.
+      have hds : s.dealerSent = false := h
+      have h_honest_pos := honestSet_pos_of_not_terminated_pre_share s hinv hds hnt
+      have := avssU_step_dealerShare_lt s h hinv h_honest_pos; omega
   | partyDeliver p =>
       have := avssU_step_partyDeliver_lt s p h hinv; omega
   | partyCorruptDeliver p => simp [avssFairActions] at hfair
@@ -2265,7 +2431,7 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) :
       exact_mod_cast this
     · intro b hb
       rw [PMF.pure_apply, if_neg hb, zero_mul]
-  V_super_fair := fun a s h hfair hinv _hnt => by
+  V_super_fair := fun a s h hfair hinv hnt => by
     classical
     have heff : ((avssSpec (t := t) sec corr).actions a).effect s h
                 = PMF.pure (avssStep a s) := rfl
@@ -2274,7 +2440,7 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) :
     · rw [PMF.pure_apply, if_pos rfl, one_mul]
       have hfair' : a ∈ avssFairActions := hfair
       have hlt : avssU (avssStep a s) < avssU s :=
-        avssU_step_lt_of_fair a s h hfair' hinv
+        avssU_step_lt_of_fair a s h hfair' hinv hnt
       have : avssV (avssStep a s) < avssV s := by
         show (avssU (avssStep a s) : ℝ≥0) < (avssU s : ℝ≥0)
         exact_mod_cast hlt
@@ -2282,7 +2448,7 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) :
     · intro b hb
       rw [PMF.pure_apply, if_neg hb, zero_mul]
   U_term := avssCert_U_term
-  U_dec_det := fun a s h hfair hinv _hnt s' hs' => by
+  U_dec_det := fun a s h hfair hinv hnt s' hs' => by
     classical
     have heff : ((avssSpec (t := t) sec corr).actions a).effect s h
                 = PMF.pure (avssStep a s) := rfl
@@ -2292,11 +2458,11 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) :
     subst hs_eq
     left
     have hfair' : a ∈ avssFairActions := hfair
-    exact avssU_step_lt_of_fair a s h hfair' hinv
+    exact avssU_step_lt_of_fair a s h hfair' hinv hnt
   U_bdd_subl := fun _ =>
     ⟨(7 * n + 7) * (lexBase n) ^ 6, fun s _ _ => avssU_le_bound s⟩
   U_dec_prob := fun _ => by
-    refine ⟨1, by norm_num, fun a s h hfair hinv _hnt _ => ?_⟩
+    refine ⟨1, by norm_num, fun a s h hfair hinv hnt _ => ?_⟩
     classical
     have heff : ((avssSpec (t := t) sec corr).actions a).effect s h
                 = PMF.pure (avssStep a s) := rfl
@@ -2305,7 +2471,7 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) :
     · rw [PMF.pure_apply, if_pos rfl, one_mul]
       have hfair' : a ∈ avssFairActions := hfair
       have hlt : avssU (avssStep a s) < avssU s :=
-        avssU_step_lt_of_fair a s h hfair' hinv
+        avssU_step_lt_of_fair a s h hfair' hinv hnt
       rw [if_pos hlt]
       simp
     · intro b hb
@@ -2322,25 +2488,17 @@ discharged via `FairASTCertificate.sound`.  Every fair execution
 almost-surely reaches a terminated state (every honest party has
 output, echoed, and all queues are drained).
 
-⚠ **Caveat — `dealerShare` is not in `avssFairActions`** (restriction
-C3, see `AVSS-MODEL-NOTES.md` §11.3).  The fair-required action set
-(definition near line 568 of this file) lists only honest receive/send/
-output actions; `dealerShare` and `partyCorruptDeliver` fall into the
-`_ => False` catch-all and are not fair-required.  Consequently, this
-theorem is **conditional on the adversary eventually firing
-`dealerShare`**: a stalling adversary that never fires it leaves
-`s.dealerSent = false` forever, every fair action's gate fails, no
-honest party outputs, and `terminated` is unreachable.  In that
-degenerate case the user-supplied `h_U_mono` / `h_U_strict`
-certificates cannot be discharged — the conclusion still holds in
-the strict logical sense (vacuously, because the certificate is
-unprovable for such an adversary), but it carries no operational
-content.
+✅ **Phase B fix landed.** `dealerShare` is now in `avssFairActions`
+(see §11.3 of `AVSS-MODEL-NOTES.md`).  Under fair scheduling the
+dealer is forced to broadcast eventually, so the termination claim
+is unconditional in the dealer's behaviour: a stalling adversary
+that refuses to fire `dealerShare` is no longer fair, hence outside
+the theorem's scope.
 
-In Canetti–Rabin '93 an honest dealer shares by definition; bridging
-this model to the literature requires either folding `dealerShare`
-into `avssFair` (planned Phase B fix) or adding the hypothesis
-"honest dealer ⇒ `dealerShare` eventually fires" at the call site. -/
+For corrupt-dealer scenarios, this fairness is conservative: real-
+CR allows a corrupt dealer to refuse to broadcast.  A future
+Phase 8 with per-party dealer messages would distinguish honest-
+vs. corrupt-dealer fairness more precisely. -/
 theorem avss_termination_AS_fair
     (sec : F) (corr : Finset (Fin n))
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
