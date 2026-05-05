@@ -2815,6 +2815,38 @@ theorem dealerMessages_match_eq_rowPolyOfDealer
   · simp only [h_eq]
     exact hcons p msg h_eq
 
+/-! ## §13.6 Per-payload consistency predicate (Phase 8.3)
+
+The predicate `consistentPayload point witness payload` says that
+`payload.rowPoly` equals the row polynomial of `witness` evaluated at
+`point`.  This is the building block for the corrupt-dealer commitment
+theorem (§15.5): a witness bivariate polynomial that is jointly
+consistent with every honest party's payload.
+
+In the current model the witness is supplied by `s.coeffs` and the
+predicate follows from `dealerMessagesInv`.  Phase 8.4 will broaden the
+predicate (e.g. add a column-poly clause) once corrupt parties may
+forward their own echoed payload values; the row-poly clause carried
+here is preserved across that extension. -/
+
+/-- Per-payload consistency: `payload.rowPoly` matches the row
+polynomial of `witness` at evaluation point `point`. -/
+def consistentPayload (point : F) (witness : Fin (t+1) → Fin (t+1) → F)
+    (payload : DealerPayload t F) : Prop :=
+  payload.rowPoly = (fun l => ∑ k : Fin (t+1), witness k l * point ^ k.val)
+
+omit [Fintype F] in
+/-- The dealer-derived payload at point `partyPoint p` is consistent
+with the dealer's own coefficient grid.  This is the rephrasing of
+`dealerMessagesInv` in terms of `consistentPayload`: both unfold to
+the same `msg.rowPoly = fun l => ∑ k, s.coeffs k l * s.partyPoint p ^ k.val`
+shape. -/
+theorem dealerMessagesInv_iff_consistentPayload
+    (s : AVSSState n t F) :
+    dealerMessagesInv s ↔
+      ∀ p, ∀ msg, s.dealerMessages p = some msg →
+        consistentPayload (s.partyPoint p) s.coeffs msg := Iff.rfl
+
 /-! ## §14. Honest-dealer correctness invariant
 
 For honest dealer, every honest party that has stored a row poly
@@ -3480,6 +3512,145 @@ theorem avss_commitment_AS
   unfold AlmostBox at h_inv ⊢
   filter_upwards [h_inv] with ω hω k
   exact (hω k).1
+
+/-! ## §15.5 Joined-consistency invariant (Phase 8.3 — corrupt-dealer commitment)
+
+This is the literature-faithful commitment property: even under a
+*corrupt* dealer, **if at least `t + 1` honest parties produce
+outputs, those outputs are jointly consistent with some bivariate
+polynomial** (the "joint-consistency witness").  The argument leverages
+Bracha amplification's consistency-check property: a party only outputs
+when its echo quorum agrees on a payload, and any `t + 1` distinct
+honest evaluations pin down a single polynomial via Vandermonde
+uniqueness.
+
+In the current Phase 8.3 model the witness is supplied by `s.coeffs`
+itself — the dealer cannot send inconsistent row polynomials because
+`dealerMessagesInv` pins every populated payload to
+`rowPolyOfDealer s.partyPoint s.coeffs p`.  The *existential*
+phrasing is what survives Phase 8.5 (when `s.coeffs` moves out of
+state) and Phase 8.4 (when corrupt parties may forward independently
+chosen payload values; the witness will then be Vandermonde-determined
+by any `t + 1` accepted honest values). -/
+
+omit [Field F] [Fintype F] in
+/-- Number of honest parties whose `output` slot is populated.  The
+threshold trigger of `joinedConsistencyInv` is `≥ t + 1`. -/
+def honestOutputCount (s : AVSSState n t F) : ℕ :=
+  ((Finset.univ : Finset (Fin n)).filter
+    (fun p => p ∉ s.corrupted ∧ (s.local_ p).output.isSome)).card
+
+/-- Joint-consistency invariant: if the trigger fires (≥ t + 1 honest
+outputs), there exists a bivariate polynomial `witness` such that
+every honest party's output equals `bivEval witness (s.partyPoint p) 0`.
+
+In the current model the witness is `s.coeffs`; the existential form
+is what survives the Phase 8.5 migration of `s.coeffs` out of state. -/
+def joinedConsistencyInv (s : AVSSState n t F) : Prop :=
+  honestOutputCount s ≥ t + 1 →
+    ∃ (witness : Fin (t+1) → Fin (t+1) → F),
+      ∀ p, p ∉ s.corrupted →
+        ∀ v, (s.local_ p).output = some v →
+          v = bivEval witness (s.partyPoint p) 0
+
+omit [Fintype F] in
+theorem initPred_joinedConsistencyInv (sec : F) (corr : Finset (Fin n))
+    (s : AVSSState n t F) (h : initPred sec corr s) :
+    joinedConsistencyInv s := by
+  intro _
+  -- Witness := s.coeffs.  Initially every output is `none`, so the
+  -- conclusion `∀ p ∉ corrupted, ∀ v, output = some v → ...` is
+  -- vacuous on the `output = some v` premise.
+  obtain ⟨hloc, _⟩ := h
+  refine ⟨s.coeffs, ?_⟩
+  intro p _ v hv
+  rw [hloc p] at hv
+  simp [AVSSLocalState.init] at hv
+
+omit [Fintype F] in
+/-- Preservation: the witness for the post-state is supplied by
+`(avssStep a s).coeffs = s.coeffs`.  The output bound for every
+honest party comes from the post-state's `outputDeterminedInv` clause
+2, derived from the pre-state's `outputDeterminedInv` and
+`dealerMessagesInv` via `avssStep_preserves_outputDeterminedInv`. -/
+theorem avssStep_preserves_joinedConsistencyInv
+    (a : AVSSAction n F) (s : AVSSState n t F)
+    (hgate : actionGate a s) (_hinv : joinedConsistencyInv s)
+    (hod : outputDeterminedInv s) (hcons : dealerMessagesInv s) :
+    joinedConsistencyInv (avssStep a s) := by
+  intro _
+  have hod_post : outputDeterminedInv (avssStep a s) :=
+    avssStep_preserves_outputDeterminedInv a s hgate hod hcons
+  exact ⟨(avssStep a s).coeffs, hod_post.2⟩
+
+set_option maxHeartbeats 800000 in
+/-- Corrupt-dealer commitment as `AlmostBox`: under any adversary
+(including a corrupt dealer), if at least `t + 1` honest parties
+produce outputs, then there exists a bivariate-polynomial witness
+that is jointly consistent with all honest outputs.
+
+This is the literature-faithful commitment theorem (Canetti–Rabin '93
+"all honest outputs jointly consistent under corrupt dealer"), in
+existential-witness form.  In the Phase 8.3 model the witness is
+supplied by `s.coeffs`; the existential phrasing is what survives the
+Phase 8.5 migration of `s.coeffs` out of state.
+
+The Phase 8.4 corrupt-party-echo refinement will broaden the local
+`consistentPayload` predicate (§13.6) but leave the existential form
+of this theorem unchanged — at that point the witness will be
+Vandermonde-determined by the `t + 1` honest accepted-quorum values.
+
+⚠ **Phase 8.3 caveat (model abstraction).**  In the current model
+the dealer's payloads are populated from `s.coeffs` and so the
+witness is structurally available.  The cryptographic content (Bracha
+quorum intersection + Vandermonde uniqueness pinning the witness from
+any `t + 1` honest evaluations) becomes load-bearing only after Phase
+8.4–8.5 lets the adversary deviate from `s.coeffs`.  The *statement*
+of this theorem — `≥ t + 1 honest outputs ⇒ ∃ witness, ∀ p ∉ corrupted, ∀ v, output = some v → v = bivEval witness (s.partyPoint p) 0` —
+is the Canetti–Rabin form and is unchanged across the migration. -/
+theorem avss_commitment_AS_corrupt_dealer
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) :
+    AlmostBox (avssSpec (t := t) sec corr) A μ₀
+      (fun s => honestOutputCount s ≥ t + 1 →
+        ∃ (witness : Fin (t+1) → Fin (t+1) → F),
+          ∀ p, p ∉ s.corrupted →
+            ∀ v, (s.local_ p).output = some v →
+              v = bivEval witness (s.partyPoint p) 0) := by
+  have h_pure : ∀ (a : AVSSAction n F) (s : AVSSState n t F)
+      (h : ((avssSpec (t := t) sec corr).actions a).gate s),
+      ((avssSpec (t := t) sec corr).actions a).effect s h
+        = PMF.pure (avssStep a s) :=
+    fun _ _ _ => rfl
+  -- Joint invariant: `outputDeterminedInv` (gives the per-party
+  -- bivEval bound, witness = s.coeffs), `dealerMessagesInv` (needed
+  -- for `outputDeterminedInv`'s preservation), and
+  -- `joinedConsistencyInv` itself.
+  have h_init' : ∀ᵐ s ∂μ₀,
+      outputDeterminedInv s ∧ dealerMessagesInv s
+        ∧ joinedConsistencyInv s := by
+    filter_upwards [h_init] with s hs
+    exact ⟨initPred_outputDeterminedInv sec corr s hs,
+           initPred_dealerMessagesInv sec corr s hs,
+           initPred_joinedConsistencyInv sec corr s hs⟩
+  have h_inv : AlmostBox (avssSpec (t := t) sec corr) A μ₀
+      (fun s => outputDeterminedInv s ∧ dealerMessagesInv s
+                  ∧ joinedConsistencyInv s) :=
+    AlmostBox_of_pure_inductive
+      (fun s => outputDeterminedInv s ∧ dealerMessagesInv s
+                  ∧ joinedConsistencyInv s)
+      (fun a s => avssStep a s)
+      h_pure
+      (fun a s hgate ⟨hod, hcons, hjc⟩ =>
+        ⟨avssStep_preserves_outputDeterminedInv a s hgate hod hcons,
+         avssStep_preserves_dealerMessagesInv a s hgate hcons,
+         avssStep_preserves_joinedConsistencyInv a s hgate hjc hod hcons⟩)
+      μ₀ h_init' A
+  unfold AlmostBox at h_inv ⊢
+  filter_upwards [h_inv] with ω hω k
+  exact (hω k).2.2
 
 /-! ## §16. Quorum intersection (combinatorial)
 
@@ -5871,6 +6042,24 @@ theorem avss_commitment_AS_rushing
     AlmostBox (avssSpec (t := t) sec corr) R.toAdversary μ₀
       outputDeterminedInv :=
   avss_commitment_AS sec corr μ₀ h_init R.toAdversary
+
+/-- Corrupt-dealer commitment against a *rushing* adversary (Phase 8.3):
+under any rushing adversary, if at least `t + 1` honest parties produce
+outputs, there exists a bivariate-polynomial witness that is jointly
+consistent with all honest outputs.  Thin wrapper around
+`avss_commitment_AS_corrupt_dealer`. -/
+theorem avss_commitment_AS_corrupt_dealer_rushing
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : AVSSRushingAdversary n t F corr) :
+    AlmostBox (avssSpec (t := t) sec corr) R.toAdversary μ₀
+      (fun s => honestOutputCount s ≥ t + 1 →
+        ∃ (witness : Fin (t+1) → Fin (t+1) → F),
+          ∀ p, p ∉ s.corrupted →
+            ∀ v, (s.local_ p).output = some v →
+              v = bivEval witness (s.partyPoint p) 0) :=
+  avss_commitment_AS_corrupt_dealer sec corr μ₀ h_init R.toAdversary
 
 /-! ## §19.2. Phase 7.4 — schedule prefix factors through algebraic view AE
 
