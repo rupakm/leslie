@@ -827,6 +827,19 @@ adversary-controlled corrupt-party send schedule) replaces these
 gates with adversary-chosen send actions subject to message-format
 verifiability.
 
+**Phase 8.4 status (2026-05-05).**  C1 closure was originally scoped
+into Phase 8.4 but deferred during implementation: dropping the honest
+gates on `partyEchoSend` / `partyReady` / `partyAmplify` invalidates
+the K-weighted variant's strict-decrease story (corrupt-fired sends do
+not consume honest-only `unsentEchoSet` slots), and would also force
+weakening `corruptLocalInv` (whose `echoesReceived = ∅ ∧ readyReceived = ∅`
+clauses underpin the Phase 6/7 secrecy proofs).  Both are
+interdependent state-machine refactors and warrant their own PR.
+Phase 8.4 instead delivered the **cryptographic content** (Vandermonde-
+uniqueness witness for `joinedConsistencyInv`'s preservation, see §12.1
+row 8.4); C1 is queued for Phase 8.5+ alongside the variant rework
+and the secrecy chain re-verification.
+
 ### 11.2. C2 — Honest echoes/readys are addressed only to honest receivers
 
 `partyEchoSend p`'s effect (around line 348 of `AVSS.lean`) populates
@@ -864,6 +877,19 @@ broadcasts on corrupt receivers.
 refactor closes both C1 and C2 simultaneously by giving the adversary
 full delivery scheduling on every honest message including those
 addressed to corrupt receivers.
+
+**Phase 8.4 status (2026-05-05).**  C2 closure was scoped into Phase
+8.4 but deferred for the same reason as C1: dropping the
+`partyEchoReceive` honest-receiver gate (and widening the
+`partyEchoSend` broadcast filter to all parties) would create
+`(honest, corrupt)` entries in `inflightEchoes` whose drainage feeds
+into `(s.local_ p).echoesReceived` for corrupt `p` — directly
+invalidating `corruptLocalInv`'s `echoesReceived = ∅` clause and
+breaking Phase 6/7's coalition-view structural theorem.  Resolving
+this requires re-engineering the corrupt-local invariant (or
+introducing a separate "corrupt receiver buffer" that doesn't feed
+into the secrecy view), which is a substantial state-machine
+refactor.  C2 is queued for Phase 8.5+ alongside C1.
 
 ### 11.3. C3 — `dealerShare` is not in `avssFairActions`
 
@@ -1266,8 +1292,8 @@ in-flight to ✅ landed.
 | **8.1** | DealerPayload + state surgery (A-lite) | Foundational refactor: introduce `DealerPayload` type and `dealerMessages : Fin n → Option (DealerPayload t F)` field; keep `coeffs` alongside; migrate `dealerShare`/`partyDeliver`/`partyCorruptDeliver` to read from `dealerMessages`; add consistency invariant. **No theorem semantics change.** | ~200 (actual: 442/-82) | ✅ landed (PR #39) |
 | **8.2** | Honest-dealer consistency invariant + correctness re-verification | Define `honestDealerConsistencyInv`: for honest dealer, ∃ witness coeffs such that every honest party's payload matches `rowPolyOfDealer`/`colPolyOfDealer`. Re-prove `avss_correctness_AS` against the new model with existential witness. Also adds bookkeeping `coeffsSecretInv` and `avss_correctness_AS_existential` (+ `_rushing` variant). Witness in current projection := `s.coeffs`; PR 8.5 will route the witness through μ₀'s sample. | ~250 (actual: 201/-0) | ✅ landed (PR #43) |
 | **8.3** | Corrupt-dealer commitment (the genuine theorem) | The headline literature-faithful theorem `joinedConsistencyInv`: ≥ t+1 honest outputs ⇒ ∃ coeffs witnessing all of them.  Adds `consistentPayload` (per-payload consistency predicate, reusable by 8.4), `honestOutputCount`, `joinedConsistencyInv`, and the `AlmostBox` form `avss_commitment_AS_corrupt_dealer` (+ `_rushing` variant).  In the Phase 8.3 model the witness is supplied by `s.coeffs` and the cryptographic content (Bracha quorum + Vandermonde uniqueness) becomes load-bearing only after PRs 8.4 and 8.5 let the adversary deviate from `s.coeffs`; the *statement* — Canetti–Rabin's existential-witness commitment form — is unchanged across the migration. | ~300 (actual: 198/-0) | ✅ landed (PR #45) |
-| **8.4** | Corrupt-party send actions (C1) + reception (C2) | Drop `p ∉ s.corrupted` from `partyEchoSend`/`partyReady`/`partyAmplify` gates. Update `partyEchoReceive` to populate corrupt receivers. Echoes carry payload values; consistency check predicate added; only consistent echoes count toward thresholds. Termination becomes conditional on "≥ n−t honest parties have consistent shares". | ~250 | ⏳ pending |
-| **8.5** | Selective non-broadcast (C4) | Replace `dealerShare` with `dealerShareTo (p : Fin n)`; adversary chooses recipients and payloads. Move `coeffs` out of state into `μ₀` (or honest-dealer witness). Refactor variant analysis to handle the new fair-action structure. Most subtle PR; budget extra time. | ~150 | ⏳ pending |
+| **8.4** | Corrupt-dealer commitment via Vandermonde witness (cryptographic content) | Re-prove `avssStep_preserves_joinedConsistencyInv` with a genuine Lagrange-interpolation / Vandermonde-uniqueness argument: the witness is constructed from the observable honest output values and shown to satisfy the spec for all honest outputs via `Lagrange.eq_interpolate_of_eval_eq`. Adds `partyPointInjInv` (Shamir/Vandermonde precondition: distinct evaluation points) as a new joint-invariant clause. The proof no longer takes a shortcut through `s.coeffs` as the witness — `s.coeffs` is used only via `outputDeterminedInv` to bound output values. **Statement of `avss_commitment_AS_corrupt_dealer` unchanged** (still the Canetti–Rabin existential-witness form), but the proof is now Vandermonde-based and ready for the Phase 8.5 `s.coeffs`-out-of-state migration. **Scope deferred:** corrupt-party send actions (C1) and corrupt-receiver reception (C2) are left for Phase 8.5+ — their state-machine surgery would force weakening `corruptLocalInv` (echoesReceived = ∅ at corrupt parties), which is load-bearing for Phase 6/7 secrecy proofs and merits its own PR. | ~250 (actual: 252/-78) | ✅ landed (PR #N) |
+| **8.5** | Corrupt-party send actions (C1) + reception (C2) + selective non-broadcast (C4) | Drop `p ∉ s.corrupted` from `partyEchoSend`/`partyReady`/`partyAmplify` gates and from `partyEchoReceive`. Widen the `partyEchoSend` broadcast filter so honest broadcasts reach corrupt receivers. Weaken `corruptLocalInv` (drop `echoesReceived = ∅ ∧ readyReceived = ∅` clauses) and re-prove the Phase 6/7 secrecy chain (`coalitionView_corrupt_factors_AE` and downstream). Refactor variant analysis: the K-weighted U lex variant must strictly decrease for corrupt-fired sends (likely requires extending `unsentEchoSet`/`notReadySentSet` to include corrupt parties). Replace `dealerShare` with `dealerShareTo (p : Fin n)` for selective non-broadcast (C4). Move `coeffs` out of state into `μ₀` (or honest-dealer witness). Most subtle PR of Phase 8; budget extra time. | ~400 | ⏳ pending |
 | **8.6** | Operational secrecy under the full adversary | Re-prove `avss_secrecy_AS_view_rushing` against the post-8.4+8.5 adversary, which now has corrupt-party messages and honest-broadcast reception. Requires the **+200 LOC row + column secrecy** form (deferred since `SyncVSS.lean §10`) — the full polynomial-manipulation step. | ~250 | ⏳ pending |
 | **8.7** | Adapter retirement / cleanup | Decide whether to keep pre-Phase-8 model alongside or retire it. Recommend a thin compatibility shim with deprecation warnings for downstream migration. | ~100 | ⏳ pending |
 | **8.8** | MODEL_NOTES rewrite | Comprehensive rewrite to reflect post-Phase-8 state. Most §-level caveats become "✅ resolved by Phase 8". Preserve historical context. | ~150 | ⏳ pending |
