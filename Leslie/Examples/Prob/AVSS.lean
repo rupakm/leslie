@@ -490,7 +490,17 @@ omit [Fintype F] in
 The fair-required actions (`partyDeliver`, `partyEchoSend`,
 `partyEchoReceive`, `partyReady`, `partyAmplify`, `partyReceiveReady`,
 `partyOutput`) restrict their party arguments to honest parties — only
-honest parties follow the protocol script. -/
+honest parties follow the protocol script.
+
+Phase 8.5a addition: gates of `partyEchoSend`, `partyReady`,
+`partyAmplify` carry an explicit `s.dealerSent = true` clause.  Under
+the current model this is implied by the existing local-state
+preconditions (which require non-`init` values, available only after
+`dealerShare` fires) plus `avssTermInv` clause 1; the explicit clause
+is added in preparation for Phase 8.5b's gate weakening (drop
+`p ∉ s.corrupted` for C1 closure), where corrupt parties may fire
+without delivery and the explicit clause becomes load-bearing for
+preserving `avssTermInv`'s pre-share quiescence. -/
 def actionGate (a : AVSSAction n F) (s : AVSSState n t F) : Prop :=
   match a with
   | .dealerShare =>
@@ -505,18 +515,18 @@ def actionGate (a : AVSSAction n F) (s : AVSSState n t F) : Prop :=
         (s.dealerMessages p).isSome
   | .partyEchoSend p =>
       p ∉ s.corrupted ∧ (s.local_ p).delivered = true ∧
-        (s.local_ p).echoSent = false
+        (s.local_ p).echoSent = false ∧ s.dealerSent = true
   | .partyEchoReceive p q =>
       p ∉ s.corrupted ∧ (q, p) ∈ s.inflightEchoes ∧
         q ∉ (s.local_ p).echoesReceived
   | .partyReady p =>
       p ∉ s.corrupted ∧
         (s.local_ p).delivered = true ∧ (s.local_ p).readySent = false ∧
-        (s.local_ p).echoesReceived.card ≥ n - t
+        (s.local_ p).echoesReceived.card ≥ n - t ∧ s.dealerSent = true
   | .partyAmplify p =>
       p ∉ s.corrupted ∧
         (s.local_ p).readySent = false ∧
-        (s.local_ p).readyReceived.card ≥ t + 1
+        (s.local_ p).readyReceived.card ≥ t + 1 ∧ s.dealerSent = true
   | .partyReceiveReady p q =>
       p ∉ s.corrupted ∧
         q ∈ s.inflightReady ∧ q ∉ (s.local_ p).readyReceived
@@ -994,13 +1004,11 @@ theorem avssTermInv_step
         rw [hpre_ds] at hds'
         cases hds'
     | partyEchoSend p =>
-        have hpre_ds : s.dealerSent = false := by
-          simpa [avssStep, setLocal] using hds'
-        have hi := hpre hpre_ds
-        have hp_init : s.local_ p = AVSSLocalState.init n t F := hi.1 p
-        have hgate_del : (s.local_ p).delivered = true := h.2.1
-        rw [hp_init] at hgate_del
-        simp [AVSSLocalState.init] at hgate_del
+        -- Gate now requires `dealerSent = true`; direct contradiction.
+        have hpre_ds : s.dealerSent = true := h.2.2.2
+        simp [avssStep, setLocal] at hds'
+        rw [hpre_ds] at hds'
+        cases hds'
     | partyEchoReceive p q =>
         have hpre_ds : s.dealerSent = false := by
           simpa [avssStep, setLocal] using hds'
@@ -1009,21 +1017,18 @@ theorem avssTermInv_step
         rw [hi.2.2.1] at hgate_in
         exact absurd hgate_in (Finset.notMem_empty _)
     | partyReady p =>
-        have hpre_ds : s.dealerSent = false := by
-          simpa [avssStep, setLocal] using hds'
-        have hi := hpre hpre_ds
-        have hp_init : s.local_ p = AVSSLocalState.init n t F := hi.1 p
-        have hgate_del : (s.local_ p).delivered = true := h.2.1
-        rw [hp_init] at hgate_del
-        simp [AVSSLocalState.init] at hgate_del
+        -- Gate now requires `dealerSent = true`; direct contradiction.
+        have hpre_ds : s.dealerSent = true := h.2.2.2.2
+        simp [avssStep, setLocal] at hds'
+        rw [hpre_ds] at hds'
+        cases hds'
     | partyAmplify p =>
-        have hpre_ds : s.dealerSent = false := by
-          simpa [avssStep, setLocal] using hds'
-        have hi := hpre hpre_ds
-        have hp_init : s.local_ p = AVSSLocalState.init n t F := hi.1 p
-        have hgate_rr : (s.local_ p).readyReceived.card ≥ t + 1 := h.2.2
-        rw [hp_init] at hgate_rr
-        simp [AVSSLocalState.init] at hgate_rr
+        -- Gate now requires `dealerSent = true`; combined with case
+        -- hypothesis `post.dealerSent = false`, contradicts directly.
+        have hpre_ds : s.dealerSent = true := h.2.2.2
+        simp [avssStep, setLocal] at hds'
+        rw [hpre_ds] at hds'
+        cases hds'
     | partyReceiveReady p q =>
         have hpre_ds : s.dealerSent = false := by
           simpa [avssStep, setLocal] using hds'
@@ -1437,12 +1442,7 @@ theorem avssU_step_partyReady_lt (s : AVSSState n t F) (p : Fin n)
     (hinv : avssTermInv s) :
     avssU (avssStep (AVSSAction.partyReady p) s) + 1 ≤ avssU s := by
   classical
-  obtain ⟨hphon, hdel_t, hrsf, _⟩ := hgate
-  have hds_pre : s.dealerSent = true := by
-    apply dealerSent_true_of_local hinv (p := p)
-    intro hp
-    rw [hp] at hdel_t
-    simp [AVSSLocalState.init] at hdel_t
+  obtain ⟨hphon, hdel_t, hrsf, _hech, hds_pre⟩ := hgate
   -- n ≥ 1 from p : Fin n.
   have hn_pos : 1 ≤ n := by
     rcases Nat.eq_zero_or_pos n with hn | hn
@@ -1551,12 +1551,7 @@ theorem avssU_step_partyAmplify_lt (s : AVSSState n t F) (p : Fin n)
     (hinv : avssTermInv s) :
     avssU (avssStep (AVSSAction.partyAmplify p) s) + 1 ≤ avssU s := by
   classical
-  obtain ⟨hphon, hrsf, hrr_t⟩ := hgate
-  have hds_pre : s.dealerSent = true := by
-    apply dealerSent_true_of_local hinv (p := p)
-    intro hp
-    rw [hp] at hrr_t
-    simp [AVSSLocalState.init] at hrr_t
+  obtain ⟨hphon, hrsf, hrr_t, hds_pre⟩ := hgate
   have hn_pos : 1 ≤ n := by
     rcases Nat.eq_zero_or_pos n with hn | hn
     · subst hn; exact p.elim0
@@ -1942,12 +1937,7 @@ theorem avssU_step_partyEchoSend_lt (s : AVSSState n t F) (p : Fin n)
     (hinv : avssTermInv s) :
     avssU (avssStep (AVSSAction.partyEchoSend p) s) + 1 ≤ avssU s := by
   classical
-  obtain ⟨hphon, hdel_t, hesf⟩ := hgate
-  have hds_pre : s.dealerSent = true := by
-    apply dealerSent_true_of_local hinv (p := p)
-    intro hp
-    rw [hp] at hdel_t
-    simp [AVSSLocalState.init] at hdel_t
+  obtain ⟨hphon, hdel_t, hesf, hds_pre⟩ := hgate
   have hn_pos : 1 ≤ n := by
     rcases Nat.eq_zero_or_pos n with hn | hn
     · subst hn; exact p.elim0
@@ -7222,10 +7212,10 @@ theorem actionGate_iff (h : simSyncInv corr s s')
       have hqs' : q ∈ s'.corrupted := h.corrupted_eq ▸ hqs
       simp only [actionGate]
       constructor
-      · rintro ⟨hqq, _, _⟩; exact (hqq hqs).elim
-      · rintro ⟨hqq, _, _⟩; exact (hqq hqs').elim
+      · rintro ⟨hqq, _, _, _⟩; exact (hqq hqs).elim
+      · rintro ⟨hqq, _, _, _⟩; exact (hqq hqs').elim
     · simp only [actionGate, h.local_honest_delivered q hq,
-                 h.local_honest_echoSent q hq, h.corrupted_eq]
+                 h.local_honest_echoSent q hq, h.corrupted_eq, h.dealerSent_eq]
   | partyEchoReceive q r =>
     by_cases hq : q ∈ corr
     · have hqs : q ∈ s.corrupted := h.corrupted_corr ▸ hq
@@ -7242,21 +7232,23 @@ theorem actionGate_iff (h : simSyncInv corr s s')
       have hqs' : q ∈ s'.corrupted := h.corrupted_eq ▸ hqs
       simp only [actionGate]
       constructor
-      · rintro ⟨hqq, _, _⟩; exact (hqq hqs).elim
-      · rintro ⟨hqq, _, _⟩; exact (hqq hqs').elim
+      · rintro ⟨hqq, _, _, _, _⟩; exact (hqq hqs).elim
+      · rintro ⟨hqq, _, _, _, _⟩; exact (hqq hqs').elim
     · simp only [actionGate, h.local_honest_delivered q hq,
                  h.local_honest_readySent q hq,
-                 h.local_honest_echoesReceived q hq, h.corrupted_eq]
+                 h.local_honest_echoesReceived q hq, h.corrupted_eq,
+                 h.dealerSent_eq]
   | partyAmplify q =>
     by_cases hq : q ∈ corr
     · have hqs : q ∈ s.corrupted := h.corrupted_corr ▸ hq
       have hqs' : q ∈ s'.corrupted := h.corrupted_eq ▸ hqs
       simp only [actionGate]
       constructor
-      · rintro ⟨hqq, _, _⟩; exact (hqq hqs).elim
-      · rintro ⟨hqq, _, _⟩; exact (hqq hqs').elim
+      · rintro ⟨hqq, _, _, _⟩; exact (hqq hqs).elim
+      · rintro ⟨hqq, _, _, _⟩; exact (hqq hqs').elim
     · simp only [actionGate, h.local_honest_readySent q hq,
-                 h.local_honest_readyReceived q hq, h.corrupted_eq]
+                 h.local_honest_readyReceived q hq, h.corrupted_eq,
+                 h.dealerSent_eq]
   | partyReceiveReady q r =>
     by_cases hq : q ∈ corr
     · have hqs : q ∈ s.corrupted := h.corrupted_corr ▸ hq
