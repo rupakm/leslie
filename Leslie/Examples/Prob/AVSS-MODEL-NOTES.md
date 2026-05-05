@@ -1044,6 +1044,44 @@ Phase 8 also addresses §2 (per-party messages), C1 (corrupt-party
 sends), and C2 (honest broadcasts to corrupt receivers) — all four
 gaps are entangled and a single refactor closes them together.
 
+##### Phase 8.1 (this PR) — A-lite refactor: data carrier in place
+
+Phase 8.1 introduces the `DealerPayload` structure and the
+`dealerMessages : Fin n → Option (DealerPayload t F)` field on
+`AVSSState` without changing any theorem semantics.  The `s.coeffs`
+field is retained as the dealer's *intended* polynomial; `dealerShare`
+populates `dealerMessages` deterministically from `s.coeffs` and
+`s.partyPoint` for every party (honest and corrupt).  The per-party
+`partyDeliver` and `partyCorruptDeliver` actions are migrated to read
+from `dealerMessages` (with a new `(dealerMessages p).isSome` gate)
+rather than recomputing `rowPolyOfDealer` directly.
+
+The refactor is supported by a new sibling invariant
+`dealerMessagesInv s` ensuring every populated `dealerMessages p`
+agrees with `rowPolyOfDealer s.partyPoint s.coeffs p` on its `rowPoly`
+field.  `colPoly` is currently a `0` placeholder; PR 8.4 will start
+populating it for cross-check verification.  All existing classical
+theorems re-prove unchanged, lifting the joint
+`outputDeterminedInv ∧ dealerMessagesInv` (or `honestDealerInv ∧
+dealerMessagesInv`) and projecting back to the surface invariant.
+
+What Phase 8.1 sets up for later PRs:
+
+  * **PR 8.4** (corrupt-party sends, payload-carrying echoes): drop
+    the `p ∉ s.corrupted` gates from `partyEchoSend` / `partyReady` /
+    `partyAmplify`; carry payload values via the echo actions.
+  * **PR 8.5** (selective non-broadcast): let `dealerShare` populate
+    only a subset of parties; let a corrupt dealer choose
+    `dealerMessages p` independently of `s.coeffs`.
+  * **PR 8.6** (full secrecy): re-prove operational secrecy in the
+    row+column form.
+
+What Phase 8.1 does *not* do:
+
+  * Move `s.coeffs` out of state into `μ₀` (PR 8.5).
+  * Drop the `p ∉ s.corrupted` honest-action gates (PR 8.4).
+  * Allow corrupt-dealer freedom in `dealerMessages` (PR 8.5).
+
 ### 11.5. Correctness/commitment subtlety (per-party share, not the secret)
 
 This is not strictly an *adversary-power* restriction — it's a
