@@ -1436,6 +1436,42 @@ lemma deriving the trajectory witness from the uniform-`ε` bound
 is left as an optional follow-up (no termination soundness theorem
 depends on it).
 
+**Follow-up landed (PR #54 update):**
+`RandomisedTrajectoryFairAdversary.of_uniform_epsilon_bound` in
+`Leslie/Prob/RandomisedAdversary.lean` derives the trajectory
+witness from the uniform-`ε` schedule-PMF lower bound on gated
+fair actions.  The proof is an iterative kernel-level argument
+(the analog of Borel-Cantelli II for history-conditioned Bernoulli
+trials with a uniform positive lower bound):
+
+  1. Per-step bound: at every history `h`, the kernel mass on
+     "next coordinate is non-fair-firing" is at most `1 - ε`
+     (from the schedule-PMF hypothesis plus a per-action
+     decomposition of `randomisedStepKernel_apply_tsum`).
+  2. Inductive bound: `ν({ω | ∀ k < m, ω(N+k+1).2 ∉ fairFireSet F})
+     ≤ (1 - ε)^m` for all `N`, `m`, by induction on `m` using the
+     `Kernel.trajMeasure` marginal recurrence
+     (`map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`).
+  3. Continuity-of-measure limit: for fixed `N`, the tail event
+     `{ω | ∀ n ≥ N, ω(n+1).2 ∉ fairFireSet F}` has measure
+     `≤ (1-ε)^m` for every `m`, hence `0` (since `(1-ε)^m → 0`).
+  4. Countable AE swap: union over `N` has measure `0`, and the
+     complement gives the AE-trajectory progress witness.
+
+This bypasses the conditional Borel-Cantelli machinery in
+`MeasureTheory.Martingale.BorelCantelli`, whose connection to
+`Kernel.trajMeasure` would require non-trivial infrastructure for
+converting kernel mass at a history-prefix into a conditional
+expectation w.r.t. the natural filtration on `Trace σ ι`.
+
+The hypothesis is phrased on `FinPrefix σ ι n` rather than raw
+`List` prefixes so that `currentState` is well-defined and the
+gate predicate is meaningful.  The bound is on
+`∑' i, [i ∈ F.fair_actions ∧ (spec.actions i).gate h.currentState]
+R.strategy h.toList (some i)` — i.e., the schedule mass on **gated**
+fair actions, since "ungated" fair-action samples stutter and do
+not register as a fair firing in the trace.
+
 The `_rushing_randomised` wrapper is **deferred to Phase 9.5**,
 which introduces `AVSSRushingRandomisedAdversary` and the
 measurability infrastructure on the rushing-view σ-algebra.
