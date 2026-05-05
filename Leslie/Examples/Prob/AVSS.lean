@@ -76,6 +76,7 @@ import Leslie.Prob.Adversary
 import Leslie.Prob.Liveness
 import Leslie.Prob.PMF
 import Leslie.Prob.Polynomial
+import Leslie.Prob.RandomisedAdversary
 import Leslie.Prob.Refinement
 import Leslie.Prob.Trace
 import Mathlib.Data.Fintype.Basic
@@ -5404,6 +5405,139 @@ theorem avss_commitment_AS_rushing
     AlmostBox (avssSpec (t := t) sec corr) R.toAdversary μ₀
       outputDeterminedInv :=
   avss_commitment_AS sec corr μ₀ h_init R.toAdversary
+
+/-! ## §19.1.5 Phase 9.3 — randomised-adversary restatements (partial coverage)
+
+Closes caveat **C5** (MODEL_NOTES §11.5) for `avss_correctness_AS`,
+`avss_commitment_AS`, and the coord-0 form of `avss_secrecy_AS`. The
+existing classical theorems universally quantify over deterministic
+`Adversary σ ι`; here we re-derive the same propositions for any
+`RandomisedAdversary` (literature-standard: a coin-flipping demonic
+scheduler) by routing the per-step inductive preservation data through
+the Phase 9.2 lifting meta-theorems
+(`AlmostBoxRandomised_of_inductive`,
+`randomisedTraceDist_map_eq_of_deterministic_at_zero`).
+
+**Partial-coverage caveat** — `avss_termination_AS_fair` is **not**
+lifted in this PR. PR #46's `AlmostDiamond.lift_to_randomised` only
+derives the trivial diamond from box (`exact ⟨0, hω 0⟩`); it cannot
+lift true eventual-termination claims whose proof goes through
+`FairASTCertificate.sound`. The randomised termination theorem is
+deferred to Phase 9.4 (see MODEL_NOTES §13.4). -/
+
+/-- **Honest-dealer correctness against a randomised adversary.** The
+randomised analog of `avss_correctness_AS` (PR #43). With an honest
+dealer, every honest party's output equals its per-party share —
+almost surely under the mixture trace measure for *any* randomised
+schedule.
+
+Proof: re-feed the same inductive data (`honestDealerInv`, plus
+preservation `avssStep_preserves_honestDealerInv`) into
+`AlmostBoxRandomised_of_inductive`; the support of every gated
+action's effect PMF is a singleton (effects are pure
+`PMF.pure (avssStep a s)`), so per-step preservation reduces to the
+deterministic-step preservation. Closes C5 for correctness. -/
+theorem avss_correctness_AS_randomised
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : RandomisedAdversary (AVSSState n t F) (AVSSAction n F)) :
+    AlmostBoxRandomised (avssSpec (t := t) sec corr) R μ₀
+      (fun s => s.dealerHonest = true →
+        ∀ p, p ∉ s.corrupted →
+          ∀ v, (s.local_ p).output = some v →
+            v = bivEval s.coeffs (s.partyPoint p) 0) := by
+  have h_init' : ∀ᵐ s ∂μ₀, honestDealerInv s := by
+    filter_upwards [h_init] with s hs
+    exact initPred_honestDealerInv sec corr s hs
+  have h_step : ∀ (a : AVSSAction n F) (s : AVSSState n t F)
+      (h : ((avssSpec (t := t) sec corr).actions a).gate s),
+      honestDealerInv s →
+      ∀ s' ∈ ((avssSpec (t := t) sec corr).actions a).effect s h |>.support,
+        honestDealerInv s' := by
+    intro a s hgate hinv s' hsupp
+    rw [show ((avssSpec (t := t) sec corr).actions a).effect s hgate
+          = PMF.pure (avssStep a s) from rfl,
+        PMF.support_pure, Set.mem_singleton_iff] at hsupp
+    subst hsupp
+    exact avssStep_preserves_honestDealerInv a s hgate hinv
+  have h_inv : AlmostBoxRandomised (avssSpec (t := t) sec corr) R μ₀
+      honestDealerInv :=
+    AlmostBoxRandomised_of_inductive honestDealerInv h_step μ₀ h_init' R
+  unfold AlmostBoxRandomised at h_inv ⊢
+  filter_upwards [h_inv] with ω hinv k hh p hp v hv
+  exact (hinv k hh).2 p hp v hv
+
+/-- **Output-determined commitment against a randomised adversary.**
+The randomised analog of `avss_commitment_AS` (PR #45). Every output,
+when set, equals the per-party share derived from `s.coeffs` and
+`s.partyPoint` — almost surely under the mixture trace measure for
+*any* randomised schedule.
+
+Proof: re-feed `outputDeterminedInv` and
+`avssStep_preserves_outputDeterminedInv` into
+`AlmostBoxRandomised_of_inductive`. Closes C5 for commitment. -/
+theorem avss_commitment_AS_randomised
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : RandomisedAdversary (AVSSState n t F) (AVSSAction n F)) :
+    AlmostBoxRandomised (avssSpec (t := t) sec corr) R μ₀
+      outputDeterminedInv := by
+  have h_init' : ∀ᵐ s ∂μ₀, outputDeterminedInv s := by
+    filter_upwards [h_init] with s hs
+    exact initPred_outputDeterminedInv sec corr s hs
+  have h_step : ∀ (a : AVSSAction n F) (s : AVSSState n t F)
+      (h : ((avssSpec (t := t) sec corr).actions a).gate s),
+      outputDeterminedInv s →
+      ∀ s' ∈ ((avssSpec (t := t) sec corr).actions a).effect s h |>.support,
+        outputDeterminedInv s' := by
+    intro a s hgate hinv s' hsupp
+    rw [show ((avssSpec (t := t) sec corr).actions a).effect s hgate
+          = PMF.pure (avssStep a s) from rfl,
+        PMF.support_pure, Set.mem_singleton_iff] at hsupp
+    subst hsupp
+    exact avssStep_preserves_outputDeterminedInv a s hgate hinv
+  exact AlmostBoxRandomised_of_inductive outputDeterminedInv h_step μ₀ h_init' R
+
+/-- **Coord-0 grid secrecy against a randomised adversary.** The
+randomised analog of `avss_secrecy_AS_step_zero_grid`: the marginal
+of the mixture trace measure projected to the `coalitionGrid C D`
+view at coordinate 0 is invariant in the secret, for *any* randomised
+adversary.
+
+Proof: factor through `randomisedTraceDist_map_eq_of_deterministic_at_zero`,
+which closes the lift via the coord-0-only argument (the projection
+factors through `μ₀.map (·, none)`, where neither the spec nor the
+adversary appears). The deterministic premise is exactly
+`avss_secrecy_AS_init` (= `avss_secrecy_AS_step_zero_grid`).
+
+Closes C5 for the coord-0 form of secrecy. The step-`k` general form
+(`avss_secrecy_AS`) requires propagating the `coalitionGrid`-AE
+invariance under the randomised step kernel; that lift is structurally
+straightforward (the same `coalitionGrid`-invariance holds branchwise,
+and integrates over the schedule PMF) and is folded into the same
+Phase 9.4 follow-up as `avss_termination_AS_fair_randomised`. -/
+theorem avss_secrecy_AS_step_zero_grid_randomised
+    (sec sec' : F) (corr : Finset (Fin n))
+    (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (C D : BivariateShamir.Coalition n t)
+    (R : RandomisedAdversary (AVSSState n t F) (AVSSAction n F)) :
+    (randomisedTraceDist (avssSpec (t := t) sec corr) R
+        (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω 0).1) =
+      (randomisedTraceDist (avssSpec (t := t) sec' corr) R
+        (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω 0).1) := by
+  classical
+  have hmeas : Measurable (fun x : AVSSState n t F × Option (AVSSAction n F) =>
+      coalitionGrid C D x.1) := measurable_of_countable _
+  exact randomisedTraceDist_map_eq_of_deterministic_at_zero (f := fun x =>
+      coalitionGrid C D x.1) hmeas
+    (fun A => avss_secrecy_AS_init sec sec' corr partyPoint dealerHonest
+      h_nz_pp h_F C D A) R
 
 /-! ## §19.2. Phase 7.4 — schedule prefix factors through algebraic view AE
 
