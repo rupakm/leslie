@@ -5338,6 +5338,23 @@ abbrev AVSSRushingAdversary (n t : ℕ) (F : Type*) [DecidableEq F] [Fintype F]
   Leslie.Prob.RushingAdversary
     (AVSSState n t F) (AVSSAction n F) (AVSSRushingView n t F corr)
 
+/-- A `RushingRandomisedAdversary` for AVSS specialises the generic
+view-restricted *randomised* scheduler to the AVSS state, action, and
+coalition-view types.  Phase 9.5 (MODEL_NOTES §13.5): the
+randomised analog of `AVSSRushingAdversary`, used by the four
+`_rushing_randomised` headline restatements (`avss_correctness_…`,
+`avss_commitment_…`, `avss_secrecy_…`, `avss_termination_…`) below.
+
+The schedule is a PMF on the rushing-view σ-algebra; via
+`instCountableAVSSRushingView`, this PMF is automatically measurable
+on the discrete σ-algebra carried by the rushing view, which is the
+measurability backbone the deferred Phase 9.3 wrappers needed. -/
+abbrev AVSSRushingRandomisedAdversary
+    (n t : ℕ) (F : Type*) [DecidableEq F] [Fintype F]
+    (corr : Finset (Fin n)) : Type _ :=
+  Leslie.Prob.RushingRandomisedAdversary
+    (AVSSState n t F) (AVSSAction n F) (AVSSRushingView n t F corr)
+
 /-! ## §19.1. Classical theorems against `RushingAdversary` (Phase 7.3)
 
 Re-statements of the classical AVSS theorems (termination, correctness,
@@ -5723,6 +5740,120 @@ theorem avss_termination_AS_fair_randomised
     exact (avssCert (t := t) sec corr).inv_init s hs
   exact RandomisedFairASTCertificate.sound
     (avssCert (t := t) sec corr) μ₀ h_init' R h_U_mono h_U_strict
+
+/-! ### §19.1.7. Phase 9.5 — `_rushing_randomised` headline wrappers
+
+Closes the literature-standard threat model gap: every classical AVSS
+theorem now has a randomised analog quantified over an
+`AVSSRushingRandomisedAdversary` (the literature's *randomised
+rushing* threat model — coin-flipping schedule on the coalition view).
+
+Each wrapper is a one-liner: the rushing-randomised structure carries
+a `RushingRandomisedAdversary.toRandomisedAdversary` adapter that
+projects to a plain `RandomisedAdversary` by composing the rushing-view
+projection with the rushing-view-restricted PMF strategy.  The
+underlying `_randomised` theorems from PRs #47, #49, and #54 quantify
+universally over `RandomisedAdversary`, so they specialise immediately.
+
+The four wrappers cover the four classical AVSS properties:
+  * `avss_correctness_AS_existential_rushing_randomised` (around PR #49)
+  * `avss_commitment_AS_corrupt_dealer_rushing_randomised` (around PR #49)
+  * `avss_secrecy_AS_step_zero_grid_rushing_randomised`   (around PR #47)
+  * `avss_termination_AS_fair_rushing_randomised`         (around PR #54)
+
+The step-`k` general form of the secrecy wrapper
+(`avss_secrecy_AS_view_rushing_randomised` mirroring the deterministic
+operational secrecy headline at arbitrary step `k` with the schedule
+prefix joint distribution) is independently lifted in Phase 9.6 (PR
+#53); together with this PR, **C5 closes fully** (MODEL_NOTES §11.5,
+§13.1).
+
+Per maintenance plan in `AVSS-MODEL-NOTES.md` §13.5. -/
+
+/-- **Honest-dealer correctness against a rushing randomised
+adversary** (existential-witness form).  Thin wrapper: feed
+`R.toRandomisedAdversary` into `avss_correctness_AS_existential_randomised`
+(PR #49). -/
+theorem avss_correctness_AS_existential_rushing_randomised
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : AVSSRushingRandomisedAdversary n t F corr) :
+    AlmostBoxRandomised (avssSpec (t := t) sec corr) R.toRandomisedAdversary μ₀
+      (fun s => s.dealerHonest = true →
+        ∃ (witness : Fin (t+1) → Fin (t+1) → F),
+          witness 0 0 = s.secret ∧
+            ∀ p, p ∉ s.corrupted →
+              ∀ v, (s.local_ p).output = some v →
+                v = bivEval witness (s.partyPoint p) 0) :=
+  avss_correctness_AS_existential_randomised sec corr μ₀ h_init
+    R.toRandomisedAdversary
+
+/-- **Output-determined commitment against a rushing randomised
+adversary** (corrupt-dealer existential-witness form).  Thin wrapper:
+feed `R.toRandomisedAdversary` into
+`avss_commitment_AS_corrupt_dealer_randomised` (PR #49). -/
+theorem avss_commitment_AS_corrupt_dealer_rushing_randomised
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : AVSSRushingRandomisedAdversary n t F corr) :
+    AlmostBoxRandomised (avssSpec (t := t) sec corr) R.toRandomisedAdversary μ₀
+      (fun s => honestOutputCount s ≥ t + 1 →
+        ∃ (witness : Fin (t+1) → Fin (t+1) → F),
+          ∀ p, p ∉ s.corrupted →
+            ∀ v, (s.local_ p).output = some v →
+              v = bivEval witness (s.partyPoint p) 0) :=
+  avss_commitment_AS_corrupt_dealer_randomised sec corr μ₀ h_init
+    R.toRandomisedAdversary
+
+/-- **Coord-0 grid secrecy against a rushing randomised adversary.**
+The randomised-rushing analog of the coord-0 grid form
+`avss_secrecy_AS_step_zero_grid_randomised` (PR #47).  At coordinate
+0 the projection factors through `μ₀.map (·, none)` (neither the spec
+nor the adversary appears), so the schedule restriction to the rushing
+view is trivially absorbed.
+
+The literature-faithful **step-`k` operational secrecy** randomised
+analog (mirroring deterministic `avss_secrecy_AS_view_rushing` with
+the joint coalition-view + schedule-prefix distribution at arbitrary
+`k`) is the deliverable of Phase 9.6 (PR #53), independent of this PR;
+together with this PR, MODEL_NOTES §11.5 (caveat C5) closes fully. -/
+theorem avss_secrecy_AS_step_zero_grid_rushing_randomised
+    (sec sec' : F) (corr : Finset (Fin n))
+    (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (C D : BivariateShamir.Coalition n t)
+    (R : AVSSRushingRandomisedAdversary n t F corr) :
+    (randomisedTraceDist (avssSpec (t := t) sec corr) R.toRandomisedAdversary
+        (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω 0).1) =
+      (randomisedTraceDist (avssSpec (t := t) sec' corr) R.toRandomisedAdversary
+        (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω 0).1) :=
+  avss_secrecy_AS_step_zero_grid_randomised sec sec' corr partyPoint
+    dealerHonest h_nz_pp h_F C D R.toRandomisedAdversary
+
+/-- **Termination against a rushing randomised adversary.**  Thin
+wrapper: bundle `R.toRandomisedAdversary` together with the AE-trajectory
+progress witness into a `RandomisedTrajectoryFairAdversary` and forward
+to `avss_termination_AS_fair_randomised` (PR #54). -/
+theorem avss_termination_AS_fair_rushing_randomised
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : AVSSRushingRandomisedAdversary n t F corr)
+    (h_progress : FairASTCertificate.RandomisedTrajectoryFairProgress
+      (avssSpec (t := t) sec corr) avssFair μ₀ R.toRandomisedAdversary)
+    (h_U_mono : FairASTCertificate.RandomisedTrajectoryUMono
+        (avssCert (t := t) sec corr) μ₀ R.toRandomisedAdversary)
+    (h_U_strict : ∀ N : ℕ, FairASTCertificate.RandomisedTrajectoryFairStrictDecrease
+        (avssCert (t := t) sec corr) μ₀ R.toRandomisedAdversary N) :
+    AlmostDiamondRandomised (avssSpec (t := t) sec corr) R.toRandomisedAdversary μ₀
+      terminated :=
+  avss_termination_AS_fair_randomised sec corr μ₀ h_init
+    ⟨R.toRandomisedAdversary, h_progress⟩ h_U_mono h_U_strict
 
 /-! ## §19.2. Phase 7.4 — schedule prefix factors through algebraic view AE
 

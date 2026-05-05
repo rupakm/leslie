@@ -114,6 +114,90 @@ theorem toRandomised_corrupt (A : Adversary σ ι) :
 
 end Adversary
 
+/-! ## `RushingRandomisedAdversary` (view-restricted randomised scheduler)
+
+Randomised analog of `Leslie.Prob.RushingAdversary` (see
+`Leslie/Prob/Adversary.lean`).  Combines:
+
+  * a `ProtocolView σ V` projection (same as the deterministic
+    rushing case),
+  * a PMF-valued schedule on the *view-history*
+    `List (V × Option ι) → PMF (Option ι)`,
+  * a static corruption set.
+
+`toRandomisedAdversary` lifts a `RushingRandomisedAdversary` to a
+plain `RandomisedAdversary` by composing `view` over the
+state-history before consulting the rushing-view-restricted
+strategy — directly mirroring `RushingAdversary.toAdversary`.
+
+Phase 9.5 (MODEL_NOTES §13.5): the literature-standard threat model
+combines randomised (coin-flipping) with rushing (view-restricted)
+schedules; this structure expresses the latter on top of the former. -/
+structure RushingRandomisedAdversary (σ : Type*) (ι : Type*) (V : Type*) where
+  /-- The protocol view carried by this adversary. -/
+  toProtocolView : ProtocolView σ V
+  /-- View-restricted randomised schedule: produce a distribution
+  over the next action label (or `none`) given the view-history. -/
+  strategy : List (V × Option ι) → PMF (Option ι)
+  /-- Static corruption set, identically to a plain
+  `RandomisedAdversary`. -/
+  corrupt  : Set PartyId
+
+namespace RushingRandomisedAdversary
+
+variable {σ ι V : Type*}
+
+/-- Convenience accessor: the projection `σ → V` of a rushing
+randomised adversary's protocol view. -/
+def view (R : RushingRandomisedAdversary σ ι V) : σ → V :=
+  R.toProtocolView.view
+
+/-- Lift a state-history to a view-history by applying `view`
+component-wise.  Mirrors `RushingAdversary.viewHistory`. -/
+def viewHistory (R : RushingRandomisedAdversary σ ι V)
+    (h : List (σ × Option ι)) : List (V × Option ι) :=
+  h.map (fun sa => (R.view sa.1, sa.2))
+
+/-- Adapter: every `RushingRandomisedAdversary` is in particular a
+`RandomisedAdversary`.  The strategy is obtained by applying `view`
+component-wise to the state-history before consulting the
+rushing-view-restricted strategy.
+
+This is the randomised analog of `RushingAdversary.toAdversary`. -/
+noncomputable def toRandomisedAdversary
+    (R : RushingRandomisedAdversary σ ι V) : RandomisedAdversary σ ι where
+  strategy h := R.strategy (R.viewHistory h)
+  corrupt    := R.corrupt
+
+@[simp]
+theorem toRandomisedAdversary_corrupt
+    (R : RushingRandomisedAdversary σ ι V) :
+    R.toRandomisedAdversary.corrupt = R.corrupt := rfl
+
+@[simp]
+theorem toRandomisedAdversary_strategy
+    (R : RushingRandomisedAdversary σ ι V)
+    (h : List (σ × Option ι)) :
+    R.toRandomisedAdversary.strategy h =
+      R.strategy (R.viewHistory h) := rfl
+
+@[simp]
+theorem viewHistory_eq_map (R : RushingRandomisedAdversary σ ι V)
+    (h : List (σ × Option ι)) :
+    R.viewHistory h = h.map (fun sa => (R.view sa.1, sa.2)) := rfl
+
+@[simp]
+theorem viewHistory_nil (R : RushingRandomisedAdversary σ ι V) :
+    R.viewHistory ([] : List (σ × Option ι)) = [] := rfl
+
+@[simp]
+theorem viewHistory_cons (R : RushingRandomisedAdversary σ ι V)
+    (sa : σ × Option ι) (h : List (σ × Option ι)) :
+    R.viewHistory (sa :: h) =
+      (R.view sa.1, sa.2) :: R.viewHistory h := rfl
+
+end RushingRandomisedAdversary
+
 /-! ## Per-step randomised PMF and kernel -/
 
 section RandomisedStep
