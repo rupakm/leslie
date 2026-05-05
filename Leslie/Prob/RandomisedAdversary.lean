@@ -65,6 +65,7 @@ Per implementation plan v2.2 §M3 + MODEL_NOTES §13.1 (PR 9.1, 9.2).
 
 import Leslie.Prob.Action
 import Leslie.Prob.Adversary
+import Leslie.Prob.Liveness
 import Leslie.Prob.PMF
 import Leslie.Prob.Trace
 
@@ -749,5 +750,160 @@ theorem AlmostDiamond.lift_to_randomised
   exact ⟨0, hω 0⟩
 
 end RandomisedLifts
+
+/-! ## Phase 9.4 — randomised fair-AST soundness
+
+The randomised analog of `FairASTCertificate.sound` (in
+`Liveness.lean`).  The deterministic and randomised cases share the
+supermartingale + finite-descent core via the measure-generic
+`pi_n_AST_fair_with_progress_det_on`, `pi_infty_zero_fair_on`, and
+`partition_almostDiamond_fair_on` (path **(c)** of
+`AVSS-MODEL-NOTES.md` §13.4).  This section supplies:
+
+  * `FairASTCertificate.RandomisedTrajectoryFairProgress` — randomised
+    analog of `FairASTCertificate.TrajectoryFairProgress`: the AE
+    fair-progress witness on the mixture trace measure.
+  * `FairASTCertificate.RandomisedTrajectoryUMono` and
+    `FairASTCertificate.RandomisedTrajectoryFairStrictDecrease` —
+    analogs of the corresponding deterministic predicates, restated
+    on `randomisedTraceDist`.
+  * `RandomisedTrajectoryFairAdversary` — bundle of a randomised
+    adversary with an AE-progress witness on a specific initial
+    measure.
+  * `RandomisedFairASTCertificate.sound` — the headline theorem,
+    a thin specialisation of the measure-generic
+    `partition_almostDiamond_fair_on` to the mixture trace measure.
+
+**Note on the fairness predicate.**  The progress witness here is
+the trajectory-form AE statement that fair-required actions fire
+i.o., matching the deterministic side.  In the randomised setting
+this witness can be derived from a structural uniform-`ε` lower
+bound on the schedule PMF for gated fair actions via Borel-Cantelli;
+that derivation is independent of the soundness machinery (the
+deterministic `sound` uses the deterministic-decrease finite-descent
+route, which only needs the trajectory-form witness as input) and
+is left to callers.  See `AVSS-MODEL-NOTES.md` §13.4 "Fairness
+predicate uniform-ε requirement" for the discussion. -/
+
+section RandomisedFairAST
+
+open NNReal
+
+variable {σ ι : Type*}
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+
+namespace FairASTCertificate
+
+/-- Randomised analog of `FairASTCertificate.TrajectoryFairProgress`:
+along almost every trace of the mixture trace measure, every
+fair-required action fires infinitely often. -/
+def RandomisedTrajectoryFairProgress
+    (spec : ProbActionSpec σ ι) (F : FairnessAssumptions σ ι)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (R : RandomisedAdversary σ ι) : Prop :=
+  ∀ᵐ ω ∂(randomisedTraceDist spec R μ₀),
+    ∀ N : ℕ, ∃ n ≥ N, ∃ i ∈ F.fair_actions, (ω (n + 1)).2 = some i
+
+/-- Randomised analog of `FairASTCertificate.TrajectoryUMono`. -/
+def RandomisedTrajectoryUMono
+    {spec : ProbActionSpec σ ι} {F : FairnessAssumptions σ ι}
+    {terminated : σ → Prop}
+    (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (R : RandomisedAdversary σ ι) : Prop :=
+  ∀ᵐ ω ∂(randomisedTraceDist spec R μ₀),
+    ∀ n : ℕ, cert.U (ω (n + 1)).1 ≤ cert.U (ω n).1
+
+/-- Randomised analog of `FairASTCertificate.TrajectoryFairStrictDecrease`. -/
+def RandomisedTrajectoryFairStrictDecrease
+    {spec : ProbActionSpec σ ι} {F : FairnessAssumptions σ ι}
+    {terminated : σ → Prop}
+    (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (R : RandomisedAdversary σ ι) (N : ℕ) : Prop :=
+  ∀ᵐ ω ∂(randomisedTraceDist spec R μ₀),
+    ∀ n : ℕ, (∃ i ∈ F.fair_actions, (ω (n + 1)).2 = some i) →
+      ¬ terminated (ω n).1 → cert.V (ω n).1 ≤ (N : ℝ≥0) →
+        cert.U (ω (n + 1)).1 < cert.U (ω n).1
+
+end FairASTCertificate
+
+/-- A randomised adversary bundled with a trajectory-progress witness
+for a specific initial measure `μ₀`.  Randomised analog of
+`Leslie.Prob.TrajectoryFairAdversary`.
+
+`progress` is the AE-trajectory statement that fair-required actions
+fire i.o. along the mixture trace measure.  This trajectory-form
+witness is what `RandomisedFairASTCertificate.sound` consumes; it
+can be supplied directly or derived from a uniform-`ε` lower bound
+on the schedule PMF for gated fair actions (the derivation requires
+Borel-Cantelli and is left to callers, mirroring how deterministic
+protocols supply `TrajectoryFairAdversary.progress` from per-protocol
+fairness reasoning). -/
+structure RandomisedTrajectoryFairAdversary
+    (spec : ProbActionSpec σ ι) (F : FairnessAssumptions σ ι)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀] where
+  /-- The underlying randomised adversary. -/
+  toRandomised : RandomisedAdversary σ ι
+  /-- AE-trajectory progress: every fair-required action fires
+  infinitely often along almost every trace of the mixture trace
+  measure. -/
+  progress : FairASTCertificate.RandomisedTrajectoryFairProgress
+    spec F μ₀ toRandomised
+
+/-! ### `RandomisedFairASTCertificate` namespace
+
+`RandomisedFairASTCertificate` is a *namespace*, not a new type:
+the certificate data structure is unchanged from `FairASTCertificate`
+(invariant, supermartingale, variant, all adversary-independent).
+Only the soundness conclusion is restated against `randomisedTraceDist`,
+and the trajectory-progress witness is bundled with a randomised
+adversary instead of a deterministic one.
+
+This mirrors how `Refinement.AlmostBox` / `AlmostBoxRandomised`
+share certificate data but carry distinct trace measures in their
+conclusions. -/
+
+namespace RandomisedFairASTCertificate
+
+/-- **Randomised analog of `FairASTCertificate.sound`.**
+
+Same certificate data, randomised adversary, randomised trace
+measure conclusion.  The proof routes through the measure-generic
+core `FairASTCertificate.partition_almostDiamond_fair_on` (in
+`Liveness.lean`) plus the inductive randomised-Box lift
+`AlmostBoxRandomised_of_inductive` for the invariant.
+
+Closes the termination half of caveat **C5** (MODEL_NOTES §11.5):
+together with PR #41 / PR #46 / PR #47 / PR #49, AVSS theorems can
+now quantify over arbitrary randomised adversaries for all four
+classical properties (correctness, commitment, secrecy, termination). -/
+theorem sound {spec : ProbActionSpec σ ι} {F : FairnessAssumptions σ ι}
+    {terminated : σ → Prop}
+    (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, cert.Inv s)
+    (R : RandomisedTrajectoryFairAdversary spec F μ₀)
+    (h_U_mono : FairASTCertificate.RandomisedTrajectoryUMono
+        cert μ₀ R.toRandomised)
+    (h_U_strict : ∀ N : ℕ,
+        FairASTCertificate.RandomisedTrajectoryFairStrictDecrease
+          cert μ₀ R.toRandomised N) :
+    AlmostDiamondRandomised spec R.toRandomised μ₀ terminated := by
+  unfold AlmostDiamondRandomised
+  have hbox_inv : AlmostBoxRandomised spec R.toRandomised μ₀ cert.Inv :=
+    AlmostBoxRandomised_of_inductive cert.Inv
+      (fun i s h hInv s' hs' => cert.inv_step i s h hInv s' hs')
+      μ₀ h_init R.toRandomised
+  unfold AlmostBoxRandomised at hbox_inv
+  exact FairASTCertificate.partition_almostDiamond_fair_on cert
+    (randomisedTraceDist spec R.toRandomised μ₀) hbox_inv R.progress
+    h_U_mono h_U_strict
+
+end RandomisedFairASTCertificate
+
+end RandomisedFairAST
 
 end Leslie.Prob
