@@ -16,6 +16,7 @@ literature or when AVSS is used as a primitive for downstream protocols.
 | Aspect | Canetti–Rabin literature | This formalisation |
 |---|---|---|
 | Adversary information | Rushing — sees corrupt-coalition view + in-flight messages | **Two adversary types coexist**: plain `Adversary` (full-state access; legacy) and `RushingAdversary` (view-restricted; Phase 7.1, generic in `Adversary.lean`). The classical AVSS theorems are restated against both (Phase 7.3) |
+| Adversary *power* (what corrupt parties can do/observe) | Rushing adversary controls all corrupt-party messages and observes every honest broadcast on corrupt receivers | ⚠ **Strictly weaker.** Corrupt parties cannot send echoes/readys/amplify (C1); they never receive honest echoes/readys (C2); fairness does not require `dealerShare` (C3). See **§11** |
 | Static vs. adaptive corruption | Both treated; usually adaptive | Static (`corrupted` fixed at `μ₀` time) |
 | Dealer-to-party communication | Per-party row + column polys, possibly inconsistent under corrupt dealer | Single global `s.coeffs` field; consistent by construction |
 | Dealer's distribution choice | Honest = uniform of bidegree ≤ (t,t) with `f(0,0) = sec`; corrupt = adversarial | **`Polynomial.uniformBivariateWithFixedZero` is degenerate** — fixes all axis coefficients to 0, not just `f(0,0)`. Honest output equals `sec` directly (every share is `sec`), and corrupt-party row poly's constant term is `sec`. See §10 below |
@@ -104,13 +105,20 @@ Two practical consequences for downstream reasoning:
    `avss_secrecy_AS_view` (PR #33) and its joint marginalisation with
    the schedule.
 
-2. **`RushingAdversary` strictly restricts adversary information.**
-   Under a `RushingAdversary R`, the adversary's strategy is — by
-   construction — a function only of the view-history
+2. **`RushingAdversary` strictly restricts adversary information,
+   but is also message-restricted and reception-restricted relative
+   to CR.**  Under a `RushingAdversary R`, the adversary's strategy
+   is — by construction — a function only of the view-history
    `(R.view of state, action)`-pairs.  It *cannot* branch on
    `s.coeffs`, on honest parties' internal state outside the view, or
    on anything else outside `corr → AVSSLocalState`.  This is the
-   literature-standard rushing adversary.
+   information half of the literature-standard rushing adversary.
+
+   ⚠ The *capability* half is **strictly weaker than CR's**: in this
+   model corrupt parties cannot send echoes/readys/amplify (C1) and
+   never receive honest echoes/readys (C2).  See **§11** below for
+   the full statement of these restrictions and their operational
+   implication for the secrecy claim.
 
 3. **The classical AVSS theorems re-prove against `RushingAdversary`.**
    `avss_termination_AS_fair_rushing`, `avss_correctness_AS_rushing`,
@@ -288,6 +296,13 @@ corrupt party that runs `partyCorruptDeliver`.
 The upshot: until §10 lands, **the only meaningful trace-level secrecy
 statement we have is at the algebraic grid view, not the operational
 local-state view**.
+
+(Phase 7.7 has now landed §10's distribution refactor, so the
+operational view-secrecy theorem `avss_secrecy_AS_view_rushing` does
+hold.  But its rushing adversary is the *view-restricted, message-
+restricted, reception-restricted* one of §11 — see **§11** for what
+that means concretely and why a literature-faithful version is still
+Phase 8 territory.)
 
 ## 5. Network model
 
@@ -761,6 +776,186 @@ distribution refactor; the parallel-additive path was chosen
 and `AVSSAbstract.lean` (off-limits) continue to consume the
 axis-zero variant unchanged.
 
+## 11. Adversary-power restrictions (relative to CR '93)
+
+§1 documents the *information* the rushing adversary may use (a
+projection of the state).  This section documents three orthogonal
+restrictions on what the adversary can *do* and *observe* in this
+state model.  They are not bugs in the formalisation — every theorem
+is sound about the model it speaks of — but they weaken the implicit
+adversary relative to Canetti–Rabin '93, and a reader who cites the
+formalised secrecy / commitment / termination theorems without
+consulting them risks overclaiming.
+
+The shorthand C1, C2, C3 is used in theorem docstrings
+(`avss_secrecy_AS_view_rushing`, `avss_correctness_AS`,
+`avss_commitment_AS`, `avss_termination_AS_fair`) when pointing at
+this section.
+
+### 11.1. C1 — Corrupt parties cannot send echoes/readys/amplify
+
+Every send-action's gate has `p ∉ s.corrupted` (see
+`Leslie/Examples/Prob/AVSS.lean`):
+
+  * `partyEchoSend p` (gate, line ~401–403): `p ∉ s.corrupted`.
+  * `partyReady p` (gate, line ~407–410): `p ∉ s.corrupted`.
+  * `partyAmplify p` (gate, line ~411–414): `p ∉ s.corrupted`.
+
+Consequence: in this model, corrupt parties' only protocol-relevant
+action is `partyCorruptDeliver` (passively receive their row poly
+from the dealer).  They cannot inject echoes, fake readys, equivocate,
+or amplify — every protocol message they would emit is gate-blocked.
+
+In CR '93 the rushing adversary controls *what* corrupt parties send,
+including malformed and adversarially-timed messages designed to
+manipulate honest threshold counts (e.g., racing an echo so that an
+honest party's `echoesReceived` reaches `n − t` from a corrupt-only
+quorum).
+
+**Implication.**
+
+  * For *termination/correctness/commitment*, this makes the
+    formalised theorems strictly stronger than the literature: the
+    adversary has fewer disruption options, so any property proved
+    holds against a (proper) restriction of the CR adversary.
+  * For *secrecy*, the implication runs the other way: a proof of
+    secrecy in this model is against a *strictly weaker* adversary
+    than CR's, so it does **not** directly imply CR-rushing secrecy.
+
+**Bridge to literature.**  Phase 8 (per-party dealer messages and
+adversary-controlled corrupt-party send schedule) replaces these
+gates with adversary-chosen send actions subject to message-format
+verifiability.
+
+### 11.2. C2 — Honest echoes/readys are addressed only to honest receivers
+
+`partyEchoSend p`'s effect (around line 348 of `AVSS.lean`) populates
+`inflightEchoes` only with `(p, q)` for `q ∉ s.corrupted` (the
+`Finset.filter` excludes corrupt receivers).  The receive gates
+`partyEchoReceive p q` and `partyReceiveReady p q` additionally
+require `p ∉ s.corrupted`.  Symmetrically for `partyReady`.
+
+Consequence: no honest-to-corrupt echo or ready is ever in transit,
+and corrupt parties never receive any echo or ready from honest
+parties.  Their `(s.local_ p).echoesReceived` and `readyReceived`
+fields remain empty throughout every reachable trace.
+
+In CR '93, honest broadcasts are point-to-point messages that go to
+*every* party including corrupt ones.  The corrupt-coalition view in
+CR therefore includes "I have received an echo from honest p" /
+"honest q has readied" — which is a real information channel that
+the adversary can use both to learn about honest progress and to
+correlate scheduling decisions.
+
+**Implication.**  Combined with C1, the corrupt-coalition view in
+this model essentially reduces to:
+
+> for each corrupt `p`, has `partyCorruptDeliver` fired? if so, here
+> is `rowPolyOfDealer s.partyPoint s.coeffs p`.
+
+That is a much smaller view than CR's.  This is why
+`avss_secrecy_AS_view_rushing`'s rushing adversary, while
+view-restricted in the §1 sense, still carries the qualifier "under
+the AVSS state model" — the model has carved out the operational
+channels through which a CR-rushing adversary would observe honest
+broadcasts on corrupt receivers.
+
+**Bridge to literature.**  Same as C1: Phase 8's per-party messages
+refactor closes both C1 and C2 simultaneously by giving the adversary
+full delivery scheduling on every honest message including those
+addressed to corrupt receivers.
+
+### 11.3. C3 — `dealerShare` is not in `avssFairActions`
+
+`avssFairActions` (definition at `AVSS.lean` line ~568) explicitly
+lists only honest-party receive/send/output actions:
+
+```
+def avssFairActions : Set (AVSSAction n F) :=
+  { a | match a with
+        | .partyDeliver _ | .partyEchoSend _ | .partyEchoReceive _ _
+        | .partyReady _ | .partyAmplify _ | .partyReceiveReady _ _
+        | .partyOutput _ => True
+        | _ => False }
+```
+
+`dealerShare` and `partyCorruptDeliver` fall into the catch-all
+`_ => False` and are not fair-required.
+
+Consequence: a "fair adversary" in this model is *not required* to
+ever fire `dealerShare`.  A stalling adversary that never fires it
+keeps `s.dealerSent = false` forever; every fair action's gate then
+fails (`partyDeliver` requires `s.dealerSent = true`); no honest
+party outputs; `terminated` is unreachable.
+
+The termination theorem (`avss_termination_AS_fair`) is still
+logically sound — for such a stalling adversary, the user-supplied
+`h_U_mono` / `h_U_strict` certificate witnesses *cannot be
+discharged*, so the theorem holds vacuously for that input.  But the
+theorem carries no operational content in that case.  A naive reader
+might infer "the formalised model implies an honest dealer's
+protocol always terminates"; the precise statement is "the protocol
+terminates *if the adversary eventually fires `dealerShare` and the
+fair-progress certificate is dischargeable*".
+
+In CR '93 an honest dealer broadcasts by definition (the dealer's
+share-out step is part of the protocol script, not the adversary's
+schedule).
+
+**Bridge to literature.**  Two clean fixes:
+
+  1. **Phase B (small):** add the hypothesis "honest dealer ⇒
+     `dealerShare` eventually fires" at the call site of
+     `avss_termination_AS_fair` (a stutter-free trace condition or a
+     fairness side-condition outside `avssFair`).
+  2. **Phase B alt:** fold `dealerShare` into `avssFairActions` (so
+     fair scheduling guarantees it fires).  Slightly tighter: the
+     resulting `avssFair` then enforces "dealer eventually shares"
+     for every adversary, so honest-dealer termination is genuinely
+     unconditional.
+
+Either fix is local; neither requires changes to the cryptographic
+content.  The Phase A docs commit (this PR's docs commit) flags the
+issue; a follow-on Phase B commit will adjust the model.
+
+### 11.4. Correctness/commitment subtlety (per-party share, not the secret)
+
+This is not strictly an *adversary-power* restriction — it's a
+restatement subtlety that affects how readers should interpret the
+correctness and commitment theorems.
+
+`avss_correctness_AS` concludes
+
+```
+v = bivEval s.coeffs (s.partyPoint p) 0
+```
+
+for every honest party `p` with output `v` — i.e., each honest party
+outputs its **per-party share** `f_p(0)`, **not the secret**
+`s.coeffs 0 0`.  This is consistent with CR-style AVSS where outputs
+are *shares* and reconstruction is a separate phase, but readers who
+expect the colloquial "honest dealer ⇒ honest outputs equal `sec`"
+will be surprised: that holds only after `avss_reconstruction`'s
+Lagrange step (any `t + 1` distinct honest shares interpolate at `0`
+to recover `s.coeffs 0 0`).
+
+`avss_commitment_AS` is similarly "every honest output is
+`bivEval coeffs (partyPoint p) 0`" — strong enough (combined with
+`avss_reconstruction`) to imply the literature's "any `t + 1` honest
+outputs Lagrange-interpolate to one secret", but the model's
+commitment is structurally trivial because there is only one
+`s.coeffs` field in the state (already disclosed in §2).
+
+**Bridge to literature.**  The Lagrange step is already formalised
+(`avss_reconstruction`); composing it with `avss_correctness_AS`
+gives the user-facing "honest dealer ⇒ recovered secret = `sec`"
+property at any committee of `t + 1` honest parties.  The
+*genuinely-harder* commitment property — "the corrupt dealer cannot
+fool honest parties into outputting values inconsistent with any
+single bivariate polynomial" — is structural in this model (one
+global `s.coeffs`) and recovered properly only under Phase 8's
+per-party dealer messages.
+
 ## Future directions
 
 The honest path to a literature-faithful AVSS — what we'd call a "Phase B+"
@@ -872,6 +1067,13 @@ When citing the formalisation in a paper or report, the precise claim is:
 > adversary, completing the literature-faithful operational secrecy
 > theorem.  The dealer's bivariate polynomial is modeled as a single
 > global field rather than per-party messages, so the formalised
-> commitment theorem is in an abstracted form.  See
+> commitment theorem is in an abstracted form.  ⚠ The formalised
+> rushing adversary is **strictly weaker than CR '93's rushing
+> adversary**: corrupt parties cannot send echoes/readys/amplify (C1),
+> never receive honest echoes/readys (C2), and `dealerShare` is not
+> fair-required (C3) — see §11.  Citers of `avss_secrecy_AS_view_rushing`
+> in particular should note that secrecy *here* does not directly imply
+> secrecy against a CR rushing adversary that controls corrupt-party
+> messages; closing that gap is Phase 8 territory.  See
 > `Leslie/Examples/Prob/AVSS-MODEL-NOTES.md` for the full abstraction
 > inventory and pointers to the remaining literature-faithful refactor.
