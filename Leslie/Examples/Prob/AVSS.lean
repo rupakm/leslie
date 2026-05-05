@@ -73,6 +73,7 @@ roadmap (Phases 6–8).
 import Leslie.Examples.Prob.BivariateShamir
 import Leslie.Prob.Action
 import Leslie.Prob.Adversary
+import Leslie.Prob.DeterministicSimulate
 import Leslie.Prob.Liveness
 import Leslie.Prob.PMF
 import Leslie.Prob.Polynomial
@@ -5429,6 +5430,30 @@ section RushingSimulation
 open Classical
 open scoped ProbabilityTheory
 
+/-! ### Phase 10.3 — AVSS as a `DeterministicProbActionSpec`
+
+`avssDeterministic sec corr` packages AVSS's `(init, gate, step)`
+triple as a `DeterministicProbActionSpec`.  The adapter
+`toProbActionSpec` recovers `avssSpec sec corr` definitionally, so
+the AE-bridge meta-theorem `Leslie.Prob.traceDist_AE_eq_simulateTrace`
+can be applied directly to AVSS's trace distribution.  See PRs #42, #44
+for the generic data + meta-theorem this builds on. -/
+
+/-- AVSS as a `DeterministicProbActionSpec`. The data triple
+`(init, gate, step)` matches `avssSpec`'s shape verbatim. -/
+def avssDeterministic (sec : F) (corr : Finset (Fin n)) :
+    Leslie.Prob.DeterministicProbActionSpec
+      (AVSSState n t F) (AVSSAction n F) where
+  init := initPred sec corr
+  gate := actionGate
+  step := avssStep
+
+omit [Fintype F] in
+@[simp] theorem avssDeterministic_toProbActionSpec
+    (sec : F) (corr : Finset (Fin n)) :
+    (avssDeterministic (t := t) sec corr).toProbActionSpec
+      = avssSpec (t := t) sec corr := rfl
+
 /-- Compute the next trace pair given a prior reverse-order prefix list.
 Used as the inductive step of `avssSimulateRev`.  If the prefix is
 empty (unreachable in our recursion), returns the input fallback. -/
@@ -5518,364 +5543,90 @@ theorem avssSimulateRev_head_eq {corr : Finset (Fin n)}
   | nil => exact absurd h (avssSimulateRev_ne_nil R s_0 k)
   | cons x xs => simp
 
-/-- Index-form characterisation of `avssSimulateRev` reversed:
-the reverse of the reverse-order prefix list at step `k` equals
-`List.ofFn (fun i : Fin (k+1) => avssSimulateTrace R s_0 i.val)`.
+/-! ### Phase 10.3 — projection-rfls + bridge to the generic simulate machinery
 
-This is the structural identity that lets us match `FinPrefix.toList`
-(also a `List.ofFn` / `List.finRange.map`) with the simulate prefix
-when proving the inductive step in §19.2.4 below. -/
-theorem avssSimulateRev_reverse_eq_ofFn {corr : Finset (Fin n)}
+The AVSS-specific `avssSimulate*` definitions agree definitionally with
+`Leslie.Prob.simulate*` instantiated at `avssDeterministic sec corr`,
+since the bodies share the same `(gate, step, schedule)` triple.  But
+Lean's kernel `defEq` does not always unfold structure projections on
+`avssDeterministic` calls, so we provide explicit `@[simp]` projection
+lemmas plus inductive bridge equalities. -/
+
+omit [Fintype F] in
+@[simp] theorem avssDeterministic_init (sec : F) (corr : Finset (Fin n)) :
+    (avssDeterministic (t := t) sec corr).init = initPred sec corr := rfl
+
+omit [Fintype F] in
+@[simp] theorem avssDeterministic_gate (sec : F) (corr : Finset (Fin n)) :
+    (avssDeterministic (t := t) sec corr).gate = actionGate := rfl
+
+omit [Fintype F] in
+@[simp] theorem avssDeterministic_step (sec : F) (corr : Finset (Fin n)) :
+    (avssDeterministic (t := t) sec corr).step = avssStep := rfl
+
+theorem avssSimulateNext_eq_simulateNext
+    (sec : F) {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (fallback : AVSSState n t F)
+    (prev : List (AVSSState n t F × Option (AVSSAction n F))) :
+    avssSimulateNext R fallback prev =
+      Leslie.Prob.simulateNext (avssDeterministic (t := t) sec corr)
+        R.toAdversary fallback prev := by
+  unfold avssSimulateNext Leslie.Prob.simulateNext
+  simp only [avssDeterministic_gate, avssDeterministic_step]
+  rcases (RushingAdversary.toAdversary R).schedule prev.reverse with _ | i
+  · rfl
+  · rfl
+
+theorem avssSimulateRev_eq_simulateRev
+    (sec : F) {corr : Finset (Fin n)}
     (R : AVSSRushingAdversary n t F corr)
     (s_0 : AVSSState n t F) (k : ℕ) :
-    (avssSimulateRev R s_0 k).reverse =
-      List.ofFn (fun i : Fin (k+1) => avssSimulateTrace R s_0 i.val) := by
+    avssSimulateRev R s_0 k =
+      Leslie.Prob.simulateRev (avssDeterministic (t := t) sec corr)
+        R.toAdversary s_0 k := by
   induction k with
-  | zero =>
-    show ([(s_0, (none : Option (AVSSAction n F)))]).reverse =
-        List.ofFn (fun i : Fin 1 => avssSimulateTrace R s_0 i.val)
-    rw [List.reverse_singleton]
-    rw [List.ofFn_succ]
-    simp [avssSimulateTrace_zero]
+  | zero => rfl
   | succ k ih =>
-    show (avssSimulateNext R s_0 (avssSimulateRev R s_0 k) ::
-            avssSimulateRev R s_0 k).reverse =
-        List.ofFn (fun i : Fin (k+2) => avssSimulateTrace R s_0 i.val)
-    rw [List.reverse_cons, ih]
-    -- Expand the RHS via `List.ofFn_succ'` (only).
-    conv_rhs => rw [List.ofFn_succ', List.concat_eq_append]
-    -- Both sides now have shape `List.ofFn (... Fin (k+1) ...) ++ [last]`.
-    -- The two `List.ofFn` parts agree because `(Fin.castSucc i).val = i.val` is rfl.
-    have hsim_last : avssSimulateNext R s_0 (avssSimulateRev R s_0 k) =
-        avssSimulateTrace R s_0 (Fin.last (k+1)).val := by
-      show avssSimulateNext R s_0 (avssSimulateRev R s_0 k) =
-          avssSimulateTrace R s_0 (k+1)
-      exact (avssSimulateTrace_succ_eq R s_0 k).symm
-    rw [hsim_last]
+    show avssSimulateNext R s_0 (avssSimulateRev R s_0 k) ::
+          avssSimulateRev R s_0 k = _
+    rw [ih, avssSimulateNext_eq_simulateNext sec]
     rfl
+
+theorem avssSimulateTrace_eq_simulateTrace
+    (sec : F) {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) (k : ℕ) :
+    avssSimulateTrace R s_0 k =
+      Leslie.Prob.simulateTrace (avssDeterministic (t := t) sec corr)
+        R.toAdversary s_0 k := by
+  unfold avssSimulateTrace Leslie.Prob.simulateTrace
+  rw [avssSimulateRev_eq_simulateRev sec]
+  -- Match-on-equal-list: split on the list value to close.
+  rcases h : Leslie.Prob.simulateRev
+      (avssDeterministic (t := t) sec corr) R.toAdversary s_0 k with _ | x
+  · rfl
+  · rfl
 
 /-! ## §19.2.4. Phase 7.4 — inductive AE-bridge: trace AE-equals simulate
 
-Under a `RushingAdversary` `R`, every step's effect-PMF is a Dirac
-(`PMF.pure (avssStep i s)`) and the schedule is a deterministic
-function of the view-history.  Both branches of `stepKernel` therefore
-emit a Dirac measure, so the entire trace is AE-equal to the
-deterministic `avssSimulateTrace R (ω 0).1` driven from the initial
-state.
+Under any `Adversary A`, AVSS's trace is fully deterministic given the
+initial state: each step's effect-PMF is a Dirac (`PMF.pure (avssStep
+i s)`).  The headline `traceDist_AE_eq_avssSimulateTrace` is therefore
+an immediate instantiation of the generic meta-theorem
+`Leslie.Prob.traceDist_AE_eq_simulateTrace` (PR #44) at
+`avssDeterministic sec corr`.
 
-The inductive-step structure mirrors PR #32's per-coordinate AE
-identities (`traceDist_partyPoint_AE_eq_init`,
-`traceDist_coeffs_AE_eq_init`, `traceDist_corrupted_AE_eq_init`):
-the marginal recurrence
-`Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`
-reduces the step-`(k+1)` AE statement to a per-prefix kernel AE
-statement, which in the rushing-adversary case identifies the kernel's
-Dirac point with the simulate's `avssSimulateNext`.
+Phase 10.3 collapsed the original ~330-LOC inductive proof chain
+(`avssSpec_R_stepKernel_AE_simulate`,
+`traceDist_step_zero_pair_marginal`, `traceDist_step_zero_snd_AE`,
+`traceDist_AE_eq_avssSimulateTrace_strong`,
+`avssSimulateRev_reverse_eq_ofFn`) to a one-line application of the
+meta-theorem.  See `Leslie/Prob/DeterministicSimulate.lean` for the
+generic form. -/
 
-A strong inductive form `traceDist_AE_eq_avssSimulateTrace_strong`
-matches the entire prefix at every step (needed because
-`R.toAdversary.schedule` consults `h.toList` — the whole prefix —
-not just `h.currentState`).  The public form
-`traceDist_AE_eq_avssSimulateTrace` extracts the `i = k` instance. -/
-
-/-- Per-prefix kernel AE-bridge: under a `RushingAdversary` `R`, the
-step kernel at index `k` over a prefix `h` puts AE-mass on the
-simulate's next step at `(h ⟨0⟩).1` — provided the prefix matches the
-simulate up to step `k`.
-
-This is the per-history component of the inductive step in
-`traceDist_AE_eq_avssSimulateTrace_strong` below.  The proof branches
-on the schedule and gate exactly as in `avssSpec_stepKernel_*_AE`
-(PR #32) but identifies the Dirac point with `avssSimulateNext`. -/
-private theorem avssSpec_R_stepKernel_AE_simulate {sec : F}
-    {corr : Finset (Fin n)}
-    (R : AVSSRushingAdversary n t F corr) (k : ℕ)
-    (h : FinPrefix (AVSSState n t F) (AVSSAction n F) k) :
-    ∀ᵐ y ∂(stepKernel (avssSpec (t := t) sec corr) R.toAdversary k h),
-        (∀ i (hi : i ≤ k),
-            h ⟨i, Finset.mem_Iic.mpr hi⟩ =
-              avssSimulateTrace R
-                (h ⟨0, Finset.mem_Iic.mpr (Nat.zero_le k)⟩).1 i) →
-        y =
-          avssSimulateTrace R
-            (h ⟨0, Finset.mem_Iic.mpr (Nat.zero_le k)⟩).1 (k+1) := by
-  classical
-  set s_0 : AVSSState n t F :=
-    (h ⟨0, Finset.mem_Iic.mpr (Nat.zero_le k)⟩).1 with hs0
-  -- Under hQ (prefix matches simulate), h.toList = (simRev R s_0 k).reverse and
-  -- h.currentState = (simulateTrace R s_0 k).1.  These two equalities reduce
-  -- the kernel computation to `avssSimulateNext`.
-  have h_pred_consequences :
-      (∀ i (hi : i ≤ k),
-          h ⟨i, Finset.mem_Iic.mpr hi⟩ = avssSimulateTrace R s_0 i) →
-      h.toList = (avssSimulateRev R s_0 k).reverse ∧
-        h.currentState = (avssSimulateTrace R s_0 k).1 := by
-    intro hQ
-    refine ⟨?_, ?_⟩
-    · -- `h.toList = (List.finRange (k+1)).map _`, and
-      -- `(simRev R s_0 k).reverse = List.ofFn _`.  Match via per-index equality.
-      unfold FinPrefix.toList
-      rw [avssSimulateRev_reverse_eq_ofFn, List.ofFn_eq_map]
-      apply List.map_congr_left
-      intro i _
-      exact hQ i.val (by have := i.isLt; omega)
-    · unfold FinPrefix.currentState
-      exact congrArg Prod.fst (hQ k le_rfl)
-  -- Branch on the kernel structure.  Both branches yield a Dirac measure.
-  unfold stepKernel
-  simp only [ProbabilityTheory.Kernel.ofFunOfCountable,
-    ProbabilityTheory.Kernel.coe_mk]
-  have hPset : MeasurableSet
-      {y : AVSSState n t F × Option (AVSSAction n F) |
-        (∀ i (hi : i ≤ k),
-            h ⟨i, Finset.mem_Iic.mpr hi⟩ = avssSimulateTrace R s_0 i) →
-        y = avssSimulateTrace R s_0 (k+1)} :=
-    MeasurableSet.of_discrete
-  rcases hsched : R.toAdversary.schedule h.toList with _ | i
-  · -- Schedule says `none`: kernel = `Dirac (h.currentState, none)`.
-    rw [ae_dirac_iff hPset]
-    intro hQ
-    obtain ⟨h_toList, h_curr⟩ := h_pred_consequences hQ
-    -- Compute the simulate's (k+1)-th step.
-    rw [avssSimulateTrace_succ_eq]
-    unfold avssSimulateNext
-    -- The inner `match` evaluates using `R.toAdversary.schedule
-    -- (avssSimulateRev R s_0 k).reverse = R.toAdversary.schedule h.toList = none`.
-    have h_sched_simRev : R.toAdversary.schedule
-        (avssSimulateRev R s_0 k).reverse = none := by
-      rw [← h_toList]; exact hsched
-    rw [h_sched_simRev]
-    -- Goal: (h.currentState, none) =
-    -- (((simRev R s_0 k).head?.map Prod.fst).getD s_0, none).
-    have h_head := avssSimulateRev_head_eq R s_0 k
-    show (h.currentState, _) =
-        (((avssSimulateRev R s_0 k).head?.map Prod.fst).getD s_0, _)
-    rw [h_head, Option.getD_some, h_curr]
-  · -- Schedule says `some i`: branch on the gate at `h.currentState`.
-    by_cases hgate : ((avssSpec (t := t) sec corr).actions i).gate h.currentState
-    · -- Gate-pass: pure-Dirac kernel applies `avssStep i`.
-      simp only [hgate, dite_true]
-      rw [show ((avssSpec (t := t) sec corr).actions i).effect h.currentState hgate
-            = PMF.pure (avssStep i h.currentState) from rfl,
-          PMF.toMeasure_pure, Measure.map_dirac (by fun_prop), ae_dirac_iff hPset]
-      intro hQ
-      obtain ⟨h_toList, h_curr⟩ := h_pred_consequences hQ
-      rw [avssSimulateTrace_succ_eq]
-      unfold avssSimulateNext
-      have h_sched_simRev : R.toAdversary.schedule
-          (avssSimulateRev R s_0 k).reverse = some i := by
-        rw [← h_toList]; exact hsched
-      rw [h_sched_simRev]
-      have h_head := avssSimulateRev_head_eq R s_0 k
-      -- Compute `let s_k := head; if actionGate i s_k then ...`.
-      -- `((spec).actions i).gate = actionGate i` is definitional, so
-      -- `hgate : actionGate i h.currentState`.
-      have hgate_curr : actionGate i h.currentState := hgate
-      have hgate_simRev : actionGate i
-          (((avssSimulateRev R s_0 k).head?.map Prod.fst).getD s_0) := by
-        rw [h_head, Option.getD_some, ← h_curr]; exact hgate_curr
-      show (avssStep i h.currentState, some i) =
-          (let s_k := ((avssSimulateRev R s_0 k).head?.map Prod.fst).getD s_0
-           if actionGate i s_k then (avssStep i s_k, some i)
-           else (s_k, (none : Option (AVSSAction n F))))
-      simp only [if_pos hgate_simRev]
-      rw [h_head, Option.getD_some, ← h_curr]
-    · -- Gate-fail stutter: kernel = `Dirac (h.currentState, none)`.
-      simp only [hgate, dite_false, ae_dirac_iff hPset]
-      intro hQ
-      obtain ⟨h_toList, h_curr⟩ := h_pred_consequences hQ
-      rw [avssSimulateTrace_succ_eq]
-      unfold avssSimulateNext
-      have h_sched_simRev : R.toAdversary.schedule
-          (avssSimulateRev R s_0 k).reverse = some i := by
-        rw [← h_toList]; exact hsched
-      rw [h_sched_simRev]
-      have h_head := avssSimulateRev_head_eq R s_0 k
-      have hgate_curr : ¬ actionGate i h.currentState := hgate
-      have hgate_simRev : ¬ actionGate i
-          (((avssSimulateRev R s_0 k).head?.map Prod.fst).getD s_0) := by
-        rw [h_head, Option.getD_some, ← h_curr]; exact hgate_curr
-      show (h.currentState, _) =
-          (let s_k := ((avssSimulateRev R s_0 k).head?.map Prod.fst).getD s_0
-           if actionGate i s_k then (avssStep i s_k, some i)
-           else (s_k, (none : Option (AVSSAction n F))))
-      simp only [if_neg hgate_simRev]
-      rw [h_head, Option.getD_some, h_curr]
-
-/-- The pair-form step-0 marginal of `traceDist`: projecting the
-trace at step `0` to the full `(state, action)` pair recovers the
-initial measure paired with `none`.  Mirrors
-`traceDist_step_zero_state_marginal` (PR #32) but keeps the action
-component (always `none` at step 0). -/
-theorem traceDist_step_zero_pair_marginal
-    (sec : F) (corr : Finset (Fin n))
-    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
-    (A : Adversary (AVSSState n t F) (AVSSAction n F)) :
-    (traceDist (avssSpec (t := t) sec corr) A μ₀).map
-        (fun ω => ω 0) =
-      μ₀.map (fun s => (s, (none : Option (AVSSAction n F)))) := by
-  classical
-  unfold traceDist
-  set μ₀_full : Measure (AVSSState n t F × Option (AVSSAction n F)) :=
-    μ₀.map (fun s => (s, (none : Option (AVSSAction n F))))
-    with hμ₀_full_def
-  haveI : IsProbabilityMeasure μ₀_full :=
-    Measure.isProbabilityMeasure_map (by fun_prop)
-  -- Step-0 marginal of `Kernel.trajMeasure`.
-  unfold ProbabilityTheory.Kernel.trajMeasure
-  have hmeas_eval0 : Measurable
-      (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) => ω 0) :=
-    measurable_pi_apply 0
-  rw [Measure.map_comp _ _ hmeas_eval0]
-  have hfact : (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
-          ω 0) =
-      (fun y : Π _ : Finset.Iic 0,
-          AVSSState n t F × Option (AVSSAction n F) =>
-            y ⟨0, by simp⟩) ∘
-        (Preorder.frestrictLe 0) := by
-    funext _; rfl
-  have hmeas_pia : Measurable
-      (fun y : Π _ : Finset.Iic 0,
-            AVSSState n t F × Option (AVSSAction n F) =>
-          y ⟨0, by simp⟩) :=
-    measurable_pi_apply _
-  have hmeas_fl0 : Measurable
-      (Preorder.frestrictLe
-        (π := fun _ : ℕ => AVSSState n t F × Option (AVSSAction n F)) 0) :=
-    Preorder.measurable_frestrictLe _
-  have hmeas_fl2 : Measurable
-      (Preorder.frestrictLe₂
-        (π := fun _ : ℕ => AVSSState n t F × Option (AVSSAction n F))
-        (le_refl 0)) :=
-    Preorder.measurable_frestrictLe₂ _
-  have hcomp : Measurable
-      ((fun y : Π _ : Finset.Iic 0,
-            AVSSState n t F × Option (AVSSAction n F) =>
-          y ⟨0, by simp⟩) ∘
-        Preorder.frestrictLe₂
-          (π := fun _ : ℕ => AVSSState n t F × Option (AVSSAction n F))
-          (le_refl 0)) :=
-    hmeas_pia.comp hmeas_fl2
-  rw [hfact, ProbabilityTheory.Kernel.map_comp_right _ hmeas_fl0 hmeas_pia,
-      ProbabilityTheory.Kernel.traj_map_frestrictLe_of_le (le_refl 0)]
-  rw [ProbabilityTheory.Kernel.deterministic_map hmeas_fl2 hmeas_pia]
-  rw [Measure.deterministic_comp_eq_map hcomp]
-  rw [Measure.map_map hcomp (by fun_prop)]
-  convert Measure.map_id (μ := μ₀_full)
-
-/-- AE-base: the action component of step `0` of any `traceDist` is
-`none`.  Pulls back `traceDist_step_zero_pair_marginal` through the
-`Prod.snd` projection. -/
-theorem traceDist_step_zero_snd_AE
-    (sec : F) (corr : Finset (Fin n))
-    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
-    (A : Adversary (AVSSState n t F) (AVSSAction n F)) :
-    ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
-        (ω 0).2 = (none : Option (AVSSAction n F)) := by
-  classical
-  have hmarg := traceDist_step_zero_pair_marginal (t := t) sec corr μ₀ A
-  have hmeas_eval0 : Measurable
-      (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) => ω 0) :=
-    measurable_pi_apply 0
-  -- AE on the pair-marginal: every `(s, none)` has snd = none.
-  have hAE_full :
-      ∀ᵐ x ∂(μ₀.map (fun s : AVSSState n t F =>
-        (s, (none : Option (AVSSAction n F))))),
-        x.2 = none := by
-    rw [ae_map_iff (by fun_prop) MeasurableSet.of_discrete]
-    exact Filter.Eventually.of_forall fun _ => rfl
-  -- Pull back through the trace-marginal identity.
-  rw [← hmarg, ae_map_iff hmeas_eval0.aemeasurable
-    MeasurableSet.of_discrete] at hAE_full
-  exact hAE_full
-
-/-- Strong-form inductive AE-bridge: under a `RushingAdversary` `R`,
-the prefix `(ω 0..k)` of any `traceDist` trace AE-matches the simulate's
-prefix `avssSimulateTrace R (ω 0).1 i` for every `i ≤ k`.
-
-Strong because the schedule at every step depends on the *full*
-prefix-history (via `R.toAdversary.schedule h.toList`), so a per-step
-inductive step needs the matching to hold over the entire prefix. -/
-private theorem traceDist_AE_eq_avssSimulateTrace_strong
-    (sec : F) (corr : Finset (Fin n))
-    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
-    (R : AVSSRushingAdversary n t F corr) (k : ℕ) :
-    ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀),
-        ∀ i, i ≤ k → ω i = avssSimulateTrace R (ω 0).1 i := by
-  classical
-  induction k with
-  | zero =>
-    have h0 := traceDist_step_zero_snd_AE (t := t) sec corr μ₀ R.toAdversary
-    filter_upwards [h0] with ω hω i hi
-    interval_cases i
-    rw [avssSimulateTrace_zero]
-    exact Prod.ext rfl hω
-  | succ k ih =>
-    -- Suffices: ∀ᵐ ω, ω (k+1) = sim (k+1)  AND  IH (∀ i ≤ k, ω i = sim i).
-    -- Combine the IH AE with a single-step AE conditional on the IH.
-    suffices hone_step :
-        ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀),
-          (∀ i, i ≤ k → ω i = avssSimulateTrace R (ω 0).1 i) →
-            ω (k+1) = avssSimulateTrace R (ω 0).1 (k+1) by
-      filter_upwards [ih, hone_step] with ω h_ih h_step i hi
-      rcases Nat.lt_or_ge i (k+1) with h_lt | h_ge
-      · exact h_ih i (by omega)
-      · have hi_eq : i = k + 1 := by omega
-        subst hi_eq
-        exact h_step h_ih
-    -- Marginal recurrence: pull (frestrictLe k ω, ω (k+1)) marginal.
-    have hmeas_pair : Measurable
-        (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
-          (Preorder.frestrictLe k ω, ω (k+1))) := by fun_prop
-    haveI : IsProbabilityMeasure
-        (μ₀.map (fun s : AVSSState n t F => (s, (none : Option (AVSSAction n F))))) :=
-      Measure.isProbabilityMeasure_map (by fun_prop)
-    have hk :
-        ((traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀).map
-            (Preorder.frestrictLe k)) ⊗ₘ
-          (stepKernel (avssSpec (t := t) sec corr) R.toAdversary k) =
-        (traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀).map
-          (fun ω => (Preorder.frestrictLe k ω, ω (k+1))) := by
-      unfold traceDist
-      exact ProbabilityTheory.Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure
-    -- Per-prefix AE: under hQ, the kernel's Dirac point matches simulate.
-    have h_inner : ∀ᵐ h ∂((traceDist (avssSpec (t := t) sec corr)
-            R.toAdversary μ₀).map (Preorder.frestrictLe k)),
-        ∀ᵐ y ∂(stepKernel (avssSpec (t := t) sec corr) R.toAdversary k h),
-          (∀ i (hi : i ≤ k),
-              h ⟨i, Finset.mem_Iic.mpr hi⟩ =
-                avssSimulateTrace R
-                  (h ⟨0, Finset.mem_Iic.mpr (Nat.zero_le k)⟩).1 i) →
-          y =
-            avssSimulateTrace R
-              (h ⟨0, Finset.mem_Iic.mpr (Nat.zero_le k)⟩).1 (k+1) :=
-      Filter.Eventually.of_forall fun h =>
-        avssSpec_R_stepKernel_AE_simulate (t := t) (sec := sec) (corr := corr)
-          R k h
-    -- Lift to AE on the joint measure.
-    have hjoint :
-        ∀ᵐ x ∂(((traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀).map
-              (Preorder.frestrictLe k)) ⊗ₘ
-            (stepKernel (avssSpec (t := t) sec corr) R.toAdversary k)),
-          (∀ i (hi : i ≤ k),
-              x.1 ⟨i, Finset.mem_Iic.mpr hi⟩ =
-                avssSimulateTrace R
-                  (x.1 ⟨0, Finset.mem_Iic.mpr (Nat.zero_le k)⟩).1 i) →
-          x.2 =
-            avssSimulateTrace R
-              (x.1 ⟨0, Finset.mem_Iic.mpr (Nat.zero_le k)⟩).1 (k+1) :=
-      Measure.ae_compProd_of_ae_ae MeasurableSet.of_discrete h_inner
-    -- Transfer along hk and translate.
-    rw [hk] at hjoint
-    rw [ae_map_iff hmeas_pair.aemeasurable MeasurableSet.of_discrete] at hjoint
-    -- `(Preorder.frestrictLe k ω) ⟨i, _⟩ = ω i` is definitional.
-    filter_upwards [hjoint] with ω hω hpre
-    apply hω
-    intro i hi
-    exact hpre i hi
-
-/-- **Phase 7.4 inductive AE-bridge.** Under a `RushingAdversary` `R`,
-the trace at step `k` AE-equals `avssSimulateTrace R (ω 0).1 k` —
+/-- **Phase 7.4 inductive AE-bridge.** Under any `Adversary A`, the
+trace at step `k` AE-equals `avssSimulateTrace R (ω 0).1 k` —
 because every step's effect-PMF is a Dirac (`PMF.pure (avssStep i s)`)
 and the schedule is a deterministic function of the view-history.
 
@@ -5885,16 +5636,80 @@ algebraic-view AE invariance (in §19.2.5 below), it discharges the
 the operational-secrecy theorem
 `avss_secrecy_AS_view_rushing_via_init_invariant` (§19.4 below);
 in §19.4.5 this is composed with the row-poly secrecy lemma to give
-the fully unconditional headline `avss_secrecy_AS_view_rushing`. -/
+the fully unconditional headline `avss_secrecy_AS_view_rushing`.
+
+Phase 10.3: this is now a one-line instantiation of the generic
+meta-theorem `Leslie.Prob.traceDist_AE_eq_simulateTrace` (PR #44) at
+`avssDeterministic sec corr`.  Both `(avssDeterministic sec
+corr).toProbActionSpec = avssSpec sec corr` and `Leslie.Prob.simulateTrace
+(avssDeterministic sec corr) R.toAdversary s_0 k = avssSimulateTrace R
+s_0 k` hold definitionally (`rfl`-equal up to the irrelevant-for-trace
+`init` field), so the meta-theorem's conclusion matches the AVSS
+statement directly. -/
 theorem traceDist_AE_eq_avssSimulateTrace
     (sec : F) (corr : Finset (Fin n))
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
     (R : AVSSRushingAdversary n t F corr) (k : ℕ) :
     ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀),
         ω k = avssSimulateTrace R (ω 0).1 k := by
-  filter_upwards [traceDist_AE_eq_avssSimulateTrace_strong (t := t) sec corr μ₀ R k]
-    with ω hω
-  exact hω k le_rfl
+  have h := Leslie.Prob.traceDist_AE_eq_simulateTrace
+    (avssDeterministic (t := t) sec corr) R.toAdversary μ₀ k
+  rw [avssDeterministic_toProbActionSpec] at h
+  filter_upwards [h] with ω hω
+  rw [hω, avssSimulateTrace_eq_simulateTrace sec]
+
+/-- Strong-form inductive AE-bridge: the prefix `(ω 0..k)` of any
+`traceDist` trace AE-matches the simulate's prefix `avssSimulateTrace R
+(ω 0).1 i` for every `i ≤ k`.
+
+Strong because `R.toAdversary.schedule` at every step depends on the
+full prefix-history, so a per-step inductive step needs the matching
+to hold over the entire prefix.  Used by §19.2.5 below.
+
+Phase 10.3: derived from the public per-step
+`traceDist_AE_eq_avssSimulateTrace` by a small `Nat.rec` induction
+over the prefix range.  The inductive bulk is now in
+`Leslie.Prob.traceDist_AE_eq_simulateTrace`. -/
+private theorem traceDist_AE_eq_avssSimulateTrace_strong
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (R : AVSSRushingAdversary n t F corr) (k : ℕ) :
+    ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀),
+        ∀ i, i ≤ k → ω i = avssSimulateTrace R (ω 0).1 i := by
+  classical
+  induction k with
+  | zero =>
+    have h := traceDist_AE_eq_avssSimulateTrace (t := t) sec corr μ₀ R 0
+    filter_upwards [h] with ω hω i hi
+    interval_cases i
+    exact hω
+  | succ k ih =>
+    have h_succ := traceDist_AE_eq_avssSimulateTrace (t := t) sec corr μ₀ R (k+1)
+    filter_upwards [ih, h_succ] with ω h_ih h_step i hi
+    rcases Nat.lt_or_ge i (k+1) with h_lt | h_ge
+    · exact h_ih i (by omega)
+    · have hi_eq : i = k + 1 := by omega
+      subst hi_eq
+      exact h_step
+
+/-! ### Removed in Phase 10.3
+
+The following AVSS-specific helpers were subsumed by the generic
+forms in `Leslie/Prob/DeterministicSimulate.lean` (PR #44) and have
+been deleted:
+
+  * `traceDist_step_zero_pair_marginal` — generic form available as
+    `Leslie.Prob.traceDist_step_zero_pair_marginal`.
+  * `traceDist_step_zero_snd_AE` — generic form available as
+    `Leslie.Prob.traceDist_step_zero_snd_AE`.
+  * `avssSimulateRev_reverse_eq_ofFn` — generic form available as
+    `Leslie.Prob.simulateRev_reverse_eq_ofFn`.
+  * `avssSpec_R_stepKernel_AE_simulate` — generic form is the
+    `private` `Leslie.Prob.stepKernel_AE_simulate`.
+
+If a downstream caller needs any of these by their AVSS-specific
+names, retarget to the generic forms above.  All callers within AVSS
+have already been updated. -/
 
 /-! ## §19.2.5. Phase 7.4 — joint factoring through the initial state
 
