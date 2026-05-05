@@ -1123,20 +1123,82 @@ trajectory — has four components, each shippable as a separate PR:
    `avss_secrecy_AS_view_rushing_via_init_invariant` are retained
    as the conditional building blocks.  **Landed.**
 
-6. ⏳ **Phase 8: Per-party dealer messages.**  Replace `s.coeffs` with
-   per-party messages `dealerMessages : Fin n → (RowPoly × ColPoly)`.
-   Honest dealer = consistent assignment; corrupt dealer = adversarial
-   choice subject to verifiability.  Re-prove commitment as the
-   genuine "joint consistency" theorem.  This is the
-   literature-faithful AVSS modulo cryptographic content already in
-   `BivariateShamir`'s deferred row-poly secrecy.
+6. ⏳ **Phase 8: Per-party dealer messages — full literature-faithful AVSS.**
+   Closes the four entangled gaps **§2 (dealer-to-party communication),
+   C1 (corrupt-party sends), C2 (honest broadcasts to corrupt
+   receivers), C4 (selective non-broadcast)** in a single coherent
+   refactor.  After Phase 8, AVSS matches Canetti–Rabin '93's model:
+   per-party dealer messages, corrupt-party send actions, honest
+   broadcasts to corrupt receivers, and selective non-broadcast as an
+   adversary capability.  Termination becomes conditional on Bracha
+   amplification, as in the literature.
+
+   This is **the load-bearing remaining gap**.  Estimated 1500–2200 LOC
+   across 6–8 PRs.  See **§12** below for the detailed plan and
+   status tracker.
 
 Estimated cost: Phase 6 ≈ 600 LOC (landed); Phase 7.1 ≈ 130 LOC
 (landed); Phase 7.2 ≈ 90 LOC (landed); Phase 7.3 ≈ 70 LOC (landed);
-Phase 7.4+7.5 ≈ 300–500 LOC (deferred); Phase 8 ≈ 600–1000 LOC.  The
-bulk of the cryptographic content is already in the formalisation;
-what remains is largely *adversary-information plumbing*, which is
-real engineering work but conceptually well-understood.
+Phase 7.4+7.5 ≈ 800 LOC (landed); Phase 7.7 (distribution refactor)
+≈ 780 LOC (landed); Phase A (docs) ≈ 150 LOC (landed); Phase B
+(C3 fix) ≈ 200 LOC (landed); Phase 8 ≈ 1500–2200 LOC (in progress).
+
+## 12. Phase 8 — per-party dealer messages: detailed plan + status tracker
+
+This section tracks the multi-PR Phase 8 initiative as it lands.
+Each row corresponds to one PR; statuses move from ⏳ pending to 🚧
+in-flight to ✅ landed.
+
+### 12.1. Status tracker
+
+| PR | Title | Scope | LOC | Status |
+|---|---|---|---|---|
+| **8.1** | DealerPayload + state surgery (A-lite) | Foundational refactor: introduce `DealerPayload` type and `dealerMessages : Fin n → Option (DealerPayload t F)` field; keep `coeffs` alongside; migrate `dealerShare`/`partyDeliver`/`partyCorruptDeliver` to read from `dealerMessages`; add consistency invariant. **No theorem semantics change.** | ~200 | 🚧 in-flight |
+| **8.2** | Honest-dealer consistency invariant + correctness re-verification | Define `honestDealerConsistencyInv`: for honest dealer, ∃ witness coeffs such that every honest party's payload matches `rowPolyOfDealer`/`colPolyOfDealer`. Re-prove `avss_correctness_AS` against the new model with existential witness. | ~250 | ⏳ pending |
+| **8.3** | Corrupt-dealer commitment (the genuine theorem) | The headline literature-faithful theorem `joinedConsistencyInv`: ≥ t+1 honest outputs ⇒ ∃ coeffs witnessing all of them. Argument leverages Bracha amplification's consistency-check property. Hardest cryptographic content of Phase 8. | ~300 | ⏳ pending |
+| **8.4** | Corrupt-party send actions (C1) + reception (C2) | Drop `p ∉ s.corrupted` from `partyEchoSend`/`partyReady`/`partyAmplify` gates. Update `partyEchoReceive` to populate corrupt receivers. Echoes carry payload values; consistency check predicate added; only consistent echoes count toward thresholds. Termination becomes conditional on "≥ n−t honest parties have consistent shares". | ~250 | ⏳ pending |
+| **8.5** | Selective non-broadcast (C4) | Replace `dealerShare` with `dealerShareTo (p : Fin n)`; adversary chooses recipients and payloads. Move `coeffs` out of state into `μ₀` (or honest-dealer witness). Refactor variant analysis to handle the new fair-action structure. Most subtle PR; budget extra time. | ~150 | ⏳ pending |
+| **8.6** | Operational secrecy under the full adversary | Re-prove `avss_secrecy_AS_view_rushing` against the post-8.4+8.5 adversary, which now has corrupt-party messages and honest-broadcast reception. Requires the **+200 LOC row + column secrecy** form (deferred since `SyncVSS.lean §10`) — the full polynomial-manipulation step. | ~250 | ⏳ pending |
+| **8.7** | Adapter retirement / cleanup | Decide whether to keep pre-Phase-8 model alongside or retire it. Recommend a thin compatibility shim with deprecation warnings for downstream migration. | ~100 | ⏳ pending |
+| **8.8** | MODEL_NOTES rewrite | Comprehensive rewrite to reflect post-Phase-8 state. Most §-level caveats become "✅ resolved by Phase 8". Preserve historical context. | ~150 | ⏳ pending |
+
+### 12.2. Sequencing constraints
+
+- **PRs 8.1–8.3** can be a tight unit (state surgery → honest-dealer correctness → commitment).
+- **PR 8.4** depends on 8.1's `dealerMessages` infrastructure.
+- **PR 8.5** depends on 8.4's consistency-check infrastructure.
+- **PR 8.6** depends on PRs 8.4 + 8.5 (full adversary model + selective broadcast).
+- **PRs 8.7, 8.8** are cleanup, can be deferred.
+
+### 12.3. Post-Phase-8 state
+
+After Phase 8 lands, AVSS will be **literature-faithful** for Canetti–Rabin '93:
+
+| Theorem | Pre-Phase-8 (current) | Post-Phase-8 |
+|---|---|---|
+| Termination | Unconditional under fair scheduling (model forces dealer to all-broadcast) | Conditional on ≥ n−t honest parties receiving consistent shares (CR statement) |
+| Correctness | Honest dealer ⇒ outputs consistent with `s.coeffs` (state field) | Honest dealer ⇒ outputs consistent with *some* bivariate polynomial (existential witness) |
+| Commitment | Trivially true (single global `coeffs`) | Genuine joint-consistency theorem under corrupt dealer (Bracha amplification load-bearing) |
+| Reconstruction | Lagrange theorem, unchanged | Lagrange theorem, unchanged |
+| Secrecy | Row-poly secrecy under restricted adversary | Full row + column secrecy under CR rushing adversary |
+
+### 12.4. Risks
+
+1. **PR 8.3's commitment proof** is the hardest cryptographic content. It requires showing Bracha amplification's "all accepted shares are consistent with some polynomial" property — threading the consistency-check predicate added in 8.4 through quorum intersection. Some risk this becomes a multi-PR effort itself.
+
+2. **Variant analysis re-verification** (PRs 8.4, 8.5): adding corrupt-party send actions to the fair set changes the variant's strict-decrease story. Each fair action must still strictly decrease U; the per-action `_lt` lemmas need rework. Risk: the K-weighting may need reshuffling.
+
+3. **Row + column secrecy** (PR 8.6): the +200 LOC polynomial-manipulation step has been deferred since `SyncVSS.lean §10`. Doing it now is real cryptographic content (Vandermonde + Lagrange in two directions, with axis-zero handling). Could be its own multi-PR effort if we hit complications.
+
+### 12.5. Maintenance protocol
+
+This tracker is the source of truth for Phase 8 status.  As each PR lands:
+
+  1. The PR's own commit message updates the corresponding row of §12.1 (statuses ⏳ → 🚧 → ✅).
+  2. New caveats discovered during implementation are added to §11 (or to a new sub-section here if scope-specific).
+  3. After Phase 8 completes, §11.1–§11.4 caveats should be marked "✅ resolved by Phase 8 (PR #N)" and the post-Phase-8 state table (§12.3) frozen as the citation reference.
+
+If the plan changes in the middle (e.g., a worker discovers a structural issue that re-scopes a PR), the affected row's status reverts to 🚧 with a footnote describing the change.
 
 ## How to read the formalised theorems
 
