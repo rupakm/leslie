@@ -2684,6 +2684,84 @@ theorem avss_termination_AS_fair_traj
   · exact hN N hbnd
   · exact absurd hunb h_inf
 
+/-! ## §13.4 Echo / ready flow invariants (Phase 8.5b precursor)
+
+Two structural invariants tracking the relationship between
+`echoSent`/`readySent` flags, the corresponding inflight queues, and
+receiver buffers.
+
+* `echoFlowInv`: `(s.local_ p).echoSent = false` implies (i) no echo
+  in transit from `p` and (ii) no party has received an echo from `p`.
+* `readyFlowInv`: analogous for `readySent`/`inflightReady`/
+  `readyReceived`.
+
+These are structural facts about the model: `inflightEchoes` is
+populated only by `partyEchoSend p`, which simultaneously sets
+`echoSent_p := true`; `q.echoesReceived` is populated only by
+`partyEchoReceive q p`, which requires `(p, q) ∈ inflightEchoes`.
+By transitivity, every echo population is witnessed by
+`echoSent_p = true`.  Symmetric for readys.
+
+Used by Phase 8.5b's disjunct argument in
+`avssU_step_partyEchoSend_disj` (forthcoming): once corrupt parties
+may fire `partyEchoSend p`, the variant doesn't strictly decrease for
+corrupt-fired sends, but `partyEchoReceive q p` is enabled at the
+post-state for any `q` (the just-added `(p, q) ∈ inflightEchoes`,
+plus `p ∉ q.echoesReceived` from `echoFlowInv` applied at gate-pre
+where `echoSent_p = false`).  The `FairASTCertificate.U_dec_det`
+disjunct (variant decrease *or* another fair action enabled) is
+satisfied via the second clause.
+
+This precursor commit lands the *definitions* and the `initPred`
+lemmas; the per-action preservation theorems are deferred to PR 8.5b
+itself (their proofs interleave naturally with the gate-weakening
+case-by-case work). -/
+
+omit [Field F] [Fintype F] in
+/-- Echo flow consistency: `(s.local_ p).echoSent = false` implies
+no in-transit echoes from `p` and no party has received an echo from
+`p`. -/
+def echoFlowInv (s : AVSSState n t F) : Prop :=
+  ∀ p, (s.local_ p).echoSent = false →
+    (∀ q, (p, q) ∉ s.inflightEchoes) ∧
+    (∀ q, p ∉ (s.local_ q).echoesReceived)
+
+omit [Field F] [Fintype F] in
+/-- Ready flow consistency: analogous to `echoFlowInv` for
+`readySent`/`inflightReady`/`readyReceived`. -/
+def readyFlowInv (s : AVSSState n t F) : Prop :=
+  ∀ p, (s.local_ p).readySent = false →
+    p ∉ s.inflightReady ∧
+    (∀ q, p ∉ (s.local_ q).readyReceived)
+
+omit [Field F] [Fintype F] in
+theorem initPred_echoFlowInv (sec : F) (corr : Finset (Fin n))
+    (s : AVSSState n t F) (h : initPred sec corr s) :
+    echoFlowInv s := by
+  obtain ⟨hloc, _, _, _, _, hife, _⟩ := h
+  intro p _
+  refine ⟨?_, ?_⟩
+  · intro q hin
+    rw [hife] at hin
+    exact absurd hin (Finset.notMem_empty _)
+  · intro q hin
+    rw [hloc q] at hin
+    simp [AVSSLocalState.init] at hin
+
+omit [Field F] [Fintype F] in
+theorem initPred_readyFlowInv (sec : F) (corr : Finset (Fin n))
+    (s : AVSSState n t F) (h : initPred sec corr s) :
+    readyFlowInv s := by
+  obtain ⟨hloc, _, _, _, _, _, hifr, _⟩ := h
+  intro p _
+  refine ⟨?_, ?_⟩
+  · intro hin
+    rw [hifr] at hin
+    exact absurd hin (Finset.notMem_empty _)
+  · intro q hin
+    rw [hloc q] at hin
+    simp [AVSSLocalState.init] at hin
+
 /-! ## §13.5 Dealer-messages consistency invariant (Phase 8.1)
 
 After `dealerShare` fires, the `s.dealerMessages` map carries the
