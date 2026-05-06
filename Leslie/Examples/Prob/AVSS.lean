@@ -8160,6 +8160,12 @@ theorem avssStep_corrupted_invariant (a : AVSSAction n F)
     (avssStep a s).corrupted = s.corrupted := by
   cases a <;> simp [avssStep, setLocal]
 
+omit [Fintype F] in
+theorem avssStep_dealerHonest_invariant (a : AVSSAction n F)
+    (s : AVSSState n t F) :
+    (avssStep a s).dealerHonest = s.dealerHonest := by
+  cases a <;> simp [avssStep, setLocal]
+
 section Phase6_OperationalView
 
 open scoped ProbabilityTheory
@@ -8377,6 +8383,75 @@ theorem traceDist_corrupted_AE_eq_init
     rw [ae_map_iff hmeas_pair.aemeasurable MeasurableSet.of_discrete] at hjoint
     exact hjoint
 
+private theorem avssSpec_stepKernel_dealerHonest_AE
+    (sec : F) (corr : Finset (Fin n))
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) (k : ℕ)
+    (h : FinPrefix (AVSSState n t F) (AVSSAction n F) k) :
+    ∀ᵐ y ∂(stepKernel (avssSpec (t := t) sec corr coeffs) A k h),
+        y.1.dealerHonest = h.currentState.dealerHonest := by
+  classical
+  have hPset : MeasurableSet
+      {x : AVSSState n t F × Option (AVSSAction n F) |
+        x.1.dealerHonest = h.currentState.dealerHonest} :=
+    MeasurableSet.of_discrete
+  unfold stepKernel
+  simp only [ProbabilityTheory.Kernel.ofFunOfCountable, ProbabilityTheory.Kernel.coe_mk]
+  rcases A.schedule h.toList with _ | i
+  · rw [ae_dirac_iff hPset]
+  · by_cases hgate : ((avssSpec (t := t) sec corr coeffs).actions i).gate h.currentState
+    · simp only [hgate, dite_true]
+      rw [show ((avssSpec (t := t) sec corr coeffs).actions i).effect h.currentState hgate
+            = PMF.pure (avssStep i h.currentState) from rfl,
+          PMF.toMeasure_pure, Measure.map_dirac (by fun_prop), ae_dirac_iff hPset]
+      exact avssStep_dealerHonest_invariant i h.currentState
+    · simp only [hgate, dite_false]
+      rw [ae_dirac_iff hPset]
+
+theorem traceDist_dealerHonest_AE_eq_init
+    (sec : F) (corr : Finset (Fin n)) (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) (k : ℕ) :
+    ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
+        (ω k).1.dealerHonest = (ω 0).1.dealerHonest := by
+  classical
+  induction k with
+  | zero => exact Filter.Eventually.of_forall fun _ => rfl
+  | succ k ih =>
+    suffices hone_step :
+        ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
+          (ω (k+1)).1.dealerHonest = (ω k).1.dealerHonest by
+      filter_upwards [hone_step, ih] with ω h_step h_ih
+      rw [h_step, h_ih]
+    have hmeas_pair : Measurable
+        (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+          (Preorder.frestrictLe k ω, ω (k+1))) := by fun_prop
+    haveI : IsProbabilityMeasure
+        (μ₀.map (fun s : AVSSState n t F => (s, (none : Option (AVSSAction n F))))) :=
+      Measure.isProbabilityMeasure_map (by fun_prop)
+    have hk :
+        ((traceDist (avssSpec (t := t) sec corr coeffs) A μ₀).map
+            (Preorder.frestrictLe k)) ⊗ₘ
+          (stepKernel (avssSpec (t := t) sec corr coeffs) A k) =
+        (traceDist (avssSpec (t := t) sec corr coeffs) A μ₀).map
+          (fun ω => (Preorder.frestrictLe k ω, ω (k+1))) := by
+      unfold traceDist
+      exact ProbabilityTheory.Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure
+    have h_inner : ∀ᵐ h ∂((traceDist (avssSpec (t := t) sec corr coeffs) A μ₀).map
+          (Preorder.frestrictLe k)),
+        ∀ᵐ y ∂(stepKernel (avssSpec (t := t) sec corr coeffs) A k h),
+          y.1.dealerHonest = h.currentState.dealerHonest :=
+      Filter.Eventually.of_forall fun h =>
+        avssSpec_stepKernel_dealerHonest_AE sec corr A k h
+    have hjoint :
+        ∀ᵐ x ∂(((traceDist (avssSpec (t := t) sec corr coeffs) A μ₀).map
+              (Preorder.frestrictLe k)) ⊗ₘ
+            (stepKernel (avssSpec (t := t) sec corr coeffs) A k)),
+          x.2.1.dealerHonest = (FinPrefix.currentState x.1).dealerHonest :=
+      Measure.ae_compProd_of_ae_ae MeasurableSet.of_discrete h_inner
+    rw [hk] at hjoint
+    rw [ae_map_iff hmeas_pair.aemeasurable MeasurableSet.of_discrete] at hjoint
+    exact hjoint
+
 /-! ### Phase 8.5c — `TrivialView` and `coalitionTrivialView`
 
 Phase 8.5b-α weakened `corruptLocalInv` to drop the
@@ -8450,26 +8525,55 @@ the unfolding of `coalitionTrivialView`. -/
 theorem coalitionView_corrupt_factors_AE
     (sec : F) (corr : Finset (Fin n)) (coeffs : Fin (t+1) → Fin (t+1) → F)
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
-    (_h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
     (A : Adversary (AVSSState n t F) (AVSSAction n F))
     (C : BivariateShamir.Coalition n t)
-    (_h_C_corr : C.val ⊆ corr) (k : ℕ) :
+    (h_C_corr : C.val ⊆ corr) (k : ℕ) :
     ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
         ∀ p : C.val,
           let ls := (ω k).1.local_ p.val
           ls.output = none ∧
           (ls.delivered = false → ls.rowPoly = none) ∧
-          (ls.delivered = true →
+          ((ω 0).1.dealerHonest = true → ls.delivered = true →
             ls.rowPoly = some (rowPolyOfDealer (ω 0).1.partyPoint
-              (ω 0).1.coeffs p.val)) := by
-  -- TODO Phase 8.5d-β-followup-5: cascade fix from `coalitionAlgebraicView`
-  -- still using `(ω 0).1.coeffs` placeholder. Re-prove with `coalitionAlgebraicView`
-  -- restated to take `coeffs` parameter (as a μ₀ witness, see existing
-  -- `coalitionGrid` restatement pattern in §17.5). The honest-dealer-only
-  -- cap also needs threading: under corrupt dealer, corrupt parties' rowPoly
-  -- is unconstrained (Phase 8.5d-β migration of `s.dealerCommit`), so the
-  -- conclusion is provable only AE-conditionally on `(ω 0).1.dealerHonest = true`.
-  sorry
+              coeffs p.val)) := by
+  classical
+  -- Step 1: lift `h_init` into a per-trace AE statement at step 0.
+  have h_init_AE : ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
+      initPred sec corr coeffs (ω 0).1 := by
+    have hmap := traceDist_step_zero_state_marginal (t := t) sec corr coeffs μ₀ A
+    have hmeas : Measurable (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+        (ω 0).1) := by fun_prop
+    rw [← hmap] at h_init
+    rwa [ae_map_iff hmeas.aemeasurable MeasurableSet.of_discrete] at h_init
+  -- Step 2: phase6Inv at every step.
+  have h_phase6 : ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
+      ∀ n, phase6Inv coeffs (ω n).1 :=
+    avss_phase6Inv_AS sec corr coeffs μ₀ h_init A
+  -- Step 3: partyPoint, corrupted, dealerHonest preserved AE along the trace.
+  have h_pp := traceDist_partyPoint_AE_eq_init (t := t) sec corr coeffs μ₀ A k
+  have h_corr := traceDist_corrupted_AE_eq_init (t := t) sec corr coeffs μ₀ A k
+  have h_dH := traceDist_dealerHonest_AE_eq_init (t := t) sec corr coeffs μ₀ A k
+  filter_upwards [h_init_AE, h_phase6, h_pp, h_corr, h_dH]
+    with ω h_init0 h_p6 h_pp_eq h_corr_eq h_dH_eq p
+  -- p ∈ C ⊆ corr, and (ω 0).1.corrupted = corr (from initPred), and
+  -- (ω k).1.corrupted = (ω 0).1.corrupted, so p.val ∈ (ω k).1.corrupted.
+  have h_corrupt_eq : (ω 0).1.corrupted = corr := h_init0.2.2.1
+  have hp_corr : p.val ∈ corr := h_C_corr p.property
+  have hp_corr_k : p.val ∈ (ω k).1.corrupted := by
+    rw [h_corr_eq, h_corrupt_eq]; exact hp_corr
+  -- Apply phase6Inv at step k.
+  have h_p6_k := h_p6 k
+  obtain ⟨h_od, h_cl, _h_dm⟩ := h_p6_k
+  have h_cl_p := h_cl p.val hp_corr_k
+  refine ⟨h_cl_p.1, h_cl_p.2, ?_⟩
+  intro h_dH_init h_d
+  -- Bridge: (ω k).1.dealerHonest = (ω 0).1.dealerHonest = true.
+  have h_dH_k : (ω k).1.dealerHonest = true := h_dH_eq.trans h_dH_init
+  -- outputDeterminedInv applied to step k under honest dealer.
+  have h_rp_correct := (h_od h_dH_k).1 p.val h_d
+  -- Bridge partyPoint at step k to step 0.
+  rw [h_rp_correct, h_pp_eq]
 
 /-- **Phase 8.5c companion theorem.** The trivial-field view of every
 corrupt party at every step matches `coalitionTrivialView`. This is
@@ -8567,7 +8671,7 @@ adversary) plus row-poly secrecy combine to provide. -/
 noncomputable def coalitionAlgebraicView (C : BivariateShamir.Coalition n t)
     (ω : ℕ → AVSSState n t F × Option (AVSSAction n F)) (k : ℕ) :
     (C.val → Fin (t+1) → F) × (Fin k → C.val → Bool) :=
-  (fun p => rowPolyOfDealer (ω 0).1.partyPoint (ω 0).1.coeffs p.val,
+  (fun p => ((ω 0).1.dealerCommit p.val).rowPoly,
    fun i p => ((ω i.val).1.local_ p.val).delivered)
 
 /-- Local discrete-σ-algebra on `Fin (t+1) → F`. Required for the
@@ -8583,13 +8687,13 @@ theorem measurable_coalitionAlgebraicView
   classical
   refine Measurable.prodMk (measurable_pi_iff.mpr fun p => ?_)
     (measurable_pi_iff.mpr fun i => measurable_pi_iff.mpr fun p => ?_)
-  · -- p ↦ rowPolyOfDealer ((ω 0).1.partyPoint) ((ω 0).1.coeffs) p.val.
+  · -- p ↦ ((ω 0).1.dealerCommit p.val).rowPoly.
     have h1 : Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
         ω 0) := measurable_pi_apply _
     have h2 : Measurable (Prod.fst :
         AVSSState n t F × Option (AVSSAction n F) → AVSSState n t F) := measurable_fst
     have h3 : Measurable (fun s : AVSSState n t F =>
-        rowPolyOfDealer s.partyPoint s.coeffs p.val) := measurable_of_countable _
+        (s.dealerCommit p.val).rowPoly) := measurable_of_countable _
     exact (h3.comp h2).comp h1
   · -- (i, p) ↦ ((ω i.val).1.local_ p.val).delivered.
     have h1 : Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
@@ -8680,22 +8784,72 @@ post-8.5b-α, no longer pin to `(false, ∅, false, ∅)`. -/
 theorem coalitionTraceView_eq_reconstruct_AE
     (sec : F) (corr : Finset (Fin n)) (coeffs : Fin (t+1) → Fin (t+1) → F)
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
-    (_h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
     (A : Adversary (AVSSState n t F) (AVSSAction n F))
     (C : BivariateShamir.Coalition n t)
-    (_h_C_corr : C.val ⊆ corr) (k : ℕ) :
+    (h_C_corr : C.val ⊆ corr) (k : ℕ) :
     ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
-        coalitionTraceView C ω k =
-          reconstructCoalitionTraceView (C := C) (k := k)
-            (coalitionAlgebraicView C ω k).1
-            (coalitionTrivialView C ω k)
-            (coalitionAlgebraicView C ω k).2 := by
-  -- TODO Phase 8.5d-β-followup-5: cascade fix from
-  -- `coalitionView_corrupt_factors_AE` placeholder migration; tied to
-  -- `coalitionAlgebraicView`'s `(ω 0).1.coeffs` placeholder. Re-prove
-  -- after restating `coalitionAlgebraicView` to take `coeffs` parameter
-  -- (existing pattern from §17.5 `coalitionGrid` restatement).
-  sorry
+        (ω 0).1.dealerHonest = true →
+          coalitionTraceView C ω k =
+            reconstructCoalitionTraceView (C := C) (k := k)
+              (coalitionAlgebraicView C ω k).1
+              (coalitionTrivialView C ω k)
+              (coalitionAlgebraicView C ω k).2 := by
+  classical
+  -- The factoring theorem at every step i.  Take a finite AE-intersection
+  -- over `Fin k` (each `i` is a separate AE statement).  We can use
+  -- `Filter.Eventually.forall_finite` (or chain `filter_upwards`) since
+  -- `Fin k` is finite.
+  have h_factors_i : ∀ i : Fin k,
+      ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
+          ∀ p : C.val,
+            let ls := (ω i.val).1.local_ p.val
+            ls.output = none ∧
+            (ls.delivered = false → ls.rowPoly = none) ∧
+            ((ω 0).1.dealerHonest = true → ls.delivered = true →
+              ls.rowPoly = some (rowPolyOfDealer (ω 0).1.partyPoint
+                coeffs p.val)) :=
+    fun i => coalitionView_corrupt_factors_AE (t := t) sec corr coeffs μ₀ h_init A C h_C_corr i.val
+  -- AE-intersection over the finite index set `Fin k`.
+  have h_factors_all :
+      ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
+        ∀ i : Fin k, ∀ p : C.val,
+          let ls := (ω i.val).1.local_ p.val
+          ls.output = none ∧
+          (ls.delivered = false → ls.rowPoly = none) ∧
+          ((ω 0).1.dealerHonest = true → ls.delivered = true →
+            ls.rowPoly = some (rowPolyOfDealer (ω 0).1.partyPoint
+              coeffs p.val)) :=
+    (ae_all_iff (ι := Fin k)).mpr h_factors_i
+  -- Lift `h_init` into a per-trace AE statement at step 0.
+  have h_init_AE : ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
+      initPred sec corr coeffs (ω 0).1 := by
+    have hmap := traceDist_step_zero_state_marginal (t := t) sec corr coeffs μ₀ A
+    have hmeas : Measurable (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+        (ω 0).1) := by fun_prop
+    rw [← hmap] at h_init
+    rwa [ae_map_iff hmeas.aemeasurable MeasurableSet.of_discrete] at h_init
+  filter_upwards [h_factors_all, h_init_AE] with ω hω h_init0 hHonest
+  -- For each (i : Fin k, p : C.val), apply uniqueness lemma.
+  -- Bridge: under honest dealer, `(ω 0).1.dealerCommit p .rowPoly =
+  -- rowPolyOfDealer ((ω 0).1.partyPoint) coeffs p` from `initPred`.
+  have h_dC := (h_init0.2.2.2.2.2.2.2.2.2 hHonest).2
+  funext i p
+  obtain ⟨h_out, h_rp_none, h_rp_some⟩ := hω i p
+  show (ω i.val).1.local_ p.val =
+    reconstructCoalitionTraceView (C := C) (k := k)
+      (coalitionAlgebraicView C ω k).1
+      (coalitionTrivialView C ω k)
+      (coalitionAlgebraicView C ω k).2 i p
+  -- (ω 0).1.dealerCommit p.val .rowPoly = rowPolyOfDealer (ω 0).1.partyPoint coeffs p.val.
+  have h_eq : ((ω 0).1.dealerCommit p.val).rowPoly =
+      rowPolyOfDealer (ω 0).1.partyPoint coeffs p.val := by
+    rw [h_dC p.val]
+  simp only [reconstructCoalitionTraceView, coalitionAlgebraicView,
+    coalitionTrivialView, h_eq]
+  exact corrupt_local_state_uniqueness (ls := (ω i.val).1.local_ p.val)
+    (rp := rowPolyOfDealer (ω 0).1.partyPoint coeffs p.val)
+    h_out h_rp_none (h_rp_some hHonest)
 
 /-- **Phase 6.3 conditional headline theorem (8.5c form).** Given the
 joint invariance of `(coalitionAlgebraicView, coalitionTrivialView,
@@ -8715,6 +8869,8 @@ theorem avss_secrecy_AS_view_conditional
     [IsProbabilityMeasure μ_sec] [IsProbabilityMeasure μ_sec']
     (h_init_sec : ∀ᵐ s ∂μ_sec, initPred sec corr coeffs s)
     (h_init_sec' : ∀ᵐ s ∂μ_sec', initPred sec' corr coeffs s)
+    (h_dH_sec : ∀ᵐ s ∂μ_sec, s.dealerHonest = true)
+    (h_dH_sec' : ∀ᵐ s ∂μ_sec', s.dealerHonest = true)
     (C : BivariateShamir.Coalition n t)
     (h_C_corr : C.val ⊆ corr)
     (A : Adversary (AVSSState n t F) (AVSSAction n F))
@@ -8744,6 +8900,21 @@ theorem avss_secrecy_AS_view_conditional
        atSp.2)
     with hG_def
   have hmeas_G : Measurable G := measurable_of_countable _
+  -- Lift `h_dH_sec`/`h_dH_sec'` from μ to traceDist via the step-0 marginal.
+  have h_dH_sec_AE : ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ_sec),
+      (ω 0).1.dealerHonest = true := by
+    have hmap := traceDist_step_zero_state_marginal (t := t) sec corr coeffs μ_sec A
+    have hmeas : Measurable (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+        (ω 0).1) := by fun_prop
+    rw [← hmap] at h_dH_sec
+    rwa [ae_map_iff hmeas.aemeasurable MeasurableSet.of_discrete] at h_dH_sec
+  have h_dH_sec'_AE : ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec' corr coeffs) A μ_sec'),
+      (ω 0).1.dealerHonest = true := by
+    have hmap := traceDist_step_zero_state_marginal (t := t) sec' corr coeffs μ_sec' A
+    have hmeas : Measurable (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+        (ω 0).1) := by fun_prop
+    rw [← hmap] at h_dH_sec'
+    rwa [ae_map_iff hmeas.aemeasurable MeasurableSet.of_discrete] at h_dH_sec'
   -- Bridge: cTV ω = reconstruct (algView ω, trivView ω) AE under both traces.
   have h_bridge_sec :=
     coalitionTraceView_eq_reconstruct_AE (t := t) sec corr coeffs μ_sec
@@ -8760,9 +8931,9 @@ theorem avss_secrecy_AS_view_conditional
                          coalitionTrivialView C ω k),
                         schedulePrefix ω k)) := by
     apply Measure.map_congr
-    filter_upwards [h_bridge_sec] with ω hω
+    filter_upwards [h_bridge_sec, h_dH_sec_AE] with ω hω hH
     rw [hG_def]
-    simp only [hω]
+    simp only [hω hH]
   have h_push_sec' :
       (traceDist (avssSpec (t := t) sec' corr coeffs) A μ_sec').map
           (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) =
@@ -8771,9 +8942,9 @@ theorem avss_secrecy_AS_view_conditional
                          coalitionTrivialView C ω k),
                         schedulePrefix ω k)) := by
     apply Measure.map_congr
-    filter_upwards [h_bridge_sec'] with ω hω
+    filter_upwards [h_bridge_sec', h_dH_sec'_AE] with ω hω hH
     rw [hG_def]
-    simp only [hω]
+    simp only [hω hH]
   -- Compose with the auxiliary hypothesis (joint × sP invariance).
   rw [h_push_sec, h_push_sec']
   -- Both sides equal `(map (algView, trivView, sP)).map G`. Apply h_aux.
@@ -9532,7 +9703,7 @@ simulate.  -/
 noncomputable def simAlgebraicView (R : AVSSRushingAdversary n t F corr)
     (C : BivariateShamir.Coalition n t) (k : ℕ) (s_0 : AVSSState n t F) :
     (C.val → Fin (t+1) → F) × (Fin k → C.val → Bool) :=
-  (fun p => rowPolyOfDealer s_0.partyPoint s_0.coeffs p.val,
+  (fun p => (s_0.dealerCommit p.val).rowPoly,
    fun i p => ((avssSimulateTrace R s_0 i.val).1.local_ p.val).delivered)
 
 /-- Simulate-derived schedule prefix: a deterministic function of the
@@ -9762,6 +9933,8 @@ theorem avss_secrecy_AS_view_rushing_via_aux
     [IsProbabilityMeasure μ_sec] [IsProbabilityMeasure μ_sec']
     (h_init_sec : ∀ᵐ s ∂μ_sec, initPred sec corr coeffs s)
     (h_init_sec' : ∀ᵐ s ∂μ_sec', initPred sec' corr coeffs s)
+    (h_dH_sec : ∀ᵐ s ∂μ_sec, s.dealerHonest = true)
+    (h_dH_sec' : ∀ᵐ s ∂μ_sec', s.dealerHonest = true)
     (R : AVSSRushingAdversary n t F corr)
     (C : BivariateShamir.Coalition n t)
     (h_C_corr : C.val ⊆ corr) (k : ℕ)
@@ -9777,7 +9950,7 @@ theorem avss_secrecy_AS_view_rushing_via_aux
       (traceDist (avssSpec (t := t) sec' corr coeffs) R.toAdversary μ_sec').map
         (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) :=
   avss_secrecy_AS_view_conditional sec sec' corr μ_sec μ_sec'
-    h_init_sec h_init_sec' C h_C_corr R.toAdversary k h_aux
+    h_init_sec h_init_sec' h_dH_sec h_dH_sec' C h_C_corr R.toAdversary k h_aux
 
 /-! ## §19.4. Phase 7.4 — discharge of `h_aux` from initial-state invariance
 
@@ -9964,6 +10137,8 @@ theorem avss_secrecy_AS_view_rushing_via_init_invariant
     [IsProbabilityMeasure μ_sec] [IsProbabilityMeasure μ_sec']
     (h_init_sec : ∀ᵐ s ∂μ_sec, initPred sec corr coeffs s)
     (h_init_sec' : ∀ᵐ s ∂μ_sec', initPred sec' corr coeffs s)
+    (h_dH_sec : ∀ᵐ s ∂μ_sec, s.dealerHonest = true)
+    (h_dH_sec' : ∀ᵐ s ∂μ_sec', s.dealerHonest = true)
     (R : AVSSRushingAdversary n t F corr)
     (C : BivariateShamir.Coalition n t)
     (h_C_corr : C.val ⊆ corr) (k : ℕ)
@@ -9979,7 +10154,7 @@ theorem avss_secrecy_AS_view_rushing_via_init_invariant
       (traceDist (avssSpec (t := t) sec' corr coeffs) R.toAdversary μ_sec').map
         (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) := by
   apply avss_secrecy_AS_view_rushing_via_aux sec sec' μ_sec μ_sec'
-    h_init_sec h_init_sec' R C h_C_corr k
+    h_init_sec h_init_sec' h_dH_sec h_dH_sec' R C h_C_corr k
   exact traceDist_algTrivView_schedulePrefix_invariant
     (t := t) sec sec' corr μ_sec μ_sec' R C k h_init_invariant
 
@@ -10901,18 +11076,20 @@ theorem simAlgebraicView_simSchedulePrefix_eq_of_simSyncInv
     simAlgebraicView R C k s_0 = simAlgebraicView R C k s_0' ∧
       simSchedulePrefix R k s_0 = simSchedulePrefix R k s_0' := by
   refine ⟨?_, ?_⟩
-  · -- simAlgebraicView component-wise.
+  · -- simAlgebraicView component-wise. Phase 8.5d-β: first component uses
+    -- `s.dealerCommit p.val .rowPoly`, equal by `simSyncInv.dealerCommit_corrupt_eq`.
     show (fun p : C.val =>
-            rowPolyOfDealer s_0.partyPoint s_0.coeffs p.val,
+            (s_0.dealerCommit p.val).rowPoly,
           fun (i : Fin k) (p : C.val) =>
             ((avssSimulateTrace R s_0 i.val).1.local_ p.val).delivered) =
         (fun p : C.val =>
-            rowPolyOfDealer s_0'.partyPoint s_0'.coeffs p.val,
+            (s_0'.dealerCommit p.val).rowPoly,
           fun (i : Fin k) (p : C.val) =>
             ((avssSimulateTrace R s_0' i.val).1.local_ p.val).delivered)
     refine Prod.mk.injEq _ _ _ _|>.mpr ⟨?_, ?_⟩
     · funext p
-      exact h_init.rowPoly_corrupt_eq p.val (h_C_corr p.property)
+      have h_pcorr : p.val ∈ corr := h_C_corr p.property
+      rw [h_init.dealerCommit_corrupt_eq p.val h_pcorr]
     · funext i p
       have h_step :=
         avssSimulateTrace_simSyncInv R h_R s_0 s_0' h_init i.val
@@ -11969,18 +12146,35 @@ theorem avss_secrecy_AS_view_rushing
       (traceDist (avssSpec (t := t) sec' corr coeffs) R.toAdversary
         (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)).map
         (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) := by
-  -- TODO Phase 8.5d-β-followup-4: `avssInitMeasure_AE_initPred` (closed in
-  -- this PR) now returns `∃ coeffs, initPred sec corr coeffs s` (existential),
-  -- but `avss_secrecy_AS_view_rushing_via_init_invariant` expects
-  -- `∀ᵐ s ∂μ, initPred sec corr coeffs s` for a FIXED `coeffs`. Under
-  -- `avssInitMeasure ... (dealerHonest=true)` no fixed coeffs satisfies AE
-  -- initPred (since `polyToCoeffs f` ranges uniformly over the support).
-  -- Closing this requires either (a) restating the inner chain
-  -- (`_via_init_invariant`, `_via_aux`, `_view_conditional`) to take the
-  -- existential form, or (b) integrating over the per-state coeffs witness.
-  -- Either path threads through `coalitionView_corrupt_factors_AE` and
-  -- `coalitionTraceView_eq_reconstruct_AE` (both already followup-5
-  -- TODO'd above for the same `coalitionAlgebraicView` placeholder issue).
+  -- TODO Phase 8.5d-β-followup-6: After Phase 8.5d-β migrated `s.coeffs` out
+  -- of state into the witness in μ₀, `avssInitMeasure_AE_initPred` now returns
+  -- `∀ᵐ s ∂avssInitMeasure, ∃ coeffs, initPred sec corr coeffs s`
+  -- (sample-dependent witness, since each state's `dealerCommit` matches
+  -- `polyToCoeffs f` for the f that produced it).
+  --
+  -- `avss_secrecy_AS_view_rushing_via_init_invariant`'s `h_init_sec` /
+  -- `h_init_sec'` expect a FIXED `coeffs` AE. Under
+  -- `avssInitMeasure ... (dealerHonest=true)` no fixed `coeffs` satisfies
+  -- AE-`initPred sec corr coeffs s` (the support has dealerCommit varying
+  -- with `polyToCoeffs f` over uniform `f`).
+  --
+  -- Followup-5 closed the cascade restating `coalitionAlgebraicView` to
+  -- depend only on `(ω 0).1.dealerCommit` (coeffs-free); the bridge proofs
+  -- internally use a fixed coeffs from `phase6Inv coeffs` AE-preservation
+  -- (`avss_phase6Inv_AS`, which still requires fixed coeffs at init).
+  --
+  -- Closing this requires a sample-dependent existential `phase6Inv` AE-
+  -- preservation theorem `phase6Inv_AS_existential`:
+  --   `∀ᵐ s ∂μ₀, ∃ c, initPred sec corr c s` →
+  --   `∀ᵐ ω ∂traceDist..., ∃ c, ∀ n, phase6Inv c (ω n).1`
+  -- (via Skolemized per-trace inductive preservation of the witness c).
+  -- Then `coalitionView_corrupt_factors_AE_ex` and
+  -- `coalitionTraceView_eq_reconstruct_AE_ex` consume this existential form
+  -- and yield the bridge under `dealerHonest = true`.
+  --
+  -- The three theorems above + threading through `_view_conditional_ex`,
+  -- `_via_aux_ex`, and `_via_init_invariant_ex` ≈ 200-300 LOC. This sorry
+  -- is bounded scope for followup-6.
   sorry
 
 attribute [instance] instMeasurableSpaceAVSSRushingView

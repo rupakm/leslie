@@ -1,10 +1,82 @@
-# Phase 8.5d Checkpoint — β-followup-3 closed 10 of 12 sorries
+# Phase 8.5d Checkpoint — β-followup-5 closed 11 of 12 sorries
 
 **Branch**: `feat/randomized-leslie-m3-avss-phase8-5d-beta`
 **Base**: PR #68 (8.5d-α, dealerShareTo per-party action surgery).
-**Build state**: green at `lake build Leslie.Examples.Prob.AVSS` with
-**3** sorries in AVSS.lean (down from 12 after the followup-3 batch).
-**Sorry count**: **3** in AVSS — all tracked.
+**Build state**: green at `lake build Leslie.Examples.Prob.AVSS`
+(2668 jobs) with **1** sorry in AVSS.lean (down from 3 after followup-5).
+**Sorry count**: **1** in AVSS — bounded scope, tagged `TODO Phase 8.5d-β-followup-6`.
+
+## Phase 8.5d-β-followup-5 — what landed
+
+Closed **2 of the 3** remaining sorries via the dealerCommit-based
+restatement of `coalitionAlgebraicView` (a coeffs-free alternative to
+the user's brief, since the cascade through `simAlgebraicView` made
+adding `coeffs` to the def itself awkward).
+
+| Site | Status |
+|---|---|
+| `coalitionView_corrupt_factors_AE` (line 8472) | ✅ Closed via `phase6Inv coeffs` AE-preservation + `traceDist_partyPoint_AE_eq_init` + new `traceDist_dealerHonest_AE_eq_init` (kernel preservation theorem). Conclusion: AE-conditional on `(ω 0).1.dealerHonest = true` for the rowPoly clause. |
+| `coalitionTraceView_eq_reconstruct_AE` (line 8698) | ✅ Closed via cascade from above + `corrupt_local_state_uniqueness` + `initPred`'s honest-dealer dealerCommit clause. Conclusion is honest-dealer-conditional. |
+| `avss_secrecy_AS_view_rushing` (line 12132) | 🟡 Deferred to followup-6 — see below for technical detail. |
+
+**Restatements (Phase 8.5d-β-followup-5)**:
+
+- `coalitionAlgebraicView C ω k` — first component now uses
+  `((ω 0).1.dealerCommit p.val).rowPoly` (coeffs-free); under
+  `initPred` (honest dealer) this equals
+  `rowPolyOfDealer (ω 0).1.partyPoint coeffs p.val`.
+- `simAlgebraicView R C k s_0` — first component uses
+  `(s_0.dealerCommit p.val).rowPoly` (coeffs-free).
+- `measurable_coalitionAlgebraicView` — no longer needs `coeffs`.
+- `simAlgebraicView_simSchedulePrefix_eq_of_simSyncInv` — proved via
+  `simSyncInv.dealerCommit_corrupt_eq` instead of `rowPoly_corrupt_eq`.
+- `avss_secrecy_AS_view_conditional`, `_view_rushing_via_aux`,
+  `_view_rushing_via_init_invariant` — added new
+  `h_dH_sec : ∀ᵐ s ∂μ_sec, s.dealerHonest = true` and
+  `h_dH_sec' : ∀ᵐ s ∂μ_sec', s.dealerHonest = true` hypotheses
+  (cTV bridge fires only under honest dealer; this is fundamental
+  Phase 8.5d-β semantics).
+
+**New infrastructure**:
+
+- `avssStep_dealerHonest_invariant` (`s.dealerHonest` preserved by
+  `avssStep`).
+- `avssSpec_stepKernel_dealerHonest_AE` (kernel-level preservation).
+- `traceDist_dealerHonest_AE_eq_init` (trace-level: ∀ᵐ ω,
+  `(ω k).1.dealerHonest = (ω 0).1.dealerHonest`).
+
+## Remaining 1 sorry — followup-6 scope
+
+`avss_secrecy_AS_view_rushing` (line 12132) — tagged
+`TODO Phase 8.5d-β-followup-6`. Closing requires sample-dependent
+existential machinery:
+
+```
+phase6Inv_AS_existential :
+  (∀ᵐ s ∂μ₀, ∃ c, initPred sec corr c s) →
+  ∀ᵐ ω ∂traceDist..., ∃ c, ∀ n, phase6Inv c (ω n).1
+```
+
+(Sample-dependent witness `c` per ω, via Skolemization of the
+step-0 marginal AE-existential.) Plus existential-form variants
+of `coalitionView_corrupt_factors_AE_ex`,
+`coalitionTraceView_eq_reconstruct_AE_ex`,
+`_view_conditional_ex`, `_via_aux_ex`,
+`_via_init_invariant_ex`. Estimated 200-300 LOC.
+
+**Why the cascade was deeper than expected**: the user's brief
+asked to restate `coalitionAlgebraicView` to take `coeffs` as a
+parameter (mirroring §17.5 `coalitionGrid` restatement). However,
+the consumer site `avssInitMeasure_simView_factors_through_corrRow`
+needs the simView's coeffs to vary with the bivariate-polynomial
+sample `f` (since `dealerCommit` is set from `polyToCoeffs f` in
+the support). A single `coeffs` parameter is too rigid; the
+consumer needs coeffs to be `polyToCoeffs f` per-sample. The
+cleanest fix was to make `coalitionAlgebraicView` and
+`simAlgebraicView` use `s.dealerCommit` directly (coeffs-free),
+which works for the bridge under honest dealer + `initPred` AE.
+
+## Phase 8.5d-β-followup-3 — what landed (kept for reference)
 
 ## Phase 8.5d-β-followup-3 — what landed
 
