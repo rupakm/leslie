@@ -5601,21 +5601,26 @@ fact that `partyOutput`'s effect computes `evalRowPoly rp 0`, this
 gives every honest output equal to `bivEval coeffs (partyPoint p) 0`
 (the per-party share). -/
 
-/-- The honest-dealer correctness invariant. -/
-def honestDealerInv (s : AVSSState n t F) : Prop :=
+/-- The honest-dealer correctness invariant.
+
+Phase 8.5d-β: takes `coeffs` parameter (the witness from `initPred` /
+μ₀, no longer the removed state field). -/
+def honestDealerInv (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (s : AVSSState n t F) : Prop :=
   s.dealerHonest = true →
     (∀ p, p ∉ s.corrupted →
       (s.local_ p).delivered = true →
         (s.local_ p).rowPoly =
-          some (rowPolyOfDealer s.partyPoint s.coeffs p)) ∧
+          some (rowPolyOfDealer s.partyPoint coeffs p)) ∧
     (∀ p, p ∉ s.corrupted →
       ∀ v, (s.local_ p).output = some v →
-        v = bivEval s.coeffs (s.partyPoint p) 0)
+        v = bivEval coeffs (s.partyPoint p) 0)
 
 omit [Fintype F] in
-theorem initPred_honestDealerInv (sec : F) (corr : Finset (Fin n)) (coeffs : Fin (t+1) → Fin (t+1) → F)
+theorem initPred_honestDealerInv (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
     (s : AVSSState n t F) (h : initPred sec corr coeffs s) :
-    honestDealerInv s := by
+    honestDealerInv coeffs s := by
   intro _
   obtain ⟨hloc, _⟩ := h
   refine ⟨?_, ?_⟩
@@ -5634,23 +5639,156 @@ case is `partyOutput`: at the gate, `delivered = true` ensures
 value `evalRowPoly rp 0` then equals `bivEval coeffs (partyPoint p) 0`
 by `evalRowPoly_rowPolyOfDealer`. -/
 theorem avssStep_preserves_honestDealerInv
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
     (a : AVSSAction n F) (s : AVSSState n t F)
-    (hgate : actionGate a s) (hinv : honestDealerInv s)
+    (hgate : actionGate a s) (hinv : honestDealerInv coeffs s)
     (hcons : dealerMessagesInv s) :
-    honestDealerInv (avssStep a s) := by
-  -- TODO Phase 8.5d-β-followup: `honestDealerInv` references `s.coeffs`
-  -- placeholder (now `(0 : F)` for all cells), so the conclusion
-  -- `v = bivEval s.coeffs (s.partyPoint p) 0` collapses to `v = 0`.
-  -- Restate `honestDealerInv` to take `coeffs` parameter (the witness from
-  -- `initPred`) and rebuild the proof using the per-action frame structure
-  -- already in place.
-  sorry
-  -- old proof body retained for reference (delete in followup):
-  -- intro hh
-  -- have hh_pre : s.dealerHonest = true := by
-  --   cases a <;> simp [avssStep, setLocal] at hh <;> exact hh
-  -- obtain ⟨h_rp_correct, h_out_correct⟩ := hinv hh_pre
-  -- refine ⟨?_, ?_⟩
+    honestDealerInv coeffs (avssStep a s) := by
+  intro hh
+  -- `dealerHonest` is preserved by every action.
+  have hh_pre : s.dealerHonest = true := by
+    cases a <;> simp [avssStep, setLocal] at hh <;> exact hh
+  -- `partyPoint` is preserved by every action.
+  have hpp : (avssStep a s).partyPoint = s.partyPoint := by
+    cases a <;> simp [avssStep, setLocal]
+  -- `corrupted` is preserved by every action.
+  have hco : (avssStep a s).corrupted = s.corrupted := by
+    cases a <;> simp [avssStep, setLocal]
+  obtain ⟨h_rp_correct, h_out_correct⟩ := hinv hh_pre
+  rw [hpp]
+  refine ⟨?_, ?_⟩
+  -- Clause 1: ∀ honest p, post delivered → post rowPoly = some rowPolyOfDealer
+  · intro p hp hd_post
+    have hp' : p ∉ s.corrupted := by rw [← hco]; exact hp
+    cases a with
+    | dealerShareTo r =>
+        simp [avssStep] at hd_post ⊢
+        exact h_rp_correct p hp' hd_post
+    | partyDeliver q =>
+        by_cases hpq : p = q
+        · subst hpq
+          have hdm : (s.dealerMessages p).isSome := hgate.2.2.2.2
+          -- TODO Phase 8.5d-β-followup-2: dealerShareTo now writes
+          -- `s.dealerCommit p` instead of canonical-from-coeffs. Bridge
+          -- via dealerCommit constraint from initPred (honest-dealer clause).
+          sorry
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hd_post ⊢
+          exact h_rp_correct p hp' hd_post
+    | partyCorruptDeliver q =>
+        have hpq : p ≠ q := fun h => hp' (h ▸ hgate.2.1)
+        simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hd_post ⊢
+        exact h_rp_correct p hp' hd_post
+    | partyEchoSend q =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hd_post ⊢
+          exact h_rp_correct p hp' hd_post
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hd_post ⊢
+          exact h_rp_correct p hp' hd_post
+    | partyEchoReceive q r =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hd_post ⊢
+          exact h_rp_correct p hp' hd_post
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hd_post ⊢
+          exact h_rp_correct p hp' hd_post
+    | partyReady q =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hd_post ⊢
+          exact h_rp_correct p hp' hd_post
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hd_post ⊢
+          exact h_rp_correct p hp' hd_post
+    | partyAmplify q =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hd_post ⊢
+          exact h_rp_correct p hp' hd_post
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hd_post ⊢
+          exact h_rp_correct p hp' hd_post
+    | partyReceiveReady q r =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hd_post ⊢
+          exact h_rp_correct p hp' hd_post
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hd_post ⊢
+          exact h_rp_correct p hp' hd_post
+    | partyOutput q =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hd_post ⊢
+          exact h_rp_correct p hp' hd_post
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hd_post ⊢
+          exact h_rp_correct p hp' hd_post
+  -- Clause 2: ∀ honest p, post output = some v → v = bivEval coeffs (partyPoint p) 0
+  · intro p hp v hv
+    have hp' : p ∉ s.corrupted := by rw [← hco]; exact hp
+    cases a with
+    | dealerShareTo r =>
+        simp [avssStep] at hv
+        exact h_out_correct p hp' v hv
+    | partyDeliver q =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hv
+          exact h_out_correct p hp' v hv
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hv
+          exact h_out_correct p hp' v hv
+    | partyCorruptDeliver q =>
+        have hpq : p ≠ q := fun h => hp' (h ▸ hgate.2.1)
+        simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hv
+        exact h_out_correct p hp' v hv
+    | partyEchoSend q =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hv
+          exact h_out_correct p hp' v hv
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hv
+          exact h_out_correct p hp' v hv
+    | partyEchoReceive q r =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hv
+          exact h_out_correct p hp' v hv
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hv
+          exact h_out_correct p hp' v hv
+    | partyReady q =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hv
+          exact h_out_correct p hp' v hv
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hv
+          exact h_out_correct p hp' v hv
+    | partyAmplify q =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hv
+          exact h_out_correct p hp' v hv
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hv
+          exact h_out_correct p hp' v hv
+    | partyReceiveReady q r =>
+        by_cases hpq : p = q
+        · subst hpq
+          simp [avssStep, setLocal_local_self] at hv
+          exact h_out_correct p hp' v hv
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hv
+          exact h_out_correct p hp' v hv
+    | partyOutput q =>
+        -- The hard case: post output_q = some (evalRowPoly rp 0) where
+        -- rp = pre rowPoly q.  By gate (delivered=true) and clause 1,
+        -- pre rowPoly q = some (rowPolyOfDealer s.partyPoint coeffs q).  So
+        -- v = evalRowPoly (rowPolyOfDealer ...) 0 = bivEval coeffs ... 0.
+        by_cases hpq : p = q
+        · subst hpq
+          obtain ⟨_, hd_q, _, _, _⟩ := hgate
+          have hrp_pre : (s.local_ p).rowPoly =
+              some (rowPolyOfDealer s.partyPoint coeffs p) :=
+            h_rp_correct p hp' hd_q
+          simp [avssStep, setLocal_local_self, hrp_pre] at hv
+          rw [← hv]
+          exact evalRowPoly_rowPolyOfDealer s.partyPoint coeffs p 0
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq] at hv
+          exact h_out_correct p hp' v hv
 
 /-! ## §14.5 Existential-witness honest-dealer correctness (Phase 8.2)
 
@@ -5671,35 +5809,38 @@ omit [Fintype F] in
 /-- Bookkeeping invariant: under honest dealer, the bivariate
 polynomial's constant term equals the protocol-level secret.
 
-Trivially preserved because `coeffs`, `secret`, and `dealerHonest`
-are unchanged by every action.  The init clause comes directly from
-`initPred`'s `s.dealerHonest = true → s.coeffs 0 0 = sec`
-combined with `s.secret = sec`. -/
-def coeffsSecretInv (s : AVSSState n t F) : Prop :=
-  s.dealerHonest = true → s.coeffs 0 0 = s.secret
+Phase 8.5d-β: takes `coeffs` parameter (the witness from `initPred` /
+μ₀, no longer the removed state field). Trivially preserved because
+`secret` and `dealerHonest` are unchanged by every action, and `coeffs`
+is parametric (lives outside state). -/
+def coeffsSecretInv (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (s : AVSSState n t F) : Prop :=
+  s.dealerHonest = true → coeffs 0 0 = s.secret
 
 omit [Fintype F] in
-theorem initPred_coeffsSecretInv (sec : F) (corr : Finset (Fin n)) (coeffs : Fin (t+1) → Fin (t+1) → F)
+theorem initPred_coeffsSecretInv (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
     (s : AVSSState n t F) (h : initPred sec corr coeffs s) :
-    coeffsSecretInv s := by
-  -- TODO Phase 8.5d-β-followup: `coeffsSecretInv s := s.dealerHonest = true →
-  -- s.coeffs 0 0 = s.secret` references `s.coeffs` placeholder. The initPred
-  -- clause now gives `coeffs 0 0 = sec` (the parameter, not s.coeffs).
-  -- Restate `coeffsSecretInv` to take `coeffs` parameter.
-  sorry
+    coeffsSecretInv coeffs s := by
+  intro hh
+  obtain ⟨_, hsec, _, _, _, _, _, _, _, hc⟩ := h
+  rw [hsec]
+  exact (hc hh).1
 
 omit [Fintype F] in
 theorem avssStep_preserves_coeffsSecretInv
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
     (a : AVSSAction n F) (s : AVSSState n t F)
-    (_hgate : actionGate a s) (hinv : coeffsSecretInv s) :
-    coeffsSecretInv (avssStep a s) := by
-  -- TODO Phase 8.5d-β-followup: with `s.coeffs` placeholder returning
-  -- `(0 : F)`, `coeffsSecretInv s := s.dealerHonest = true → s.coeffs 0 0 = s.secret`
-  -- becomes `... → 0 = s.secret`, which is no longer derivable from
-  -- `initPred`'s honest-dealer clause `coeffs 0 0 = sec` (via the parameter).
-  -- Restate `coeffsSecretInv` to take `coeffs` parameter and use it instead of
-  -- `s.coeffs` placeholder.
-  sorry
+    (_hgate : actionGate a s) (hinv : coeffsSecretInv coeffs s) :
+    coeffsSecretInv coeffs (avssStep a s) := by
+  intro hh
+  -- `secret` and `dealerHonest` are preserved by every action.
+  have hsec : (avssStep a s).secret = s.secret := by
+    cases a <;> simp [avssStep, setLocal]
+  have hh_pre : s.dealerHonest = true := by
+    cases a <;> simp [avssStep, setLocal] at hh <;> exact hh
+  rw [hsec]
+  exact hinv hh_pre
 
 /-- The existential-witness honest-dealer correctness invariant.
 
@@ -5745,7 +5886,7 @@ gives `payload.rowPoly = rowPolyOfDealer post.partyPoint post.coeffs p`
 for every populated post-payload. -/
 theorem avssStep_preserves_honestDealerConsistencyInv
     (a : AVSSAction n F) (s : AVSSState n t F)
-    (hgate : actionGate a s) (hcs : coeffsSecretInv s)
+    (hgate : actionGate a s) (hcs : coeffsSecretInv coeffs s)
     (hcons : dealerMessagesInv s) :
     honestDealerConsistencyInv (avssStep a s) := by
   -- TODO Phase 8.5d-β-followup: depends on `coeffsSecretInv` and
@@ -5783,24 +5924,24 @@ theorem avss_correctness_AS
       (fun s => s.dealerHonest = true →
         ∀ p, p ∉ s.corrupted →
           ∀ v, (s.local_ p).output = some v →
-            v = bivEval s.coeffs (s.partyPoint p) 0) := by
+            v = bivEval coeffs (s.partyPoint p) 0) := by
   have h_pure : ∀ (a : AVSSAction n F) (s : AVSSState n t F)
       (h : ((avssSpec (t := t) sec corr coeffs).actions a).gate s),
       ((avssSpec (t := t) sec corr coeffs).actions a).effect s h
         = PMF.pure (avssStep a s) :=
     fun _ _ _ => rfl
-  have h_init' : ∀ᵐ s ∂μ₀, honestDealerInv s ∧ dealerMessagesInv s := by
+  have h_init' : ∀ᵐ s ∂μ₀, honestDealerInv coeffs s ∧ dealerMessagesInv s := by
     filter_upwards [h_init] with s hs
     exact ⟨initPred_honestDealerInv sec corr coeffs s hs,
            initPred_dealerMessagesInv sec corr coeffs s hs⟩
   have h_inv : AlmostBox (avssSpec (t := t) sec corr coeffs) A μ₀
-      (fun s => honestDealerInv s ∧ dealerMessagesInv s) :=
+      (fun s => honestDealerInv coeffs s ∧ dealerMessagesInv s) :=
     AlmostBox_of_pure_inductive
-      (fun s => honestDealerInv s ∧ dealerMessagesInv s)
+      (fun s => honestDealerInv coeffs s ∧ dealerMessagesInv s)
       (fun a s => avssStep a s)
       h_pure
       (fun a s hgate ⟨hinv, hcons⟩ =>
-        ⟨avssStep_preserves_honestDealerInv a s hgate hinv hcons,
+        ⟨avssStep_preserves_honestDealerInv coeffs a s hgate hinv hcons,
          avssStep_preserves_dealerMessagesInv a s hgate hcons⟩)
       μ₀ h_init' A
   unfold AlmostBox at h_inv ⊢
@@ -5842,7 +5983,7 @@ theorem avss_correctness_AS_existential
   -- preservation), and `honestDealerConsistencyInv` itself
   -- (verified preserved as the new Phase-8.2 invariant).
   have h_init' : ∀ᵐ s ∂μ₀,
-      honestDealerInv s ∧ coeffsSecretInv s ∧ dealerMessagesInv s
+      honestDealerInv coeffs s ∧ coeffsSecretInv coeffs s ∧ dealerMessagesInv s
         ∧ honestDealerConsistencyInv s := by
     filter_upwards [h_init] with s hs
     exact ⟨initPred_honestDealerInv sec corr coeffs s hs,
@@ -5850,25 +5991,26 @@ theorem avss_correctness_AS_existential
            initPred_dealerMessagesInv sec corr coeffs s hs,
            initPred_honestDealerConsistencyInv sec corr coeffs s hs⟩
   have h_inv : AlmostBox (avssSpec (t := t) sec corr coeffs) A μ₀
-      (fun s => honestDealerInv s ∧ coeffsSecretInv s
+      (fun s => honestDealerInv coeffs s ∧ coeffsSecretInv coeffs s
                   ∧ dealerMessagesInv s ∧ honestDealerConsistencyInv s) :=
     AlmostBox_of_pure_inductive
-      (fun s => honestDealerInv s ∧ coeffsSecretInv s
+      (fun s => honestDealerInv coeffs s ∧ coeffsSecretInv coeffs s
                   ∧ dealerMessagesInv s ∧ honestDealerConsistencyInv s)
       (fun a s => avssStep a s)
       h_pure
       (fun a s hgate ⟨hhd, hcs, hcons, _hhdc⟩ =>
-        ⟨avssStep_preserves_honestDealerInv a s hgate hhd hcons,
-         avssStep_preserves_coeffsSecretInv a s hgate hcs,
+        ⟨avssStep_preserves_honestDealerInv coeffs a s hgate hhd hcons,
+         avssStep_preserves_coeffsSecretInv coeffs a s hgate hcs,
          avssStep_preserves_dealerMessagesInv a s hgate hcons,
          avssStep_preserves_honestDealerConsistencyInv a s hgate hcs hcons⟩)
       μ₀ h_init' A
   unfold AlmostBox at h_inv ⊢
   filter_upwards [h_inv] with ω hω k hh
-  -- Witness := s.coeffs.  Secret position via coeffsSecretInv;
-  -- per-party output bound via honestDealerInv clause 2.
+  -- Phase 8.5d-β: witness is the `coeffs` parameter (μ₀-level). Secret
+  -- position via `coeffsSecretInv coeffs (ω k).1`; per-party output bound
+  -- via `honestDealerInv coeffs` clause 2.
   obtain ⟨hhd, hcs, _, _⟩ := hω k
-  refine ⟨((ω k).1).coeffs, hcs hh, ?_⟩
+  refine ⟨coeffs, hcs hh, ?_⟩
   intro p hp v hv
   exact (hhd hh).2 p hp v hv
 
@@ -8557,7 +8699,7 @@ theorem avss_correctness_AS_rushing
       (fun s => s.dealerHonest = true →
         ∀ p, p ∉ s.corrupted →
           ∀ v, (s.local_ p).output = some v →
-            v = bivEval s.coeffs (s.partyPoint p) 0) :=
+            v = bivEval coeffs (s.partyPoint p) 0) :=
   avss_correctness_AS sec corr coeffs μ₀ h_init R.toAdversary
 
 /-- Honest-dealer correctness in *existential-witness* form against a
