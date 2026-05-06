@@ -1,9 +1,61 @@
-# Phase 8.5d Checkpoint — α + α-followup landed (0 AVSS sorries)
+# Phase 8.5d Checkpoint — β landed (12 sorries, all tracked)
 
-**Branch**: `feat/randomized-leslie-m3-avss-phase8-5d-alpha`
-**Base**: PR #67 (8.5b-ε, end of 8.5b chain — 0 sorries baseline).
-**Build state**: green at `lake build Leslie.Prob.Index` with **0** sorries in AVSS.lean (down from 9 in 8.5d-α handoff).
-**Sorry count**: **0** in AVSS — chain restored to baseline.
+**Branch**: `feat/randomized-leslie-m3-avss-phase8-5d-beta`
+**Base**: PR #68 (8.5d-α, dealerShareTo per-party action surgery).
+**Build state**: green at `lake build Leslie.Prob.Index` with **12** sorries
+in AVSS.lean (up from 0; 12 added by 8.5d-β are all tagged
+`TODO Phase 8.5d-β-followup`).
+**Sorry count**: **12** in AVSS — all tracked, none in pre-β chain.
+
+## Phase 8.5d-β — what landed
+
+**Goal**: migrate `s.coeffs : Fin (t+1) → Fin (t+1) → F` out of `AVSSState`
+into μ₀ (initial measure). The bivariate polynomial is now a witness sampled
+at protocol start (parametric to `initPred`), not a state field.
+
+**Structural surgery**:
+- Removed `coeffs` field from `AVSSState`.
+- Added `dealerCommit : Fin n → DealerPayload t F` field for per-party
+  commitments (set at init from the canonical `coeffs` witness for honest
+  dealer; arbitrary for corrupt dealer).
+- `initPred sec corr coeffs s` takes `coeffs` parameter (the witness).
+- `avssStep` for `dealerShareTo p` now writes `dealerMessages p =
+  some (s.dealerCommit p)` instead of computing from a state field.
+- Threaded `coeffs` through `avssSpec`, `avssCert`, all
+  `avss_termination_AS_*` theorems, and most secrecy/commitment statements.
+- `coeffsSecretInv` and `honestDealerInv` restated to take `coeffs`
+  parameter (followup-1).
+- `avssStep_preserves_honestDealerInv` rebuilt with the parameterized form
+  (followup-1, all cases except partyDeliver — that one inner sorry needs
+  the `dealerCommit` ↔ canonical bridge from initPred).
+- `avssStep_coalitionGrid_invariant` closed via the placeholder being a
+  constant (followup-2).
+
+**Vestigial scaffolding**: `AVSSState.coeffs` accessor returns `(0 : F)` as
+placeholder, marked `@[deprecated]`. Existing `s.coeffs` syntax compiles via
+this scaffold; theorems whose statements depend on the actual witness
+should be restated to take `coeffs` as a parameter (matching `initPred`'s
+signature) and then the placeholder can be deleted.
+
+## Sorry inventory (Phase 8.5d-β-followup TODO)
+
+| Site | Reason | Effort |
+|---|---|---|
+| `avssStep_preserves_dealerMessagesInv` (dealerShareTo case) | needs dealerCommit ↔ canonical bridge from initPred | 1-line via initPred clause |
+| `avssStep_preserves_honestDealerInv` (partyDeliver case, line 5674) | needs same bridge | 1-line |
+| `initPred_honestDealerConsistencyInv` | needs rebuild using `coeffs` parameter as witness | 5-line |
+| `avssStep_preserves_honestDealerConsistencyInv` | depends on dealerMessages preservation | 5-line |
+| `avssStep_preserves_outputDeterminedInv` | restate `outputDeterminedInv` to take `coeffs` parameter, rebuild proof | 100-line per-action case split |
+| `avss_secrecy_initPMF` | restate `coalitionGrid` to take `coeffs` parameter, rebuild bivariate-shamir bridge | 30-line |
+| `avss_secrecy_AS_init`, `avss_secrecy_AS` | downstream of above | mechanical |
+| `avssStep_preserves_simSyncInv` | restate `simSyncInv.rowPoly_corrupt_eq` to take `coeffs` param, rebuild per-action proof | 200-line (most complex) |
+| `simSyncInv_avssInitState` | fixture, needs simSyncInv restatement first | 10-line |
+| `avssInitMeasure_AE_initPred` | now needs existential witness; provide via `polyToCoeffs f` for `f` in support | 30-line |
+| `avss_secrecy_AS_view_rushing` | top-level wrapper; reconciles existential `avssInitMeasure_AE_initPred` with fixed-coeffs `avss_secrecy_AS_view_rushing_via_init_invariant` | 20-line |
+
+**Total followup estimate**: ~400-500 LOC, tractable in 2-3 followup commits.
+
+## Pre-β baseline (kept for reference)
 
 ## Followup status — all 9 sorries closed
 
