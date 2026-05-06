@@ -1,9 +1,48 @@
-# Phase 8.5d Checkpoint — α landed (build green, sorry-handoff)
+# Phase 8.5d Checkpoint — α + α-followup landed
 
 **Branch**: `feat/randomized-leslie-m3-avss-phase8-5d-alpha`
 **Base**: PR #67 (8.5b-ε, end of 8.5b chain — 0 sorries baseline).
-**Build state**: green at the AVSS.lean target with `TODO Phase 8.5d-α-followup` sorries.
-**Sorry count**: **9** (all named, all blockers documented in this checkpoint).
+**Build state**: green at `lake build Leslie.Prob.Index` with **2** sorries in AVSS.lean (down from 9 in 8.5d-α handoff).
+**Sorry count**: **2** (both deferred to 8.5d-γ termination re-scope; documented below).
+
+## Followup status (2 PRs squashed)
+
+The original Phase 8.5d-α PR opened with 9 sorries; this branch's later commits closed 7 of them as part of α-followup work. Closures:
+
+| Site | Status |
+|---|---|
+| `avssTermInv_step` clause 4 | ✅ Closed (per-party `dealerSent p = false → ¬delivered`). |
+| `avssU_step_dealerShareTo_le` | ✅ Closed (case-split honest/corrupt p). |
+| `avssU_step_dealerShareTo_lt` | ✅ Closed (requires `p ∉ corrupted`; carried via `isHonestFire`). |
+| `avssStep_preserves_corruptLocalInv` (dealerShareTo) | ✅ Closed (frame proof). |
+| `avssStep_preserves_avssQueueWfInv` (dealerShareTo) | ✅ Closed. |
+| `avssStep_preserves_avssFlowInv` F2 (9 sub-cases) | ✅ Closed. |
+| `avssFairActionEnabled_at_non_terminated` | ✅ Closed (cascade re-derived under per-party form). |
+| `avssStep_preserves_dealerMessagesInv` (dealerShareTo) | ✅ Closed. |
+| `avssStep_preserves_simSyncInv` (dealerShareTo) | ⚠ Closed except for one sub-sorry (see below). |
+| `corrupt_fire_post_not_terminated` (dealerShareTo case) | ⚠ Deferred to 8.5d-γ. |
+
+## Remaining sorries (2 total, both deferred to 8.5d-γ)
+
+### 1. `corrupt_fire_post_not_terminated` — dealerShareTo p with p corrupt
+
+When the adversary fires `dealerShareTo p` for a corrupt p, only `inflightCorruptDeliveries` grows — neither `inflightDeliveries`/`inflightEchoes`/`inflightReady` nor any local field changes. So `terminated` could hold post-step (if it held pre-step), and we cannot derive contradiction.
+
+The proper resolution is **Phase 8.5d-γ**: re-scope termination to a consistent-quorum hypothesis, which obviates this branch.
+
+### 2. `avssStep_preserves_simSyncInv` — dealerMessages_corrupt_eq at slot r
+
+`dealerShareTo r` writes `dealerMessages r` with payload computed from `s.partyPoint` and `s.coeffs`. The `simSyncInv` couples `s.partyPoint = s'.partyPoint` (via `partyPoint_eq`) but does NOT track `s.coeffs = s'.coeffs`. The corrupt-side `dealerMessages_corrupt_eq` field needs the new payload at slot `r` to agree on both simulators when `r ∈ corr`, which requires the bivariate coefficients to agree.
+
+Resolution path:
+- Extend `simSyncInv` with a `coeffs_eq` field (8.5d-α-followup-2), or
+- Refactor `rowPolyOfDealer` to use a witness coefficient grid that's coupled in `simSyncInv` (8.5d-β when `s.coeffs` migrates to μ₀).
+
+For now, the sorry is named `TODO Phase 8.5d-α-followup-2` (or 8.5d-β depending on closure approach).
+
+## What 8.5d-α delivered
+
+Phase 8.5d-α is the structural surgery for **C4 (selective non-broadcast)** caveat:
 
 ## What 8.5d-α delivered
 
