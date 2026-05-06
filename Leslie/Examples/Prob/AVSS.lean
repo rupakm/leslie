@@ -7317,11 +7317,15 @@ only on `s.coeffs` and `s.partyPoint`, both of which are preserved. -/
 theorem avssStep_coalitionGrid_invariant (a : AVSSAction n F)
     (s : AVSSState n t F) (C D : BivariateShamir.Coalition n t) :
     coalitionGrid C D (avssStep a s) = coalitionGrid C D s := by
-  -- TODO Phase 8.5d-β-followup: with `coalitionGrid` referencing the
-  -- placeholder `s.coeffs`, this is rfl-true on both sides via the constant
-  -- accessor, but the simp set may not unfold it. Restate against `coeffs`
-  -- parameter to be meaningful.
-  sorry
+  -- Phase 8.5d-β: `s.coeffs` placeholder is constant `fun _ _ => 0`
+  -- (independent of `s`), and `partyPoint` is preserved by every action.
+  -- Both sides reduce to `fun p q => some (bivEval (fun _ _ => 0) ...)`.
+  unfold coalitionGrid
+  funext p q
+  have hpp : (avssStep a s).partyPoint = s.partyPoint := by
+    cases a <;> simp [avssStep, setLocal]
+  have hco : (avssStep a s).coeffs = s.coeffs := rfl
+  rw [hpp, hco]
 
 /-- The step-0 state marginal of `traceDist`: projecting the trace at
 step `0` to its state component recovers `μ₀`. -/
