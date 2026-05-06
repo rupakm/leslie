@@ -3,12 +3,12 @@
 **Branch**: `feat/randomized-leslie-m3-avss-phase8-5d-beta`
 **Base**: PR #68 (8.5d-α, dealerShareTo per-party action surgery).
 **Build state**: green at `lake build Leslie.Examples.Prob.AVSS` with
-**4** sorries in AVSS.lean (down from 12 after the followup-3 batch).
-**Sorry count**: **4** in AVSS — all tracked.
+**3** sorries in AVSS.lean (down from 12 after the followup-3 batch).
+**Sorry count**: **3** in AVSS — all tracked.
 
 ## Phase 8.5d-β-followup-3 — what landed
 
-Closed 10 of the 12 sorries from PR #69's structural migration:
+Closed 11 of the 12 sorries from PR #69's structural migration:
 
 | Site | Status |
 |---|---|
@@ -22,7 +22,7 @@ Closed 10 of the 12 sorries from PR #69's structural migration:
 | `avss_secrecy_initPMF` (Tier 2) | ✅ Closed |
 | `avss_secrecy_AS_init` (Tier 2) | ✅ Closed |
 | `avss_secrecy_AS` (Tier 2) | ✅ Closed |
-| `avssStep_preserves_simSyncInv` (Tier 3) | 🟡 Deferred to followup-4 |
+| `avssStep_preserves_simSyncInv` (Tier 3) | ✅ Closed via `dealerCommit_corrupt_eq` field add |
 | `avss_secrecy_AS_view_rushing` wrapper | 🟡 Deferred to followup-4 |
 
 **Restatements** (with `coeffs` parameter, replacing the deprecated
@@ -49,14 +49,31 @@ Closed 10 of the 12 sorries from PR #69's structural migration:
 - `coalitionTraceView_eq_reconstruct_AE` (body sorry'd) — downstream
   of the above plus the `traceDist_dealerHonest_AE_eq_init` lemma.
 
-## Remaining 4 sorries
+## Remaining 3 sorries
 
 | Site | Tag | Estimate |
 |---|---|---|
-| `avssStep_preserves_simSyncInv` | TODO 8.5d-β-followup-4 (Tier 3) | ~200 LOC per-action proof + `dealerCommit_corrupt_eq` field addition |
 | `avss_secrecy_AS_view_rushing` | TODO 8.5d-β-followup-4 | requires existential-vs-fixed-coeffs reconciliation in inner theorem chain |
 | `coalitionView_corrupt_factors_AE` | TODO 8.5d-β-followup-5 | ~50 LOC after `coalitionAlgebraicView` restatement |
 | `coalitionTraceView_eq_reconstruct_AE` | TODO 8.5d-β-followup-5 | ~30 LOC; uses the above |
+
+### simSyncInv structural change (T10 closure)
+
+Added new field `dealerCommit_corrupt_eq : ∀ p ∈ corr, s.dealerCommit p =
+s'.dealerCommit p` to `simSyncInv`. The field is required because under
+8.5d-β, `dealerShareTo r` writes `s.dealerCommit r` to `dealerMessages r`
+(not a synthesized payload from `s.coeffs`), so preserving
+`dealerMessages_corrupt_eq` for corrupt `r` requires the two states'
+commitments at corrupt `r` to agree. Updated callers:
+
+- `simSyncInv.symm` — added `(h.dealerCommit_corrupt_eq p hp).symm`
+- `simSyncInv_avssInitState` — at init, both states' `dealerCommit p`
+  reduce to `{ rowPoly := rowPolyOfDealer ... c/c' p, colPoly := fun _ => 0 }`,
+  and the `h_rp` hypothesis gives rowPoly equality at corrupt `p` (with
+  identical colPoly).
+- `avssStep_preserves_simSyncInv` — `dealerCommit_corrupt_eq :=
+  h.dealerCommit_corrupt_eq` directly in every action's `refine` block,
+  since `dealerCommit` is never modified by any `avssStep` action.
 
 ## Pre-β-followup-3 state (kept for reference)
 
