@@ -169,19 +169,6 @@ noncomputable def rwCert (N : ℕ) : ASTCertificate (rwSpec N) rwTerminated wher
     have h3 : (s.pos : ℝ) ≤ (⌈(k : ℝ≥0)⌉₊ : ℝ) :=
       h2.trans (by exact_mod_cast Nat.le_ceil (k : ℝ≥0))
     exact_mod_cast h3
-  U_dec_prob := fun _ => by
-    -- Decrease probability is 1: every gated step strictly decreases U.
-    refine ⟨1, by norm_num, fun i s hgate _ _ _ => ?_⟩
-    cases i
-    simp only [rwSpec]
-    rw [tsum_eq_single ⟨s.pos - 1⟩]
-    · rw [PMF.pure_apply, if_pos rfl, one_mul]
-      have hlt : (⟨s.pos - 1⟩ : RWState).pos < s.pos :=
-        Nat.sub_lt hgate Nat.one_pos
-      rw [if_pos hlt]
-      exact_mod_cast le_refl (1 : ℝ≥0∞)
-    · intro b hb
-      rw [PMF.pure_apply, if_neg hb, zero_mul]
   V_init_bdd := ⟨N, fun s h => by exact_mod_cast h⟩
 
 /-! ## §5. Sanity examples -/

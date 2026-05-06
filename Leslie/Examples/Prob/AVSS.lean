@@ -4998,56 +4998,6 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card
       · exact corrupt_fire_post_not_terminated a s hph
   U_bdd_subl := fun _ =>
     ⟨(7 * n + 7) * (lexBase n) ^ 6, fun s _ _ => avssU_le_bound s⟩
-  U_dec_prob := by
-    -- **Vestigial field under BC running-min route (Phase 8.5b-δ).**
-    --
-    -- `U_dec_prob`'s strict-form signature requires a uniform `p > 0`
-    -- such that on every gated fair-fire from a non-terminated state
-    -- with `V s ≤ k`, the strict-decrease event has weight ≥ `p`.
-    -- Under the C1+C2 model corrupt parties may fire `partyEchoSend` /
-    -- `partyReady` / `partyAmplify` / `partyEchoReceive` /
-    -- `partyReceiveReady` (all in `avssFairActions`), and these
-    -- corrupt firings can *increase* `avssU` (the honest-only
-    -- `unsentEcho`/`notReadySent` components don't shrink while the
-    -- in-flight queues grow).  No uniform `p > 0` simultaneously
-    -- bounds the strict-decrease event in honest- and corrupt-fired
-    -- cases — corrupt-fire contributes 0 to the indicator sum.
-    --
-    -- The BC running-min soundness route
-    -- (`pi_n_AST_fair_with_progress_bc_of_running_min_drops`,
-    -- consumed by `avss_termination_AS_fair_traj` post-Phase 8.5b-δ)
-    -- does **not** consume `cert.U_dec_prob`: it consumes only
-    -- `cert.U_bdd_subl`, `cert.Inv`, `cert.inv_step`, and a
-    -- caller-supplied `TrajectoryFairRunningMinDropIO` witness.  The
-    -- field is therefore vestigial on the live soundness path; we
-    -- record the structural blocker as a `sorry` until either
-    --   (a) `Liveness.lean` exposes a disjunct form of `U_dec_prob`
-    --       (`Or.inr "another fair action enabled at post"`,
-    --       mirroring `U_dec_det` / `V_super_fair`), or
-    --   (b) the cert structure splits into a smaller "BC cert" that
-    --       omits `U_dec_prob`.
-    --
-    -- See `PHASE-8-5b-CHECKPOINT.md` and
-    -- `docs/randomized-leslie-spike/13-fair-ast-borel-cantelli-plan.md`.
-    intro _k
-    refine ⟨1, by norm_num, ?_⟩
-    intro a s h hfair hinv hnt _hVk
-    by_cases hph : isHonestFire a s
-    · -- Honest fire: strict decrease, Dirac post-state contributes 1.
-      have h_lt : avssU (avssStep a s) < avssU s :=
-        avssU_step_lt_of_fair a s h hfair hinv.1 hnt hph
-      have heff : ((avssSpec (t := t) sec corr).actions a).effect s h
-                  = PMF.pure (avssStep a s) := rfl
-      rw [heff]
-      rw [tsum_eq_single (avssStep a s)]
-      · rw [PMF.pure_apply, if_pos rfl, if_pos h_lt, one_mul]
-        norm_cast
-      · intro b hb
-        rw [PMF.pure_apply, if_neg hb, zero_mul]
-    · -- Corrupt fire: U may bump (corrupt `partyEchoSend p` etc.).
-      -- Vestigial under BC running-min route — see field-level comment.
-      sorry  -- TODO 8.5b-δ-followup: framework disjunct in U_dec_prob
-
   V_init_bdd :=
     ⟨(((7 * n + 7) * (lexBase n) ^ 6 : ℕ) : ℝ≥0), fun s _ => by
       show ((avssU s : ℝ≥0)) ≤ (((7 * n + 7) * (lexBase n) ^ 6 : ℕ) : ℝ≥0)

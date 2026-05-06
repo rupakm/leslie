@@ -108,15 +108,6 @@ structure ASTCertificate
   U_term : ∀ s, Inv s → terminated s → U s = 0
   /-- `U` is bounded on every sublevel set of `V`. -/
   U_bdd_subl : ∀ k : ℝ≥0, ∃ M : ℕ, ∀ s, Inv s → V s ≤ k → U s ≤ M
-  /-- `U` decreases with positive probability under any action that
-  fires from a non-terminated state. The minimum decrease probability
-  on any sublevel set is uniformly bounded below. -/
-  U_dec_prob : ∀ k : ℝ≥0, ∃ p : ℝ≥0, 0 < p ∧
-    ∀ (i : ι) (s : σ) (h : (spec.actions i).gate s),
-      Inv s → ¬ terminated s → V s ≤ k →
-      p ≤ ∑' s' : σ,
-        ((spec.actions i).effect s h) s' *
-          (if U s' < U s then 1 else 0)
   /-- `V` is uniformly bounded on the invariant set.
 
   **Why this field is needed.** Without a uniform bound, the
@@ -286,14 +277,6 @@ structure FairASTCertificate
       U s' < U s ∨ ∃ j ∈ F.fair_actions, (spec.actions j).gate s'
   /-- `U` bounded on every sublevel set of `V`. -/
   U_bdd_subl : ∀ k : ℝ≥0, ∃ M : ℕ, ∀ s, Inv s → V s ≤ k → U s ≤ M
-  /-- Probabilistic decrease under fair scheduling: with positive
-  probability, `U` decreases in finitely many steps. -/
-  U_dec_prob : ∀ k : ℝ≥0, ∃ p : ℝ≥0, 0 < p ∧
-    ∀ (i : ι) (s : σ) (h : (spec.actions i).gate s),
-      i ∈ F.fair_actions → Inv s → ¬ terminated s → V s ≤ k →
-      p ≤ ∑' s' : σ,
-        ((spec.actions i).effect s h) s' *
-          (if U s' < U s then 1 else 0)
   /-- `V` is uniformly bounded on the invariant set. Same role as
   `ASTCertificate.V_init_bdd`: makes the trajectory `liftV` uniformly
   bounded, so the soundness proof skips Doob's convergence theorem
