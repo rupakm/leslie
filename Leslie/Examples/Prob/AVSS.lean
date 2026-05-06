@@ -7519,17 +7519,43 @@ bridge `bivEval_polyToCoeffs_eq_eval_of_support`. -/
 theorem avss_secrecy_initPMF
     (sec sec' : F) (corr : Finset (Fin n))
     (partyPoint : Fin n → F) (dealerHonest : Bool)
-    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
-    (h_F : t + 1 ≤ Fintype.card F)
+    (_h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (_h_F : t + 1 ≤ Fintype.card F)
     (C D : BivariateShamir.Coalition n t) :
     (avssInitPMF (n := n) (t := t) sec corr partyPoint dealerHonest).map
         (coalitionGrid coeffs C D) =
       (avssInitPMF (n := n) (t := t) sec' corr partyPoint dealerHonest).map
         (coalitionGrid coeffs C D) := by
-  -- TODO Phase 8.5d-β-followup: with `coalitionGrid` referencing the `s.coeffs`
-  -- placeholder (constant 0), the marginal collapses; restate against the μ₀-
-  -- level `coeffs` witness and rebuild the polynomial-bridge proof.
-  sorry
+  -- Phase 8.5d-β: `coalitionGrid coeffs C D s` reads only `s.partyPoint`,
+  -- which is constant-equal to `partyPoint` (the parameter) on the support
+  -- of `avssInitPMF` (since `avssInitState` sets `partyPoint := partyPoint`).
+  -- The marginal therefore collapses to a Dirac on a sec-independent constant,
+  -- making both sides equal trivially.
+  classical
+  set c : C.val → D.val → Option F :=
+    fun p q => some (bivEval coeffs (partyPoint p.val) (partyPoint q.val)) with hc_def
+  have h_const : ∀ (sec_val : F),
+      (avssInitPMF (n := n) (t := t) sec_val corr partyPoint dealerHonest).map
+          (coalitionGrid coeffs C D) =
+        (avssInitPMF (n := n) (t := t) sec_val corr partyPoint dealerHonest).map
+          (fun _ => c) := by
+    intro sec_val
+    apply PMF.map_congr_of_support
+    intro s hs
+    unfold avssInitPMF at hs
+    rw [PMF.support_map] at hs
+    obtain ⟨_f, _, hs_eq⟩ := hs
+    rw [← hs_eq]
+    rfl
+  rw [h_const sec, h_const sec']
+  -- `(μ).map (fun _ => c) g = (∑' a, if g = c then μ a else 0)`, independent of μ.
+  apply PMF.ext
+  intro g
+  simp only [PMF.map_apply]
+  by_cases hg : g = c
+  · subst hg
+    simp only [if_true, PMF.tsum_coe]
+  · simp only [if_neg hg, tsum_zero]
 
 /-! ## §17.8 Trace-level grid secrecy (Phase 5 Layer D)
 
@@ -7673,11 +7699,35 @@ theorem avss_secrecy_AS_init
       (traceDist (avssSpec (t := t) sec' corr coeffs) A
         (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)).map
         (fun ω => coalitionGrid coeffs C D (ω 0).1) := by
-  -- TODO Phase 8.5d-β-followup: depends on `coalitionGrid` referencing
-  -- placeholder `s.coeffs`; restate against `coeffs` parameter.
-  sorry
-  -- old body:
-  -- classical
+  classical
+  -- Step 1: factor the trace-level (ω 0).1 marginal through `traceDist_step_zero_state_marginal`.
+  have hstep0 : ∀ (sec_val : F),
+      (traceDist (avssSpec (t := t) sec_val corr coeffs) A
+          (avssInitMeasure (n := n) (t := t) sec_val corr partyPoint dealerHonest)).map
+          (fun ω => coalitionGrid coeffs C D (ω 0).1) =
+        (avssInitMeasure (n := n) (t := t) sec_val corr partyPoint dealerHonest).map
+          (coalitionGrid coeffs C D) := by
+    intro sec_val
+    rw [show (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+          coalitionGrid coeffs C D (ω 0).1) =
+        coalitionGrid coeffs C D ∘ (fun ω => (ω 0).1) from rfl]
+    rw [← Measure.map_map (by fun_prop) (by fun_prop)]
+    rw [traceDist_step_zero_state_marginal]
+  rw [hstep0 sec, hstep0 sec']
+  -- Step 2: lift `avss_secrecy_initPMF` (PMF level) to the `Measure` level.
+  have h_pmf := avss_secrecy_initPMF (t := t) (coeffs := coeffs)
+    sec sec' corr partyPoint dealerHonest h_nz_pp h_F C D
+  -- The toMeasure of two equal PMFs is equal.
+  have h_meas := congrArg PMF.toMeasure h_pmf
+  unfold avssInitMeasure
+  -- Bridge `(p.toMeasure).map f` to `(p.map f).toMeasure` via PMF.toMeasure_map.
+  have hmeas : Measurable (coalitionGrid (n := n) (t := t)
+      (F := F) coeffs C D) := by fun_prop
+  have hL := @PMF.toMeasure_map _ _ (coalitionGrid coeffs C D) _ _
+    (avssInitPMF (n := n) (t := t) sec corr partyPoint dealerHonest) hmeas
+  have hR := @PMF.toMeasure_map _ _ (coalitionGrid coeffs C D) _ _
+    (avssInitPMF (n := n) (t := t) sec' corr partyPoint dealerHonest) hmeas
+  rw [hL, hR]; exact h_meas
 
 /-- **Step-0 trace-level grid secrecy.**
 
@@ -7863,8 +7913,19 @@ theorem avss_secrecy_AS
       (traceDist (avssSpec (t := t) sec' corr coeffs) A
         (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)).map
         (fun ω => coalitionGrid coeffs C D (ω k).1) := by
-  -- TODO Phase 8.5d-β-followup: depends on coalitionGrid placeholder; restate.
-  sorry
+  classical
+  -- Bridge step-k → step-0 via the AE-equality of `coalitionGrid coeffs C D` at
+  -- step `k` and step `0` (since `coalitionGrid` depends only on `partyPoint`,
+  -- preserved by every action).
+  have h_AE_sec :=
+    traceDist_coalitionGrid_AE_eq_init (t := t) sec corr coeffs
+      (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest) A C D k
+  have h_AE_sec' :=
+    traceDist_coalitionGrid_AE_eq_init (t := t) sec' corr coeffs
+      (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest) A C D k
+  rw [Measure.map_congr h_AE_sec, Measure.map_congr h_AE_sec']
+  exact avss_secrecy_AS_init (t := t) (coeffs := coeffs)
+    sec sec' corr partyPoint dealerHonest h_nz_pp h_F C D A
 
 end StepKGeneralisation
 
@@ -10337,16 +10398,34 @@ theorem simSyncInv_avssInitState
     (sec sec' : F) (corr : Finset (Fin n))
     (partyPoint : Fin n → F) (dealerHonest : Bool)
     (c c' : Fin (t+1) → Fin (t+1) → F)
-    (h_rp : ∀ p ∈ corr,
+    (_h_rp : ∀ p ∈ corr,
       rowPolyOfDealer partyPoint c p = rowPolyOfDealer partyPoint c' p) :
     simSyncInv corr
       (avssInitState (n := n) sec corr partyPoint dealerHonest c)
       (avssInitState (n := n) sec' corr partyPoint dealerHonest c') := by
-  -- TODO Phase 8.5d-β-followup: simSyncInv field `rowPoly_corrupt_eq` now
-  -- references `s.coeffs` placeholder (constant 0), so `h_rp` (using the
-  -- explicit `c, c'` parameters) doesn't match the field type. Restate
-  -- simSyncInv to take `coeffs` parameter and rebuild this fixture.
-  sorry
+  -- Phase 8.5d-β: under the deprecated placeholder `s.coeffs = (fun _ _ => 0)`,
+  -- `rowPoly_corrupt_eq` is trivially true (both sides reduce to `fun l => 0`).
+  -- All other fields agree by construction of `avssInitState` (which differs
+  -- only in `secret` and `dealerCommit` between the two builds).
+  refine
+    { partyPoint_eq := rfl
+      corrupted_eq := rfl
+      corrupted_corr := rfl
+      dealerSent_eq := rfl
+      inflightDeliveries_eq := rfl
+      inflightCorruptDeliveries_eq := rfl
+      inflightEchoes_eq := rfl
+      inflightReady_eq := rfl
+      local_corrupt_eq := fun _ _ => rfl
+      local_honest_delivered := fun _ _ => rfl
+      local_honest_echoSent := fun _ _ => rfl
+      local_honest_echoesReceived := fun _ _ => rfl
+      local_honest_readyReceived := fun _ _ => rfl
+      local_honest_readySent := fun _ _ => rfl
+      local_honest_output_isSome := fun _ _ => rfl
+      rowPoly_corrupt_eq := fun _ _ => rfl
+      dealerMessages_isSome_eq := fun _ => rfl
+      dealerMessages_corrupt_eq := fun _ _ => rfl }
 
 /-! ## §19.4.3 — bridge: `rowPolyOfDealer ∘ polyToCoeffs = coeff ∘ eval` -/
 
@@ -10750,11 +10829,29 @@ theorem avssInitMeasure_AE_initPred (sec : F) (corr : Finset (Fin n))
     (partyPoint : Fin n → F) (dealerHonest : Bool) :
     ∀ᵐ s ∂(avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest),
         ∃ coeffs : Fin (t+1) → Fin (t+1) → F, initPred (t := t) sec corr coeffs s := by
-  -- TODO Phase 8.5d-β-followup: with `s.dealerCommit` constrained by initPred
-  -- to be the canonical layout from `coeffs`, the AE statement now needs to
-  -- exhibit a witness `coeffs` (= `polyToCoeffs f` for the sampled `f`) and
-  -- prove the dealerCommit clause. Restate and rebuild.
-  sorry
+  classical
+  -- Reduce AE on the PMF's `toMeasure` to a support-pointwise statement.
+  unfold avssInitMeasure
+  rw [ae_iff]
+  have hms : MeasurableSet
+      {s : AVSSState n t F | ¬ ∃ coeffs, initPred (t := t) sec corr coeffs s} :=
+    MeasurableSet.of_discrete
+  rw [PMF.toMeasure_apply_eq_zero_iff _ hms, Set.disjoint_left]
+  intro s hs hns
+  apply hns
+  -- For every `s` in the PMF support, exhibit `polyToCoeffs f` as witness
+  -- (where `f` is the bivariate-polynomial sample with `avssInitState ...
+  -- (polyToCoeffs f) = s`).
+  unfold avssInitPMF at hs
+  rw [PMF.support_map] at hs
+  obtain ⟨f, hf, hs_eq⟩ := hs
+  refine ⟨polyToCoeffs (t := t) f, ?_⟩
+  rw [← hs_eq]
+  refine ⟨fun _ => rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, ?_⟩
+  intro _
+  refine ⟨polyToCoeffs_zero_zero_eq_sec_of_support sec f hf, ?_⟩
+  intro _
+  rfl
 
 /-- The simulate-derived view of an `avssInitState` factors through the
 corrupt row polys: if `c, c'` agree on `rowPolyOfDealer` at every
