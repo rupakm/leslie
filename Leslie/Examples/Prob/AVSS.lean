@@ -5457,13 +5457,18 @@ private theorem _avssFair_dead_old_body_keep
   -/
 
 omit [Fintype F] in
-/-- Helper: a corrupt-fired action (one of `partyEchoSend p`,
-`partyReady p`, `partyAmplify p` with `p ∈ s.corrupted`) populates
-either `inflightEchoes` or `inflightReady` at the post-state, hence
-the post-state cannot be `terminated`. -/
+/-- Helper: a corrupt-fired action either (a) populates `inflightEchoes` or
+`inflightReady` at the post-state — breaking `terminated`'s queue clauses —
+or (b) leaves the honest-relevant fields unchanged, in which case the
+post-state's `terminated` predicate equals the pre-state's, so the
+pre-state's `¬ terminated` lifts forward.
+
+The (b) branch covers `dealerShareTo p` for corrupt `p`: the action only
+mutates `inflightCorruptDeliveries` (not in `terminated`) and `dealerSent`
++ `dealerMessages` (also not in `terminated`). -/
 theorem corrupt_fire_post_not_terminated
     (a : AVSSAction n F) (s : AVSSState n t F)
-    (hph : ¬ isHonestFire a s) :
+    (hph : ¬ isHonestFire a s) (hnt : ¬ terminated s) :
     ¬ terminated (avssStep a s) := by
   classical
   unfold isHonestFire at hph
@@ -5488,11 +5493,37 @@ theorem corrupt_fire_post_not_terminated
       simp [avssStep]
     rw [hifr] at h_in
     exact (Finset.notMem_empty _) h_in
-  · -- TODO Phase 8.5d-γ: corrupt-fired dealerShareTo p (p ∈ corrupted)
-    -- populates `inflightCorruptDeliveries` (not the queues `terminated`
-    -- inspects), so `terminated` could hold post-step. The proper handling
-    -- is in 8.5d-γ when termination is re-scoped to consistent-quorum.
-    sorry
+  · -- dealerShareTo p with p ∈ corrupted: the action doesn't change any field
+    -- that `terminated` inspects (only `dealerSent`, `dealerMessages`, and
+    -- `inflightCorruptDeliveries`). So `terminated post ↔ terminated pre`.
+    intro ht
+    apply hnt
+    obtain ⟨h_out, h_echo, h_ifd, h_ife, h_ifr⟩ := ht
+    refine ⟨?_, ?_, ?_, ?_, ?_⟩
+    · intro q hq
+      have h_post_loc : (avssStep (.dealerShareTo p) s).local_ q = s.local_ q := rfl
+      have h_post_corr : (avssStep (.dealerShareTo p) s).corrupted = s.corrupted := rfl
+      have hq' : q ∉ (avssStep (.dealerShareTo p) s).corrupted := by
+        rw [h_post_corr]; exact hq
+      have := h_out q hq'
+      rwa [h_post_loc] at this
+    · intro q hq
+      have h_post_loc : (avssStep (.dealerShareTo p) s).local_ q = s.local_ q := rfl
+      have h_post_corr : (avssStep (.dealerShareTo p) s).corrupted = s.corrupted := rfl
+      have hq' : q ∉ (avssStep (.dealerShareTo p) s).corrupted := by
+        rw [h_post_corr]; exact hq
+      have := h_echo q hq'
+      rwa [h_post_loc] at this
+    · -- pre.inflightDeliveries = post.inflightDeliveries (since p ∈ corr).
+      have h_post_ifd : (avssStep (.dealerShareTo p) s).inflightDeliveries =
+          s.inflightDeliveries := by
+        simp only [avssStep]
+        rw [if_neg (by simp [hp_corr])]
+      rw [← h_post_ifd]; exact h_ifd
+    · have : (avssStep (.dealerShareTo p) s).inflightEchoes = s.inflightEchoes := rfl
+      rw [← this]; exact h_ife
+    · have : (avssStep (.dealerShareTo p) s).inflightReady = s.inflightReady := rfl
+      rw [← this]; exact h_ifr
 
 /-! ### Phase 2d: FairASTCertificate instance -/
 
@@ -5582,7 +5613,7 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card
       · exact avssStep_preserves_corruptLocalInv a s h hinv.2.1
       · exact avssStep_preserves_avssQueueWfInv a s h hinv.1 hinv.2.2.2.1 hinv.2.2.1
       · exact avssStep_preserves_avssFlowInv a s h hinv.2.2.2.2
-      · exact corrupt_fire_post_not_terminated a s hph
+      · exact corrupt_fire_post_not_terminated a s hph hnt
   V_super_fair := fun a s h hfair hinv hnt => by
     classical
     have heff : ((avssSpec (t := t) sec corr).actions a).effect s h
@@ -5607,7 +5638,7 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card
       · exact avssStep_preserves_corruptLocalInv a s h hinv.2.1
       · exact avssStep_preserves_avssQueueWfInv a s h hinv.1 hinv.2.2.2.1 hinv.2.2.1
       · exact avssStep_preserves_avssFlowInv a s h hinv.2.2.2.2
-      · exact corrupt_fire_post_not_terminated a s hph
+      · exact corrupt_fire_post_not_terminated a s hph hnt
   U_term := fun s hinv ht => avssCert_U_term s hinv.1 ht
   U_dec_det := fun a s h hfair hinv hnt s' hs' => by
     classical
@@ -5624,7 +5655,7 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card
       · exact avssStep_preserves_corruptLocalInv a s h hinv.2.1
       · exact avssStep_preserves_avssQueueWfInv a s h hinv.1 hinv.2.2.2.1 hinv.2.2.1
       · exact avssStep_preserves_avssFlowInv a s h hinv.2.2.2.2
-      · exact corrupt_fire_post_not_terminated a s hph
+      · exact corrupt_fire_post_not_terminated a s hph hnt
   U_bdd_subl := fun _ =>
     ⟨(7 * n + 7) * (lexBase n) ^ 6, fun s _ _ => avssU_le_bound s⟩
   V_init_bdd :=
@@ -10529,19 +10560,13 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
       simp only [avssStep]
       by_cases hpr : p = r
       · subst hpr
-        simp [Function.update_self]
-        -- payload uses partyPoint and coeffs. partyPoint equal (h.partyPoint_eq). coeffs
-        -- not in simSyncInv but are equal between the two states by construction
-        -- (state-level fields untouched by any AVSSAction). For dealerShareTo,
-        -- s'.coeffs = s.coeffs trivially since `setLocal` etc. preserve coeffs;
-        -- the simulator state s' inherits s.coeffs upon initial coupling.
-        -- However simSyncInv doesn't track coeffs; we only need the rowPoly to agree
-        -- on corrupt slots. The rowPoly is `rowPolyOfDealer partyPoint coeffs`, so
-        -- equality requires `s.partyPoint = s'.partyPoint ∧ s.coeffs = s'.coeffs`.
-        -- The latter is not in simSyncInv, so this case requires extending the inv.
-        -- TODO Phase 8.5d-α-followup: extend `simSyncInv` with `coeffs_eq` if needed,
-        -- or refactor the rowPolyOfDealer call to use the simulator's coeffs witness.
-        sorry
+        simp only [Function.update_self]
+        -- The payload's `colPoly = fun _ => 0` agrees on both sides; the
+        -- `rowPoly = rowPolyOfDealer ... p ...` equality follows
+        -- from `simSyncInv.rowPoly_corrupt_eq p hp` (with p ∈ corr).
+        have hrp := h.rowPoly_corrupt_eq p hp
+        congr 1
+        exact DealerPayload.mk.injEq _ _ _ _ |>.mpr ⟨hrp, rfl⟩
       · simp [Function.update_of_ne hpr]; exact h.dealerMessages_corrupt_eq p hp
   | partyDeliver q =>
     -- Gate retains q ∉ corrupted.

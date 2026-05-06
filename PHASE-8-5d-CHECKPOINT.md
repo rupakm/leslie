@@ -1,13 +1,11 @@
-# Phase 8.5d Checkpoint — α + α-followup landed
+# Phase 8.5d Checkpoint — α + α-followup landed (0 AVSS sorries)
 
 **Branch**: `feat/randomized-leslie-m3-avss-phase8-5d-alpha`
 **Base**: PR #67 (8.5b-ε, end of 8.5b chain — 0 sorries baseline).
-**Build state**: green at `lake build Leslie.Prob.Index` with **2** sorries in AVSS.lean (down from 9 in 8.5d-α handoff).
-**Sorry count**: **2** (both deferred to 8.5d-γ termination re-scope; documented below).
+**Build state**: green at `lake build Leslie.Prob.Index` with **0** sorries in AVSS.lean (down from 9 in 8.5d-α handoff).
+**Sorry count**: **0** in AVSS — chain restored to baseline.
 
-## Followup status (2 PRs squashed)
-
-The original Phase 8.5d-α PR opened with 9 sorries; this branch's later commits closed 7 of them as part of α-followup work. Closures:
+## Followup status — all 9 sorries closed
 
 | Site | Status |
 |---|---|
@@ -19,26 +17,40 @@ The original Phase 8.5d-α PR opened with 9 sorries; this branch's later commits
 | `avssStep_preserves_avssFlowInv` F2 (9 sub-cases) | ✅ Closed. |
 | `avssFairActionEnabled_at_non_terminated` | ✅ Closed (cascade re-derived under per-party form). |
 | `avssStep_preserves_dealerMessagesInv` (dealerShareTo) | ✅ Closed. |
-| `avssStep_preserves_simSyncInv` (dealerShareTo) | ⚠ Closed except for one sub-sorry (see below). |
-| `corrupt_fire_post_not_terminated` (dealerShareTo case) | ⚠ Deferred to 8.5d-γ. |
+| `avssStep_preserves_simSyncInv` (dealerShareTo) | ✅ Closed via `rowPoly_corrupt_eq`. |
+| `corrupt_fire_post_not_terminated` (dealerShareTo case) | ✅ Closed by adding pre-state `¬ terminated s` premise. |
 
-## Remaining sorries (2 total, both deferred to 8.5d-γ)
+## Final closure technique notes
 
-### 1. `corrupt_fire_post_not_terminated` — dealerShareTo p with p corrupt
+### `simSyncInv` dealerShareTo sub-case (was the trickiest)
 
-When the adversary fires `dealerShareTo p` for a corrupt p, only `inflightCorruptDeliveries` grows — neither `inflightDeliveries`/`inflightEchoes`/`inflightReady` nor any local field changes. So `terminated` could hold post-step (if it held pre-step), and we cannot derive contradiction.
+The corrupt-slot dealerMessages payload at slot `r ∈ corr`. Initially looked
+like it needed a new `coeffs_eq` field on `simSyncInv`, but
+`simSyncInv.rowPoly_corrupt_eq r hp` already gives the row poly equality
+directly, so no schema change was needed:
 
-The proper resolution is **Phase 8.5d-γ**: re-scope termination to a consistent-quorum hypothesis, which obviates this branch.
+```lean
+have hrp := h.rowPoly_corrupt_eq p hp  -- p ∈ corr
+exact DealerPayload.mk.injEq _ _ _ _ |>.mpr ⟨hrp, rfl⟩
+```
 
-### 2. `avssStep_preserves_simSyncInv` — dealerMessages_corrupt_eq at slot r
+### `corrupt_fire_post_not_terminated` for dealerShareTo (corrupt p)
 
-`dealerShareTo r` writes `dealerMessages r` with payload computed from `s.partyPoint` and `s.coeffs`. The `simSyncInv` couples `s.partyPoint = s'.partyPoint` (via `partyPoint_eq`) but does NOT track `s.coeffs = s'.coeffs`. The corrupt-side `dealerMessages_corrupt_eq` field needs the new payload at slot `r` to agree on both simulators when `r ∈ corr`, which requires the bivariate coefficients to agree.
+The action only mutates `inflightCorruptDeliveries`, `dealerSent p`, and
+`dealerMessages p` — none of which appear in `terminated`. So
+`terminated post ↔ terminated pre`. Adding the pre-state `¬ terminated s`
+hypothesis lets the new `dealerShareTo` corrupt-case lift forward:
 
-Resolution path:
-- Extend `simSyncInv` with a `coeffs_eq` field (8.5d-α-followup-2), or
-- Refactor `rowPolyOfDealer` to use a witness coefficient grid that's coupled in `simSyncInv` (8.5d-β when `s.coeffs` migrates to μ₀).
+```lean
+theorem corrupt_fire_post_not_terminated
+    (a : AVSSAction n F) (s : AVSSState n t F)
+    (hph : ¬ isHonestFire a s) (hnt : ¬ terminated s) :   -- new hnt premise
+    ¬ terminated (avssStep a s) := by
+  ...
+```
 
-For now, the sorry is named `TODO Phase 8.5d-α-followup-2` (or 8.5d-β depending on closure approach).
+The 3 V_super / V_super_fair callers already had `hnt` in scope, so the
+update was a one-line append.
 
 ## What 8.5d-α delivered
 
