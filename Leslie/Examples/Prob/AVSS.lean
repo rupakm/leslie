@@ -388,17 +388,18 @@ def avssStep (a : AVSSAction n F) (s : AVSSState n t F) :
       let s' := setLocal s p ls'
       { s' with inflightCorruptDeliveries := s.inflightCorruptDeliveries.erase p }
   | .partyEchoSend p =>
-      -- Honest party `p` broadcasts an echo to every other party.
-      -- Records `(p, q)` in `inflightEchoes` for every honest `q` and
-      -- sets the `echoSent` flag so the action is single-shot.
+      -- Phase 8.5b: party `p` (honest *or* corrupt under C1) broadcasts
+      -- an echo to every party. Phase 8.5b broadens the broadcast filter
+      -- from honest receivers only (`q ∉ s.corrupted`) to all receivers
+      -- (`Finset.univ`): honest sends now reach corrupt receivers, and
+      -- corrupt sends populate the queue regardless.
       let ls := s.local_ p
       let ls' : AVSSLocalState n t F := { ls with echoSent := true }
       let s' := setLocal s p ls'
       { s' with
         inflightEchoes :=
           s.inflightEchoes ∪
-            ((Finset.univ : Finset (Fin n)).filter
-              (fun q => q ∉ s.corrupted)).image (fun q => (p, q)) }
+            (Finset.univ : Finset (Fin n)).image (fun q => (p, q)) }
   | .partyEchoReceive p q =>
       let ls := s.local_ p
       let ls' : AVSSLocalState n t F :=
@@ -514,22 +515,23 @@ def actionGate (a : AVSSAction n F) (s : AVSSState n t F) : Prop :=
         p ∈ s.inflightCorruptDeliveries ∧ (s.local_ p).delivered = false ∧
         (s.dealerMessages p).isSome
   | .partyEchoSend p =>
-      p ∉ s.corrupted ∧ (s.local_ p).delivered = true ∧
+      -- Phase 8.5b: C1 closure — corrupt parties may also fire `partyEchoSend`.
+      (s.local_ p).delivered = true ∧
         (s.local_ p).echoSent = false ∧ s.dealerSent = true
   | .partyEchoReceive p q =>
-      p ∉ s.corrupted ∧ (q, p) ∈ s.inflightEchoes ∧
-        q ∉ (s.local_ p).echoesReceived
+      -- Phase 8.5b: C2 closure — corrupt receivers may receive echoes.
+      (q, p) ∈ s.inflightEchoes ∧ q ∉ (s.local_ p).echoesReceived
   | .partyReady p =>
-      p ∉ s.corrupted ∧
-        (s.local_ p).delivered = true ∧ (s.local_ p).readySent = false ∧
+      -- Phase 8.5b: C1 closure.
+      (s.local_ p).delivered = true ∧ (s.local_ p).readySent = false ∧
         (s.local_ p).echoesReceived.card ≥ n - t ∧ s.dealerSent = true
   | .partyAmplify p =>
-      p ∉ s.corrupted ∧
-        (s.local_ p).readySent = false ∧
+      -- Phase 8.5b: C1 closure.
+      (s.local_ p).readySent = false ∧
         (s.local_ p).readyReceived.card ≥ t + 1 ∧ s.dealerSent = true
   | .partyReceiveReady p q =>
-      p ∉ s.corrupted ∧
-        q ∈ s.inflightReady ∧ q ∉ (s.local_ p).readyReceived
+      -- Phase 8.5b: C2 closure.
+      q ∈ s.inflightReady ∧ q ∉ (s.local_ p).readyReceived
   | .partyOutput p =>
       p ∉ s.corrupted ∧
         (s.local_ p).delivered = true ∧ (s.local_ p).readySent = true ∧
@@ -865,6 +867,26 @@ def avssTermInv (s : AVSSState n t F) : Prop :=
     (s.local_ p).output.isSome = true →
       (s.local_ p).readySent = true ∧ (s.local_ p).delivered = true)
 
+/-- Phase 8.5b: queue-content invariant needed to discharge the
+`Or.inr` branch of `avssCert.V_super`/`U_dec_det` for corrupt-fired
+send actions.
+
+This is a *separate* invariant, conjoined into `avssCert.Inv` after
+the existing `avssTermInv` rather than added directly to it (so the
+existing `avssTermInv_step` proof and all downstream use sites
+remain untouched).
+
+The four clauses say: every echo/ready in flight (or recorded as
+received) corresponds to a sender that has actually sent (`echoSent
+= true` / `readySent = true`). They mutually preserve under
+`partyEchoSend`/`partyEchoReceive` and `partyReady`/`partyAmplify`/
+`partyReceiveReady`. -/
+def avssQueueInv (s : AVSSState n t F) : Prop :=
+  (∀ p q, (p, q) ∈ s.inflightEchoes → (s.local_ p).echoSent = true) ∧
+  (∀ p q, p ∈ (s.local_ q).echoesReceived → (s.local_ p).echoSent = true) ∧
+  (∀ p, p ∈ s.inflightReady → (s.local_ p).readySent = true) ∧
+  (∀ p q, p ∈ (s.local_ q).readyReceived → (s.local_ p).readySent = true)
+
 /-- Uniform bound on `avssU`: `7 · n · K⁶` plus slack, with `K = (n+1)²`.
 
 A simple over-bound `(7 * n + 7) * K⁶` is used; the cert's
@@ -1004,8 +1026,8 @@ theorem avssTermInv_step
         rw [hpre_ds] at hds'
         cases hds'
     | partyEchoSend p =>
-        -- Gate now requires `dealerSent = true`; direct contradiction.
-        have hpre_ds : s.dealerSent = true := h.2.2.2
+        -- Gate (Phase 8.5b: 3-tuple `⟨delivered, ¬echoSent, dealerSent⟩`).
+        have hpre_ds : s.dealerSent = true := h.2.2
         simp [avssStep, setLocal] at hds'
         rw [hpre_ds] at hds'
         cases hds'
@@ -1013,19 +1035,19 @@ theorem avssTermInv_step
         have hpre_ds : s.dealerSent = false := by
           simpa [avssStep, setLocal] using hds'
         have hi := hpre hpre_ds
-        have hgate_in : (q, p) ∈ s.inflightEchoes := h.2.1
+        -- Gate (Phase 8.5b: 2-tuple).
+        have hgate_in : (q, p) ∈ s.inflightEchoes := h.1
         rw [hi.2.2.1] at hgate_in
         exact absurd hgate_in (Finset.notMem_empty _)
     | partyReady p =>
-        -- Gate now requires `dealerSent = true`; direct contradiction.
-        have hpre_ds : s.dealerSent = true := h.2.2.2.2
+        -- Gate (Phase 8.5b: 4-tuple `⟨delivered, ¬readySent, ech, dealerSent⟩`).
+        have hpre_ds : s.dealerSent = true := h.2.2.2
         simp [avssStep, setLocal] at hds'
         rw [hpre_ds] at hds'
         cases hds'
     | partyAmplify p =>
-        -- Gate now requires `dealerSent = true`; combined with case
-        -- hypothesis `post.dealerSent = false`, contradicts directly.
-        have hpre_ds : s.dealerSent = true := h.2.2.2
+        -- Gate (Phase 8.5b: 3-tuple `⟨¬readySent, rrTotal, dealerSent⟩`).
+        have hpre_ds : s.dealerSent = true := h.2.2
         simp [avssStep, setLocal] at hds'
         rw [hpre_ds] at hds'
         cases hds'
@@ -1033,7 +1055,8 @@ theorem avssTermInv_step
         have hpre_ds : s.dealerSent = false := by
           simpa [avssStep, setLocal] using hds'
         have hi := hpre hpre_ds
-        have hgate_in : q ∈ s.inflightReady := h.2.1
+        -- Gate (Phase 8.5b: 2-tuple).
+        have hgate_in : q ∈ s.inflightReady := h.1
         rw [hi.2.2.2] at hgate_in
         exact absurd hgate_in (Finset.notMem_empty _)
     | partyOutput p =>
@@ -1072,10 +1095,9 @@ theorem avssTermInv_step
         by_cases hpq : p = q
         · subst hpq
           rw [setLocal_local_self] at hes ⊢
-          -- Post echoSent = true (set), post delivered = pre delivered.
-          -- Gate: pre delivered = true (= h.2.1).
+          -- Gate (Phase 8.5b 3-tuple `⟨delivered, ¬echoSent, dealerSent⟩`).
           simp
-          exact h.2.1
+          exact h.1
         · rw [setLocal_local_ne _ _ _ _ hpq] at hes ⊢
           exact hecho p hp hes
     | partyEchoReceive q r =>
@@ -1351,7 +1373,8 @@ theorem avssU_step_partyReceiveReady_lt (s : AVSSState n t F) (p q : Fin n)
     (hinv : avssTermInv s) :
     avssU (avssStep (AVSSAction.partyReceiveReady p q) s) + 1 ≤ avssU s := by
   classical
-  obtain ⟨_, hqin, _⟩ := hgate
+  -- Phase 8.5b: gate is now 2-tuple `⟨q ∈ inflightReady, ¬received⟩`.
+  obtain ⟨hqin, _⟩ := hgate
   have hds_pre : s.dealerSent = true :=
     dealerSent_true_of_inflight hinv
       (Or.inr (Or.inr (fun heq => by rw [heq] at hqin
@@ -1436,13 +1459,19 @@ theorem avssU_step_partyReceiveReady_lt (s : AVSSState n t F) (p q : Fin n)
 omit [Fintype F] in
 /-- `partyReady` step: avssU strictly decreases.  c5 (notReadySent) drops
 by 1 (loses K²); c6 (inflightReady) gains at most 1 (gains K). Net ≥ K(K-1)
-which is ≥ 1 for K ≥ 2 (i.e., n ≥ 1, which holds since `p : Fin n`). -/
+which is ≥ 1 for K ≥ 2.
+
+Phase 8.5b: `notReadySentSet` remains honest-only (per Option A from
+the §12.1 row 8.5b dilemma), so strict decrease requires an explicit
+honest-firing premise `hph`. Corrupt-fired `partyReady` is dispatched
+via `avssCert.V_super`/`U_dec_det`'s `Or.inr` branch. -/
 theorem avssU_step_partyReady_lt (s : AVSSState n t F) (p : Fin n)
     (hgate : actionGate (AVSSAction.partyReady p) s)
-    (hinv : avssTermInv s) :
+    (hinv : avssTermInv s) (hph : p ∉ s.corrupted) :
     avssU (avssStep (AVSSAction.partyReady p) s) + 1 ≤ avssU s := by
   classical
-  obtain ⟨hphon, hdel_t, hrsf, _hech, hds_pre⟩ := hgate
+  obtain ⟨hdel_t, hrsf, _hech, hds_pre⟩ := hgate
+  have hphon : p ∉ s.corrupted := hph
   -- n ≥ 1 from p : Fin n.
   have hn_pos : 1 ≤ n := by
     rcases Nat.eq_zero_or_pos n with hn | hn
@@ -1545,13 +1574,17 @@ theorem avssU_step_partyReady_lt (s : AVSSState n t F) (p : Fin n)
 omit [Fintype F] in
 /-- `partyAmplify` step: avssU strictly decreases.  Same shape as
 `partyReady`: c5 (notReadySent) drops by 1; c6 (inflightReady) gains at
-most 1.  Net K² - K ≥ 1. -/
+most 1.  Net K² - K ≥ 1.
+
+Phase 8.5b: see `avssU_step_partyReady_lt` for the explicit
+honest-firing premise. -/
 theorem avssU_step_partyAmplify_lt (s : AVSSState n t F) (p : Fin n)
     (hgate : actionGate (AVSSAction.partyAmplify p) s)
-    (hinv : avssTermInv s) :
+    (hinv : avssTermInv s) (hph : p ∉ s.corrupted) :
     avssU (avssStep (AVSSAction.partyAmplify p) s) + 1 ≤ avssU s := by
   classical
-  obtain ⟨hphon, hrsf, hrr_t, hds_pre⟩ := hgate
+  obtain ⟨hrsf, hrr_t, hds_pre⟩ := hgate
+  have hphon : p ∉ s.corrupted := hph
   have hn_pos : 1 ≤ n := by
     rcases Nat.eq_zero_or_pos n with hn | hn
     · subst hn; exact p.elim0
@@ -1648,7 +1681,8 @@ theorem avssU_step_partyEchoReceive_lt (s : AVSSState n t F) (p q : Fin n)
     (hinv : avssTermInv s) :
     avssU (avssStep (AVSSAction.partyEchoReceive p q) s) + 1 ≤ avssU s := by
   classical
-  obtain ⟨_, hqp_in, _⟩ := hgate
+  -- Phase 8.5b: gate is now 2-tuple `⟨(q,p) ∈ inflightEchoes, ¬received⟩`.
+  obtain ⟨hqp_in, _⟩ := hgate
   have hds_pre : s.dealerSent = true :=
     dealerSent_true_of_inflight hinv
       (Or.inr (Or.inl (fun heq => by rw [heq] at hqp_in
@@ -1931,13 +1965,19 @@ theorem avssU_step_partyCorruptDeliver_eq (s : AVSSState n t F) (p : Fin n)
 omit [Fintype F] in
 /-- `partyEchoSend` step: avssU strictly decreases.  c3 (unsentEchoSet)
 drops by 1 (loses K⁴); c4 (inflightEchoes) gains at most `n` (gains
-≤ n·K³). The lex weight K = (n+1)² is chosen exactly so K⁴ > n·K³. -/
+≤ n·K³). The lex weight K = (n+1)² is chosen exactly so K⁴ > n·K³.
+
+Phase 8.5b: `unsentEchoSet` remains honest-only and the broadcast filter
+broadens to `Finset.univ`. Strict decrease requires an explicit
+honest-firing premise. Corrupt-fired `partyEchoSend` is dispatched
+via `avssCert.V_super`/`U_dec_det`'s `Or.inr` branch. -/
 theorem avssU_step_partyEchoSend_lt (s : AVSSState n t F) (p : Fin n)
     (hgate : actionGate (AVSSAction.partyEchoSend p) s)
-    (hinv : avssTermInv s) :
+    (hinv : avssTermInv s) (hph : p ∉ s.corrupted) :
     avssU (avssStep (AVSSAction.partyEchoSend p) s) + 1 ≤ avssU s := by
   classical
-  obtain ⟨hphon, hdel_t, hesf, hds_pre⟩ := hgate
+  obtain ⟨hdel_t, hesf, hds_pre⟩ := hgate
+  have hphon : p ∉ s.corrupted := hph
   have hn_pos : 1 ≤ n := by
     rcases Nat.eq_zero_or_pos n with hn | hn
     · subst hn; exact p.elim0
@@ -1954,8 +1994,7 @@ theorem avssU_step_partyEchoSend_lt (s : AVSSState n t F) (p : Fin n)
       s.inflightDeliveries := by simp [avssStep]
   have hife : (avssStep (AVSSAction.partyEchoSend p) s).inflightEchoes =
       s.inflightEchoes ∪
-        ((Finset.univ : Finset (Fin n)).filter
-          (fun q => q ∉ s.corrupted)).image (fun q => (p, q)) := by
+        (Finset.univ : Finset (Fin n)).image (fun q => (p, q)) := by
     simp [avssStep]
   have hifr : (avssStep (AVSSAction.partyEchoSend p) s).inflightReady =
       s.inflightReady := by simp [avssStep]
@@ -2022,25 +2061,18 @@ theorem avssU_step_partyEchoSend_lt (s : AVSSState n t F) (p : Fin n)
     rw [huss_post, Finset.card_erase_of_mem hp_in_uss_pre]
   have huss_pos : 1 ≤ (unsentEchoSet s).card :=
     Finset.card_pos.mpr ⟨p, hp_in_uss_pre⟩
-  -- inflightEchoes card bound: post ≤ pre + n.
+  -- inflightEchoes card bound (Phase 8.5b: broadcast filter is now univ).
   have hife_card_le :
       (s.inflightEchoes ∪
-        ((Finset.univ : Finset (Fin n)).filter
-          (fun q => q ∉ s.corrupted)).image (fun q => (p, q))).card
+        (Finset.univ : Finset (Fin n)).image (fun q => (p, q))).card
         ≤ s.inflightEchoes.card + n := by
     calc (s.inflightEchoes ∪
-            ((Finset.univ : Finset (Fin n)).filter
-              (fun q => q ∉ s.corrupted)).image (fun q => (p, q))).card
+            (Finset.univ : Finset (Fin n)).image (fun q => (p, q))).card
         ≤ s.inflightEchoes.card +
-            (((Finset.univ : Finset (Fin n)).filter
-              (fun q => q ∉ s.corrupted)).image (fun q => (p, q))).card :=
+            ((Finset.univ : Finset (Fin n)).image (fun q => (p, q))).card :=
           Finset.card_union_le _ _
-      _ ≤ s.inflightEchoes.card +
-            ((Finset.univ : Finset (Fin n)).filter
-              (fun q => q ∉ s.corrupted)).card := by
-          gcongr; exact Finset.card_image_le
       _ ≤ s.inflightEchoes.card + (Finset.univ : Finset (Fin n)).card := by
-          apply Nat.add_le_add_left; exact Finset.card_le_univ _
+          gcongr; exact Finset.card_image_le
       _ = s.inflightEchoes.card + n := by simp
   unfold avssU
   rw [hds, hifd, hife, hifr, huss_card, hnrs, hunfin, hds_pre]
@@ -2248,9 +2280,21 @@ theorem avssU_step_dealerShare_lt (s : AVSSState n t F)
   linarith [h_diff]
 
 omit [Fintype F] in
-/-- Composite ≤: every gated action keeps avssU non-increasing. -/
+/-- Composite ≤: every gated *honest-fired* action keeps avssU
+non-increasing.
+
+Phase 8.5b: corrupt-fired `partyEchoSend`/`partyReady`/`partyAmplify`
+do *not* satisfy this — they bump the honest-only variant components.
+Those cases are dispatched in `avssCert.V_super` via the `Or.inr`
+branch (existence of a fair action enabled at the post-state).
+
+The `(hph : isHonestFire a s)` premise is vacuous for actions without
+an owning party (`dealerShare`, `partyDeliver`, `partyCorruptDeliver`,
+`partyOutput`) and for `partyEchoReceive`/`partyReceiveReady` (whose
+`_lt` lemmas don't require honest p). -/
 theorem avssU_step_le (a : AVSSAction n F) (s : AVSSState n t F)
-    (h : actionGate a s) (hinv : avssTermInv s) :
+    (h : actionGate a s) (hinv : avssTermInv s)
+    (hph : isHonestFire a s) :
     avssU (avssStep a s) ≤ avssU s := by
   cases a with
   | dealerShare => exact avssU_step_dealerShare_le s h hinv
@@ -2259,13 +2303,16 @@ theorem avssU_step_le (a : AVSSAction n F) (s : AVSSState n t F)
   | partyCorruptDeliver p =>
       have := avssU_step_partyCorruptDeliver_eq s p h; omega
   | partyEchoSend p =>
-      have := avssU_step_partyEchoSend_lt s p h hinv; omega
+      have hp_h : p ∉ s.corrupted := hph p (by simp)
+      have := avssU_step_partyEchoSend_lt s p h hinv hp_h; omega
   | partyEchoReceive p q =>
       have := avssU_step_partyEchoReceive_lt s p q h hinv; omega
   | partyReady p =>
-      have := avssU_step_partyReady_lt s p h hinv; omega
+      have hp_h : p ∉ s.corrupted := hph p (by simp)
+      have := avssU_step_partyReady_lt s p h hinv hp_h; omega
   | partyAmplify p =>
-      have := avssU_step_partyAmplify_lt s p h hinv; omega
+      have hp_h : p ∉ s.corrupted := hph p (by simp)
+      have := avssU_step_partyAmplify_lt s p h hinv hp_h; omega
   | partyReceiveReady p q =>
       have := avssU_step_partyReceiveReady_lt s p q h hinv; omega
   | partyOutput p =>
@@ -2309,22 +2356,48 @@ theorem honestSet_pos_of_not_terminated_pre_share
     rw [hempty] at hp_in
     exact absurd hp_in (Finset.notMem_empty _)
 
+/-- Phase 8.5b: action's "owning party" if it has one and that party
+is the honest-firing premise target. Returns `none` for actions
+without such an argument or those whose gate retains the honest
+clause built-in (`dealerShare`, `partyDeliver`, `partyCorruptDeliver`,
+`partyOutput`). -/
+@[simp] def avssOwningParty : AVSSAction n F → Option (Fin n)
+  | .partyEchoSend p => some p
+  | .partyEchoReceive p _ => some p
+  | .partyReady p => some p
+  | .partyAmplify p => some p
+  | .partyReceiveReady p _ => some p
+  | _ => none
+
+/-- "Action is honest-fired at state `s`": if it has an owning party,
+that party is honest. Phase 8.5b: case-split predicate for
+`avssCert`'s `V_super`/`U_dec_det` `Or.inl`/`Or.inr` disjuncts. -/
+def isHonestFire (a : AVSSAction n F) (s : AVSSState n t F) : Prop :=
+  ∀ p, avssOwningParty a = some p → p ∉ s.corrupted
+
 omit [Fintype F] in
-/-- For every fair-firing action, avssU strictly decreases. The
-`hnt : ¬ terminated s` premise is needed for the new `dealerShare`
-case (added to `avssFairActions` in Phase B): strict decrease of
-the K⁶ → K⁵ shift requires `(honestSet s).card ≥ 1`, which follows
-from `¬ terminated s` via `honestSet_pos_of_not_terminated_pre_share`. -/
-theorem avssU_step_lt_of_fair (a : AVSSAction n F) (s : AVSSState n t F)
+/-- For every fair-firing action that is *honestly fired* (owning
+party honest, or no owning party), avssU strictly decreases.
+
+Phase 8.5b: corrupt-fired send/receive actions (`partyEchoSend`,
+`partyReady`, `partyAmplify` with corrupt party arg) do *not* strictly
+decrease `avssU`. Those cases are discharged separately via
+`avssCert`'s `V_super`/`U_dec_det` `Or.inr` disjuncts.
+(`partyEchoReceive` and `partyReceiveReady` strictly decrease for
+both honest and corrupt firers — they consume queue entries.)
+
+The `hnt : ¬ terminated s` premise is needed for the `dealerShare`
+case: strict decrease of the K⁶ → K⁵ shift requires
+`(honestSet s).card ≥ 1` via
+`honestSet_pos_of_not_terminated_pre_share`. -/
+theorem avssU_step_lt_of_fair_honest
+    (a : AVSSAction n F) (s : AVSSState n t F)
     (h : actionGate a s) (hfair : a ∈ avssFairActions)
-    (hinv : avssTermInv s) (hnt : ¬ terminated s) :
+    (hinv : avssTermInv s) (hnt : ¬ terminated s)
+    (hph : isHonestFire a s) :
     avssU (avssStep a s) < avssU s := by
   cases a with
   | dealerShare =>
-      -- Phase B (Option B2): dealerShare is now in `avssFairActions`.
-      -- Strict decrease from `avssU_step_dealerShare_lt` requires
-      -- `(honestSet s).card ≥ 1`, which follows from `¬ terminated s`
-      -- via `honestSet_pos_of_not_terminated_pre_share`.
       have hds : s.dealerSent = false := h
       have h_honest_pos := honestSet_pos_of_not_terminated_pre_share s hinv hds hnt
       have := avssU_step_dealerShare_lt s h hinv h_honest_pos; omega
@@ -2332,13 +2405,16 @@ theorem avssU_step_lt_of_fair (a : AVSSAction n F) (s : AVSSState n t F)
       have := avssU_step_partyDeliver_lt s p h hinv; omega
   | partyCorruptDeliver p => simp [avssFairActions] at hfair
   | partyEchoSend p =>
-      have := avssU_step_partyEchoSend_lt s p h hinv; omega
+      have hp_h : p ∉ s.corrupted := hph p (by simp)
+      have := avssU_step_partyEchoSend_lt s p h hinv hp_h; omega
   | partyEchoReceive p q =>
       have := avssU_step_partyEchoReceive_lt s p q h hinv; omega
   | partyReady p =>
-      have := avssU_step_partyReady_lt s p h hinv; omega
+      have hp_h : p ∉ s.corrupted := hph p (by simp)
+      have := avssU_step_partyReady_lt s p h hinv hp_h; omega
   | partyAmplify p =>
-      have := avssU_step_partyAmplify_lt s p h hinv; omega
+      have hp_h : p ∉ s.corrupted := hph p (by simp)
+      have := avssU_step_partyAmplify_lt s p h hinv hp_h; omega
   | partyReceiveReady p q =>
       have := avssU_step_partyReceiveReady_lt s p q h hinv; omega
   | partyOutput p =>
@@ -5184,19 +5260,22 @@ level (we'd need to extract `delivered_k p` as a deterministic
 schedule function), but the AE structural identity is enough to drive
 the joint-marginal reduction in §17.12 below. -/
 
-/-- For every corrupt party `p`, the local state's fields
-`{echoSent, echoesReceived, readySent, readyReceived, output}` are
-pinned at their `init` values, and `delivered = false → rowPoly = none`.
+/-- For every corrupt party `p`, the local state's `output` is pinned
+at `none`, and `delivered = false → rowPoly = none`.
 
-Combined with `outputDeterminedInv` (which pins `delivered = true →
-rowPoly = some (rowPolyOfDealer …)`), this fully constrains corrupt
-parties' local states modulo the single bit `delivered`. -/
+Phase 8.5b weakening: under the C1+C2 model, corrupt parties may
+fire `partyEchoSend`/`partyReady`/`partyAmplify`/`partyEchoReceive`/
+`partyReceiveReady`, so the previous pinning of `{echoSent,
+echoesReceived, readySent, readyReceived}` no longer holds — those
+fields are now schedule-dependent for corrupt parties. The only
+genuinely pinned fields are `output` (set only by `partyOutput`,
+which retains the `p ∉ corrupted` gate) and the `(delivered, rowPoly)`
+pair (set together by `partyCorruptDeliver`).
+
+The schedule-dependent trivial fields are recovered separately via
+`coalitionTrivialView` (Phase 8.5c). -/
 def corruptLocalInv (s : AVSSState n t F) : Prop :=
   ∀ p, p ∈ s.corrupted →
-    (s.local_ p).echoSent = false ∧
-    (s.local_ p).echoesReceived = ∅ ∧
-    (s.local_ p).readySent = false ∧
-    (s.local_ p).readyReceived = ∅ ∧
     (s.local_ p).output = none ∧
     ((s.local_ p).delivered = false → (s.local_ p).rowPoly = none)
 
@@ -5207,70 +5286,85 @@ theorem initPred_corruptLocalInv (sec : F) (corr : Finset (Fin n))
   obtain ⟨hloc, _⟩ := h
   intro p _
   rw [hloc p]
-  refine ⟨rfl, rfl, rfl, rfl, rfl, fun _ => rfl⟩
+  refine ⟨rfl, fun _ => rfl⟩
 
-set_option maxHeartbeats 800000 in
 omit [Fintype F] in
-/-- `corruptLocalInv` is preserved by every gated action. Each action
-that modifies one of the pinned fields has a gate requiring its target
-party to be honest (`p ∉ corr`). -/
+/-- `corruptLocalInv` is preserved by every gated action.
+
+Phase 8.5b: only `output` and the `(delivered, rowPoly)` pair are
+pinned. `output` is preserved by every action except `partyOutput`,
+whose gate retains `p ∉ corrupted`. The `(delivered, rowPoly)` pair
+is preserved by every action except `partyCorruptDeliver`, which
+sets *both* fields together (so the implication
+`delivered = false → rowPoly = none` is vacuously preserved). -/
 theorem avssStep_preserves_corruptLocalInv
     (a : AVSSAction n F) (s : AVSSState n t F)
     (hgate : actionGate a s) (hinv : corruptLocalInv s) :
     corruptLocalInv (avssStep a s) := by
   classical
-  -- `s.corrupted` is preserved by every action.
   have hcorr : (avssStep a s).corrupted = s.corrupted := by
     cases a <;> simp [avssStep, setLocal]
   intro p hp
   rw [hcorr] at hp
-  obtain ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩ := hinv p hp
+  obtain ⟨h_out, h_rp_none⟩ := hinv p hp
   cases a with
   | dealerShare =>
       simp [avssStep] at *
-      exact ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩
+      exact ⟨h_out, h_rp_none⟩
   | partyDeliver q =>
-      -- gate: q ∉ corrupted, so q ≠ p (since p ∈ corrupted).
       have hpq : p ≠ q := fun h => hgate.2.1 (h ▸ hp)
       simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
-      exact ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩
+      exact ⟨h_out, h_rp_none⟩
   | partyCorruptDeliver q =>
-      -- gate: q ∈ corrupted; p may or may not equal q.
       by_cases hpq : p = q
       · subst hpq
-        -- After partyCorruptDeliver(p), delivered = true, rowPoly = some (rowPolyOfDealer …),
-        -- but the pinned fields {echoSent, echoesReceived, readySent, readyReceived, output}
-        -- are unchanged.
-        simp [avssStep, setLocal_local_self]
-        exact ⟨h_es, h_er, h_rs, h_rr, h_out⟩
+        -- After partyCorruptDeliver p, delivered = true ∧ rowPoly = some _;
+        -- the implication delivered=false → rowPoly=none is vacuously preserved.
+        refine ⟨?_, ?_⟩
+        · simp [avssStep, setLocal_local_self]; exact h_out
+        · intro hd; simp [avssStep, setLocal_local_self] at hd
       · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
-        exact ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩
+        exact ⟨h_out, h_rp_none⟩
   | partyEchoSend q =>
-      -- gate: q ∉ corrupted.
-      have hpq : p ≠ q := fun h => hgate.1 (h ▸ hp)
-      simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
-      exact ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩
+      -- p may or may not equal q (Phase 8.5b: corrupt p can fire).
+      by_cases hpq : p = q
+      · subst hpq
+        simp [avssStep, setLocal_local_self]
+        exact ⟨h_out, h_rp_none⟩
+      · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
+        exact ⟨h_out, h_rp_none⟩
   | partyEchoReceive q r =>
-      -- gate: q ∉ corrupted (the receiver q, here written p in our eqn).
-      have hpq : p ≠ q := fun h => hgate.1 (h ▸ hp)
-      simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
-      exact ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩
+      by_cases hpq : p = q
+      · subst hpq
+        simp [avssStep, setLocal_local_self]
+        exact ⟨h_out, h_rp_none⟩
+      · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
+        exact ⟨h_out, h_rp_none⟩
   | partyReady q =>
-      have hpq : p ≠ q := fun h => hgate.1 (h ▸ hp)
-      simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
-      exact ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩
+      by_cases hpq : p = q
+      · subst hpq
+        simp [avssStep, setLocal_local_self]
+        exact ⟨h_out, h_rp_none⟩
+      · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
+        exact ⟨h_out, h_rp_none⟩
   | partyAmplify q =>
-      have hpq : p ≠ q := fun h => hgate.1 (h ▸ hp)
-      simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
-      exact ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩
+      by_cases hpq : p = q
+      · subst hpq
+        simp [avssStep, setLocal_local_self]
+        exact ⟨h_out, h_rp_none⟩
+      · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
+        exact ⟨h_out, h_rp_none⟩
   | partyReceiveReady q r =>
-      have hpq : p ≠ q := fun h => hgate.1 (h ▸ hp)
-      simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
-      exact ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩
+      by_cases hpq : p = q
+      · subst hpq
+        simp [avssStep, setLocal_local_self]
+        exact ⟨h_out, h_rp_none⟩
+      · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
+        exact ⟨h_out, h_rp_none⟩
   | partyOutput q =>
       have hpq : p ≠ q := fun h => hgate.1 (h ▸ hp)
       simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
-      exact ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩
+      exact ⟨h_out, h_rp_none⟩
 
 /-- The combined Phase 6.2 invariant: `outputDeterminedInv` (rowPoly
 content for delivered parties), `corruptLocalInv` (trivial fields for
@@ -5324,18 +5418,14 @@ theorem avss_phase6Inv_AS
     μ₀ h_init' A
 
 omit [Field F] [Fintype F] in
-/-- The trivial fields of a corrupt party's local state are constant:
-under `corruptLocalInv`, every corrupt `p` has
-`echoSent = false ∧ echoesReceived = ∅ ∧ readySent = false ∧
-readyReceived = ∅ ∧ output = none`, and additionally
-`rowPoly = none` whenever `delivered = false`. -/
+/-- Phase 8.5b weakening: every corrupt party's `output = none`, and
+`rowPoly = none` whenever `delivered = false`. The previously pinned
+trivial fields `{echoSent, echoesReceived, readySent, readyReceived}`
+are now schedule-dependent (recovered separately via
+`coalitionTrivialView` in Phase 8.5c). -/
 theorem corruptLocalInv_local_trivial
     (s : AVSSState n t F) (hinv : corruptLocalInv s)
     (p : Fin n) (hp : p ∈ s.corrupted) :
-    (s.local_ p).echoSent = false ∧
-    (s.local_ p).echoesReceived = ∅ ∧
-    (s.local_ p).readySent = false ∧
-    (s.local_ p).readyReceived = ∅ ∧
     (s.local_ p).output = none ∧
     ((s.local_ p).delivered = false → (s.local_ p).rowPoly = none) :=
   hinv p hp
