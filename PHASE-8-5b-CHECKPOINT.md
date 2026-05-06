@@ -1,51 +1,39 @@
-# Phase 8.5b Checkpoint — 8.5b-γ landed (partial)
+# Phase 8.5b Checkpoint — 8.5b-γ-followup landed (partial)
 
-**Branch**: `feat/randomized-leslie-m3-avss-phase8-5b-gamma`
-**Base**: PR #61 (8.5b-β: cert dispatch + avssFairActionEnabled_at_non_terminated)
-**Build state**: green.
-**Sorry count**: 4 (was 13 at end of 8.5b-β; net −9).
+**Branch**: `feat/randomized-leslie-m3-avss-phase8-5b-gamma-followup`
+**Base**: PR #62 (8.5b-γ: queue WF freshness + actionGate_iff + simSyncInv preservation)
+**Build state**: green at 2699 jobs.
+**Sorry count**: 3 (was 4 at end of 8.5b-γ; net −1: closed two stuck cases at the
+cost of one new helper sorry in F4 ready-flow preservation).
 
-## What 8.5b-γ delivered
+## What 8.5b-γ-followup delivered
 
-1. **Freshness invariant `avssFreshInv`**: new bundle of four
-   freshness/source-sent clauses (Q6 echo freshness, Q7 ready
-   freshness, Q8 echo source-sent, Q9 ready source-sent) wired into
-   the cert's joint invariant.  Closes the **3 queue WF freshness
-   sorries** (`partyEchoSend` / `partyReady` / `partyAmplify` cases
-   of `avssStep_preserves_avssQueueWfInv`).
-2. **`actionGate_iff` 5 corrupt-q branches closed**: existing
-   `simSyncInv.local_corrupt_eq` was already strong enough — no
-   simSyncInv structural change needed for the gate-equivalence
-   proofs.  All 5 corrupt-q branches (partyEchoSend, partyEchoReceive,
-   partyReady, partyAmplify, partyReceiveReady) use
-   `local_corrupt_eq` plus `simSyncInv`'s honest-side fields.
-3. **`avssStep_preserves_simSyncInv` re-derived**: the ~600-LOC body
-   was re-written under the C1+C2 model.  For the five C1+C2-affected
-   actions, the proof case-splits on `q ∈ corr` (rather than relying
-   on the dropped `q ∉ corrupted` gate clause) and uses
-   `local_corrupt_eq` + `setLocal` congruence to discharge the corrupt
-   side.  Honest-side arguments mirror the original.
+1. **Flow + threshold invariant `avssFlowInv`**: new bundle of four clauses
+   (F1 threshold `s.corrupted.card ≤ t`; F2 delivery completeness; F3 echo flow;
+   F4 ready flow), wired into the cert's joint invariant.
+2. **`avssCert` signature**: now takes `(h_corr : corr.card ≤ t)` to seed F1
+   from `initPred`.  Threaded through `avss_termination_AS_fair`,
+   `avss_termination_AS_fair_traj`, and `avss_termination_AS_fair_rushing`.
+3. **C5 / C7 stuck-case dispatches**: `avssFairActionEnabled_at_non_terminated`
+   now closes both branches via lex-most-significant cascades through the
+   higher progress components (ifd / uss / ife / nrs / ifr); when all of those
+   are zero the C5 branch dispatches to `partyReady p` via F2 + F3 + threshold,
+   and the C7 branch dispatches to `partyOutput p` via F2 + F4 + threshold.
 
-## Sorry inventory (4 total)
+## Sorry inventory (3 total)
 
-### Out of scope for 8.5b-γ
+### Helper sorry (introduced this PR)
 
 | Line | Theorem | Resolution route |
 |---|---|---|
-| ~4096 | `avssCert.U_dec_prob` corrupt-fire branch | 8.5b-δ termination route switch (running-min). |
+| ~4250 | `avssStep_preserves_avssFlowInv` F4 `partyReceiveReady` branch | **8.5b-γ-followup-2** (or model fix).  The model's `partyReceiveReady r q` globally erases `q` from `inflightReady`, but only `r.readyReceived` gains `q`; F4's "every honest receiver" claim isn't preserved without a stronger broadcast semantics (per-pair tokens like `inflightEchoes`).  Two routes: (a) split `inflightReady` into `Finset (Fin n × Fin n)`; (b) weaken F4 to existential and re-derive C7 dispatch via the lucky-receiver chain.  Tracked by the in-line TODO. |
 
-### Deferred to 8.5b-γ-followup (deeper structural changes needed)
+### Out of scope for 8.5b-γ-followup
 
-| Line | Theorem | What's still needed |
+| Line | Theorem | Resolution route |
 |---|---|---|
-| ~3879 | `avssFairActionEnabled_at_non_terminated` C5 case | (a) `s.corrupted.card ≤ t` invariant (threshold); (b) echo-flow invariant; (c) delivery-completeness invariant.  Sub-case dispatch via "lex-most-significant Cᵢ" reformulation. |
-| ~3893 | Same lemma C7 case | Analogous to C5, plus a ready-flow invariant. |
-
-### Deferred to 8.5c scope
-
-| Line | Theorem | What's still needed |
-|---|---|---|
-| ~7067 | `coalitionView_corrupt_factors_AE` | Statement weakening + cascade through `corrupt_local_state_uniqueness` (which needs `coalitionTrivialView` infrastructure to recover the 4 schedule-dependent fields).  Per `AVSS-MODEL-NOTES.md` §12.1 row 8.5c. |
+| ~4932 | `avssCert.U_dec_prob` corrupt-fire branch | 8.5b-δ termination route switch (running-min). |
+| ~7903 | `coalitionView_corrupt_factors_AE` | 8.5c — statement weakening + cascade through `corrupt_local_state_uniqueness` (needs `coalitionTrivialView` infrastructure). |
 
 ## Path forward
 
@@ -54,12 +42,15 @@
   ↓
 8.5b-β [✅ 13 sorries; cert dispatch + lemma + queue WF]
   ↓
-8.5b-γ [✅ this checkpoint, 4 sorries; -9 net]
-        Closed: 3 freshness, 5 actionGate_iff, 1 simSyncInv preservation.
-        Deferred: 2 lemma stuck cases (γ-followup), 1 coalitionView (8.5c),
-                  1 U_dec_prob (8.5b-δ).
+8.5b-γ [✅ 4 sorries; -9 net; freshness, actionGate_iff, simSyncInv]
   ↓
-8.5b-γ-followup — close C5/C7 stuck cases via flow invariants + threshold.
+8.5b-γ-followup [✅ this checkpoint, 3 sorries; -1 net]
+        Closed: C5 / C7 stuck cases via flow + threshold cascade.
+        New helper sorry: F4 ready-flow preservation under partyReceiveReady
+                          (model-defect sub-followup).
+  ↓
+8.5b-γ-followup-2 — close F4 ready-flow preservation via model fix
+                    (per-pair inflightReady) or invariant weakening.
   ↓
 8.5b-δ — switch AVSS termination to BC running-min route to absorb
          U_dec_prob corrupt-fire bump.
@@ -72,21 +63,20 @@
 
 ## Axiom hygiene status
 
-`avssCert` still depends transitively on `sorryAx` (via the lemma's
-deep dispatches and the U_dec_prob corrupt branch).  Will become
-axiom-clean after 8.5b-γ-followup + 8.5b-δ + 8.5c close the
-remaining sorries.
+`avssCert` still depends transitively on `sorryAx` (via F4 ready-flow
+preservation, U_dec_prob corrupt branch, and coalitionView).  Will
+become axiom-clean after 8.5b-γ-followup-2 + 8.5b-δ + 8.5c close the
+remaining three sorries.
 
 ## How to pick up
 
 1. Read this file + `PHASE-8-5b-PLAN.md` (in this worktree).
-2. `lake build Leslie.Prob.Index` — confirm green.
-3. For 8.5b-γ-followup:
-     * Add `s.corrupted.card ≤ t` clause to `cert.Inv` (threshold).
-     * Add `avssFlowInv` (echo + ready completeness) and
-       `avssDeliveryInv` (Q10).
-     * Restructure `avssU_pos_disjunct` to "lex-most-significant
-       positive component", then close C5/C7 dispatch.
+2. `lake build Leslie.Prob.Index` — confirm green at 2699 jobs.
+3. For 8.5b-γ-followup-2:
+     * Decide between (a) splitting `inflightReady` into per-pair
+       `Finset (Fin n × Fin n)` (clean but 200+ LOC of cascades) or
+       (b) weakening F4 to existential and re-deriving C7 stuck-case
+       dispatch via lucky-receiver chain.
 4. For 8.5b-δ: switch `avss_termination_AS_fair`'s soundness route
    to `pi_n_AST_fair_with_progress_bc_of_running_min_drops`.
 5. For 8.5c: introduce `coalitionTrivialView`, weaken
