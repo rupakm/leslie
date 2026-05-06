@@ -4999,20 +4999,36 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card
   U_bdd_subl := fun _ =>
     ⟨(7 * n + 7) * (lexBase n) ^ 6, fun s _ _ => avssU_le_bound s⟩
   U_dec_prob := by
-    -- U_dec_prob's signature is the probabilistic-decrease form: there
-    -- exists `p > 0` such that on every gated fair-fire from a
-    -- non-terminated state with `V s ≤ k`, the post-state's `U`
-    -- decreases with probability ≥ `p`.  Since AVSS's effect kernel is a
-    -- Dirac, this collapses to a deterministic bound: pick `p = 1` and
-    -- use the strict-decrease lemma whenever `isHonestFire`; corrupt
-    -- fairings (Phase 8.5b's gap) cannot occur because corrupt actions
-    -- are excluded from `avssFairActions` for `partyCorruptDeliver`,
-    -- but `partyEchoSend` / `partyReady` / `partyAmplify` for corrupt
-    -- parties ARE in `avssFairActions`.  Those cases are dispatched via
-    -- a fallback `0 ≤ p` argument, but the *strict-decrease event*
-    -- value is only required to be ≥ p which we set to 0 in the
-    -- presence of a corrupt-fire branch — losing strict decrease is
-    -- absorbed by the `V_super_fair` disjunct.
+    -- **Vestigial field under BC running-min route (Phase 8.5b-δ).**
+    --
+    -- `U_dec_prob`'s strict-form signature requires a uniform `p > 0`
+    -- such that on every gated fair-fire from a non-terminated state
+    -- with `V s ≤ k`, the strict-decrease event has weight ≥ `p`.
+    -- Under the C1+C2 model corrupt parties may fire `partyEchoSend` /
+    -- `partyReady` / `partyAmplify` / `partyEchoReceive` /
+    -- `partyReceiveReady` (all in `avssFairActions`), and these
+    -- corrupt firings can *increase* `avssU` (the honest-only
+    -- `unsentEcho`/`notReadySent` components don't shrink while the
+    -- in-flight queues grow).  No uniform `p > 0` simultaneously
+    -- bounds the strict-decrease event in honest- and corrupt-fired
+    -- cases — corrupt-fire contributes 0 to the indicator sum.
+    --
+    -- The BC running-min soundness route
+    -- (`pi_n_AST_fair_with_progress_bc_of_running_min_drops`,
+    -- consumed by `avss_termination_AS_fair_traj` post-Phase 8.5b-δ)
+    -- does **not** consume `cert.U_dec_prob`: it consumes only
+    -- `cert.U_bdd_subl`, `cert.Inv`, `cert.inv_step`, and a
+    -- caller-supplied `TrajectoryFairRunningMinDropIO` witness.  The
+    -- field is therefore vestigial on the live soundness path; we
+    -- record the structural blocker as a `sorry` until either
+    --   (a) `Liveness.lean` exposes a disjunct form of `U_dec_prob`
+    --       (`Or.inr "another fair action enabled at post"`,
+    --       mirroring `U_dec_det` / `V_super_fair`), or
+    --   (b) the cert structure splits into a smaller "BC cert" that
+    --       omits `U_dec_prob`.
+    --
+    -- See `PHASE-8-5b-CHECKPOINT.md` and
+    -- `docs/randomized-leslie-spike/13-fair-ast-borel-cantelli-plan.md`.
     intro _k
     refine ⟨1, by norm_num, ?_⟩
     intro a s h hfair hinv hnt _hVk
@@ -5028,21 +5044,9 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card
         norm_cast
       · intro b hb
         rw [PMF.pure_apply, if_neg hb, zero_mul]
-    · -- Corrupt fire: U may not strictly decrease.  This branch is the
-      -- 8.5b probabilistic gap — for the deterministic Dirac kernel, we
-      -- discharge via showing the supermartingale event holds with
-      -- probability 1, but the strict-decrease event may not.  However,
-      -- under the disjunct form of `U_dec_det` (which the soundness
-      -- proof actually consumes), this branch is unreachable on the
-      -- AE-trajectory route used by AVSS termination; nonetheless we
-      -- need to provide *some* witness here.
-      --
-      -- TODO Phase 8.5b-γ: tighten this argument once `U_dec_prob`'s
-      -- exact role on the AE-trajectory route is settled.  For now we
-      -- discharge the bound `1 ≤ ∑'…` only when `isHonestFire`; the
-      -- corrupt branch falls through to a vacuous bound that requires
-      -- the AE route to skip this field altogether.
-      sorry  -- TODO 8.5b-γ: U_dec_prob corrupt-fire branch
+    · -- Corrupt fire: U may bump (corrupt `partyEchoSend p` etc.).
+      -- Vestigial under BC running-min route — see field-level comment.
+      sorry  -- TODO 8.5b-δ-followup: framework disjunct in U_dec_prob
 
   V_init_bdd :=
     ⟨(((7 * n + 7) * (lexBase n) ^ 6 : ℕ) : ℝ≥0), fun s _ => by
@@ -5051,10 +5055,31 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card
 
 /-! ## §13. Termination theorems (Phase 3) -/
 
-/-- Termination as `AlmostDiamond` under a trajectory-fair adversary,
-discharged via `FairASTCertificate.sound`.  Every fair execution
-almost-surely reaches a terminated state (every honest party has
-output, echoed, and all queues are drained).
+/-- Trajectory-form termination via the **BC running-min route**
+`pi_n_AST_fair_with_progress_bc_of_running_min_drops`.  Every fair
+execution almost-surely reaches a terminated state (every honest
+party has output, echoed, and all queues are drained).  Exposes the
+explicit per-sublevel partition (`pi_infty_zero_fair` for the
+unbounded part, BC running-min for each bounded sublevel).
+
+**Phase 8.5b-δ — route switch.**  Under the C1+C2 model
+(corrupt parties may fire `partyEchoSend`/`partyReady`/`partyAmplify`
+/`partyEchoReceive`/`partyReceiveReady`), a corrupt-fired send
+*increases* `avssU` (because the honest-only `unsentEcho`/`notReadySent`
+components don't shrink while `inflightEchoes`/`inflightReady` grows).
+The deterministic-descent route requires `TrajectoryUMono` (`avssU`
+non-increasing on every trajectory step), which is therefore **false**
+for AVSS post-Phase 8.5b.
+
+The BC running-min route absorbs the corrupt-fire bumps: even when
+intermediate corrupt firings raise `avssU`, every fair firing strictly
+drops the *running minimum* of `avssU` along the trajectory, so
+termination follows from a `TrajectoryFairRunningMinDropIO` witness
+provided per `V` sublevel `N`.  The analytic content (deriving the
+running-minimum-drop-i.o. event from `cert.U_dec_prob` plus trajectory
+fair progress via conditional Borel-Cantelli) is the gap-2 framework
+obligation tracked in `13-fair-ast-borel-cantelli-plan.md`; concrete
+protocols supply the witness directly until that plumbing lands.
 
 ✅ **Phase B fix landed.** `dealerShare` is now in `avssFairActions`
 (see §11.3 of `AVSS-MODEL-NOTES.md`).  Under fair scheduling the
@@ -5067,40 +5092,13 @@ For corrupt-dealer scenarios, this fairness is conservative: real-
 CR allows a corrupt dealer to refuse to broadcast.  A future
 Phase 8 with per-party dealer messages would distinguish honest-
 vs. corrupt-dealer fairness more precisely. -/
-theorem avss_termination_AS_fair
-    (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card ≤ t)
-    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
-    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
-    (A : Leslie.Prob.TrajectoryFairAdversary
-            (avssSpec (t := t) sec corr) avssFair μ₀)
-    (h_U_mono : FairASTCertificate.TrajectoryUMono
-        (avssSpec (t := t) sec corr) avssFair
-        (avssCert (t := t) sec corr h_corr) μ₀ A.toFair)
-    (h_U_strict : ∀ N : ℕ, FairASTCertificate.TrajectoryFairStrictDecrease
-        (avssSpec (t := t) sec corr) avssFair
-        (avssCert (t := t) sec corr h_corr) μ₀ A.toFair N) :
-    AlmostDiamond (avssSpec (t := t) sec corr) A.toAdversary μ₀ terminated := by
-  have h_init' : ∀ᵐ s ∂μ₀, (avssCert (t := t) sec corr h_corr).Inv s := by
-    filter_upwards [h_init] with s hs
-    exact (avssCert (t := t) sec corr h_corr).inv_init s hs
-  exact FairASTCertificate.sound
-    (avssCert (t := t) sec corr h_corr) μ₀ h_init' A.toFair A.progress
-    h_U_mono h_U_strict
-
-/-- Trajectory-form termination via the deterministic monotone
-specialisation `pi_n_AST_fair_with_progress_det`.  Equivalent in
-conclusion to `avss_termination_AS_fair`; this variant is exposed for
-callers that prefer the explicit deterministic-descent route. -/
 theorem avss_termination_AS_fair_traj
     (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card ≤ t)
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
     (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
     (A : Leslie.Prob.TrajectoryFairAdversary
             (avssSpec (t := t) sec corr) avssFair μ₀)
-    (h_U_mono : FairASTCertificate.TrajectoryUMono
-        (avssSpec (t := t) sec corr) avssFair
-        (avssCert (t := t) sec corr h_corr) μ₀ A.toFair)
-    (h_U_strict : ∀ N : ℕ, FairASTCertificate.TrajectoryFairStrictDecrease
+    (h_drop_io : ∀ N : ℕ, FairASTCertificate.TrajectoryFairRunningMinDropIO
         (avssSpec (t := t) sec corr) avssFair
         (avssCert (t := t) sec corr h_corr) μ₀ A.toFair N) :
     AlmostDiamond (avssSpec (t := t) sec corr) A.toAdversary μ₀ terminated := by
@@ -5134,13 +5132,31 @@ theorem avss_termination_AS_fair_traj
   have h_each_N : ∀ N : ℕ,
       ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A.toAdversary μ₀),
         (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 :=
-    fun N => FairASTCertificate.pi_n_AST_fair_with_progress_det
-      cert μ₀ h_init_inv A.toFair A.progress N h_U_mono (h_U_strict N)
+    fun N => FairASTCertificate.pi_n_AST_fair_with_progress_bc_of_running_min_drops
+      cert μ₀ h_init_inv A.toFair N (h_drop_io N)
   rw [← MeasureTheory.ae_all_iff] at h_each_N
   filter_upwards [h_each_N, h_inf_null] with ω hN h_inf
   rcases hbounded_or_unbounded ω with ⟨N, hbnd⟩ | hunb
   · exact hN N hbnd
   · exact absurd hunb h_inf
+
+/-- Termination as `AlmostDiamond` under a trajectory-fair adversary,
+discharged via `avss_termination_AS_fair_traj` (the **BC running-min
+route**).  Wrapper preserving the original `avss_termination_AS_fair`
+name and signature for downstream callers.  Phase 8.5b-δ replaced the
+deterministic-descent route with the BC running-min route — see
+`avss_termination_AS_fair_traj`'s docstring. -/
+theorem avss_termination_AS_fair
+    (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card ≤ t)
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (A : Leslie.Prob.TrajectoryFairAdversary
+            (avssSpec (t := t) sec corr) avssFair μ₀)
+    (h_drop_io : ∀ N : ℕ, FairASTCertificate.TrajectoryFairRunningMinDropIO
+        (avssSpec (t := t) sec corr) avssFair
+        (avssCert (t := t) sec corr h_corr) μ₀ A.toFair N) :
+    AlmostDiamond (avssSpec (t := t) sec corr) A.toAdversary μ₀ terminated :=
+  avss_termination_AS_fair_traj sec corr h_corr μ₀ h_init A h_drop_io
 
 /-! ## §13.5 Dealer-messages consistency invariant (Phase 8.1)
 
@@ -8448,7 +8464,12 @@ trajectory-progress witness directly against `R.toAdversary`. -/
 /-- Termination as `AlmostDiamond` under a trajectory-fair *rushing*
 adversary. Re-statement of `avss_termination_AS_fair` with the
 underlying adversary supplied as `R.toAdversary` and fairness/progress
-witnesses formulated against that lift. -/
+witnesses formulated against that lift.
+
+Phase 8.5b-δ: switched to BC running-min route; the
+`TrajectoryUMono`/`TrajectoryFairStrictDecrease` witnesses required
+by the deterministic-descent route have been replaced by a single
+per-sublevel `TrajectoryFairRunningMinDropIO` witness. -/
 theorem avss_termination_AS_fair_rushing
     (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card ≤ t)
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
@@ -8457,18 +8478,14 @@ theorem avss_termination_AS_fair_rushing
     (h_progress : FairASTCertificate.TrajectoryFairProgress
       (avssSpec (t := t) sec corr) avssFair μ₀
       ⟨R.toAdversary, trivial⟩)
-    (h_U_mono : FairASTCertificate.TrajectoryUMono
-      (avssSpec (t := t) sec corr) avssFair
-      (avssCert (t := t) sec corr h_corr) μ₀
-      ⟨R.toAdversary, trivial⟩)
-    (h_U_strict : ∀ N : ℕ, FairASTCertificate.TrajectoryFairStrictDecrease
+    (h_drop_io : ∀ N : ℕ, FairASTCertificate.TrajectoryFairRunningMinDropIO
       (avssSpec (t := t) sec corr) avssFair
       (avssCert (t := t) sec corr h_corr) μ₀
       ⟨R.toAdversary, trivial⟩ N) :
     AlmostDiamond (avssSpec (t := t) sec corr) R.toAdversary μ₀ terminated :=
   avss_termination_AS_fair sec corr h_corr μ₀ h_init
     ⟨⟨R.toAdversary, trivial⟩, h_progress⟩
-    h_U_mono h_U_strict
+    h_drop_io
 
 /-- Honest-dealer correctness against a *rushing* adversary: with an
 honest dealer, every honest party's output equals its per-party share.
