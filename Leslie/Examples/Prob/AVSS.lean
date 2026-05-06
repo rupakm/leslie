@@ -10240,9 +10240,16 @@ omit [Fintype F] in
 theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
     (h : simSyncInv corr s s') (hgate : actionGate a s) :
     simSyncInv corr (avssStep a s) (avssStep a s') := by
-  -- TODO Phase 8.5d-β-followup: simSyncInv has `rowPoly_corrupt_eq` and
-  -- `dealerMessages_corrupt_eq` fields referencing `s.coeffs` placeholder.
-  -- Restate against the `coeffs` parameter and rebuild the per-action proof.
+  -- TODO Phase 8.5d-β-followup-4 (Tier 3, ~200 LOC): rebuild the per-action
+  -- preservation proof under the new `dealerCommit`/`coeffs`-parametric
+  -- model. The current `simSyncInv` structure has `rowPoly_corrupt_eq` and
+  -- `dealerMessages_corrupt_eq` fields that need a companion
+  -- `dealerCommit_corrupt_eq` field added (since `dealerShareTo r` writes
+  -- `s.dealerCommit r` to slot r — and to preserve `dealerMessages_corrupt_eq`
+  -- for corrupt r, the two states' commitments at corrupt r must agree).
+  -- The fixture `simSyncInv_avssInitState` (already closed) satisfies
+  -- `dealerCommit_corrupt_eq` via the `h_rp` hypothesis on `rowPolyOfDealer`
+  -- agreement, so adding the field is structurally consistent.
   sorry
 end simSyncInv
 
@@ -11394,12 +11401,18 @@ theorem avss_secrecy_AS_view_rushing
       (traceDist (avssSpec (t := t) sec' corr coeffs) R.toAdversary
         (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)).map
         (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) := by
-  -- TODO Phase 8.5d-β-followup: `avssInitMeasure_AE_initPred` now returns
-  -- `∃ coeffs, initPred sec corr coeffs s` (existential), but
-  -- `avss_secrecy_AS_view_rushing_via_init_invariant` expects
-  -- `∀ᵐ s ∂μ, initPred sec corr coeffs s` for a fixed `coeffs`. Reconcile by
-  -- introducing the existential at the outer wrapper or restating the inner
-  -- theorem to take the existential form.
+  -- TODO Phase 8.5d-β-followup-4: `avssInitMeasure_AE_initPred` (closed in
+  -- this PR) now returns `∃ coeffs, initPred sec corr coeffs s` (existential),
+  -- but `avss_secrecy_AS_view_rushing_via_init_invariant` expects
+  -- `∀ᵐ s ∂μ, initPred sec corr coeffs s` for a FIXED `coeffs`. Under
+  -- `avssInitMeasure ... (dealerHonest=true)` no fixed coeffs satisfies AE
+  -- initPred (since `polyToCoeffs f` ranges uniformly over the support).
+  -- Closing this requires either (a) restating the inner chain
+  -- (`_via_init_invariant`, `_via_aux`, `_view_conditional`) to take the
+  -- existential form, or (b) integrating over the per-state coeffs witness.
+  -- Either path threads through `coalitionView_corrupt_factors_AE` and
+  -- `coalitionTraceView_eq_reconstruct_AE` (both already followup-5
+  -- TODO'd above for the same `coalitionAlgebraicView` placeholder issue).
   sorry
 
 attribute [instance] instMeasurableSpaceAVSSRushingView

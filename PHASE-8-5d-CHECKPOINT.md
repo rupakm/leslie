@@ -1,4 +1,66 @@
-# Phase 8.5d Checkpoint — β landed (12 sorries, all tracked)
+# Phase 8.5d Checkpoint — β-followup-3 closed 10 of 12 sorries
+
+**Branch**: `feat/randomized-leslie-m3-avss-phase8-5d-beta`
+**Base**: PR #68 (8.5d-α, dealerShareTo per-party action surgery).
+**Build state**: green at `lake build Leslie.Examples.Prob.AVSS` with
+**4** sorries in AVSS.lean (down from 12 after the followup-3 batch).
+**Sorry count**: **4** in AVSS — all tracked.
+
+## Phase 8.5d-β-followup-3 — what landed
+
+Closed 10 of the 12 sorries from PR #69's structural migration:
+
+| Site | Status |
+|---|---|
+| `avssStep_preserves_dealerMessagesInv` (dealerShareTo) | ✅ Closed |
+| `avssStep_preserves_honestDealerInv` (partyDeliver) | ✅ Closed |
+| `initPred_honestDealerConsistencyInv` | ✅ Closed |
+| `avssStep_preserves_honestDealerConsistencyInv` | ✅ Closed |
+| `avssStep_preserves_outputDeterminedInv` (Tier 2) | ✅ Closed |
+| `simSyncInv_avssInitState` fixture | ✅ Closed |
+| `avssInitMeasure_AE_initPred` | ✅ Closed |
+| `avss_secrecy_initPMF` (Tier 2) | ✅ Closed |
+| `avss_secrecy_AS_init` (Tier 2) | ✅ Closed |
+| `avss_secrecy_AS` (Tier 2) | ✅ Closed |
+| `avssStep_preserves_simSyncInv` (Tier 3) | 🟡 Deferred to followup-4 |
+| `avss_secrecy_AS_view_rushing` wrapper | 🟡 Deferred to followup-4 |
+
+**Restatements** (with `coeffs` parameter, replacing the deprecated
+`s.coeffs` placeholder):
+
+- `dealerMessagesInv coeffs s` — honest-dealer-conditional, with both
+  `dealerCommit p = canonical` and `msg.rowPoly = canonical` clauses.
+- `outputDeterminedInv coeffs s` — honest-dealer-conditional, clause 1
+  universal in `p` (preserved via `dealerMessagesInv` for both honest
+  and corrupt parties' delivered rowPoly).
+- `coalitionGrid coeffs C D s` — algebraic grid view with parametric
+  witness (no longer the placeholder = 0).
+- `joinedConsistencyInv_via_vandermonde coeffs s` — honest-dealer-cond.
+- `phase6Inv coeffs s` — composite invariant taking coeffs.
+- `avss_commitment_AS_corrupt_dealer` — conclusion is honest-dealer-AE-
+  conditional (corrupt-dealer Vandermonde witness deferred to a
+  Phase 8.6+ Bracha amplification proof).
+
+**Newly tagged TODO Phase 8.5d-β-followup-5** (cascade out-of-scope):
+
+- `coalitionView_corrupt_factors_AE` (body sorry'd) — closing requires
+  restating `coalitionAlgebraicView` to take a `coeffs` parameter
+  (~30 callsites in the operational-secrecy chain).
+- `coalitionTraceView_eq_reconstruct_AE` (body sorry'd) — downstream
+  of the above plus the `traceDist_dealerHonest_AE_eq_init` lemma.
+
+## Remaining 4 sorries
+
+| Site | Tag | Estimate |
+|---|---|---|
+| `avssStep_preserves_simSyncInv` | TODO 8.5d-β-followup-4 (Tier 3) | ~200 LOC per-action proof + `dealerCommit_corrupt_eq` field addition |
+| `avss_secrecy_AS_view_rushing` | TODO 8.5d-β-followup-4 | requires existential-vs-fixed-coeffs reconciliation in inner theorem chain |
+| `coalitionView_corrupt_factors_AE` | TODO 8.5d-β-followup-5 | ~50 LOC after `coalitionAlgebraicView` restatement |
+| `coalitionTraceView_eq_reconstruct_AE` | TODO 8.5d-β-followup-5 | ~30 LOC; uses the above |
+
+## Pre-β-followup-3 state (kept for reference)
+
+# Phase 8.5d Checkpoint — β landed (12 sorries, all tracked) [historical]
 
 **Branch**: `feat/randomized-leslie-m3-avss-phase8-5d-beta`
 **Base**: PR #68 (8.5d-α, dealerShareTo per-party action surgery).
