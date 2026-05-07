@@ -1836,7 +1836,7 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) :
   inv_step := avssTermInv_step
   V_term := avssCert_V_term
   V_pos := avssCert_V_pos
-  V_super := fun a s h hinv _hnt => by
+  V_super := fun a s h hinv _hnt => Or.inl <| by
     classical
     have heff : ((avssSpec (t := t) sec corr).actions a).effect s h
                 = PMF.pure (avssStep a s) := rfl
@@ -1850,7 +1850,7 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) :
       exact_mod_cast this
     · intro b hb
       rw [PMF.pure_apply, if_neg hb, zero_mul]
-  V_super_fair := fun a s h hfair hinv _hnt => by
+  V_super_fair := fun a s h hfair hinv _hnt => Or.inl <| by
     classical
     have heff : ((avssSpec (t := t) sec corr).actions a).effect s h
                 = PMF.pure (avssStep a s) := rfl

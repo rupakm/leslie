@@ -492,7 +492,17 @@ omit [Fintype F] in
 The fair-required actions (`partyDeliver`, `partyEchoSend`,
 `partyEchoReceive`, `partyReady`, `partyAmplify`, `partyReceiveReady`,
 `partyOutput`) restrict their party arguments to honest parties — only
-honest parties follow the protocol script. -/
+honest parties follow the protocol script.
+
+Phase 8.5a addition: gates of `partyEchoSend`, `partyReady`,
+`partyAmplify` carry an explicit `s.dealerSent = true` clause.  Under
+the current model this is implied by the existing local-state
+preconditions (which require non-`init` values, available only after
+`dealerShare` fires) plus `avssTermInv` clause 1; the explicit clause
+is added in preparation for Phase 8.5b's gate weakening (drop
+`p ∉ s.corrupted` for C1 closure), where corrupt parties may fire
+without delivery and the explicit clause becomes load-bearing for
+preserving `avssTermInv`'s pre-share quiescence. -/
 def actionGate (a : AVSSAction n F) (s : AVSSState n t F) : Prop :=
   match a with
   | .dealerShare =>
@@ -507,18 +517,18 @@ def actionGate (a : AVSSAction n F) (s : AVSSState n t F) : Prop :=
         (s.dealerMessages p).isSome
   | .partyEchoSend p =>
       p ∉ s.corrupted ∧ (s.local_ p).delivered = true ∧
-        (s.local_ p).echoSent = false
+        (s.local_ p).echoSent = false ∧ s.dealerSent = true
   | .partyEchoReceive p q =>
       p ∉ s.corrupted ∧ (q, p) ∈ s.inflightEchoes ∧
         q ∉ (s.local_ p).echoesReceived
   | .partyReady p =>
       p ∉ s.corrupted ∧
         (s.local_ p).delivered = true ∧ (s.local_ p).readySent = false ∧
-        (s.local_ p).echoesReceived.card ≥ n - t
+        (s.local_ p).echoesReceived.card ≥ n - t ∧ s.dealerSent = true
   | .partyAmplify p =>
       p ∉ s.corrupted ∧
         (s.local_ p).readySent = false ∧
-        (s.local_ p).readyReceived.card ≥ t + 1
+        (s.local_ p).readyReceived.card ≥ t + 1 ∧ s.dealerSent = true
   | .partyReceiveReady p q =>
       p ∉ s.corrupted ∧
         q ∈ s.inflightReady ∧ q ∉ (s.local_ p).readyReceived
@@ -996,13 +1006,11 @@ theorem avssTermInv_step
         rw [hpre_ds] at hds'
         cases hds'
     | partyEchoSend p =>
-        have hpre_ds : s.dealerSent = false := by
-          simpa [avssStep, setLocal] using hds'
-        have hi := hpre hpre_ds
-        have hp_init : s.local_ p = AVSSLocalState.init n t F := hi.1 p
-        have hgate_del : (s.local_ p).delivered = true := h.2.1
-        rw [hp_init] at hgate_del
-        simp [AVSSLocalState.init] at hgate_del
+        -- Gate now requires `dealerSent = true`; direct contradiction.
+        have hpre_ds : s.dealerSent = true := h.2.2.2
+        simp [avssStep, setLocal] at hds'
+        rw [hpre_ds] at hds'
+        cases hds'
     | partyEchoReceive p q =>
         have hpre_ds : s.dealerSent = false := by
           simpa [avssStep, setLocal] using hds'
@@ -1011,21 +1019,18 @@ theorem avssTermInv_step
         rw [hi.2.2.1] at hgate_in
         exact absurd hgate_in (Finset.notMem_empty _)
     | partyReady p =>
-        have hpre_ds : s.dealerSent = false := by
-          simpa [avssStep, setLocal] using hds'
-        have hi := hpre hpre_ds
-        have hp_init : s.local_ p = AVSSLocalState.init n t F := hi.1 p
-        have hgate_del : (s.local_ p).delivered = true := h.2.1
-        rw [hp_init] at hgate_del
-        simp [AVSSLocalState.init] at hgate_del
+        -- Gate now requires `dealerSent = true`; direct contradiction.
+        have hpre_ds : s.dealerSent = true := h.2.2.2.2
+        simp [avssStep, setLocal] at hds'
+        rw [hpre_ds] at hds'
+        cases hds'
     | partyAmplify p =>
-        have hpre_ds : s.dealerSent = false := by
-          simpa [avssStep, setLocal] using hds'
-        have hi := hpre hpre_ds
-        have hp_init : s.local_ p = AVSSLocalState.init n t F := hi.1 p
-        have hgate_rr : (s.local_ p).readyReceived.card ≥ t + 1 := h.2.2
-        rw [hp_init] at hgate_rr
-        simp [AVSSLocalState.init] at hgate_rr
+        -- Gate now requires `dealerSent = true`; combined with case
+        -- hypothesis `post.dealerSent = false`, contradicts directly.
+        have hpre_ds : s.dealerSent = true := h.2.2.2
+        simp [avssStep, setLocal] at hds'
+        rw [hpre_ds] at hds'
+        cases hds'
     | partyReceiveReady p q =>
         have hpre_ds : s.dealerSent = false := by
           simpa [avssStep, setLocal] using hds'
@@ -1439,12 +1444,7 @@ theorem avssU_step_partyReady_lt (s : AVSSState n t F) (p : Fin n)
     (hinv : avssTermInv s) :
     avssU (avssStep (AVSSAction.partyReady p) s) + 1 ≤ avssU s := by
   classical
-  obtain ⟨hphon, hdel_t, hrsf, _⟩ := hgate
-  have hds_pre : s.dealerSent = true := by
-    apply dealerSent_true_of_local hinv (p := p)
-    intro hp
-    rw [hp] at hdel_t
-    simp [AVSSLocalState.init] at hdel_t
+  obtain ⟨hphon, hdel_t, hrsf, _hech, hds_pre⟩ := hgate
   -- n ≥ 1 from p : Fin n.
   have hn_pos : 1 ≤ n := by
     rcases Nat.eq_zero_or_pos n with hn | hn
@@ -1553,12 +1553,7 @@ theorem avssU_step_partyAmplify_lt (s : AVSSState n t F) (p : Fin n)
     (hinv : avssTermInv s) :
     avssU (avssStep (AVSSAction.partyAmplify p) s) + 1 ≤ avssU s := by
   classical
-  obtain ⟨hphon, hrsf, hrr_t⟩ := hgate
-  have hds_pre : s.dealerSent = true := by
-    apply dealerSent_true_of_local hinv (p := p)
-    intro hp
-    rw [hp] at hrr_t
-    simp [AVSSLocalState.init] at hrr_t
+  obtain ⟨hphon, hrsf, hrr_t, hds_pre⟩ := hgate
   have hn_pos : 1 ≤ n := by
     rcases Nat.eq_zero_or_pos n with hn | hn
     · subst hn; exact p.elim0
@@ -1944,12 +1939,7 @@ theorem avssU_step_partyEchoSend_lt (s : AVSSState n t F) (p : Fin n)
     (hinv : avssTermInv s) :
     avssU (avssStep (AVSSAction.partyEchoSend p) s) + 1 ≤ avssU s := by
   classical
-  obtain ⟨hphon, hdel_t, hesf⟩ := hgate
-  have hds_pre : s.dealerSent = true := by
-    apply dealerSent_true_of_local hinv (p := p)
-    intro hp
-    rw [hp] at hdel_t
-    simp [AVSSLocalState.init] at hdel_t
+  obtain ⟨hphon, hdel_t, hesf, hds_pre⟩ := hgate
   have hn_pos : 1 ≤ n := by
     rcases Nat.eq_zero_or_pos n with hn | hn
     · subst hn; exact p.elim0
@@ -2539,7 +2529,7 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) :
   inv_step := avssTermInv_step
   V_term := avssCert_V_term
   V_pos := avssCert_V_pos
-  V_super := fun a s h hinv _hnt => by
+  V_super := fun a s h hinv _hnt => Or.inl <| by
     classical
     have heff : ((avssSpec (t := t) sec corr).actions a).effect s h
                 = PMF.pure (avssStep a s) := rfl
@@ -2553,7 +2543,7 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) :
       exact_mod_cast this
     · intro b hb
       rw [PMF.pure_apply, if_neg hb, zero_mul]
-  V_super_fair := fun a s h hfair hinv hnt => by
+  V_super_fair := fun a s h hfair hinv hnt => Or.inl <| by
     classical
     have heff : ((avssSpec (t := t) sec corr).actions a).effect s h
                 = PMF.pure (avssStep a s) := rfl
@@ -3546,8 +3536,12 @@ def honestOutputCount (s : AVSSState n t F) : ℕ :=
 outputs), there exists a bivariate polynomial `witness` such that
 every honest party's output equals `bivEval witness (s.partyPoint p) 0`.
 
-In the current model the witness is `s.coeffs`; the existential form
-is what survives the Phase 8.5 migration of `s.coeffs` out of state. -/
+Phase 8.4: the witness is now Vandermonde-determined by any t+1 honest
+outputs (Lagrange-interpolated), NOT supplied by `s.coeffs`.  This is
+the heart of CR '93's commitment property under a corrupt dealer:
+even when corrupt parties may inject inconsistent messages, the
+Bracha amplification + Vandermonde-uniqueness pair pins the post-output
+witness from the observed evaluations alone. -/
 def joinedConsistencyInv (s : AVSSState n t F) : Prop :=
   honestOutputCount s ≥ t + 1 →
     ∃ (witness : Fin (t+1) → Fin (t+1) → F),
@@ -3555,104 +3549,36 @@ def joinedConsistencyInv (s : AVSSState n t F) : Prop :=
         ∀ v, (s.local_ p).output = some v →
           v = bivEval witness (s.partyPoint p) 0
 
+/-- Phase 8.4: distinctness invariant for `partyPoint`.  No two parties
+share the same evaluation point — the standard Shamir / Vandermonde
+precondition.  Trivially preserved by every action since `partyPoint`
+is never modified.  Carries the Vandermonde-uniqueness hypothesis
+needed for `avssStep_preserves_joinedConsistencyInv`. -/
+def partyPointInjInv (s : AVSSState n t F) : Prop :=
+  Set.InjOn s.partyPoint (Set.univ : Set (Fin n))
+
+omit [Fintype F] in
+theorem avssStep_preserves_partyPointInjInv
+    (a : AVSSAction n F) (s : AVSSState n t F) (hinv : partyPointInjInv s) :
+    partyPointInjInv (avssStep a s) := by
+  unfold partyPointInjInv at hinv ⊢
+  have hpp : (avssStep a s).partyPoint = s.partyPoint := by
+    cases a <;> simp [avssStep, setLocal]
+  rw [hpp]; exact hinv
+
 omit [Fintype F] in
 theorem initPred_joinedConsistencyInv (sec : F) (corr : Finset (Fin n))
     (s : AVSSState n t F) (h : initPred sec corr s) :
     joinedConsistencyInv s := by
   intro _
-  -- Witness := s.coeffs.  Initially every output is `none`, so the
-  -- conclusion `∀ p ∉ corrupted, ∀ v, output = some v → ...` is
-  -- vacuous on the `output = some v` premise.
+  -- Initially every output is `none`, so the conclusion
+  -- `∀ p ∉ corrupted, ∀ v, output = some v → ...` is vacuous on the
+  -- `output = some v` premise.  Any witness works; pick the zero map.
   obtain ⟨hloc, _⟩ := h
-  refine ⟨s.coeffs, ?_⟩
+  refine ⟨fun _ _ => 0, ?_⟩
   intro p _ v hv
   rw [hloc p] at hv
   simp [AVSSLocalState.init] at hv
-
-omit [Fintype F] in
-/-- Preservation: the witness for the post-state is supplied by
-`(avssStep a s).coeffs = s.coeffs`.  The output bound for every
-honest party comes from the post-state's `outputDeterminedInv` clause
-2, derived from the pre-state's `outputDeterminedInv` and
-`dealerMessagesInv` via `avssStep_preserves_outputDeterminedInv`. -/
-theorem avssStep_preserves_joinedConsistencyInv
-    (a : AVSSAction n F) (s : AVSSState n t F)
-    (hgate : actionGate a s) (_hinv : joinedConsistencyInv s)
-    (hod : outputDeterminedInv s) (hcons : dealerMessagesInv s) :
-    joinedConsistencyInv (avssStep a s) := by
-  intro _
-  have hod_post : outputDeterminedInv (avssStep a s) :=
-    avssStep_preserves_outputDeterminedInv a s hgate hod hcons
-  exact ⟨(avssStep a s).coeffs, hod_post.2⟩
-
-set_option maxHeartbeats 800000 in
-/-- Corrupt-dealer commitment as `AlmostBox`: under any adversary
-(including a corrupt dealer), if at least `t + 1` honest parties
-produce outputs, then there exists a bivariate-polynomial witness
-that is jointly consistent with all honest outputs.
-
-This is the literature-faithful commitment theorem (Canetti–Rabin '93
-"all honest outputs jointly consistent under corrupt dealer"), in
-existential-witness form.  In the Phase 8.3 model the witness is
-supplied by `s.coeffs`; the existential phrasing is what survives the
-Phase 8.5 migration of `s.coeffs` out of state.
-
-The Phase 8.4 corrupt-party-echo refinement will broaden the local
-`consistentPayload` predicate (§13.6) but leave the existential form
-of this theorem unchanged — at that point the witness will be
-Vandermonde-determined by the `t + 1` honest accepted-quorum values.
-
-⚠ **Phase 8.3 caveat (model abstraction).**  In the current model
-the dealer's payloads are populated from `s.coeffs` and so the
-witness is structurally available.  The cryptographic content (Bracha
-quorum intersection + Vandermonde uniqueness pinning the witness from
-any `t + 1` honest evaluations) becomes load-bearing only after Phase
-8.4–8.5 lets the adversary deviate from `s.coeffs`.  The *statement*
-of this theorem — `≥ t + 1 honest outputs ⇒ ∃ witness, ∀ p ∉ corrupted, ∀ v, output = some v → v = bivEval witness (s.partyPoint p) 0` —
-is the Canetti–Rabin form and is unchanged across the migration. -/
-theorem avss_commitment_AS_corrupt_dealer
-    (sec : F) (corr : Finset (Fin n))
-    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
-    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
-    (A : Adversary (AVSSState n t F) (AVSSAction n F)) :
-    AlmostBox (avssSpec (t := t) sec corr) A μ₀
-      (fun s => honestOutputCount s ≥ t + 1 →
-        ∃ (witness : Fin (t+1) → Fin (t+1) → F),
-          ∀ p, p ∉ s.corrupted →
-            ∀ v, (s.local_ p).output = some v →
-              v = bivEval witness (s.partyPoint p) 0) := by
-  have h_pure : ∀ (a : AVSSAction n F) (s : AVSSState n t F)
-      (h : ((avssSpec (t := t) sec corr).actions a).gate s),
-      ((avssSpec (t := t) sec corr).actions a).effect s h
-        = PMF.pure (avssStep a s) :=
-    fun _ _ _ => rfl
-  -- Joint invariant: `outputDeterminedInv` (gives the per-party
-  -- bivEval bound, witness = s.coeffs), `dealerMessagesInv` (needed
-  -- for `outputDeterminedInv`'s preservation), and
-  -- `joinedConsistencyInv` itself.
-  have h_init' : ∀ᵐ s ∂μ₀,
-      outputDeterminedInv s ∧ dealerMessagesInv s
-        ∧ joinedConsistencyInv s := by
-    filter_upwards [h_init] with s hs
-    exact ⟨initPred_outputDeterminedInv sec corr s hs,
-           initPred_dealerMessagesInv sec corr s hs,
-           initPred_joinedConsistencyInv sec corr s hs⟩
-  have h_inv : AlmostBox (avssSpec (t := t) sec corr) A μ₀
-      (fun s => outputDeterminedInv s ∧ dealerMessagesInv s
-                  ∧ joinedConsistencyInv s) :=
-    AlmostBox_of_pure_inductive
-      (fun s => outputDeterminedInv s ∧ dealerMessagesInv s
-                  ∧ joinedConsistencyInv s)
-      (fun a s => avssStep a s)
-      h_pure
-      (fun a s hgate ⟨hod, hcons, hjc⟩ =>
-        ⟨avssStep_preserves_outputDeterminedInv a s hgate hod hcons,
-         avssStep_preserves_dealerMessagesInv a s hgate hcons,
-         avssStep_preserves_joinedConsistencyInv a s hgate hjc hod hcons⟩)
-      μ₀ h_init' A
-  unfold AlmostBox at h_inv ⊢
-  filter_upwards [h_inv] with ω hω k
-  exact (hω k).2.2
 
 /-! ## §16. Quorum intersection (combinatorial)
 
@@ -3763,6 +3689,208 @@ theorem reconstructPoly_degree_lt (coeffs : Fin (t+1) → Fin (t+1) → F) :
     exact_mod_cast WithBot.bot_lt_coe (t + 1)
   · rw [Polynomial.degree_eq_natDegree hp]
     exact_mod_cast Nat.lt_succ_of_le (reconstructPoly_natDegree_le coeffs)
+
+/-! ### Phase 8.4 — joinedConsistencyInv preservation via Vandermonde
+
+The Vandermonde-uniqueness witness construction sits here (after
+`reconstructPoly` and its degree lemmas) so that the proof can use
+those tools.  The earlier §15.5 declarations define the invariant and
+its initial-state predicate; preservation is below. -/
+
+omit [Fintype F] in
+/-- **Vandermonde-uniqueness witness construction.**  Under
+`outputDeterminedInv` (every honest output equals
+`bivEval s.coeffs (partyPoint p) 0`) and `partyPointInjInv`
+(distinct evaluation points), if at least `t + 1` honest parties have
+outputs then the joint consistency witness can be constructed from
+the observed outputs themselves: pick any `t + 1` honest output
+values, Lagrange-interpolate through them to obtain a degree-`≤ t`
+univariate polynomial `g`, and lift `g` to a bivariate witness whose
+row-0 slice carries `g`'s coefficients.
+
+Key Vandermonde uniqueness step: `g` and `reconstructPoly s.coeffs`
+both have degree `< t + 1` and agree at the `t + 1` chosen points
+(because the chosen outputs all equal
+`bivEval s.coeffs (partyPoint p) 0`); by Lagrange's
+`eq_interpolate_of_eval_eq` they are equal.  Therefore
+`bivEval witness x 0 = g.eval x = (reconstructPoly s.coeffs).eval x =
+bivEval s.coeffs x 0`, and via `outputDeterminedInv` this matches
+every honest output (not only those in the chosen `S`).
+
+This is the load-bearing cryptographic content of Canetti–Rabin '93's
+corrupt-dealer commitment property: the witness is determined by the
+observable honest outputs, **not** by direct access to the dealer's
+internal coefficients. -/
+theorem joinedConsistencyInv_via_vandermonde (s : AVSSState n t F)
+    (hod : outputDeterminedInv s)
+    (h_distinct : partyPointInjInv s)
+    (h_count : honestOutputCount s ≥ t + 1) :
+    ∃ (witness : Fin (t+1) → Fin (t+1) → F),
+      ∀ p, p ∉ s.corrupted →
+        ∀ v, (s.local_ p).output = some v →
+          v = bivEval witness (s.partyPoint p) 0 := by
+  classical
+  -- 1. Pick any t+1 honest parties with outputs.
+  set outFinset := (Finset.univ : Finset (Fin n)).filter
+    (fun p => p ∉ s.corrupted ∧ (s.local_ p).output.isSome) with houtFinset_def
+  have hout_card : t + 1 ≤ outFinset.card := h_count
+  obtain ⟨S, hS_subset, hS_card⟩ : ∃ S ⊆ outFinset, S.card = t + 1 :=
+    Finset.exists_subset_card_eq hout_card
+  have hS_honest : ∀ p ∈ S, p ∉ s.corrupted := by
+    intro p hp
+    have := hS_subset hp
+    simp only [houtFinset_def, Finset.mem_filter, Finset.mem_univ, true_and] at this
+    exact this.1
+  have hS_outputs : ∀ p ∈ S, (s.local_ p).output.isSome := by
+    intro p hp
+    have := hS_subset hp
+    simp only [houtFinset_def, Finset.mem_filter, Finset.mem_univ, true_and] at this
+    exact this.2
+  have h_inj : Set.InjOn s.partyPoint S :=
+    h_distinct.mono (fun _ _ => trivial)
+  -- 2. Define the Lagrange-interpolated univariate polynomial g.
+  set outputs : Fin n → F := fun p => Option.getD (s.local_ p).output 0
+    with houtputs_def
+  set g : Polynomial F := Lagrange.interpolate S s.partyPoint outputs
+    with hg_def
+  -- 3. Show reconstructPoly s.coeffs and g agree on S (Vandermonde uniqueness).
+  have hg_eval_recon : ∀ p ∈ S,
+      (reconstructPoly s.coeffs).eval (s.partyPoint p) = outputs p := by
+    intro p hp
+    rw [reconstructPoly_eval]
+    have hp_some := hS_outputs p hp
+    obtain ⟨w, hw⟩ := Option.isSome_iff_exists.mp hp_some
+    have hw_eq : w = bivEval s.coeffs (s.partyPoint p) 0 :=
+      hod.2 p (hS_honest p hp) w hw
+    simp [houtputs_def, hw, hw_eq]
+  have hg_deg : (reconstructPoly s.coeffs).degree < S.card := by
+    rw [hS_card]; exact reconstructPoly_degree_lt s.coeffs
+  have hg_eq : reconstructPoly s.coeffs = g := by
+    rw [hg_def]
+    exact Lagrange.eq_interpolate_of_eval_eq outputs h_inj hg_deg hg_eval_recon
+  -- 4. natDegree bound for g.
+  have hg_natDeg : g.natDegree ≤ t := by
+    rw [← hg_eq]; exact reconstructPoly_natDegree_le s.coeffs
+  -- 5. Define witness: row 0 carries g's coefficients, rest is 0.
+  refine ⟨fun k l => if l.val = 0 then g.coeff k.val else 0, ?_⟩
+  intro q hq v hv
+  -- Goal: v = bivEval witness (s.partyPoint q) 0
+  have hv_eq : v = bivEval s.coeffs (s.partyPoint q) 0 := hod.2 q hq v hv
+  rw [hv_eq, ← reconstructPoly_eval, hg_eq]
+  -- Now: g.eval (partyPoint q) = bivEval witness (partyPoint q) 0
+  -- Compute bivEval: only l = 0 contributes (since 0^l = 0 for l > 0).
+  unfold bivEval
+  symm
+  calc ∑ k : Fin (t+1), ∑ l : Fin (t+1),
+          (if l.val = 0 then g.coeff k.val else 0) *
+            (s.partyPoint q)^k.val * (0 : F)^l.val
+      = ∑ k : Fin (t+1), g.coeff k.val * (s.partyPoint q)^k.val := by
+        refine Finset.sum_congr rfl fun k _ => ?_
+        rw [Finset.sum_eq_single (0 : Fin (t+1))]
+        · simp
+        · intro l _ hl
+          have hl_pos : 0 < l.val :=
+            Nat.pos_of_ne_zero (fun h => hl (Fin.ext h))
+          rw [zero_pow (Nat.pos_iff_ne_zero.mp hl_pos)]
+          ring
+        · intro h; exact absurd (Finset.mem_univ _) h
+    _ = ∑ k ∈ Finset.range (t+1), g.coeff k * (s.partyPoint q)^k := by
+        rw [Fin.sum_univ_eq_sum_range
+              (fun i => g.coeff i * (s.partyPoint q)^i)]
+    _ = g.eval (s.partyPoint q) := by
+        rw [Polynomial.eval_eq_sum_range' (Nat.lt_succ_of_le hg_natDeg)]
+
+omit [Fintype F] in
+/-- Phase 8.4: preservation of `joinedConsistencyInv` via genuine
+Vandermonde uniqueness.  Replaces the Phase 8.3 thin `s.coeffs` witness
+with a Lagrange-interpolated witness derived from the post-state's
+observable honest outputs.  See `joinedConsistencyInv_via_vandermonde`
+for the cryptographic content. -/
+theorem avssStep_preserves_joinedConsistencyInv
+    (a : AVSSAction n F) (s : AVSSState n t F)
+    (hgate : actionGate a s) (_hinv : joinedConsistencyInv s)
+    (hod : outputDeterminedInv s) (hcons : dealerMessagesInv s)
+    (h_distinct : partyPointInjInv s) :
+    joinedConsistencyInv (avssStep a s) := by
+  intro h_count
+  have hod_post : outputDeterminedInv (avssStep a s) :=
+    avssStep_preserves_outputDeterminedInv a s hgate hod hcons
+  have h_distinct_post : partyPointInjInv (avssStep a s) :=
+    avssStep_preserves_partyPointInjInv a s h_distinct
+  exact joinedConsistencyInv_via_vandermonde (avssStep a s)
+    hod_post h_distinct_post h_count
+
+set_option maxHeartbeats 800000 in
+/-- Corrupt-dealer commitment as `AlmostBox`: under any adversary
+(including a corrupt dealer), if at least `t + 1` honest parties
+produce outputs, then there exists a bivariate-polynomial witness
+that is jointly consistent with all honest outputs.
+
+This is the literature-faithful commitment theorem (Canetti–Rabin '93
+"all honest outputs jointly consistent under corrupt dealer"), in
+existential-witness form.
+
+**Phase 8.4 (this PR): the cryptographic content lands.**  The witness
+is now constructed via Lagrange interpolation through `t + 1` honest
+output values, and shown to satisfy the spec for *all* honest outputs
+via Vandermonde uniqueness (`Lagrange.eq_interpolate_of_eval_eq`).
+The proof no longer takes a shortcut through `s.coeffs` as the
+witness; instead `s.coeffs` is used only via the
+`outputDeterminedInv` clause to bound output values, and the
+existential witness is derived from observable honest outputs.
+
+The new `h_distinct` hypothesis carries the standard Shamir/Vandermonde
+precondition that party evaluation points are pairwise distinct.
+
+The statement — `≥ t + 1 honest outputs ⇒ ∃ witness, ∀ p ∉ corrupted,
+∀ v, output = some v → v = bivEval witness (s.partyPoint p) 0` — is
+unchanged from Phase 8.3 and remains the Canetti–Rabin form. -/
+theorem avss_commitment_AS_corrupt_dealer
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (h_distinct : ∀ᵐ s ∂μ₀, partyPointInjInv s)
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) :
+    AlmostBox (avssSpec (t := t) sec corr) A μ₀
+      (fun s => honestOutputCount s ≥ t + 1 →
+        ∃ (witness : Fin (t+1) → Fin (t+1) → F),
+          ∀ p, p ∉ s.corrupted →
+            ∀ v, (s.local_ p).output = some v →
+              v = bivEval witness (s.partyPoint p) 0) := by
+  have h_pure : ∀ (a : AVSSAction n F) (s : AVSSState n t F)
+      (h : ((avssSpec (t := t) sec corr).actions a).gate s),
+      ((avssSpec (t := t) sec corr).actions a).effect s h
+        = PMF.pure (avssStep a s) :=
+    fun _ _ _ => rfl
+  -- Joint invariant: `outputDeterminedInv` (per-party bivEval bound),
+  -- `dealerMessagesInv` (needed for outputDeterminedInv preservation),
+  -- `partyPointInjInv` (Vandermonde precondition), and
+  -- `joinedConsistencyInv` itself (with Vandermonde witness).
+  have h_init' : ∀ᵐ s ∂μ₀,
+      outputDeterminedInv s ∧ dealerMessagesInv s
+        ∧ partyPointInjInv s ∧ joinedConsistencyInv s := by
+    filter_upwards [h_init, h_distinct] with s hs hd
+    exact ⟨initPred_outputDeterminedInv sec corr s hs,
+           initPred_dealerMessagesInv sec corr s hs,
+           hd,
+           initPred_joinedConsistencyInv sec corr s hs⟩
+  have h_inv : AlmostBox (avssSpec (t := t) sec corr) A μ₀
+      (fun s => outputDeterminedInv s ∧ dealerMessagesInv s
+                  ∧ partyPointInjInv s ∧ joinedConsistencyInv s) :=
+    AlmostBox_of_pure_inductive
+      (fun s => outputDeterminedInv s ∧ dealerMessagesInv s
+                  ∧ partyPointInjInv s ∧ joinedConsistencyInv s)
+      (fun a s => avssStep a s)
+      h_pure
+      (fun a s hgate ⟨hod, hcons, hpp, hjc⟩ =>
+        ⟨avssStep_preserves_outputDeterminedInv a s hgate hod hcons,
+         avssStep_preserves_dealerMessagesInv a s hgate hcons,
+         avssStep_preserves_partyPointInjInv a s hpp,
+         avssStep_preserves_joinedConsistencyInv a s hgate hjc hod hcons hpp⟩)
+      μ₀ h_init' A
+  unfold AlmostBox at h_inv ⊢
+  filter_upwards [h_inv] with ω hω k
+  exact (hω k).2.2.2
 
 /-- AVSS reconstruction: given any `t + 1` honest parties with
 distinct `partyPoint`s and outputs set, Lagrange interpolation at `0`
@@ -6062,15 +6190,20 @@ theorem avss_commitment_AS_rushing
       outputDeterminedInv :=
   avss_commitment_AS sec corr μ₀ h_init R.toAdversary
 
-/-- Corrupt-dealer commitment against a *rushing* adversary (Phase 8.3):
-under any rushing adversary, if at least `t + 1` honest parties produce
-outputs, there exists a bivariate-polynomial witness that is jointly
-consistent with all honest outputs.  Thin wrapper around
-`avss_commitment_AS_corrupt_dealer`. -/
+/-- Corrupt-dealer commitment against a *rushing* adversary (Phase 8.3,
+upgraded to Vandermonde witness in Phase 8.4): under any rushing
+adversary, if at least `t + 1` honest parties produce outputs, there
+exists a bivariate-polynomial witness that is jointly consistent with
+all honest outputs.  Thin wrapper around
+`avss_commitment_AS_corrupt_dealer`.
+
+Phase 8.4 added the `h_distinct` hypothesis (Shamir/Vandermonde
+precondition: party evaluation points are pairwise distinct). -/
 theorem avss_commitment_AS_corrupt_dealer_rushing
     (sec : F) (corr : Finset (Fin n))
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
     (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (h_distinct : ∀ᵐ s ∂μ₀, partyPointInjInv s)
     (R : AVSSRushingAdversary n t F corr) :
     AlmostBox (avssSpec (t := t) sec corr) R.toAdversary μ₀
       (fun s => honestOutputCount s ≥ t + 1 →
@@ -6078,7 +6211,7 @@ theorem avss_commitment_AS_corrupt_dealer_rushing
           ∀ p, p ∉ s.corrupted →
             ∀ v, (s.local_ p).output = some v →
               v = bivEval witness (s.partyPoint p) 0) :=
-  avss_commitment_AS_corrupt_dealer sec corr μ₀ h_init R.toAdversary
+  avss_commitment_AS_corrupt_dealer sec corr μ₀ h_init h_distinct R.toAdversary
 
 /-! ## §19.1.5 Phase 9.3 — randomised-adversary restatements (partial coverage)
 
@@ -7426,10 +7559,10 @@ theorem actionGate_iff (h : simSyncInv corr s s')
       have hqs' : q ∈ s'.corrupted := h.corrupted_eq ▸ hqs
       simp only [actionGate]
       constructor
-      · rintro ⟨hqq, _, _⟩; exact (hqq hqs).elim
-      · rintro ⟨hqq, _, _⟩; exact (hqq hqs').elim
+      · rintro ⟨hqq, _, _, _⟩; exact (hqq hqs).elim
+      · rintro ⟨hqq, _, _, _⟩; exact (hqq hqs').elim
     · simp only [actionGate, h.local_honest_delivered q hq,
-                 h.local_honest_echoSent q hq, h.corrupted_eq]
+                 h.local_honest_echoSent q hq, h.corrupted_eq, h.dealerSent_eq]
   | partyEchoReceive q r =>
     by_cases hq : q ∈ corr
     · have hqs : q ∈ s.corrupted := h.corrupted_corr ▸ hq
@@ -7446,21 +7579,23 @@ theorem actionGate_iff (h : simSyncInv corr s s')
       have hqs' : q ∈ s'.corrupted := h.corrupted_eq ▸ hqs
       simp only [actionGate]
       constructor
-      · rintro ⟨hqq, _, _⟩; exact (hqq hqs).elim
-      · rintro ⟨hqq, _, _⟩; exact (hqq hqs').elim
+      · rintro ⟨hqq, _, _, _, _⟩; exact (hqq hqs).elim
+      · rintro ⟨hqq, _, _, _, _⟩; exact (hqq hqs').elim
     · simp only [actionGate, h.local_honest_delivered q hq,
                  h.local_honest_readySent q hq,
-                 h.local_honest_echoesReceived q hq, h.corrupted_eq]
+                 h.local_honest_echoesReceived q hq, h.corrupted_eq,
+                 h.dealerSent_eq]
   | partyAmplify q =>
     by_cases hq : q ∈ corr
     · have hqs : q ∈ s.corrupted := h.corrupted_corr ▸ hq
       have hqs' : q ∈ s'.corrupted := h.corrupted_eq ▸ hqs
       simp only [actionGate]
       constructor
-      · rintro ⟨hqq, _, _⟩; exact (hqq hqs).elim
-      · rintro ⟨hqq, _, _⟩; exact (hqq hqs').elim
+      · rintro ⟨hqq, _, _, _⟩; exact (hqq hqs).elim
+      · rintro ⟨hqq, _, _, _⟩; exact (hqq hqs').elim
     · simp only [actionGate, h.local_honest_readySent q hq,
-                 h.local_honest_readyReceived q hq, h.corrupted_eq]
+                 h.local_honest_readyReceived q hq, h.corrupted_eq,
+                 h.dealerSent_eq]
   | partyReceiveReady q r =>
     by_cases hq : q ∈ corr
     · have hqs : q ∈ s.corrupted := h.corrupted_corr ▸ hq

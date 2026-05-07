@@ -397,7 +397,7 @@ noncomputable def ccCert (n : ℕ) :
                 h_nonneg hi_mem
       omega
     exact_mod_cast hpos
-  V_super := fun i s hgate _ _ => by
+  V_super := fun i s hgate _ _ => Or.inl <| by
     -- Both actions strictly decrease V by exactly 1 pointwise on the
     -- support, so the expectation bound `≤ V s` follows trivially.
     cases i with
@@ -457,7 +457,7 @@ noncomputable def ccCert (n : ℕ) :
         exact_mod_cast Nat.add_le_add_left this _
       · intro b hb
         rw [PMF.pure_apply, if_neg hb, zero_mul]
-  V_super_fair := fun i s hgate _ _ _ => by
+  V_super_fair := fun i s hgate _ _ _ => Or.inl <| by
     -- Strict decrease on every fair-required action. Both toss and
     -- aggregate strictly decrease ccU by 1 pointwise on the support,
     -- so the expectation drops by exactly 1.

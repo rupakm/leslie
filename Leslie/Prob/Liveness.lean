@@ -232,19 +232,49 @@ structure FairASTCertificate
   V_term : ∀ s, Inv s → terminated s → V s = 0
   /-- `V` positive on non-terminated. -/
   V_pos : ∀ s, Inv s → ¬ terminated s → 0 < V s
-  /-- Supermartingale condition (unconditional: every gated step is
-  weakly non-increasing in `V` regardless of fairness; fairness
-  only matters for variant decrease, not for the supermartingale
-  bound). -/
+  /-- Supermartingale condition. Disjunct form (POPL 2026 fair extension,
+  Phase 8.5b framework relaxation): at every gated step, *either* the
+  expected next-state `V` is at most the current `V` (the standard
+  supermartingale bound — this is the historical strict form), *or*
+  every state in the post-state support has a fair-required action
+  enabled (so fairness will eventually fire to make progress).
+
+  The disjunct mirrors `U_dec_det`'s structure (variant decrease *or*
+  another fair action becomes enabled). It is strictly weaker than the
+  pure non-increase condition: existing certificates whose actions all
+  satisfy the strict bound discharge the field via `Or.inl`. The
+  disjunct accommodates protocols where adversarial actions may
+  temporarily increase `V` between fair firings (e.g., AVSS Phase 8.5b
+  corrupt-party `partyEchoSend`/`partyReady` where corrupt sends bump
+  the honest-only variant components), as long as a fair action remains
+  enabled at every reachable post-state to drive eventual progress.
+
+  No soundness theorem in this file consumes `V_super` directly — it
+  is a structural certificate field reflecting the POPL 2026 rule's
+  hypothesis shape; the AE-trajectory soundness route (`pi_n_AST_fair`)
+  takes its non-increase witness via `TrajectoryUMono`. -/
   V_super : ∀ (i : ι) (s : σ) (h : (spec.actions i).gate s),
     Inv s → ¬ terminated s →
-    ∑' s' : σ, ((spec.actions i).effect s h) s' * V s' ≤ V s
-  /-- Strict supermartingale on fair-actions: when a fair-required
-  action fires, `V` strictly decreases in expectation. This is the
-  fairness payoff that the demonic rule lacks. -/
+    (∑' s' : σ, ((spec.actions i).effect s h) s' * V s' ≤ V s) ∨
+    (∀ s' ∈ ((spec.actions i).effect s h).support,
+      ∃ j ∈ F.fair_actions, (spec.actions j).gate s')
+  /-- Strict supermartingale on fair-actions. Disjunct form (matching
+  `V_super`): when a fair-required action fires, *either* `V` strictly
+  decreases in expectation (the historical strict form — the fairness
+  payoff the demonic rule lacks), *or* every post-state in the support
+  has a fair-required action enabled (so the chain of fair actions
+  continues, mirroring `U_dec_det`).
+
+  Strictly weaker than the pure-strict form; existing certificates
+  discharge via `Or.inl`. Accommodates protocols where a fair-required
+  action's post-state may not strictly decrease `V` itself (because
+  adversarial fair actions in the same set bump the honest-only variant
+  components) but does enable another fair action to fire next. -/
   V_super_fair : ∀ (i : ι) (s : σ) (h : (spec.actions i).gate s),
     i ∈ F.fair_actions → Inv s → ¬ terminated s →
-    ∑' s' : σ, ((spec.actions i).effect s h) s' * V s' < V s
+    (∑' s' : σ, ((spec.actions i).effect s h) s' * V s' < V s) ∨
+    (∀ s' ∈ ((spec.actions i).effect s h).support,
+      ∃ j ∈ F.fair_actions, (spec.actions j).gate s')
   /-- `U` zero on terminated. -/
   U_term : ∀ s, Inv s → terminated s → U s = 0
   /-- Deterministic-decrease pattern: when a fair-required action

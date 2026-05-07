@@ -192,7 +192,7 @@ noncomputable def boCert :
       · rfl
       · exact absurd h ht
     simp [hf]
-  V_super := fun i s _ _ hnt => by
+  V_super := fun i s _ _ hnt => Or.inl <| by
     -- `s.decided = false` (from `hnt : ¬ boTerminated s`).
     have hf : s.decided = false := by
       cases h : s.decided
@@ -212,7 +212,7 @@ noncomputable def boCert :
         simp [hf]
       · intro b hb
         rw [PMF.pure_apply, if_neg hb, zero_mul]
-  V_super_fair := fun i s _ hfair _ hnt => by
+  V_super_fair := fun i s _ hfair _ hnt => Or.inl <| by
     -- The fair action is `decide`; on it, V strictly decreases from 1 to 0.
     have hf : s.decided = false := by
       cases h : s.decided
