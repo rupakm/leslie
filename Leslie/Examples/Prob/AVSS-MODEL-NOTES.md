@@ -1542,8 +1542,9 @@ The actual landed sequence (PR-by-PR), which differs from the
   * **8.7** likely no-op (model edited in place; no parallel
     form to retire).
   * **8.8** subsumed by 8.5d-δ.
-  * **Phase 11** (§14) — secrecy framework abstraction; **11-α
-    landed** (this PR); 11-β/γ/δ/ε queued for before 8.6.
+  * **Phase 11** (§14) — secrecy framework abstraction; **11-α + 11-γ
+    landed**; 11-β (randomised lift, deferred until Phase 9
+    integration) / 11-δ / 11-ε queued for before 8.6.
 
 ### 12.3. Post-Phase-8 state — **canonical reference (frozen 2026-05-07)**
 
@@ -1713,8 +1714,8 @@ completes, §11.5 (C5) should be marked "✅ resolved by Phase 9 (PR
 
 ## 14. Phase 11 — Secrecy framework abstraction
 
-**Status: 🚧 in progress; Phase 11-α ✅ landed (this PR); remaining
-sub-PRs queued.**
+**Status: 🚧 in progress; Phase 11-α ✅ + 11-γ ✅ landed; 11-β / 11-δ /
+11-ε queued.**
 
 Extract `Secrecy` and `SecrecyRushing` as framework-level definitions
 in `Leslie/Prob/Secrecy.lean` (Phase 11-α, ✅).  Each protocol's
@@ -1736,8 +1737,8 @@ re-deriving the chain.
 | Sub-PR | Scope | LOC | Status |
 |---|---|---|---|
 | 11-α | `Leslie/Prob/Secrecy.lean` — `Secrecy` (deterministic-adversary form) and `SecrecyRushing` (rushing form); structural lemmas (`Secrecy.mono_proj`, `SecrecyRushing.mono_proj`, `Secrecy.toRushing`) | ~140 | ✅ |
-| 11-β | `Secrecy.lift_to_randomised`, `SecrecyRushing.of_secrecy` (framework lifts to randomised adversaries) | ~80 | ⏳ |
-| 11-γ | AVSS instance: `avss_secrecy_AS_view_rushing` re-stated as `instance : SecrecyRushing avssSpec ... := ...` | ~80 | ⏳ |
+| 11-β | `Secrecy.lift_to_randomised`, `SecrecyRushing.of_secrecy` (framework lifts to randomised adversaries) | ~80 | ⏳ (deferred until Phase 9 `RandomisedAdversary` integration) |
+| 11-γ | AVSS instance: `avss_secrecy_AS_view_rushing` re-stated as `SecrecyRushing avssSpec ... := ...` | ~50 | ✅ |
 | 11-δ | Apply to 8.6's row + column secrecy form (composes with the abstraction directly so 8.6 doesn't need its own framework boilerplate) | ~80 | ⏳ |
 | 11-ε | Cleanup, MODEL_NOTES note, citation table | ~40 | ⏳ |
 
@@ -1768,6 +1769,31 @@ predicates plus three structural lemmas, all axiom-clean
 
 The two main definitions intentionally mirror the existing AVSS-side
 shape so that Phase 11-γ's instantiation is a one-liner.
+
+**Phase 11-γ deliverables (this sub-PR).**
+
+The AVSS instance `avss_secrecy_AS_view_rushing_instance` lives in
+`Leslie/Examples/Prob/AVSS.lean` (§19.5) and is axiom-clean
+(`[propext, Classical.choice, Quot.sound]`).  Diagnosing
+`avssSpec`'s `sec` parameter showed it was vestigial — `sec` only
+enters `avssSpec.init`, which `traceDist` does not consume (only
+`spec.actions` is read by `stepKernel`).  Rather than refactor the
+~230 in-file `avssSpec sec corr coeffs` call sites, we proved the
+helper lemma `traceDist_avssSpec_sec_irrelevant` (defeq via `rfl`)
+and used `avssSpec 0 corr coeffs` as the canonical sec-agnostic spec
+for the instance:
+
+  * `traceDist_avssSpec_sec_irrelevant` — `traceDist` is invariant
+    under the `sec` parameter; closed by `rfl` since `stepKernel`
+    only references `spec.actions`.
+  * `avss_secrecy_AS_view_rushing_instance` — full
+    `SecrecyRushing (avssSpec 0 corr coeffs) (μ₀ := …
+    avssInitMeasure …) (avssCoalitionView corr) (proj := …)` with
+    body `intro sec sec' R hR; rw [sec_irrelevant, sec_irrelevant];
+    exact avss_secrecy_AS_view_rushing …`.
+
+The instance closes the AVSS deliverable for 11-γ; downstream
+protocols (SyncVSS, BenOrAsync) can mirror this pattern.
 
 (See `PHASE-8-5d-CHECKPOINT.md` for the worker-side note if a fuller
 plan is recorded there.)
