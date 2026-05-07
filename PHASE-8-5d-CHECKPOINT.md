@@ -1,11 +1,62 @@
-# Phase 8.5d Checkpoint — β-followup-6 honest-dealer headline closed (1 sorry → 1 sorry, scope-shifted)
+# Phase 8.5d Checkpoint — β-followup-7 FULL CLOSURE: 0 sorries, headline closed for both dealerHonest values
 
 **Branch**: `feat/randomized-leslie-m3-avss-phase8-5d-beta`
 **Base**: PR #68 (8.5d-α, dealerShareTo per-party action surgery).
-**Build state**: green at `lake build Leslie.Examples.Prob.AVSS`
-(2668 jobs) with **1** sorry in AVSS.lean (corrupt-dealer case only,
-tagged `TODO Phase 8.5d-β-followup-7`). The honest-dealer case is closed.
-**Sorry count**: **1** in AVSS — bounded scope, tagged `TODO Phase 8.5d-β-followup-7`.
+**Build state**: green at `lake build Leslie.Prob.Index` (2699 jobs)
+and `lake build Leslie.Examples.Prob.AVSS` (2668 jobs).
+**Sorry count**: **0** in AVSS.lean. PR #69 closes with full β-chain closure.
+
+## Phase 8.5d-β-followup-7 — what landed
+
+Closed the corrupt-dealer case of `avss_secrecy_AS_view_rushing` via a
+new dealerHonest-INDEPENDENT chain that drops the cTV bridge's
+honest-dealer guard.  The headline now closes for ANY `dealerHonest`
+value uniformly — no case-split needed.
+
+**Architectural insight**: the cTV bridge `coalitionTraceView ω =
+reconstruct(coalitionAlgebraicView, ...)` was honest-dealer-conditional
+because it used `phase6Inv c`'s `dealerMessagesInv` (only fires under
+honest dealer).  Replacing that with a NEW dealerHonest-INDEPENDENT
+invariant `coalitionRowPolyAlignedInv` (a structural protocol fact: every
+populated `dealerMessages p` matches `dealerCommit p`, and corrupt parties'
+delivered rowPoly matches `dealerCommit p .rowPoly`) makes the bridge
+unconditional. Combined with `avss_phase6InvEx_AS` for the c-independent
+`corruptLocalInv` clauses, the full bridge is dealerHonest-INDEPENDENT.
+
+**New infrastructure (followup-7)**:
+
+- `coalitionRowPolyAlignedInv` — structural alignment invariant (no honest
+  dealer assumption).  Two clauses:
+  1. `∀ p msg, dealerMessages p = some msg → msg = dealerCommit p`.
+  2. `∀ p ∈ corrupted, delivered → rowPoly = some (dealerCommit p .rowPoly)`.
+- `avssStep_preserves_coalitionRowPolyAlignedInv` — preservation by every
+  gated avssStep, with the `partyCorruptDeliver` case using clause 1 to
+  bridge `dealerMessages p .rowPoly` to `dealerCommit p .rowPoly`.
+- `initPred_coalitionRowPolyAlignedInv` — initPred's structural part
+  implies the invariant vacuously.
+- `avss_coalitionRowPolyAlignedInv_AS` — AlmostBox lift via
+  `AlmostBox_of_pure_inductive`.
+
+**New `_indep` chain (drops `h_dH_sec` / `h_dH_sec'` from `_ex` chain)**:
+
+- `coalitionView_corrupt_factors_AE_indep` — drops the honest-dealer guard
+  from the rowPoly clause.
+- `coalitionTraceView_eq_reconstruct_AE_indep` — drops the
+  `(ω 0).1.dealerHonest = true → ...` guard from the conclusion.
+- `avss_secrecy_AS_view_conditional_indep`, `_via_aux_indep`,
+  `_via_init_invariant_indep` — chain wrappers without h_dH hypotheses.
+
+**Headline closure (dealerHonest-INDEPENDENT)**: the proof body is now
+3 lines — directly applies `_via_init_invariant_indep` with the
+existential h_init from `avssInitMeasure_AE_initPred` and the joint
+sec-invariance from `avssInitMeasure_simViewExt_sec_invariant`.  No
+case-split on `dealerHonest`.
+
+**Refactoring**: moved `avssStep_dealerCommit_invariant` from §17 (line
+8402) to §6 (line 547) so it's in scope for `coalitionRowPolyAlignedInv`'s
+preservation proof.
+
+## Phase 8.5d-β-followup-6 — what landed (kept for reference)
 
 ## Phase 8.5d-β-followup-6 — what landed
 
