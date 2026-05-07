@@ -1326,9 +1326,11 @@ adversary-type level.  Either can be done first.
 | **9.2** | Three lifting meta-theorems | `AlmostBoxRandomised_of_inductive` / `AlmostBox.lift_to_randomised`: per-step inductive preservation lifts to randomised AS-Box.  `randomisedTraceDist_map_eq_of_deterministic_at_zero`: secrecy form for coord-0 projections (the AVSS use case).  `AlmostDiamond.lift_to_randomised`: AS-Diamond from inductive data.  Heart of the proofs is the per-step kernel mixture identity `randomisedStepKernel_apply_tsum`.  Inductive-form hypothesis selected over the abstract Fubini-tape form (worker-task §1) since the latter would require Mathlib infrastructure on infinite product measures over countable index sets — see comments in `RandomisedAdversary.lean`'s Phase 9.2 header. | ~310 | ✅ landed (PR #46) |
 | **9.3** | AVSS-side restatements (partial coverage) | `avss_correctness_AS_randomised` and `avss_commitment_AS_randomised` via `AlmostBoxRandomised_of_inductive` (re-feeding the same per-step preservation data used by the deterministic versions); `avss_secrecy_AS_step_zero_grid_randomised` via `randomisedTraceDist_map_eq_of_deterministic_at_zero` (coord-0 form). `avss_termination_AS_fair_randomised` is **NOT** lifted in this PR because PR #46's `AlmostDiamond.lift_to_randomised` is degenerate (`exact ⟨0, hω 0⟩` only); termination is deferred to Phase 9.4. Closes C5 for correctness, commitment, and coord-0 secrecy. | ~150 | ✅ landed (PR #47) |
 | **9.3-existential** | Existential-witness `_randomised` analogs | `avss_correctness_AS_existential_randomised` (joint inv: `honestDealerInv` ∧ static `coeffs 0 0 = secret`) and `avss_commitment_AS_corrupt_dealer_randomised` (with `honestOutputCount`-precondition gate, witness from `s.coeffs`). Migration-stable: when a future PR moves `s.coeffs` out of state into `μ₀`, the existential-witness forms continue to hold (witness sourced from initial-state sample); the `s.coeffs`-direct forms from PR #47 will become stale. Closes the literature-faithful `_randomised` gap that PR #47 missed. | ~50 | ✅ landed (PR #49) |
-| **9.4** | Termination lifting (deferred from 9.3) | Randomised analog of `avss_termination_AS_fair`: introduce `RandomisedTrajectoryFairAdversary`, redo the `FairASTCertificate.sound` supermartingale + Borel-Cantelli argument under the schedule PMF, expose `avss_termination_AS_fair_randomised`. Also folds in the step-`k` general `avss_secrecy_AS_randomised` (coord-`k` form) via the same machinery. See §13.4 for the full plan. | ~250 | ⏳ pending |
+| **9.4** | Termination lifting | Randomised analog of `avss_termination_AS_fair`: introduce `RandomisedTrajectoryFairAdversary`, refactor `Liveness.lean`'s `FairASTCertificate.sound` to share its supermartingale + Borel-Cantelli core between deterministic and randomised, expose `RandomisedFairASTCertificate.sound` and `avss_termination_AS_fair_randomised`. **`Leslie/Prob/Liveness.lean` is on-limits for this PR** (the refactor parameterises the existing proof; both deterministic and randomised specialise from a shared core). See §13.4 for the full plan. | ~280 | ⏳ pending |
+| **9.5** | Rushing-randomised adversary + 4 rushing wrappers | `AVSSRushingRandomisedAdversary` — randomised analog of `AVSSRushingAdversary` with PMF-valued schedule on the rushing-view σ-algebra; `R.toRandomisedAdversary` adapter; plus thin `_rushing_randomised` wrappers for correctness, commitment, secrecy, and termination (the last depends on 9.4). Adds the measurability infrastructure on the rushing view that 9.3 deferred. See §13.5 for the full plan. | ~100 | ⏳ pending |
+| **9.6** | Step-`k` general secrecy | `avss_secrecy_AS_randomised` at coord `k > 0` — generalise PR #47's coord-0 form using `avssStep_coalitionGrid_invariant` lifted branchwise across `randomisedStepKernel`. The schedule PMF integrates the AE-equality. Independent of 9.4 / 9.5. See §13.6 for the full plan. | ~50 | ⏳ pending |
 
-**Total**: ~550 LOC, 5 PRs.  Estimated worker time: 14–18 hours.
+**Total**: ~980 LOC, 7 PRs.  Estimated worker time: 24–32 hours.
 
 ### 13.2. Sequencing
 
@@ -1338,11 +1340,18 @@ adversary-type level.  Either can be done first.
   * **PR 9.3-existential** depends on 9.3 (re-uses the lift pattern
     and per-step preservation lemmas from PR #47); ships the
     literature-faithful existential-witness analogs missing from PR #47.
-  * **PR 9.4** depends on 9.3 (needs the partial-coverage AVSS lifts in place
-    so the termination machinery slots into the same restatement pattern);
-    independent of Phase 8 and Phase 10.
+  * **PR 9.4** depends on 9.3-existential (needs the partial-coverage
+    AVSS lifts in place so the termination machinery slots into the
+    same restatement pattern); independent of 9.5 and 9.6.
+  * **PR 9.5** depends on 9.3-existential (needs the four classical
+    `_randomised` analogs to wrap); the termination wrapper additionally
+    depends on 9.4.  Independent of 9.6.
+  * **PR 9.6** depends on 9.3 alone (the coord-0 form's
+    `randomisedTraceDist_map_eq_of_deterministic_at_zero` extends
+    branchwise to coord-`k` via `avssStep_coalitionGrid_invariant`).
+    Independent of 9.4 and 9.5.
 
-Phase 9 is **independent of Phase 8**: PRs 9.1–9.4 can ship in
+Phase 9 is **independent of Phase 8**: PRs 9.1–9.6 can ship in
 parallel with Phases 8.1–8.8.  Once both phases land, AVSS will
 quantify over arbitrary randomised rushing adversaries — the
 literature-standard threat model.
@@ -1374,90 +1383,172 @@ Option 1 is the right choice because:
      the Fubini argument is structural, not protocol-specific, so
      once the meta-theorem lands the cryptographic story is automatic.
 
-### 13.4. Phase 9.4 — Termination lifting (deferred from 9.3)
+### 13.4. Phase 9.4 — Termination lifting
 
 PR #46's `AlmostDiamond.lift_to_randomised` only derives "eventually"
 from "always" trivially (`exact ⟨0, hω 0⟩`).  It cannot lift true
 diamond claims like `avss_termination_AS_fair`, whose proof goes
 through `FairASTCertificate.sound` (supermartingale +
 Borel-Cantelli on a strictly-decreasing rank function under
-trajectory fairness).  PR 9.3 therefore ships AVSS-side restatements
-of the AS-Box invariants (`avss_correctness_AS_randomised`,
-`avss_commitment_AS_randomised`) and the coord-0 secrecy form
-(`avss_secrecy_AS_step_zero_grid_randomised`) but **explicitly
-defers** the termination restatement.
+trajectory fairness).  Phase 9.3 (PR #47) therefore deferred the
+termination restatement; PR 9.3-existential (PR #49) closed the
+literature-faithful existential-witness gap for the AS-Box theorems
+but did not address termination.  Phase 9.4 closes that gap.
 
-**Existential-witness gap (closed post-9.3 by PR #49).** PR #47
-targeted the `s.coeffs`-direct forms of correctness and commitment.
-The literature-faithful existential-witness forms from the parallel
-Phase 8.2 / 8.3 sister-branch chain (which assert `∃ witness, ...`
-rather than naming `s.coeffs` directly) were missing from PR #47 and
-are now landed in PR #49 as a follow-up:
+Like the existential `_randomised` analogs in PR #49, Phase 9.4
+targets the **existential-witness form** of termination (quorum-of-
+honest-outputs phrased as `honestOutputCount ≥ t + 1` rather than
+`s.coeffs`-direct), keeping it migration-stable across the future
+`s.coeffs → μ₀` transition.
 
-  * `avss_correctness_AS_existential_randomised` — same lift pattern
-    as PR #47, joint invariant `honestDealerInv ∧ (dealerHonest →
-    coeffs 0 0 = secret)`.  Witness `(ω k).1.coeffs`.
-  * `avss_commitment_AS_corrupt_dealer_randomised` — derived from
-    `avss_commitment_AS_randomised`, gated by `honestOutputCount s ≥
-    t + 1`, witness `(ω k).1.coeffs`.
+#### Liveness.lean policy for 9.4
 
-These existential-witness forms are migration-stable: when a future PR
-moves `s.coeffs` out of state into `μ₀`, the existential analogs
-continue to hold (witness sourced from initial-state sample) while the
-`s.coeffs`-direct lifts from PR #47 will become stale.  Phase 9.4 will
-similarly target the existential-witness form of termination
-(quorum-of-honest-outputs phrased as `honestOutputCount ≥ t + 1`)
-rather than `s.coeffs`-direct.
+**`Leslie/Prob/Liveness.lean` is on-limits for this PR.**  The
+deterministic `FairASTCertificate.sound` and the randomised
+`RandomisedFairASTCertificate.sound` share the same supermartingale +
+Borel-Cantelli core.  Three implementation paths:
 
-Phase 9.4 introduces:
+| Path | Work | Cleanliness |
+|---|---|---|
+| **(a)** Modify `Liveness.lean` to parameterise the supermartingale proof | ~150 LOC, reuses deterministic core | clean abstraction |
+| **(b)** Re-derive supermartingale + Borel-Cantelli locally in `RandomisedAdversary.lean` | ~250-300 LOC, full re-proof | quarantined but heavy and duplicative |
+| **(c)** Generalize `FairASTCertificate.sound` to take a parameterised effect kernel | ~100 LOC in `Liveness.lean`, both versions specialise | cleanest mathematically |
+
+**Recommendation**: (c) — generalize `FairASTCertificate.sound` to a
+kernel-effect form, with the deterministic and randomised cases as
+specialisations.  The deterministic case is the `PMF.pure (avssStep a s)`
+specialisation; the randomised case is the schedule-PMF specialisation.
+
+#### Phase 9.4 introduces
 
   * `RandomisedTrajectoryFairAdversary spec fair μ₀` — randomised
     analog of `TrajectoryFairAdversary` parameterised by the same
     fairness predicate, with the schedule's PMF integrated into the
     fairness witness.
-  * `RandomisedFairASTCertificate` — randomised analog of
-    `FairASTCertificate`, with `TrajectoryFairProgress` /
-    `TrajectoryUMono` / `TrajectoryFairStrictDecrease` adapted for
-    the schedule PMF.  Strict-decrease has to be re-derived: under
-    a randomised schedule, "the next gated fair action makes
-    progress" becomes "the schedule PMF assigns positive weight to
-    a progress-making action".
-  * `RandomisedFairASTCertificate.sound` — the supermartingale +
-    Borel-Cantelli argument adapted for tape-mixed schedules.  The
-    deterministic `FairASTCertificate.sound` integrates over the
-    deterministic trajectory; the randomised analog integrates over
-    `randomisedTraceDist`, which adds one more integration layer
-    (Fubini between the schedule mixture and the rank evolution).
+  * Refactored `FairASTCertificate.sound` in `Liveness.lean` —
+    parameterised on a kernel-valued effect; deterministic case is
+    a specialisation.  May expose helper lemmas for the supermartingale
+    drift bound.
+  * `RandomisedFairASTCertificate` and `RandomisedFairASTCertificate.sound`
+    — randomised specialisation.  Strict-decrease predicate has to be
+    sharpened: under a randomised schedule, "the next gated fair
+    action makes progress" becomes "the schedule PMF assigns total
+    weight `≥ ε > 0` to gated fair actions infinitely often", for some
+    uniform `ε`.  This uniform-bound qualifier is what carries the
+    Borel-Cantelli step through; the vanilla "positive weight" formulation
+    (without the bound) is too weak.
   * `avss_termination_AS_fair_randomised` — the AVSS-side restatement,
     a thin wrapper analogous to `avss_termination_AS_fair_rushing`.
+
+#### Files OWNED
+
+  * `Leslie/Prob/Liveness.lean` — `FairASTCertificate.sound` refactor.
+    Off-limits for **all other phases**; on-limits for 9.4.
+  * `Leslie/Prob/RandomisedAdversary.lean` — `RandomisedFairASTCertificate`
+    and its `.sound`.
+  * `Leslie/Examples/Prob/AVSS.lean` — `avss_termination_AS_fair_randomised`
+    wrapper.
+  * `Leslie/Examples/Prob/AVSS-MODEL-NOTES.md` — §13.1 status row 9.4 +
+    §11.5 caveat status if all of 9.4–9.6 close it.
+
+#### Estimated LOC
+
+~280: 100 (Liveness refactor) + 30 (`RandomisedTrajectoryFairAdversary`)
++ 120 (`RandomisedFairASTCertificate.sound` specialisation) + 30
+(AVSS-side wrapper).
+
+#### Sequencing
+
+Depends on PR #49 (9.3-existential).  Independent of Phase 8 and
+Phase 10.  Independent of 9.5 and 9.6 (they don't touch
+`Liveness.lean` or fair-AST machinery).
+
+### 13.5. Phase 9.5 — Rushing-randomised adversary + 4 rushing wrappers
+
+PR 9.3 deferred the `_rushing_randomised` wrappers because
+`AVSSRushingRandomisedAdversary` doesn't exist yet — defining it
+requires additional measurability infrastructure on the rushing-view
+σ-algebra that's separate from PR 9.3's scope.  Phase 9.5 fills that
+gap.
+
+#### Phase 9.5 introduces
+
   * `AVSSRushingRandomisedAdversary` — randomised analog of
-    `AVSSRushingAdversary` (the rushing-view-restricted adversary),
-    with `R.toRandomisedAdversary` adapter.  Plus `_rushing`
-    wrappers (`avss_correctness_AS_rushing_randomised`,
-    `avss_commitment_AS_rushing_randomised`,
-    `avss_secrecy_AS_view_rushing_randomised`,
-    `avss_termination_AS_fair_rushing_randomised`) — thin
-    one-liners around the corresponding `_randomised` theorems.
-    These are deferred from PR 9.3 because the underlying adversary
-    type does not yet exist; defining it requires additional
-    measurability infrastructure on the rushing-view σ-algebra
-    that's separate from PR 9.3's scope.
+    `AVSSRushingAdversary` (the rushing-view-restricted adversary).
+    Schedule is a PMF on the rushing view, with the same
+    `instCountableAVSSRushingView` measurability backbone as the
+    deterministic case.
+  * `R.toRandomisedAdversary` adapter — projects the rushing-view PMF
+    schedule to a `History → PMF (Option ι)` schedule on the full
+    state.
+  * Four thin `_rushing_randomised` wrappers (one-liners around the
+    corresponding `_randomised` theorems from PRs #47, #49, and 9.4):
+    - `avss_correctness_AS_rushing_randomised`
+    - `avss_commitment_AS_corrupt_dealer_rushing_randomised`
+    - `avss_secrecy_AS_view_rushing_randomised`
+    - `avss_termination_AS_fair_rushing_randomised` (depends on 9.4)
 
-Also folds in the step-`k` general form of secrecy
-(`avss_secrecy_AS_randomised` at coord `k > 0`) via the same machinery
-— the deterministic `traceDist_coalitionGrid_AE_eq_init` lifts
-branchwise to `randomisedStepKernel` because each gated action
-preserves `coalitionGrid` (`avssStep_coalitionGrid_invariant`) and
-the schedule PMF integrates that AE-equality.
+#### Files OWNED
 
-**Estimated LOC**: ~250 (the supermartingale argument has to be
-re-derived for the randomised setting; tape mixing adds another
-integration layer).
+  * `Leslie/Prob/Adversary.lean` (or `RandomisedAdversary.lean`) —
+    `AVSSRushingRandomisedAdversary` + adapter.  Existing rushing
+    adversary infrastructure lives in `Adversary.lean`; the randomised
+    analog should live alongside it for consistency.  This is a small
+    measurability extension, not a refactor.
+  * `Leslie/Examples/Prob/AVSS.lean` — the four wrappers.
+  * `Leslie/Examples/Prob/AVSS-MODEL-NOTES.md` — §13.1 status row 9.5.
 
-**Sequencing**: independent of Phase 8 and Phase 10.  Can land any
-time after PR #47.
+#### Estimated LOC
 
-### 13.5. Risks
+~100: 50 (`AVSSRushingRandomisedAdversary` + adapter + measurability
+glue) + 40 (four wrappers, ~10 LOC each).
+
+#### Sequencing
+
+Depends on PR #49 (9.3-existential).  The termination wrapper
+additionally depends on 9.4.  Independent of 9.6.
+
+### 13.6. Phase 9.6 — Step-`k` general secrecy
+
+PR #47 lifted secrecy only at coord 0 (`avss_secrecy_AS_step_zero_grid_randomised`)
+because PR #46's `randomisedTraceDist_map_eq_of_deterministic_at_zero`
+only handles coord-0 projections.  Phase 9.6 generalises to all
+`k : ℕ`.
+
+#### Why this is independent of 9.4
+
+The step-`k` lift uses the deterministic-side fact
+`avssStep_coalitionGrid_invariant` (every gated action preserves
+`coalitionGrid`) and integrates that AE-equality branchwise across
+`randomisedStepKernel`.  No supermartingale or Borel-Cantelli
+machinery is involved.  9.6 has no fair-AST machinery interaction.
+
+#### Phase 9.6 introduces
+
+  * `randomisedTraceDist_map_eq_of_deterministic` — step-`k`
+    generalisation of PR #46's coord-0 form.  Argument: each gated
+    step's effect preserves the `coalitionGrid` projection (this is
+    a structural fact, not adversary-dependent), so the schedule PMF
+    integration of branchwise AE-equality gives total AE-equality.
+  * `avss_secrecy_AS_randomised` — the headline step-`k` form, applied
+    to the AVSS-specific `coalitionGrid C D` projection.
+
+#### Files OWNED
+
+  * `Leslie/Prob/RandomisedAdversary.lean` — generic step-`k` lift.
+  * `Leslie/Examples/Prob/AVSS.lean` — AVSS-specific instantiation.
+  * `Leslie/Examples/Prob/AVSS-MODEL-NOTES.md` — §13.1 status row 9.6.
+
+#### Estimated LOC
+
+~50: 30 (generic step-`k` lift) + 20 (AVSS instantiation).
+
+#### Sequencing
+
+Depends on PR #47 only.  Independent of 9.4 and 9.5.  Can ship at
+any time after PR #47.
+
+### 13.7. Risks
 
   1. **Mathlib Fubini availability**: the lifting argument uses
      `MeasureTheory.Integral.Fubini` for kernel composition.  This is
@@ -1466,22 +1557,41 @@ time after PR #47.
   2. **Measurability hypotheses**: the meta-theorem needs the
      property `P` to be measurable.  All of our existing properties
      (terminated, output-determined, coalition-view marginals) are
-     measurable, but each AVSS-side restatement (PR 9.3) needs to
-     check this.
-  3. **Phase 9.4 supermartingale machinery**: the Borel-Cantelli step
-     in `FairASTCertificate.sound` needs adaptation for tape-mixed
-     schedules.  Mathlib's `MeasureTheory.Martingale.BorelCantelli`
-     supports countable index sets and is adversary-agnostic, so the
-     adaptation is a re-derivation rather than new measure-theoretic
-     content.
+     measurable, but each AVSS-side restatement needs to check this.
+  3. **PR 9.4 supermartingale refactor**: parameterising
+     `FairASTCertificate.sound` over the effect kernel may surface
+     hidden assumptions in the existing deterministic proof.  If the
+     refactor proves invasive (e.g., requires API changes that ripple
+     to other `Liveness.lean` callers), fall back to path (b) — local
+     re-derivation in `RandomisedAdversary.lean`.  Cost: ~150 LOC
+     extra.
+  4. **PR 9.4 fairness predicate sharpness**: the randomised
+     `TrajectoryFairProgress` analog requires a uniform `ε > 0` lower
+     bound on the schedule PMF's weight on gated fair actions.
+     Mathlib's `MeasureTheory.Martingale.BorelCantelli` supports the
+     countable-index integrated form, but the proof that the AVSS
+     schedule PMF satisfies the `ε`-bound is a concrete obligation
+     for AVSS callers (likely discharged via the rushing adversary's
+     measurability witness).
+  5. **PR 9.5 rushing-view σ-algebra**: defining
+     `AVSSRushingRandomisedAdversary` requires a measurable structure
+     on the rushing view that's compatible with PMF measurability.
+     The deterministic case uses `instCountableAVSSRushingView`;
+     the randomised case may need a `Decidable`-witnessed extension
+     or a coercion to/from `Subtype` measurability.  Estimated minor.
 
-### 13.6. Maintenance protocol
+### 13.8. Maintenance protocol
 
 Same as §12.5 but for Phase 9: each PR's commit message updates the
 corresponding row of §13.1 (statuses ⏳ → 🚧 → ✅).  After Phase 9
-completes (PRs 9.1–9.4 all ✅), §11.5 (C5) should be marked
-"✅ resolved by Phase 9 (PRs #41, #46, #47, #N)" with `#N` being the
-9.4 PR.
+completes (PRs 9.1–9.6 all ✅), §11.5 (C5) should be marked
+"✅ resolved by Phase 9 (PRs #41, #46, #47, #49, plus 9.4–9.6 PR
+numbers)".
+
+If 9.4 / 9.5 / 9.6 land out of order with respect to 9.4 → 9.5 (the
+termination wrapper in 9.5 depends on 9.4), the affected row's
+status reverts to 🚧 with a footnote describing the dependency
+realisation.
 
 ## 14. Phase 10 — Generic deterministic-simulate meta-theorem
 
