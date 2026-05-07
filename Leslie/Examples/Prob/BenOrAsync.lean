@@ -250,25 +250,6 @@ noncomputable def boCert :
     by_cases h : s.decided
     · simp [h]
     · simp [h]
-  U_dec_prob := fun _ => by
-    -- The fair action `decide` deterministically decreases U.
-    refine ⟨1, by norm_num, fun i s _ hfair _ hnt _ => ?_⟩
-    have hf : s.decided = false := by
-      cases h : s.decided
-      · rfl
-      · exact absurd h hnt
-    cases i
-    · -- delay isn't a fair action.
-      exact absurd hfair (by simp)
-    · -- decide: tsum collapses to `1 * 1 = 1` (since U strictly decreases).
-      simp only [boSpec]
-      rw [tsum_eq_single ⟨s.round, true⟩]
-      · rw [PMF.pure_apply, if_pos rfl, one_mul]
-        -- After substituting `hf : s.decided = false`, the `if` on U s' < U s
-        -- evaluates to `0 < 1`, which is true; so the goal becomes `1 ≤ 1`.
-        simp [hf]
-      · intro b hb
-        rw [PMF.pure_apply, if_neg hb, zero_mul]
   V_init_bdd := ⟨1, fun s _ => by
     by_cases h : s.decided
     · simp [h]
