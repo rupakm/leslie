@@ -6964,31 +6964,46 @@ theorem avssStep_preserves_joinedConsistencyInv
     hod_post h_distinct_post h_count
 
 set_option maxHeartbeats 800000 in
-/-- Corrupt-dealer commitment as `AlmostBox`: under any adversary
-(including a corrupt dealer), if at least `t + 1` honest parties
-produce outputs, then there exists a bivariate-polynomial witness
-that is jointly consistent with all honest outputs.
+/-- Existential-witness commitment as `AlmostBox`: under any adversary,
+**if the dealer is honest at runtime** and at least `t + 1` honest
+parties produce outputs, then there exists a bivariate-polynomial
+witness that is jointly consistent with all honest outputs.
 
-This is the literature-faithful commitment theorem (Canetti–Rabin '93
-"all honest outputs jointly consistent under corrupt dealer"), in
-existential-witness form.
+**Naming history (Fix 1, post-PR #79).**  Originally landed in Phase
+8.3 (PR #45) as `avss_commitment_AS_corrupt_dealer` and upgraded
+in Phase 8.4 (PR #48) to a Vandermonde + Lagrange-extracted witness.
+Phase 8.5d-β (the `s.coeffs : Fin _ → Fin _ → F` → μ₀ migration)
+added the `s.dealerHonest = true →` guard on the conclusion: the
+Vandermonde extraction now relies on `outputDeterminedInv coeffs s`,
+which is itself honest-dealer-conditional (the μ₀-baked `coeffs` is
+not binding under corrupt dealer, so honest outputs are no longer
+pinned to a single witness on observable grounds alone).
 
-**Phase 8.4 (this PR): the cryptographic content lands.**  The witness
-is now constructed via Lagrange interpolation through `t + 1` honest
-output values, and shown to satisfy the spec for *all* honest outputs
-via Vandermonde uniqueness (`Lagrange.eq_interpolate_of_eval_eq`).
-The proof no longer takes a shortcut through `s.coeffs` as the
-witness; instead `s.coeffs` is used only via the
-`outputDeterminedInv` clause to bound output values, and the
-existential witness is derived from observable honest outputs.
+That guard is **structurally honest** — under corrupt dealer, the
+joint-consistency claim requires Bracha echo+ready amplification
+(planned Phase 8.6), not Vandermonde alone.  The previous name
+`_corrupt_dealer` overclaimed.  Renamed to `_existential` (mirroring
+sibling `avss_correctness_AS_existential`'s naming pattern), since
+the theorem's actual content is the existential-witness form of
+honest-dealer commitment.
 
-The new `h_distinct` hypothesis carries the standard Shamir/Vandermonde
-precondition that party evaluation points are pairwise distinct.
+The genuine corrupt-dealer commitment — strengthened
+`joinedConsistencyInv` that holds without `s.dealerHonest = true`
+via Bracha amplification — is queued as Phase 8.6 (see
+`AVSS-MODEL-NOTES.md` §16).  Once it lands, this theorem's
+`s.dealerHonest = true →` guard can be dropped uniformly.
 
-The statement — `≥ t + 1 honest outputs ⇒ ∃ witness, ∀ p ∉ corrupted,
-∀ v, output = some v → v = bivEval witness (s.partyPoint p) 0` — is
-unchanged from Phase 8.3 and remains the Canetti–Rabin form. -/
-theorem avss_commitment_AS_corrupt_dealer
+**Cryptographic content (preserved from Phase 8.4).**  The witness
+is constructed via Lagrange interpolation through `t + 1` honest
+output values, and shown to satisfy the spec for *all* honest
+outputs via Vandermonde uniqueness
+(`Lagrange.eq_interpolate_of_eval_eq`).  The proof uses
+`outputDeterminedInv coeffs` to bound output values; the existential
+witness is derived from observable honest outputs.
+
+The `h_distinct` hypothesis carries the standard Shamir/Vandermonde
+precondition that party evaluation points are pairwise distinct. -/
+theorem avss_commitment_AS_existential
     (sec : F) (corr : Finset (Fin n)) (coeffs : Fin (t+1) → Fin (t+1) → F)
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
     (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
@@ -10083,16 +10098,19 @@ theorem avss_commitment_AS_rushing
       (outputDeterminedInv coeffs) :=
   avss_commitment_AS sec corr coeffs μ₀ h_init R.toAdversary
 
-/-- Corrupt-dealer commitment against a *rushing* adversary (Phase 8.3,
-upgraded to Vandermonde witness in Phase 8.4): under any rushing
-adversary, if at least `t + 1` honest parties produce outputs, there
-exists a bivariate-polynomial witness that is jointly consistent with
-all honest outputs.  Thin wrapper around
-`avss_commitment_AS_corrupt_dealer`.
+/-- Existential-witness commitment against a *rushing* adversary
+(Phase 8.3, upgraded to Vandermonde witness in Phase 8.4, renamed
+post-Fix 1): under any rushing adversary, **if the dealer is honest
+at runtime** and at least `t + 1` honest parties produce outputs,
+there exists a bivariate-polynomial witness that is jointly
+consistent with all honest outputs.  Thin wrapper around
+`avss_commitment_AS_existential`.  See that theorem's docstring for
+the honest-dealer guard rationale and the Phase 8.6 follow-up
+queued to drop it via Bracha amplification.
 
 Phase 8.4 added the `h_distinct` hypothesis (Shamir/Vandermonde
 precondition: party evaluation points are pairwise distinct). -/
-theorem avss_commitment_AS_corrupt_dealer_rushing
+theorem avss_commitment_AS_existential_rushing
     (sec : F) (corr : Finset (Fin n)) (coeffs : Fin (t+1) → Fin (t+1) → F)
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
     (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
@@ -10105,7 +10123,7 @@ theorem avss_commitment_AS_corrupt_dealer_rushing
           ∀ p, p ∉ s.corrupted →
             ∀ v, (s.local_ p).output = some v →
               v = bivEval witness (s.partyPoint p) 0) :=
-  avss_commitment_AS_corrupt_dealer sec corr coeffs μ₀ h_init h_distinct R.toAdversary
+  avss_commitment_AS_existential sec corr coeffs μ₀ h_init h_distinct R.toAdversary
 
 /-! ## §19.1.5 Phase 9.3 — randomised-adversary restatements (partial coverage)
 
@@ -10402,25 +10420,26 @@ theorem avss_correctness_AS_existential_randomised
   intro p hp v hv
   exact ((hP k).1.1 hh).2 p hp v hv
 
-/-- **Corrupt-dealer commitment, existential-witness form, against a
-randomised adversary.** Literature-faithful analog of
-`avss_commitment_AS_randomised`: at any quorum-of-honest-outputs
-coordinate, there exists a witness bivariate whose evaluations at the
-per-party points coincide with every honest output. The witness
-`(ω k).1.coeffs` works structurally because `s.coeffs` is in state in
-this model; the precondition `honestOutputCount s ≥ t + 1` is the
-literature-faithful Bracha-quorum gate from PR #45's deterministic
-version, kept here for migration stability with sister-branch
-existential forms.
+/-- **Existential-witness commitment against a randomised adversary**
+(honest-dealer-conditional, post-Fix 1 rename).  Analog of
+`avss_commitment_AS_randomised`: under the honest-dealer guard, at
+any quorum-of-honest-outputs coordinate there exists a witness
+bivariate whose evaluations at the per-party points coincide with
+every honest output.  The witness is the μ₀-baked `coeffs` parameter;
+the precondition `honestOutputCount s ≥ t + 1` is the literature-
+faithful Bracha-quorum gate from PR #45's deterministic version,
+kept here for surface-statement alignment.
+
+The honest-dealer guard is identical to the deterministic version's
+(see `avss_commitment_AS_existential` for the rationale and the
+Phase 8.6 follow-up that drops it via Bracha amplification).  The
+previous name `_corrupt_dealer_randomised` overclaimed.
 
 Proof: derived directly from `avss_commitment_AS_randomised`
 (`outputDeterminedInv` lift); the existential is satisfied with
-`witness := (ω k).1.coeffs` and the per-party clause is exactly
-`outputDeterminedInv`'s second conjunct. The
-`honestOutputCount`-precondition is trivially satisfiable in our
-model (we don't need it for existence) but appears in the surface
-statement to align with the literature form. -/
-theorem avss_commitment_AS_corrupt_dealer_randomised
+`witness := coeffs` and the per-party clause is exactly
+`outputDeterminedInv`'s second conjunct. -/
+theorem avss_commitment_AS_existential_randomised
     (sec : F) (corr : Finset (Fin n))
     (coeffs : Fin (t+1) → Fin (t+1) → F)
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
@@ -10506,7 +10525,8 @@ universally over `RandomisedAdversary`, so they specialise immediately.
 
 The four wrappers cover the four classical AVSS properties:
   * `avss_correctness_AS_existential_rushing_randomised` (around PR #49)
-  * `avss_commitment_AS_corrupt_dealer_rushing_randomised` (around PR #49)
+  * `avss_commitment_AS_existential_rushing_randomised`  (around PR #49,
+                                                          renamed in Fix 1)
   * `avss_secrecy_AS_step_zero_grid_rushing_randomised`   (around PR #47)
   * `avss_termination_AS_fair_rushing_randomised`         (around PR #54)
 
@@ -10539,11 +10559,13 @@ theorem avss_correctness_AS_existential_rushing_randomised
   avss_correctness_AS_existential_randomised sec corr coeffs μ₀ h_init
     R.toRandomisedAdversary
 
-/-- **Output-determined commitment against a rushing randomised
-adversary** (corrupt-dealer existential-witness form).  Thin wrapper:
-feed `R.toRandomisedAdversary` into
-`avss_commitment_AS_corrupt_dealer_randomised` (PR #49). -/
-theorem avss_commitment_AS_corrupt_dealer_rushing_randomised
+/-- **Existential-witness commitment against a rushing randomised
+adversary** (honest-dealer-conditional, post-Fix 1 rename).  Thin
+wrapper: feed `R.toRandomisedAdversary` into
+`avss_commitment_AS_existential_randomised` (PR #49).  See
+`avss_commitment_AS_existential` for the honest-dealer guard
+rationale and the Phase 8.6 follow-up. -/
+theorem avss_commitment_AS_existential_rushing_randomised
     (sec : F) (corr : Finset (Fin n))
     (coeffs : Fin (t+1) → Fin (t+1) → F)
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
@@ -10556,7 +10578,7 @@ theorem avss_commitment_AS_corrupt_dealer_rushing_randomised
           ∀ p, p ∉ s.corrupted →
             ∀ v, (s.local_ p).output = some v →
               v = bivEval witness (s.partyPoint p) 0) :=
-  avss_commitment_AS_corrupt_dealer_randomised sec corr coeffs μ₀ h_init
+  avss_commitment_AS_existential_randomised sec corr coeffs μ₀ h_init
     R.toRandomisedAdversary
 
 /-- **Coord-0 grid secrecy against a rushing randomised adversary.**
@@ -13519,7 +13541,7 @@ The `s.coeffs` field was migrated to μ₀ in Phase 8.5d-β: the
 dealer's bivariate polynomial is now an initial-state witness
 sampled at protocol start, not a runtime field.  This makes the
 existential-witness theorem forms (`avss_correctness_AS_existential`
-PR #43, `avss_commitment_AS_corrupt_dealer` PR #45+#48) the
+PR #43, `avss_commitment_AS_existential` PR #45+#48) the
 canonical surface API.
 
 ## Strengthened bivariate form (Phase 11-δ-followup)
