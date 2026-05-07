@@ -179,7 +179,9 @@ structure AVSSState (n t : ℕ) (F : Type*) [DecidableEq F] where
   inflightDeliveries         : Finset (Fin n)
   inflightCorruptDeliveries  : Finset (Fin n)
   inflightEchoes             : Finset (Fin n × Fin n)
-  inflightReady              : Finset (Fin n)
+  -- Phase 8.5b-γ-followup-2: per-pair tokens (q, r) means q's ready
+  -- broadcast to r is in flight; mirrors `inflightEchoes`'s shape.
+  inflightReady              : Finset (Fin n × Fin n)
   dealerSent                 : Bool
   dealerMessages             : Fin n → Option (DealerPayload t F)
 
@@ -411,21 +413,29 @@ def avssStep (a : AVSSAction n F) (s : AVSSState n t F) :
       let s' := setLocal s p ls'
       { s' with inflightEchoes := s.inflightEchoes.erase (q, p) }
   | .partyReady p =>
+      -- Phase 8.5b-γ-followup-2: per-pair broadcast — populates `(p, r)`
+      -- for every receiver `r`, mirroring `partyEchoSend`.
       let ls := s.local_ p
       let ls' : AVSSLocalState n t F := { ls with readySent := true }
       let s' := setLocal s p ls'
-      { s' with inflightReady := insert p s.inflightReady }
+      { s' with
+        inflightReady :=
+          s.inflightReady ∪
+            (Finset.univ : Finset (Fin n)).image (fun r => (p, r)) }
   | .partyAmplify p =>
       let ls := s.local_ p
       let ls' : AVSSLocalState n t F := { ls with readySent := true }
       let s' := setLocal s p ls'
-      { s' with inflightReady := insert p s.inflightReady }
+      { s' with
+        inflightReady :=
+          s.inflightReady ∪
+            (Finset.univ : Finset (Fin n)).image (fun r => (p, r)) }
   | .partyReceiveReady p q =>
       let ls := s.local_ p
       let ls' : AVSSLocalState n t F :=
         { ls with readyReceived := insert q ls.readyReceived }
       let s' := setLocal s p ls'
-      { s' with inflightReady := s.inflightReady.erase q }
+      { s' with inflightReady := s.inflightReady.erase (q, p) }
   | .partyOutput p =>
       let ls := s.local_ p
       -- Per-party share: f_p(0) = bivEval coeffs (partyPoint p) 0.
@@ -537,7 +547,8 @@ def actionGate (a : AVSSAction n F) (s : AVSSState n t F) : Prop :=
         (s.local_ p).readyReceived.card ≥ t + 1 ∧ s.dealerSent = true
   | .partyReceiveReady p q =>
       -- Phase 8.5b: C2 closure.
-      q ∈ s.inflightReady ∧ q ∉ (s.local_ p).readyReceived
+      -- Phase 8.5b-γ-followup-2: per-pair tokens.
+      (q, p) ∈ s.inflightReady ∧ q ∉ (s.local_ p).readyReceived
   | .partyOutput p =>
       p ∉ s.corrupted ∧
         (s.local_ p).delivered = true ∧ (s.local_ p).readySent = true ∧
@@ -682,7 +693,7 @@ noncomputable instance : Fintype (AVSSState n t F) := by
     ((Fin (t+1) → Fin (t+1) → F) × (Fin n → F) × F ×
       (Fin n → AVSSLocalState n t F) × Finset (Fin n) × Bool ×
       Finset (Fin n) × Finset (Fin n) × Finset (Fin n × Fin n) ×
-      Finset (Fin n) × Bool × (Fin n → Option (DealerPayload t F)))
+      Finset (Fin n × Fin n) × Bool × (Fin n → Option (DealerPayload t F)))
     { toFun := fun ⟨c, pp, sec, l, corr, dh, idl, idlc, ie, ird, ds, dm⟩ =>
         ⟨c, pp, sec, l, corr, dh, idl, idlc, ie, ird, ds, dm⟩
       invFun := fun s =>
@@ -808,8 +819,14 @@ def unfinishedSet (s : AVSSState n t F) : Finset (Fin n) :=
   exact (Finset.card_le_univ s.inflightDeliveries).trans (by simp)
 
 @[simp] theorem inflightReady_card_le (s : AVSSState n t F) :
-    s.inflightReady.card ≤ n := by
-  exact (Finset.card_le_univ s.inflightReady).trans (by simp)
+    s.inflightReady.card ≤ (n + 1) * (n + 1) := by
+  classical
+  have h1 : s.inflightReady.card ≤ (Finset.univ : Finset (Fin n × Fin n)).card :=
+    Finset.card_le_univ _
+  have h2 : (Finset.univ : Finset (Fin n × Fin n)).card = n * n := by simp
+  calc s.inflightReady.card
+      ≤ n * n := by rw [← h2]; exact h1
+    _ ≤ (n + 1) * (n + 1) := by nlinarith
 
 /-- Lex base: `K = (n+1)²` dominates every component (in particular
 `inflightEchoes.card ≤ n² < K`). -/
@@ -893,7 +910,8 @@ theorem avssU_le_bound (s : AVSSState n t F) :
   have h3 : s.inflightEchoes.card ≤ K := by
     rw [hK_def]; exact inflightEchoes_card_le s
   have h4 := notReadySentSet_card_le s
-  have h5 := inflightReady_card_le s
+  have h5 : s.inflightReady.card ≤ K := by
+    rw [hK_def]; exact inflightReady_card_le s
   have h6 := unfinishedSet_card_le s
   -- Power monotonicity:
   have hp1 : K ≤ K ^ 6 := by
@@ -926,19 +944,20 @@ theorem avssU_le_bound (s : AVSSState n t F) :
     calc (notReadySentSet s).card * K ^ 2
         ≤ n * K ^ 2 := by gcongr
       _ ≤ n * K ^ 6 := by gcongr
-  have hF : s.inflightReady.card * K ≤ n * K ^ 6 := by
+  have hF : s.inflightReady.card * K ≤ K ^ 6 := by
     calc s.inflightReady.card * K
-        ≤ n * K := by gcongr
-      _ ≤ n * K ^ 6 := by gcongr
+        ≤ K * K := by gcongr
+      _ = K ^ 2 := by ring
+      _ ≤ K ^ 6 := hp2
   have hG : (unfinishedSet s).card ≤ n * K ^ 6 := by
     calc (unfinishedSet s).card
         ≤ n := h6
       _ = n * 1 := by ring
       _ ≤ n * K ^ 6 := by nlinarith [hp0]
-  -- Combine hA..hG: avssU ≤ 6·n·K⁶ + K⁶.
-  have hsum : avssU s ≤ 6 * n * K ^ 6 + K ^ 6 := by
+  -- Combine hA..hG: avssU ≤ 5·n·K⁶ + 2·K⁶.
+  have hsum : avssU s ≤ 5 * n * K ^ 6 + 2 * K ^ 6 := by
     unfold avssU
-    -- Six components ≤ n · K⁶ each, plus one ≤ K⁶ (the inflightEchoes term).
+    -- Five components ≤ n · K⁶ each, plus two ≤ K⁶ (inflightEchoes and inflightReady).
     have hsum6 :
         (if s.dealerSent then (0 : ℕ) else (honestSet s).card) * K ^ 6 +
           s.inflightDeliveries.card * K ^ 5 +
@@ -948,19 +967,19 @@ theorem avssU_le_bound (s : AVSSState n t F) :
           s.inflightReady.card * K +
           (unfinishedSet s).card
         ≤ n * K ^ 6 + n * K ^ 6 + n * K ^ 6 + K ^ 6 +
-          n * K ^ 6 + n * K ^ 6 + n * K ^ 6 := by
+          n * K ^ 6 + K ^ 6 + n * K ^ 6 := by
       have := hA; have := hB; have := hC; have := hD
       have := hE; have := hF; have := hG
       omega
     have hrearrange :
         n * K ^ 6 + n * K ^ 6 + n * K ^ 6 + K ^ 6 +
-          n * K ^ 6 + n * K ^ 6 + n * K ^ 6
-        = 6 * n * K ^ 6 + K ^ 6 := by ring
+          n * K ^ 6 + K ^ 6 + n * K ^ 6
+        = 5 * n * K ^ 6 + 2 * K ^ 6 := by ring
     rw [hrearrange] at hsum6
     convert hsum6 using 0
-  -- Final: 6·n·K⁶ + K⁶ ≤ (7n+7)·K⁶.
+  -- Final: 5·n·K⁶ + 2·K⁶ ≤ (7n+7)·K⁶.
   calc avssU s
-      ≤ 6 * n * K ^ 6 + K ^ 6 := hsum
+      ≤ 5 * n * K ^ 6 + 2 * K ^ 6 := hsum
     _ ≤ (7 * n + 7) * K ^ 6 := by nlinarith [Nat.zero_le (K ^ 6)]
 
 /-! ### Inductive invariant — step preservation (Phase 2b) -/
@@ -1041,8 +1060,8 @@ theorem avssTermInv_step
         have hpre_ds : s.dealerSent = false := by
           simpa [avssStep, setLocal] using hds'
         have hi := hpre hpre_ds
-        -- Phase 8.5b: gate is now 2-tuple ⟨q ∈ inflightReady, ¬received⟩.
-        have hgate_in : q ∈ s.inflightReady := h.1
+        -- Phase 8.5b-γ-followup-2: gate is now ⟨(q,p) ∈ inflightReady, ¬received⟩.
+        have hgate_in : (q, p) ∈ s.inflightReady := h.1
         rw [hi.2.2.2] at hgate_in
         exact absurd hgate_in (Finset.notMem_empty _)
     | partyOutput p =>
@@ -1361,7 +1380,7 @@ theorem avssU_step_partyReceiveReady_lt (s : AVSSState n t F) (p q : Fin n)
     (hinv : avssTermInv s) :
     avssU (avssStep (AVSSAction.partyReceiveReady p q) s) + 1 ≤ avssU s := by
   classical
-  -- Phase 8.5b: gate is now 2-tuple ⟨q ∈ inflightReady, ¬received⟩.
+  -- Phase 8.5b-γ-followup-2: gate is now ⟨(q,p) ∈ inflightReady, ¬received⟩.
   obtain ⟨hqin, _⟩ := hgate
   have hds_pre : s.dealerSent = true :=
     dealerSent_true_of_inflight hinv
@@ -1377,7 +1396,7 @@ theorem avssU_step_partyReceiveReady_lt (s : AVSSState n t F) (p q : Fin n)
   have hife : (avssStep (AVSSAction.partyReceiveReady p q) s).inflightEchoes =
       s.inflightEchoes := by simp [avssStep]
   have hifr : (avssStep (AVSSAction.partyReceiveReady p q) s).inflightReady =
-      s.inflightReady.erase q := by simp [avssStep]
+      s.inflightReady.erase (q, p) := by simp [avssStep]
   -- Per-party: only readyReceived_p changes (not in U).
   have hdel : ∀ x : Fin n,
       ((avssStep (AVSSAction.partyReceiveReady p q) s).local_ x).delivered =
@@ -1424,10 +1443,10 @@ theorem avssU_step_partyReceiveReady_lt (s : AVSSState n t F) (p q : Fin n)
     simp only [unfinishedSet, Finset.mem_filter, Finset.mem_univ, true_and]
     rw [hcorr, hout x]
   have hifr_card :
-      (s.inflightReady.erase q).card = s.inflightReady.card - 1 :=
+      (s.inflightReady.erase (q, p)).card = s.inflightReady.card - 1 :=
     Finset.card_erase_of_mem hqin
   have hifr_pos : 1 ≤ s.inflightReady.card :=
-    Finset.card_pos.mpr ⟨q, hqin⟩
+    Finset.card_pos.mpr ⟨(q, p), hqin⟩
   have hK_pos : 1 ≤ lexBase n := lexBase_pos
   unfold avssU
   rw [hds, hifd, hife, hifr, huss, hnrs, hunfin, hifr_card, hds_pre]
@@ -1446,13 +1465,17 @@ theorem avssU_step_partyReceiveReady_lt (s : AVSSState n t F) (p q : Fin n)
 
 omit [Fintype F] in
 /-- `partyReady` step: avssU strictly decreases.  c5 (notReadySent) drops
-by 1 (loses K²); c6 (inflightReady) gains at most 1 (gains K). Net ≥ K(K-1)
-which is ≥ 1 for K ≥ 2 (i.e., n ≥ 1, which holds since `p : Fin n`).
+by 1 (loses K²); c6 (inflightReady) gains at most n (gains ≤ n·K). Net ≥
+K² − n·K = K(K-n) ≥ K ≥ 1 since K = (n+1)² ≥ n+1.
 
 Phase 8.5b: `notReadySentSet` remains honest-only, so strict decrease
 requires an explicit honest-firing premise `hph`. (Corrupt-fired
 `partyReady` is dispatched via `V_super`/`U_dec_det`'s `Or.inr` branch
-in `avssCert`.) -/
+in `avssCert`.)
+
+Phase 8.5b-γ-followup-2: per-pair `inflightReady` — `partyReady p` may
+add up to `n` tokens `(p, r)` instead of 1.  K is large enough that
+the K² drop still dominates. -/
 theorem avssU_step_partyReady_lt (s : AVSSState n t F) (p : Fin n)
     (hgate : actionGate (AVSSAction.partyReady p) s)
     (hinv : avssTermInv s) (hph : p ∉ s.corrupted) :
@@ -1466,6 +1489,8 @@ theorem avssU_step_partyReady_lt (s : AVSSState n t F) (p : Fin n)
     · subst hn; exact p.elim0
     · exact hn
   have hK_ge : 4 ≤ lexBase n := by unfold lexBase; nlinarith
+  -- K = (n+1)² ≥ n+1.
+  have hK_ge_n1 : n + 1 ≤ lexBase n := by unfold lexBase; nlinarith
   -- Frame.
   have hds : (avssStep (AVSSAction.partyReady p) s).dealerSent =
       s.dealerSent := by simp [avssStep, setLocal]
@@ -1476,7 +1501,9 @@ theorem avssU_step_partyReady_lt (s : AVSSState n t F) (p : Fin n)
   have hife : (avssStep (AVSSAction.partyReady p) s).inflightEchoes =
       s.inflightEchoes := by simp [avssStep]
   have hifr : (avssStep (AVSSAction.partyReady p) s).inflightReady =
-      insert p s.inflightReady := by simp [avssStep]
+      s.inflightReady ∪
+        (Finset.univ : Finset (Fin n)).image (fun r => (p, r)) := by
+    simp [avssStep]
   -- Per-party: only readySent_p flips false → true.
   have hdel : ∀ x : Fin n,
       ((avssStep (AVSSAction.partyReady p) s).local_ x).delivered =
@@ -1536,9 +1563,22 @@ theorem avssU_step_partyReady_lt (s : AVSSState n t F) (p : Fin n)
     rw [hnrs_post, Finset.card_erase_of_mem hp_in_nrs]
   have hnrs_pos : 1 ≤ (notReadySentSet s).card :=
     Finset.card_pos.mpr ⟨p, hp_in_nrs⟩
+  -- Per-pair tokens: increase ≤ |image| ≤ n.
+  have hImg_card :
+      ((Finset.univ : Finset (Fin n)).image (fun r => (p, r))).card ≤ n := by
+    calc ((Finset.univ : Finset (Fin n)).image (fun r => (p, r))).card
+        ≤ (Finset.univ : Finset (Fin n)).card := Finset.card_image_le
+      _ = n := by simp
   have hifr_card_le :
-      (insert p s.inflightReady).card ≤ s.inflightReady.card + 1 :=
-    Finset.card_insert_le _ _
+      (s.inflightReady ∪
+        (Finset.univ : Finset (Fin n)).image (fun r => (p, r))).card
+        ≤ s.inflightReady.card + n := by
+    calc (s.inflightReady ∪
+            (Finset.univ : Finset (Fin n)).image (fun r => (p, r))).card
+        ≤ s.inflightReady.card +
+            ((Finset.univ : Finset (Fin n)).image (fun r => (p, r))).card :=
+          Finset.card_union_le _ _
+      _ ≤ s.inflightReady.card + n := by omega
   unfold avssU
   rw [hds, hifd, hife, hifr, huss, hnrs_card, hunfin, hds_pre]
   simp only [if_true, zero_mul, Nat.zero_add]
@@ -1546,18 +1586,18 @@ theorem avssU_step_partyReady_lt (s : AVSSState n t F) (p : Fin n)
   set K := lexBase n with hK_def
   set nrs := (notReadySentSet s).card
   set ifr := s.inflightReady.card
-  -- Goal: ... + (nrs - 1) * K^2 + (insert p ifr).card * K + ... + 1
+  -- Goal: ... + (nrs - 1) * K^2 + (ifr ∪ image).card * K + ... + 1
   --     ≤ ... + nrs * K^2 + ifr * K + ...
-  -- Cancel common: (nrs-1)*K^2 + (insert p ifr).card*K + 1 ≤ nrs*K^2 + ifr*K
-  -- Substitute nrs*K^2 = (nrs-1)*K^2 + K^2; suffices: K^2 ≥ (insert p ifr).card*K - ifr*K + 1
-  -- Insert: |insert p ifr| ≤ ifr + 1, so |insert p ifr|*K - ifr*K ≤ K. So K^2 ≥ K + 1.
-  -- For K ≥ 4: K^2 ≥ 16 ≥ 5 ≥ K + 1 = 5. ✓ (with margin for K = 4)
+  -- Cancel common: (nrs-1)*K^2 + (ifr ∪ image).card*K + 1 ≤ nrs*K^2 + ifr*K
+  -- |ifr ∪ image| ≤ ifr + n, so (ifr ∪ image)*K - ifr*K ≤ n*K. Need K^2 ≥ n*K + 1.
+  -- K = (n+1)^2 = n^2 + 2n + 1; K^2 - n*K = K*(K - n) = K*(n^2 + n + 1) ≥ K ≥ 5.
   have h_nrs_split : (nrs - 1) * K^2 + K^2 = nrs * K^2 := by
     have : nrs - 1 + 1 = nrs := Nat.sub_add_cancel hnrs_pos
     calc (nrs - 1) * K^2 + K^2 = ((nrs - 1) + 1) * K^2 := by ring
       _ = nrs * K^2 := by rw [this]
-  have h_K2_ge : K^2 ≥ K + 1 := by nlinarith [hK_ge]
-  nlinarith [h_nrs_split, h_K2_ge, hifr_card_le, hK_ge, hnrs_pos]
+  have hK_ge_n1' : n + 1 ≤ K := by rw [hK_def]; exact hK_ge_n1
+  have h_K2_ge_nK : K^2 ≥ n * K + K := by nlinarith [hK_ge_n1', hK_ge]
+  nlinarith [h_nrs_split, h_K2_ge_nK, hifr_card_le, hK_ge, hnrs_pos]
 
 omit [Fintype F] in
 /-- `partyAmplify` step: avssU strictly decreases.  Same shape as
@@ -1578,6 +1618,7 @@ theorem avssU_step_partyAmplify_lt (s : AVSSState n t F) (p : Fin n)
     · subst hn; exact p.elim0
     · exact hn
   have hK_ge : 4 ≤ lexBase n := by unfold lexBase; nlinarith
+  have hK_ge_n1 : n + 1 ≤ lexBase n := by unfold lexBase; nlinarith
   -- Frame (analogous to partyReady).
   have hds : (avssStep (AVSSAction.partyAmplify p) s).dealerSent =
       s.dealerSent := by simp [avssStep, setLocal]
@@ -1588,7 +1629,9 @@ theorem avssU_step_partyAmplify_lt (s : AVSSState n t F) (p : Fin n)
   have hife : (avssStep (AVSSAction.partyAmplify p) s).inflightEchoes =
       s.inflightEchoes := by simp [avssStep]
   have hifr : (avssStep (AVSSAction.partyAmplify p) s).inflightReady =
-      insert p s.inflightReady := by simp [avssStep]
+      s.inflightReady ∪
+        (Finset.univ : Finset (Fin n)).image (fun r => (p, r)) := by
+    simp [avssStep]
   have hdel : ∀ x : Fin n,
       ((avssStep (AVSSAction.partyAmplify p) s).local_ x).delivered =
         (s.local_ x).delivered := by
@@ -1646,9 +1689,22 @@ theorem avssU_step_partyAmplify_lt (s : AVSSState n t F) (p : Fin n)
     rw [hnrs_post, Finset.card_erase_of_mem hp_in_nrs]
   have hnrs_pos : 1 ≤ (notReadySentSet s).card :=
     Finset.card_pos.mpr ⟨p, hp_in_nrs⟩
+  -- Per-pair tokens: increase ≤ |image| ≤ n.
+  have hImg_card :
+      ((Finset.univ : Finset (Fin n)).image (fun r => (p, r))).card ≤ n := by
+    calc ((Finset.univ : Finset (Fin n)).image (fun r => (p, r))).card
+        ≤ (Finset.univ : Finset (Fin n)).card := Finset.card_image_le
+      _ = n := by simp
   have hifr_card_le :
-      (insert p s.inflightReady).card ≤ s.inflightReady.card + 1 :=
-    Finset.card_insert_le _ _
+      (s.inflightReady ∪
+        (Finset.univ : Finset (Fin n)).image (fun r => (p, r))).card
+        ≤ s.inflightReady.card + n := by
+    calc (s.inflightReady ∪
+            (Finset.univ : Finset (Fin n)).image (fun r => (p, r))).card
+        ≤ s.inflightReady.card +
+            ((Finset.univ : Finset (Fin n)).image (fun r => (p, r))).card :=
+          Finset.card_union_le _ _
+      _ ≤ s.inflightReady.card + n := by omega
   unfold avssU
   rw [hds, hifd, hife, hifr, huss, hnrs_card, hunfin, hds_pre]
   simp only [if_true, zero_mul, Nat.zero_add]
@@ -1659,8 +1715,9 @@ theorem avssU_step_partyAmplify_lt (s : AVSSState n t F) (p : Fin n)
     have : nrs - 1 + 1 = nrs := Nat.sub_add_cancel hnrs_pos
     calc (nrs - 1) * K^2 + K^2 = ((nrs - 1) + 1) * K^2 := by ring
       _ = nrs * K^2 := by rw [this]
-  have h_K2_ge : K^2 ≥ K + 1 := by nlinarith [hK_ge]
-  nlinarith [h_nrs_split, h_K2_ge, hifr_card_le, hK_ge, hnrs_pos]
+  have hK_ge_n1' : n + 1 ≤ K := by rw [hK_def]; exact hK_ge_n1
+  have h_K2_ge_nK : K^2 ≥ n * K + K := by nlinarith [hK_ge_n1', hK_ge]
+  nlinarith [h_nrs_split, h_K2_ge_nK, hifr_card_le, hK_ge, hnrs_pos]
 
 omit [Fintype F] in
 /-- `partyEchoReceive` step: avssU strictly decreases by `K³`. -/
@@ -2673,15 +2730,17 @@ queue invariants used to discharge the liveness lemma:
     dealer message populated (so `partyDeliver` is enabled).
   * `inflightEchoes`: each queued `(q, p)` has `q ∉ p.echoesReceived`
     (so `partyEchoReceive p q` is enabled).
-  * `inflightReady`: each queued `q` has `q ∉ p.readyReceived` for every
-    `p` (so `partyReceiveReady p q` is enabled).
+  * `inflightReady`: each queued `(q, p)` has `q ∉ p.readyReceived`
+    (so `partyReceiveReady p q` is enabled).
   * `dealerSent ⟹ ∀ p, dealerMessages.isSome` (joint with the
-    `inflightDeliveries` clause). -/
+    `inflightDeliveries` clause).
+
+Phase 8.5b-γ-followup-2: `inflightReady` is now per-pair `(q, p)`. -/
 def avssQueueWfInv (s : AVSSState n t F) : Prop :=
   (∀ p, p ∈ s.inflightDeliveries →
     p ∉ s.corrupted ∧ (s.local_ p).delivered = false ∧ (s.dealerMessages p).isSome) ∧
   (∀ q p, (q, p) ∈ s.inflightEchoes → q ∉ (s.local_ p).echoesReceived) ∧
-  (∀ q p, q ∈ s.inflightReady → q ∉ (s.local_ p).readyReceived) ∧
+  (∀ q p, (q, p) ∈ s.inflightReady → q ∉ (s.local_ p).readyReceived) ∧
   (s.dealerSent = true → ∀ p, (s.dealerMessages p).isSome)
 
 omit [Field F] [Fintype F] in
@@ -2712,7 +2771,8 @@ it through the cert. -/
   * Q7 (ready freshness): same with ready.
   * Q8 (echo source-sent): if `q.echoSent = false`, then `(q, p) ∉ inflightEchoes`
     for every `p` (no echo from `q` is in flight either).
-  * Q9 (ready source-sent): if `q.readySent = false`, then `q ∉ inflightReady`. -/
+  * Q9 (ready source-sent): if `q.readySent = false`, then `(q, p) ∉ inflightReady`
+    for every `p` (Phase 8.5b-γ-followup-2: per-pair tokens). -/
 def avssFreshInv (s : AVSSState n t F) : Prop :=
   (∀ q, (s.local_ q).echoSent = false →
         ∀ p, q ∉ (s.local_ p).echoesReceived) ∧
@@ -2720,7 +2780,8 @@ def avssFreshInv (s : AVSSState n t F) : Prop :=
         ∀ p, q ∉ (s.local_ p).readyReceived) ∧
   (∀ q, (s.local_ q).echoSent = false →
         ∀ p, (q, p) ∉ s.inflightEchoes) ∧
-  (∀ q, (s.local_ q).readySent = false → q ∉ s.inflightReady)
+  (∀ q, (s.local_ q).readySent = false →
+        ∀ p, (q, p) ∉ s.inflightReady)
 
 omit [Field F] [Fintype F] in
 theorem initPred_avssFreshInv (sec : F) (corr : Finset (Fin n))
@@ -2733,7 +2794,7 @@ theorem initPred_avssFreshInv (sec : F) (corr : Finset (Fin n))
   · intro q _ p; rw [hloc p]; show q ∉ (AVSSLocalState.init n t F).readyReceived
     simp [AVSSLocalState.init]
   · intro q _ p hqp; rw [hie] at hqp; exact absurd hqp (Finset.notMem_empty _)
-  · intro q _ hq; rw [hird] at hq; exact absurd hq (Finset.notMem_empty _)
+  · intro q _ p hq; rw [hird] at hq; exact absurd hq (Finset.notMem_empty _)
 
 omit [Fintype F] in
 /-- `avssQueueWfInv` is preserved by every gated action.  Proof is
@@ -3019,9 +3080,12 @@ theorem avssStep_preserves_avssQueueWfInv
         · subst hpq; simp [avssStep, setLocal_local_self]
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
       rw [heR_eq]; exact hQ2 qq p hqp
-    · -- Q3 post: ifr post = insert q pre.ifr. New entry q. Need q ∉ p.readyReceived for all p.
+    · -- Phase 8.5b-γ-followup-2: Q3 post = pre.ifr ∪ image(fun r => (q, r)).
+      -- New entries are (q, r) for every r.  Need q ∉ p.readyReceived (any p).
       intro qq p hq
-      have hpost : (avssStep (.partyReady q) s).inflightReady = insert q s.inflightReady := rfl
+      have hpost : (avssStep (.partyReady q) s).inflightReady =
+          s.inflightReady ∪
+            (Finset.univ : Finset (Fin n)).image (fun r => (q, r)) := rfl
       rw [hpost] at hq
       have hrR_eq : (((avssStep (.partyReady q) s).local_ p).readyReceived) =
           (s.local_ p).readyReceived := by
@@ -3029,11 +3093,13 @@ theorem avssStep_preserves_avssQueueWfInv
         · subst hpq; simp [avssStep, setLocal_local_self]
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
       rw [hrR_eq]
-      rcases Finset.mem_insert.mp hq with hqqeq | hin_pre
-      · -- qq = q. Q7 (ready freshness) of `avssFreshInv` gives q ∉ p.readyReceived
-        -- from `q.readySent = false` (gate).
-        rw [hqqeq]; exact hF7 q hq_rs p
+      rcases Finset.mem_union.mp hq with hin_pre | hin_img
       · exact hQ3 qq p hin_pre
+      · -- (qq, p) is in the image, so qq = q.  Q7 closes.
+        rw [Finset.mem_image] at hin_img
+        obtain ⟨_, _, heq⟩ := hin_img
+        rw [Prod.mk.injEq] at heq
+        rw [← heq.1]; exact hF7 q hq_rs p
     · intro hds_post p
       have hds_pre : s.dealerSent = true := by
         have : (avssStep (.partyReady q) s).dealerSent = s.dealerSent := by
@@ -3067,9 +3133,11 @@ theorem avssStep_preserves_avssQueueWfInv
         · subst hpq; simp [avssStep, setLocal_local_self]
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
       rw [heR_eq]; exact hQ2 qq p hqp
-    · -- Same as partyReady: new entry q in ifr.
+    · -- Phase 8.5b-γ-followup-2: same as partyReady.
       intro qq p hq
-      have hpost : (avssStep (.partyAmplify q) s).inflightReady = insert q s.inflightReady := rfl
+      have hpost : (avssStep (.partyAmplify q) s).inflightReady =
+          s.inflightReady ∪
+            (Finset.univ : Finset (Fin n)).image (fun r => (q, r)) := rfl
       rw [hpost] at hq
       have hrR_eq : (((avssStep (.partyAmplify q) s).local_ p).readyReceived) =
           (s.local_ p).readyReceived := by
@@ -3077,10 +3145,12 @@ theorem avssStep_preserves_avssQueueWfInv
         · subst hpq; simp [avssStep, setLocal_local_self]
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
       rw [hrR_eq]
-      rcases Finset.mem_insert.mp hq with hqqeq | hin_pre
-      · -- Q7 (ready freshness) gives q ∉ p.readyReceived from `q.readySent = false`.
-        rw [hqqeq]; exact hF7 q hq_rs p
+      rcases Finset.mem_union.mp hq with hin_pre | hin_img
       · exact hQ3 qq p hin_pre
+      · rw [Finset.mem_image] at hin_img
+        obtain ⟨_, _, heq⟩ := hin_img
+        rw [Prod.mk.injEq] at heq
+        rw [← heq.1]; exact hF7 q hq_rs p
     · intro hds_post p
       have hds_pre : s.dealerSent = true := by
         have : (avssStep (.partyAmplify q) s).dealerSent = s.dealerSent := by
@@ -3114,20 +3184,19 @@ theorem avssStep_preserves_avssQueueWfInv
         · subst hpq; simp [avssStep, setLocal_local_self]
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
       rw [heR_eq]; exact hQ2 qq p hqp
-    · -- Q3 post: ifr post = ifr.erase r. For p = q: rR post = insert r pre. For p ≠ q: unchanged.
+    · -- Phase 8.5b-γ-followup-2: ifr_post = ifr.erase (r, q).  For receiver
+      -- p = q: rR_post = insert r pre.  For p ≠ q: unchanged.
       intro qq p hq
       have hpost : (avssStep (.partyReceiveReady q r) s).inflightReady =
-          s.inflightReady.erase r := rfl
+          s.inflightReady.erase (r, q) := rfl
       rw [hpost] at hq
-      have hne_r : qq ≠ r := by
-        intro heq; subst heq
-        exact (Finset.mem_erase.mp hq).1 rfl
-      have hin_pre : qq ∈ s.inflightReady := (Finset.mem_erase.mp hq).2
+      have hne_r : ¬ ((qq, p) = (r, q)) := (Finset.mem_erase.mp hq).1
+      have hin_pre : (qq, p) ∈ s.inflightReady := (Finset.mem_erase.mp hq).2
       by_cases hpq : p = q
       · subst hpq
-        -- After subst, `q` is replaced by `p`.
         simp [avssStep, setLocal_local_self]
-        refine ⟨hne_r, hQ3 qq p hin_pre⟩
+        refine ⟨?_, hQ3 qq p hin_pre⟩
+        intro heq; exact hne_r (by rw [heq])
       · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
         exact hQ3 qq p hin_pre
     · intro hds_post p
@@ -3219,12 +3288,12 @@ theorem avssStep_preserves_avssFreshInv
         rw [this] at hq; exact hq
       have hife_eq : (avssStep AVSSAction.dealerShare s).inflightEchoes = s.inflightEchoes := rfl
       rw [hife_eq] at hqp; exact hF8 q hes_pre p hqp
-    · intro q hq
+    · intro q hq p
       have hrs_pre : (s.local_ q).readySent = false := by
         have : ((avssStep AVSSAction.dealerShare s).local_ q) = s.local_ q := rfl
         rw [this] at hq; exact hq
       have hifr_eq : (avssStep AVSSAction.dealerShare s).inflightReady = s.inflightReady := rfl
-      intro hqq; rw [hifr_eq] at hqq; exact hF9 q hrs_pre hqq
+      intro hqq; rw [hifr_eq] at hqq; exact hF9 q hrs_pre p hqq
   | partyDeliver q =>
     -- Updates q.delivered + q.rowPoly + ifd. echoSent/echoesReceived/
     -- readySent/readyReceived/ife/ifr all unchanged.
@@ -3261,14 +3330,14 @@ theorem avssStep_preserves_avssFreshInv
       rw [hes_eq] at hr
       have hife_eq : (avssStep (.partyDeliver q) s).inflightEchoes = s.inflightEchoes := rfl
       rw [hife_eq] at hrp; exact hF8 r hr p hrp
-    · intro r hr
+    · intro r hr p
       have hrs_eq : ((avssStep (.partyDeliver q) s).local_ r).readySent = (s.local_ r).readySent := by
         by_cases hrq : r = q
         · subst hrq; simp [avssStep, setLocal_local_self]
         · simp [avssStep, setLocal_local_ne _ _ _ _ hrq]
       rw [hrs_eq] at hr
       have hifr_eq : (avssStep (.partyDeliver q) s).inflightReady = s.inflightReady := rfl
-      intro hrq; rw [hifr_eq] at hrq; exact hF9 r hr hrq
+      intro hrq; rw [hifr_eq] at hrq; exact hF9 r hr p hrq
   | partyCorruptDeliver q =>
     refine ⟨?_, ?_, ?_, ?_⟩
     · intro r hr p
@@ -3306,7 +3375,7 @@ theorem avssStep_preserves_avssFreshInv
       rw [hes_eq] at hr
       have hife_eq : (avssStep (.partyCorruptDeliver q) s).inflightEchoes = s.inflightEchoes := rfl
       rw [hife_eq] at hrp; exact hF8 r hr p hrp
-    · intro r hr
+    · intro r hr p
       have hrs_eq : ((avssStep (.partyCorruptDeliver q) s).local_ r).readySent =
           (s.local_ r).readySent := by
         by_cases hrq : r = q
@@ -3314,7 +3383,7 @@ theorem avssStep_preserves_avssFreshInv
         · simp [avssStep, setLocal_local_ne _ _ _ _ hrq]
       rw [hrs_eq] at hr
       have hifr_eq : (avssStep (.partyCorruptDeliver q) s).inflightReady = s.inflightReady := rfl
-      intro hrq; rw [hifr_eq] at hrq; exact hF9 r hr hrq
+      intro hrq; rw [hifr_eq] at hrq; exact hF9 r hr p hrq
   | partyEchoSend q =>
     -- Sets q.echoSent = true; adds (q, *) to ife.  Doesn't touch
     -- echoesReceived/readySent/readyReceived/ifr.
@@ -3372,7 +3441,7 @@ theorem avssStep_preserves_avssFreshInv
           obtain ⟨y, heq⟩ := hin2
           have : q = r := (Prod.mk.injEq _ _ _ _).mp heq |>.1
           exact hrq this.symm
-    · intro r hr
+    · intro r hr p
       have hrs_pre : (s.local_ r).readySent = false := by
         have : ((avssStep (.partyEchoSend q) s).local_ r).readySent = (s.local_ r).readySent := by
           by_cases hrq : r = q
@@ -3380,7 +3449,7 @@ theorem avssStep_preserves_avssFreshInv
           · simp [avssStep, setLocal_local_ne _ _ _ _ hrq]
         rw [this] at hr; exact hr
       have hifr_eq : (avssStep (.partyEchoSend q) s).inflightReady = s.inflightReady := rfl
-      intro hrr; rw [hifr_eq] at hrr; exact hF9 r hrs_pre hrr
+      intro hrr; rw [hifr_eq] at hrr; exact hF9 r hrs_pre p hrr
   | partyEchoReceive p q =>
     obtain ⟨hqp_in, _hqnotin⟩ := hgate
     -- p.echoesReceived ← insert q; ife ← erase (q, p); echoSent/readySent/readyReceived/ifr unchanged.
@@ -3435,7 +3504,7 @@ theorem avssStep_preserves_avssFreshInv
       rw [hpost] at hrp'
       have : (r, p') ∈ s.inflightEchoes := (Finset.mem_erase.mp hrp').2
       exact hF8 r hes_pre p' this
-    · intro r hr
+    · intro r hr p'
       have hrs_pre : (s.local_ r).readySent = false := by
         have : ((avssStep (.partyEchoReceive p q) s).local_ r).readySent = (s.local_ r).readySent := by
           by_cases hrp : r = p
@@ -3443,7 +3512,7 @@ theorem avssStep_preserves_avssFreshInv
           · simp [avssStep, setLocal_local_ne _ _ _ _ hrp]
         rw [this] at hr; exact hr
       have hifr_eq : (avssStep (.partyEchoReceive p q) s).inflightReady = s.inflightReady := rfl
-      intro hrr; rw [hifr_eq] at hrr; exact hF9 r hrs_pre hrr
+      intro hrr; rw [hifr_eq] at hrr; exact hF9 r hrs_pre p' hrr
   | partyReady q =>
     -- q.readySent ← true; ifr ← insert q; echoSent/echoesReceived/readyReceived/ife unchanged.
     refine ⟨?_, ?_, ?_, ?_⟩
@@ -3488,7 +3557,7 @@ theorem avssStep_preserves_avssFreshInv
       have hife_eq : (avssStep (.partyReady q) s).inflightEchoes = s.inflightEchoes := by
         simp [avssStep, setLocal]
       rw [hife_eq] at hrp; exact hF8 r hes_pre p hrp
-    · intro r hr
+    · intro r hr p
       by_cases hrq : r = q
       · subst hrq
         have : ((avssStep (.partyReady r) s).local_ r).readySent = true := by
@@ -3499,11 +3568,16 @@ theorem avssStep_preserves_avssFreshInv
             simp [avssStep, setLocal_local_ne _ _ _ _ hrq]
           rw [this] at hr; exact hr
         intro hrr
-        have hpost : (avssStep (.partyReady q) s).inflightReady = insert q s.inflightReady := rfl
+        have hpost : (avssStep (.partyReady q) s).inflightReady =
+            s.inflightReady ∪
+              (Finset.univ : Finset (Fin n)).image (fun y => (q, y)) := rfl
         rw [hpost] at hrr
-        rcases Finset.mem_insert.mp hrr with hreq | hin_pre
-        · exact hrq hreq
-        · exact hF9 r hrs_pre hin_pre
+        rcases Finset.mem_union.mp hrr with hin_pre | hin_img
+        · exact hF9 r hrs_pre p hin_pre
+        · rw [Finset.mem_image] at hin_img
+          obtain ⟨_, _, heq⟩ := hin_img
+          rw [Prod.mk.injEq] at heq
+          exact hrq heq.1.symm
   | partyAmplify q =>
     refine ⟨?_, ?_, ?_, ?_⟩
     · intro r hr p
@@ -3546,7 +3620,7 @@ theorem avssStep_preserves_avssFreshInv
       have hife_eq : (avssStep (.partyAmplify q) s).inflightEchoes = s.inflightEchoes := by
         simp [avssStep, setLocal]
       rw [hife_eq] at hrp; exact hF8 r hes_pre p hrp
-    · intro r hr
+    · intro r hr p
       by_cases hrq : r = q
       · subst hrq
         have : ((avssStep (.partyAmplify r) s).local_ r).readySent = true := by
@@ -3557,11 +3631,16 @@ theorem avssStep_preserves_avssFreshInv
             simp [avssStep, setLocal_local_ne _ _ _ _ hrq]
           rw [this] at hr; exact hr
         intro hrr
-        have hpost : (avssStep (.partyAmplify q) s).inflightReady = insert q s.inflightReady := rfl
+        have hpost : (avssStep (.partyAmplify q) s).inflightReady =
+            s.inflightReady ∪
+              (Finset.univ : Finset (Fin n)).image (fun y => (q, y)) := rfl
         rw [hpost] at hrr
-        rcases Finset.mem_insert.mp hrr with hreq | hin_pre
-        · exact hrq hreq
-        · exact hF9 r hrs_pre hin_pre
+        rcases Finset.mem_union.mp hrr with hin_pre | hin_img
+        · exact hF9 r hrs_pre p hin_pre
+        · rw [Finset.mem_image] at hin_img
+          obtain ⟨_, _, heq⟩ := hin_img
+          rw [Prod.mk.injEq] at heq
+          exact hrq heq.1.symm
   | partyReceiveReady p q =>
     obtain ⟨hq_in, _hqnotin⟩ := hgate
     -- p.readyReceived ← insert q; ifr ← erase q; echoSent/echoesReceived/readySent/ife unchanged.
@@ -3587,8 +3666,9 @@ theorem avssStep_preserves_avssFreshInv
           · simp [avssStep, setLocal_local_ne _ _ _ _ hrp]
         rw [this] at hr; exact hr
       have hrq : r ≠ q := by
-        intro heq; subst heq
-        exact hF9 r hrs_pre hq_in
+        intro heq
+        apply hF9 r hrs_pre p
+        rw [heq]; exact hq_in
       by_cases hp'p : p' = p
       · subst hp'p
         have : ((avssStep (.partyReceiveReady p' q) s).local_ p').readyReceived =
@@ -3611,7 +3691,7 @@ theorem avssStep_preserves_avssFreshInv
       have hife_eq : (avssStep (.partyReceiveReady p q) s).inflightEchoes = s.inflightEchoes := by
         simp [avssStep, setLocal]
       rw [hife_eq] at hrp'; exact hF8 r hes_pre p' hrp'
-    · intro r hr
+    · intro r hr p'
       have hrs_pre : (s.local_ r).readySent = false := by
         have : ((avssStep (.partyReceiveReady p q) s).local_ r).readySent = (s.local_ r).readySent := by
           by_cases hrp : r = p
@@ -3619,10 +3699,10 @@ theorem avssStep_preserves_avssFreshInv
           · simp [avssStep, setLocal_local_ne _ _ _ _ hrp]
         rw [this] at hr; exact hr
       have hpost : (avssStep (.partyReceiveReady p q) s).inflightReady =
-          s.inflightReady.erase q := rfl
+          s.inflightReady.erase (q, p) := rfl
       intro hrr
       rw [hpost] at hrr
-      exact hF9 r hrs_pre (Finset.mem_erase.mp hrr).2
+      exact hF9 r hrs_pre p' (Finset.mem_erase.mp hrr).2
   | partyOutput q =>
     refine ⟨?_, ?_, ?_, ?_⟩
     · intro r hr p
@@ -3661,7 +3741,7 @@ theorem avssStep_preserves_avssFreshInv
       have hife_eq : (avssStep (.partyOutput q) s).inflightEchoes = s.inflightEchoes := by
         simp [avssStep, setLocal]
       rw [hife_eq] at hrp; exact hF8 r hes_pre p hrp
-    · intro r hr
+    · intro r hr p
       have hrs_pre : (s.local_ r).readySent = false := by
         have : ((avssStep (.partyOutput q) s).local_ r).readySent = (s.local_ r).readySent := by
           by_cases hrq : r = q
@@ -3670,7 +3750,7 @@ theorem avssStep_preserves_avssFreshInv
         rw [this] at hr; exact hr
       have hifr_eq : (avssStep (.partyOutput q) s).inflightReady = s.inflightReady := by
         simp [avssStep, setLocal]
-      intro hrr; rw [hifr_eq] at hrr; exact hF9 r hrs_pre hrr
+      intro hrr; rw [hifr_eq] at hrr; exact hF9 r hrs_pre p hrr
 
 /-! ### Phase 8.5b-γ-followup: flow + threshold invariant.
 
@@ -3684,14 +3764,10 @@ Adds four "global flow" clauses consumed by
     honest receiver or still in `inflightEchoes`.
   * F4 (ready flow): same shape for ready.
 
-F1, F2, F3 are preserved by every gated action.  F4's preservation under
-`partyReceiveReady r q` (with `r ≠ p`, `q ∉ corrupted`, `q ∉ p.readyReceived`)
-is a known model-design quirk: the receive globally erases `q` from
-`inflightReady` even though only `r.readyReceived` gains `q`, so the strong
-"every honest receiver" claim isn't preserved without a stronger broadcast
-semantics.  That sub-case is sorry'd here with a `-- TODO Phase 8.5b-γ-followup-2`
-bookmark and discharged by the joint invariant in the C5 / C7 dispatches
-modulo the same TODO. -/
+Phase 8.5b-γ-followup-2: F4 now uses per-pair `inflightReady` tokens
+`(q, p)`, mirroring F3's echo flow.  This makes preservation under
+`partyReceiveReady r q` mechanical (the action only erases `(q, r)`,
+leaving `(q, p) ∈ inflightReady` intact for `p ≠ r`). -/
 def avssFlowInv (s : AVSSState n t F) : Prop :=
   s.corrupted.card ≤ t ∧
   (s.dealerSent = true → ∀ p, p ∉ s.corrupted →
@@ -3701,7 +3777,7 @@ def avssFlowInv (s : AVSSState n t F) : Prop :=
       q ∈ (s.local_ p).echoesReceived ∨ (q, p) ∈ s.inflightEchoes) ∧
   (∀ q, q ∉ s.corrupted → (s.local_ q).readySent = true →
     ∀ p, p ∉ s.corrupted →
-      q ∈ (s.local_ p).readyReceived ∨ q ∈ s.inflightReady)
+      q ∈ (s.local_ p).readyReceived ∨ (q, p) ∈ s.inflightReady)
 
 omit [Field F] [Fintype F] in
 theorem initPred_avssFlowInv (sec : F) (corr : Finset (Fin n))
@@ -4201,10 +4277,13 @@ theorem avssStep_preserves_avssFlowInv
         · subst hpr; simp [avssStep, setLocal_local_self]
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpr]
       have hifr_post : (avssStep (.partyReady r) s).inflightReady =
-          insert r s.inflightReady := rfl
+          s.inflightReady ∪
+            (Finset.univ : Finset (Fin n)).image (fun y => (r, y)) := rfl
       by_cases hqr : q = r
       · subst hqr
-        right; rw [hifr_post]; exact Finset.mem_insert_self _ _
+        right; rw [hifr_post]
+        exact Finset.mem_union.mpr (Or.inr
+          (Finset.mem_image.mpr ⟨p, Finset.mem_univ _, rfl⟩))
       · have hrs_pre : (s.local_ q).readySent = true := by
           have : ((avssStep (.partyReady r) s).local_ q).readySent =
               (s.local_ q).readySent := by
@@ -4212,7 +4291,7 @@ theorem avssStep_preserves_avssFlowInv
           rw [this] at hrs; exact hrs
         rcases hF4 q hcorr_q hrs_pre p hcorr_p with h | h
         · left; rw [hrR_eq]; exact h
-        · right; rw [hifr_post]; exact Finset.mem_insert.mpr (Or.inr h)
+        · right; rw [hifr_post]; exact Finset.mem_union.mpr (Or.inl h)
     | partyAmplify r =>
       intro q hq hrs p hp
       have hcorr_q : q ∉ s.corrupted := by rw [hcorr_post] at hq; exact hq
@@ -4223,10 +4302,13 @@ theorem avssStep_preserves_avssFlowInv
         · subst hpr; simp [avssStep, setLocal_local_self]
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpr]
       have hifr_post : (avssStep (.partyAmplify r) s).inflightReady =
-          insert r s.inflightReady := rfl
+          s.inflightReady ∪
+            (Finset.univ : Finset (Fin n)).image (fun y => (r, y)) := rfl
       by_cases hqr : q = r
       · subst hqr
-        right; rw [hifr_post]; exact Finset.mem_insert_self _ _
+        right; rw [hifr_post]
+        exact Finset.mem_union.mpr (Or.inr
+          (Finset.mem_image.mpr ⟨p, Finset.mem_univ _, rfl⟩))
       · have hrs_pre : (s.local_ q).readySent = true := by
           have : ((avssStep (.partyAmplify r) s).local_ q).readySent =
               (s.local_ q).readySent := by
@@ -4234,22 +4316,53 @@ theorem avssStep_preserves_avssFlowInv
           rw [this] at hrs; exact hrs
         rcases hF4 q hcorr_q hrs_pre p hcorr_p with h | h
         · left; rw [hrR_eq]; exact h
-        · right; rw [hifr_post]; exact Finset.mem_insert.mpr (Or.inr h)
+        · right; rw [hifr_post]; exact Finset.mem_union.mpr (Or.inl h)
     | partyReceiveReady p' r =>
-      -- TODO Phase 8.5b-γ-followup-2: F4's preservation under partyReceiveReady fails
-      -- when p' ≠ p (the receiver in the action ≠ the receiver in the invariant) and
-      -- q = action.r (the sender being received).  The model erases r from inflightReady
-      -- globally even though only p'.readyReceived gains r; for receivers other than p',
-      -- the invariant's claim "r ∈ p.readyReceived ∨ r ∈ ifr" is no longer valid in post.
-      -- Two routes:
-      --   (a) strengthen the model to broadcast (split inflightReady into per-pair tokens
-      --       like inflightEchoes), or
-      --   (b) weaken F4 to "r ∈ ifr ∨ ∃ p ∉ corr, r ∈ p.readyReceived" (existence rather
-      --       than ∀), and re-derive C7 dispatch via a different route (e.g. case-split
-      --       on which receiver picked up r and dispatch via that party's partyOutput).
-      -- For the present PR we sorry this branch and rely on the joint invariant in the
-      -- C5 / C7 stuck-case dispatches.
-      sorry
+      -- Phase 8.5b-γ-followup-2: per-pair tokens make F4 preservation mechanical.
+      -- The action erases (r, p') only; tokens (q, p) for (q, p) ≠ (r, p') survive.
+      -- The exact consumed token (r, p') is replaced by `r ∈ p'.readyReceived`.
+      intro q hq hrs p hp
+      have hcorr_q : q ∉ s.corrupted := by rw [hcorr_post] at hq; exact hq
+      have hcorr_p : p ∉ s.corrupted := by rw [hcorr_post] at hp; exact hp
+      have hrs_pre : (s.local_ q).readySent = true := by
+        have : ((avssStep (.partyReceiveReady p' r) s).local_ q).readySent =
+            (s.local_ q).readySent := by
+          by_cases hqp' : q = p'
+          · subst hqp'; simp [avssStep, setLocal_local_self]
+          · simp [avssStep, setLocal_local_ne _ _ _ _ hqp']
+        rw [this] at hrs; exact hrs
+      have hifr_post : (avssStep (.partyReceiveReady p' r) s).inflightReady =
+          s.inflightReady.erase (r, p') := rfl
+      rcases hF4 q hcorr_q hrs_pre p hcorr_p with h | h
+      · -- Pre had `q ∈ p.readyReceived` — survives any insert.
+        left
+        by_cases hpp' : p = p'
+        · subst hpp'
+          show q ∈ ((avssStep (.partyReceiveReady p r) s).local_ p).readyReceived
+          have heq : ((avssStep (.partyReceiveReady p r) s).local_ p).readyReceived =
+              insert r (s.local_ p).readyReceived := by
+            simp [avssStep, setLocal_local_self]
+          rw [heq]; exact Finset.mem_insert_of_mem h
+        · show q ∈ ((avssStep (.partyReceiveReady p' r) s).local_ p).readyReceived
+          have : ((avssStep (.partyReceiveReady p' r) s).local_ p).readyReceived =
+              (s.local_ p).readyReceived := by
+            simp [avssStep, setLocal_local_ne _ _ _ _ hpp']
+          rw [this]; exact h
+      · -- Pre had `(q, p) ∈ inflightReady`. Sub-case on (q, p) = (r, p').
+        by_cases hpair : (q, p) = (r, p')
+        · -- The action consumed exactly this token; equivalent claim is
+          -- now `q ∈ p.readyReceived` (since p = p' and q = r).
+          left
+          obtain ⟨hqr, hpp'⟩ := Prod.mk.injEq _ _ _ _ |>.mp hpair
+          subst hqr; subst hpp'
+          show q ∈ ((avssStep (.partyReceiveReady p q) s).local_ p).readyReceived
+          have heq : ((avssStep (.partyReceiveReady p q) s).local_ p).readyReceived =
+              insert q (s.local_ p).readyReceived := by
+            simp [avssStep, setLocal_local_self]
+          rw [heq]; exact Finset.mem_insert_self _ _
+        · -- Token (q, p) ≠ (r, p'), survives the erase.
+          right; rw [hifr_post]
+          exact Finset.mem_erase.mpr ⟨hpair, h⟩
     | partyOutput r =>
       intro q hq hrs p hp
       have hcorr_q : q ∉ s.corrupted := by rw [hcorr_post] at hq; exact hq
@@ -4492,9 +4605,9 @@ theorem avssFairActionEnabled_at_non_terminated
     push_neg at hife
     by_cases hifr : 0 < s.inflightReady.card
     · have hne : s.inflightReady.Nonempty := Finset.card_pos.mp hifr
-      obtain ⟨q, hq_in⟩ := hne
-      exact ⟨.partyReceiveReady q q, by show True; trivial,
-             hq_in, hwf.2.2.1 q q hq_in⟩
+      obtain ⟨⟨q, r⟩, hqr_in⟩ := hne
+      exact ⟨.partyReceiveReady r q, by show True; trivial,
+             hqr_in, hwf.2.2.1 q r hqr_in⟩
     push_neg at hifr
     -- All higher components are 0.  Pick p ∈ notReadySentSet and enable partyReady p.
     have hne : (notReadySentSet s).Nonempty := Finset.card_pos.mp hC5
@@ -4556,13 +4669,13 @@ theorem avssFairActionEnabled_at_non_terminated
     -- partyReady p is enabled.
     exact ⟨.partyReady p, by show True; trivial,
            hp_del, hp_rs, h_echoes_ge, hds_t⟩
-  · -- C6: inflightReady ≠ ∅. Pick q ∈ ifr. Queue WF gives q ∉ p.readyReceived.
+  · -- C6: inflightReady ≠ ∅. Pick (q, r) ∈ ifr. Queue WF gives q ∉ r.readyReceived.
     have hne : s.inflightReady.Nonempty := Finset.card_pos.mp hC6
-    obtain ⟨q, hq_in⟩ := hne
-    refine ⟨.partyReceiveReady q q, ?_, ?_⟩
+    obtain ⟨⟨q, r⟩, hqr_in⟩ := hne
+    refine ⟨.partyReceiveReady r q, ?_, ?_⟩
     · show True; trivial
-    · show q ∈ s.inflightReady ∧ q ∉ (s.local_ q).readyReceived
-      exact ⟨hq_in, hwf.2.2.1 q q hq_in⟩
+    · show (q, r) ∈ s.inflightReady ∧ q ∉ (s.local_ r).readyReceived
+      exact ⟨hqr_in, hwf.2.2.1 q r hqr_in⟩
   · -- C7: unfinishedSet ≠ ∅.  Lex-most-significant cascade through higher
     -- components: dispatch via partyDeliver / partyEchoSend / partyEchoReceive /
     -- partyReady (on a q ∈ notReadySentSet, via the C5 logic) /
@@ -4596,9 +4709,9 @@ theorem avssFairActionEnabled_at_non_terminated
       -- ifr > 0 case before going further.
       by_cases hifr : 0 < s.inflightReady.card
       · have hne : s.inflightReady.Nonempty := Finset.card_pos.mp hifr
-        obtain ⟨q, hq_in⟩ := hne
-        exact ⟨.partyReceiveReady q q, by show True; trivial,
-               hq_in, hwf.2.2.1 q q hq_in⟩
+        obtain ⟨⟨q, r⟩, hqr_in⟩ := hne
+        exact ⟨.partyReceiveReady r q, by show True; trivial,
+               hqr_in, hwf.2.2.1 q r hqr_in⟩
       push_neg at hifr
       -- ifd = uss = ife = ifr = 0; pick q ∈ nrs and dispatch via partyReady q.
       have hne : (notReadySentSet s).Nonempty := Finset.card_pos.mp hnrs
@@ -4653,9 +4766,9 @@ theorem avssFairActionEnabled_at_non_terminated
     push_neg at hnrs
     by_cases hifr : 0 < s.inflightReady.card
     · have hne : s.inflightReady.Nonempty := Finset.card_pos.mp hifr
-      obtain ⟨q, hq_in⟩ := hne
-      exact ⟨.partyReceiveReady q q, by show True; trivial,
-             hq_in, hwf.2.2.1 q q hq_in⟩
+      obtain ⟨⟨q, r⟩, hqr_in⟩ := hne
+      exact ⟨.partyReceiveReady r q, by show True; trivial,
+             hqr_in, hwf.2.2.1 q r hqr_in⟩
     push_neg at hifr
     -- All higher components are 0.  Pick p ∈ unfinishedSet and enable partyOutput p.
     have hne : (unfinishedSet s).Nonempty := Finset.card_pos.mp hC7
@@ -4744,13 +4857,13 @@ theorem corrupt_fire_post_not_terminated
     exact (Finset.notMem_empty _) h_in
   · intro ht
     obtain ⟨_, _, _, _, hifr⟩ := ht
-    have h_in : p ∈ (avssStep (.partyReady p) s).inflightReady := by
+    have h_in : (p, p) ∈ (avssStep (.partyReady p) s).inflightReady := by
       simp [avssStep]
     rw [hifr] at h_in
     exact (Finset.notMem_empty _) h_in
   · intro ht
     obtain ⟨_, _, _, _, hifr⟩ := ht
-    have h_in : p ∈ (avssStep (.partyAmplify p) s).inflightReady := by
+    have h_in : (p, p) ∈ (avssStep (.partyAmplify p) s).inflightReady := by
       simp [avssStep]
     rw [hifr] at h_in
     exact (Finset.notMem_empty _) h_in
@@ -10154,7 +10267,9 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         rowPoly_corrupt_eq := ?_
         dealerMessages_isSome_eq := h.dealerMessages_isSome_eq
         dealerMessages_corrupt_eq := h.dealerMessages_corrupt_eq }
-    · simp only [avssStep]; exact congrArg (insert q) h.inflightReady_eq
+    · simp only [avssStep]
+      exact congrArg (· ∪ (Finset.univ : Finset (Fin n)).image (fun r => (q, r)))
+        h.inflightReady_eq
     · intro p hp
       by_cases hpq : p = q
       · subst hpq
@@ -10218,7 +10333,9 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         rowPoly_corrupt_eq := ?_
         dealerMessages_isSome_eq := h.dealerMessages_isSome_eq
         dealerMessages_corrupt_eq := h.dealerMessages_corrupt_eq }
-    · simp only [avssStep]; exact congrArg (insert q) h.inflightReady_eq
+    · simp only [avssStep]
+      exact congrArg (· ∪ (Finset.univ : Finset (Fin n)).image (fun r => (q, r)))
+        h.inflightReady_eq
     · intro p hp
       by_cases hpq : p = q
       · subst hpq
@@ -10282,7 +10399,7 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         rowPoly_corrupt_eq := ?_
         dealerMessages_isSome_eq := h.dealerMessages_isSome_eq
         dealerMessages_corrupt_eq := h.dealerMessages_corrupt_eq }
-    · simp only [avssStep]; exact congrArg (·.erase r) h.inflightReady_eq
+    · simp only [avssStep]; exact congrArg (·.erase (r, q)) h.inflightReady_eq
     · intro p hp
       by_cases hpq : p = q
       · subst hpq
