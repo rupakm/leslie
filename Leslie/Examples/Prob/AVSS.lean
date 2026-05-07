@@ -459,6 +459,8 @@ instance : MeasurableSpace (AVSSState n t F) := ⊤
 instance : MeasurableSingletonClass (AVSSState n t F) := ⟨fun _ => trivial⟩
 instance : MeasurableSpace (AVSSAction n F) := ⊤
 instance : MeasurableSingletonClass (AVSSAction n F) := ⟨fun _ => trivial⟩
+instance : MeasurableSpace (AVSSLocalState n t F) := ⊤
+instance : MeasurableSingletonClass (AVSSLocalState n t F) := ⟨fun _ => trivial⟩
 
 /-- `AVSSAction n F` is `Fintype` under `[Fintype F]`. -/
 noncomputable instance : Fintype (AVSSAction n F) := by
@@ -3800,15 +3802,924 @@ theorem avss_secrecy_AS
 
 end StepKGeneralisation
 
-/-! ## §17. Secrecy
+/-! ## §17.10 Trace-level operational view + schedule prefix (Phase 6.1)
+
+For Phase 6 we project a trace
+`ω : ℕ → AVSSState n t F × Option (AVSSAction n F)` onto two pieces:
+
+* `coalitionTraceView C ω k : Fin k → C.val → AVSSLocalState n t F` —
+  the per-step **operational** view: the corrupt coalition's local
+  state at every step `i < k`.
+* `schedulePrefix ω k : Fin k → Option (AVSSAction n F)` — the action
+  label recorded at every step `i < k`. The 0-th entry is conventionally
+  `none` (no action has fired before step 0); subsequent entries hold
+  the label of the action that fired between steps `i - 1` and `i`.
+
+Both are deterministic functions of the trace and are measurable (each
+is a Pi over `Fin k`-many coordinate projections composed with finite
+state evaluations).
+
+These are the operational analogues of `coalitionGrid (ω k).1` (the
+algebraic-grid view at step `k`) used in the trace-level **grid**
+secrecy theorem `avss_secrecy_AS`. -/
+
+/-- The corrupt coalition's per-step operational view: at every step
+`i < k`, project `(ω i).1.local_` onto the parties of `C`. -/
+def coalitionTraceView (C : BivariateShamir.Coalition n t)
+    (ω : ℕ → AVSSState n t F × Option (AVSSAction n F)) (k : ℕ) :
+    Fin k → C.val → AVSSLocalState n t F :=
+  fun i p => coalitionView C (ω i.val).1 p
+
+/-- The schedule prefix: at every step `i < k`, record the action label
+component of the trace at step `i`. -/
+def schedulePrefix
+    (ω : ℕ → AVSSState n t F × Option (AVSSAction n F)) (k : ℕ) :
+    Fin k → Option (AVSSAction n F) :=
+  fun i => (ω i.val).2
+
+omit [Field F] [Fintype F] in
+@[simp] theorem coalitionTraceView_apply (C : BivariateShamir.Coalition n t)
+    (ω : ℕ → AVSSState n t F × Option (AVSSAction n F)) (k : ℕ)
+    (i : Fin k) (p : C.val) :
+    coalitionTraceView C ω k i p = coalitionView C (ω i.val).1 p := rfl
+
+omit [Field F] [Fintype F] in
+@[simp] theorem schedulePrefix_apply
+    (ω : ℕ → AVSSState n t F × Option (AVSSAction n F)) (k : ℕ) (i : Fin k) :
+    schedulePrefix ω k i = (ω i.val).2 := rfl
+
+omit [Field F] in
+/-- `coalitionTraceView` is measurable: it factors as a Pi of
+coordinate evaluations, each composed with `Prod.fst` and the discrete
+`s.local_ p.val` projection (measurable since `AVSSState` carries the
+top σ-algebra, hence every function out is measurable). -/
+@[fun_prop]
+theorem measurable_coalitionTraceView (C : BivariateShamir.Coalition n t)
+    (k : ℕ) :
+    Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+        coalitionTraceView C ω k) := by
+  classical
+  refine measurable_pi_iff.mpr fun i => measurable_pi_iff.mpr fun p => ?_
+  -- The coordinate map is `ω ↦ (ω i.val).1.local_ p.val`.
+  have h1 : Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+        ω i.val) :=
+    measurable_pi_apply _
+  have h2 : Measurable (Prod.fst :
+      AVSSState n t F × Option (AVSSAction n F) → AVSSState n t F) :=
+    measurable_fst
+  have h3 : Measurable (fun s : AVSSState n t F => s.local_ p.val) :=
+    measurable_of_countable _
+  exact (h3.comp h2).comp h1
+
+omit [Field F] [Fintype F] in
+/-- `schedulePrefix` is measurable: it is a Pi of coordinate
+evaluations followed by `Prod.snd`. -/
+@[fun_prop]
+theorem measurable_schedulePrefix (k : ℕ) :
+    Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+        schedulePrefix ω k) := by
+  refine measurable_pi_iff.mpr fun i => ?_
+  exact measurable_snd.comp (measurable_pi_apply i.val)
+
+omit [Field F] in
+/-- Combined measurability: `(coalitionTraceView, schedulePrefix)` is
+measurable. Used at the headline operational-secrecy theorem (§17.12)
+to push forward the trace measure under the joint projection. -/
+@[fun_prop]
+theorem measurable_coalitionTraceView_schedulePrefix
+    (C : BivariateShamir.Coalition n t) (k : ℕ) :
+    Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+        (coalitionTraceView C ω k, schedulePrefix ω k)) :=
+  (measurable_coalitionTraceView C k).prodMk (measurable_schedulePrefix k)
+
+/-! ## §17.11 `corruptViewFactorsThroughGrid` — operational view structural theorem (Phase 6.2)
+
+The corrupt parties' local-state view at any step `k` is determined
+by:
+  1. the **initial state's** (`partyPoint`, `coeffs`) — concretely the
+     row polynomials `rowPolyOfDealer (s_0.partyPoint) (s_0.coeffs) p`
+     for `p` corrupt, and
+  2. the **schedule prefix** `(ω 0).2, (ω 1).2, …, (ω (k-1)).2`.
+
+This decomposition follows from two state invariants combined:
+
+* `outputDeterminedInv` (§15) — for **every** party (including
+  corrupt), `delivered = true` implies
+  `rowPoly = some (rowPolyOfDealer s.partyPoint s.coeffs p)`. Pinned
+  by the `partyCorruptDeliver` action's effect (§6).
+
+* `corruptLocalInv` (this section) — for every corrupt `p`, the local
+  state's fields `{echoSent, echoesReceived, readySent, readyReceived,
+  output, rowPoly-when-not-delivered}` are pinned at their `init`
+  values throughout. Every action that writes to those fields has a
+  gate requiring `p ∉ corrupted` (§7) — so corrupt parties never
+  echo, never send ready, never output, never receive echoes/readies.
+
+Combined, the only mutable bits of corrupt `p`'s local state are the
+pair `(delivered, rowPoly)`, which is `(false, none)` initially and
+`(true, some (rowPolyOfDealer …))` after `partyCorruptDeliver(p)`
+fires. Both branches are deterministic functions of `(s_0, schedule)`.
+
+The two invariants combine to give the headline structural theorem
+`coalitionView_corrupt_factors_AE` below: under any adversary `A`,
+along almost every trace, every corrupt party's local state at step
+`k` agrees with `replayCorruptLocal (rowPolyOfDealer …) (delivered_k
+p)`. The factoring is *not yet* closed at the operational data type
+level (we'd need to extract `delivered_k p` as a deterministic
+schedule function), but the AE structural identity is enough to drive
+the joint-marginal reduction in §17.12 below. -/
+
+/-- For every corrupt party `p`, the local state's fields
+`{echoSent, echoesReceived, readySent, readyReceived, output}` are
+pinned at their `init` values, and `delivered = false → rowPoly = none`.
+
+Combined with `outputDeterminedInv` (which pins `delivered = true →
+rowPoly = some (rowPolyOfDealer …)`), this fully constrains corrupt
+parties' local states modulo the single bit `delivered`. -/
+def corruptLocalInv (s : AVSSState n t F) : Prop :=
+  ∀ p, p ∈ s.corrupted →
+    (s.local_ p).echoSent = false ∧
+    (s.local_ p).echoesReceived = ∅ ∧
+    (s.local_ p).readySent = false ∧
+    (s.local_ p).readyReceived = ∅ ∧
+    (s.local_ p).output = none ∧
+    ((s.local_ p).delivered = false → (s.local_ p).rowPoly = none)
+
+omit [Field F] [Fintype F] in
+theorem initPred_corruptLocalInv (sec : F) (corr : Finset (Fin n))
+    (s : AVSSState n t F) (h : initPred sec corr s) :
+    corruptLocalInv s := by
+  obtain ⟨hloc, _⟩ := h
+  intro p _
+  rw [hloc p]
+  refine ⟨rfl, rfl, rfl, rfl, rfl, fun _ => rfl⟩
+
+set_option maxHeartbeats 800000 in
+omit [Fintype F] in
+/-- `corruptLocalInv` is preserved by every gated action. Each action
+that modifies one of the pinned fields has a gate requiring its target
+party to be honest (`p ∉ corr`). -/
+theorem avssStep_preserves_corruptLocalInv
+    (a : AVSSAction n F) (s : AVSSState n t F)
+    (hgate : actionGate a s) (hinv : corruptLocalInv s) :
+    corruptLocalInv (avssStep a s) := by
+  classical
+  -- `s.corrupted` is preserved by every action.
+  have hcorr : (avssStep a s).corrupted = s.corrupted := by
+    cases a <;> simp [avssStep, setLocal]
+  intro p hp
+  rw [hcorr] at hp
+  obtain ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩ := hinv p hp
+  cases a with
+  | dealerShare =>
+      simp [avssStep] at *
+      exact ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩
+  | partyDeliver q =>
+      -- gate: q ∉ corrupted, so q ≠ p (since p ∈ corrupted).
+      have hpq : p ≠ q := fun h => hgate.2.1 (h ▸ hp)
+      simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
+      exact ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩
+  | partyCorruptDeliver q =>
+      -- gate: q ∈ corrupted; p may or may not equal q.
+      by_cases hpq : p = q
+      · subst hpq
+        -- After partyCorruptDeliver(p), delivered = true, rowPoly = some (rowPolyOfDealer …),
+        -- but the pinned fields {echoSent, echoesReceived, readySent, readyReceived, output}
+        -- are unchanged.
+        simp [avssStep, setLocal_local_self]
+        exact ⟨h_es, h_er, h_rs, h_rr, h_out⟩
+      · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
+        exact ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩
+  | partyEchoSend q =>
+      -- gate: q ∉ corrupted.
+      have hpq : p ≠ q := fun h => hgate.1 (h ▸ hp)
+      simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
+      exact ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩
+  | partyEchoReceive q r =>
+      -- gate: q ∉ corrupted (the receiver q, here written p in our eqn).
+      have hpq : p ≠ q := fun h => hgate.1 (h ▸ hp)
+      simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
+      exact ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩
+  | partyReady q =>
+      have hpq : p ≠ q := fun h => hgate.1 (h ▸ hp)
+      simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
+      exact ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩
+  | partyAmplify q =>
+      have hpq : p ≠ q := fun h => hgate.1 (h ▸ hp)
+      simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
+      exact ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩
+  | partyReceiveReady q r =>
+      have hpq : p ≠ q := fun h => hgate.1 (h ▸ hp)
+      simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
+      exact ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩
+  | partyOutput q =>
+      have hpq : p ≠ q := fun h => hgate.1 (h ▸ hp)
+      simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
+      exact ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩
+
+/-- The combined Phase 6.2 invariant: `outputDeterminedInv` (rowPoly
+content for delivered parties) ∧ `corruptLocalInv` (trivial fields for
+corrupt parties). Together these pin the corrupt coalition's
+operational view to a deterministic function of `(s_0, schedule)`. -/
+def phase6Inv (s : AVSSState n t F) : Prop :=
+  outputDeterminedInv s ∧ corruptLocalInv s
+
+omit [Fintype F] in
+theorem initPred_phase6Inv (sec : F) (corr : Finset (Fin n))
+    (s : AVSSState n t F) (h : initPred sec corr s) :
+    phase6Inv s :=
+  ⟨initPred_outputDeterminedInv sec corr s h, initPred_corruptLocalInv sec corr s h⟩
+
+omit [Fintype F] in
+theorem avssStep_preserves_phase6Inv
+    (a : AVSSAction n F) (s : AVSSState n t F)
+    (hgate : actionGate a s) (hinv : phase6Inv s) :
+    phase6Inv (avssStep a s) :=
+  ⟨avssStep_preserves_outputDeterminedInv a s hgate hinv.1,
+   avssStep_preserves_corruptLocalInv a s hgate hinv.2⟩
+
+/-- **Phase 6.2 invariant as `AlmostBox`.** Along every trace, every
+state satisfies `phase6Inv` — i.e., `outputDeterminedInv` plus
+`corruptLocalInv`. -/
+theorem avss_phase6Inv_AS
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) :
+    AlmostBox (avssSpec (t := t) sec corr) A μ₀ phase6Inv := by
+  have h_pure : ∀ (a : AVSSAction n F) (s : AVSSState n t F)
+      (h : ((avssSpec (t := t) sec corr).actions a).gate s),
+      ((avssSpec (t := t) sec corr).actions a).effect s h
+        = PMF.pure (avssStep a s) :=
+    fun _ _ _ => rfl
+  have h_init' : ∀ᵐ s ∂μ₀, phase6Inv s := by
+    filter_upwards [h_init] with s hs
+    exact initPred_phase6Inv sec corr s hs
+  exact AlmostBox_of_pure_inductive
+    phase6Inv
+    (fun a s => avssStep a s)
+    h_pure
+    (fun a s hgate hinv =>
+      avssStep_preserves_phase6Inv a s hgate hinv)
+    μ₀ h_init' A
+
+omit [Field F] [Fintype F] in
+/-- The trivial fields of a corrupt party's local state are constant:
+under `corruptLocalInv`, every corrupt `p` has
+`echoSent = false ∧ echoesReceived = ∅ ∧ readySent = false ∧
+readyReceived = ∅ ∧ output = none`, and additionally
+`rowPoly = none` whenever `delivered = false`. -/
+theorem corruptLocalInv_local_trivial
+    (s : AVSSState n t F) (hinv : corruptLocalInv s)
+    (p : Fin n) (hp : p ∈ s.corrupted) :
+    (s.local_ p).echoSent = false ∧
+    (s.local_ p).echoesReceived = ∅ ∧
+    (s.local_ p).readySent = false ∧
+    (s.local_ p).readyReceived = ∅ ∧
+    (s.local_ p).output = none ∧
+    ((s.local_ p).delivered = false → (s.local_ p).rowPoly = none) :=
+  hinv p hp
+
+omit [Fintype F] in
+/-- Under `phase6Inv`, every corrupt party's `rowPoly`, when present,
+equals `some (rowPolyOfDealer s.partyPoint s.coeffs p)` — derivable
+from the initial state's coefficients (preserved by every action) and
+party-points. -/
+theorem phase6Inv_rowPoly_determined
+    (s : AVSSState n t F) (hinv : phase6Inv s)
+    (p : Fin n) (_hp : p ∈ s.corrupted)
+    (hd : (s.local_ p).delivered = true) :
+    (s.local_ p).rowPoly = some (rowPolyOfDealer s.partyPoint s.coeffs p) :=
+  hinv.1.1 p hd
+
+omit [Fintype F] in
+/-- The initial state's `coeffs` and `partyPoint` are preserved by
+every `avssStep` action — both are unchanged in every branch of the
+`match` on `a`. Used to pull `s_k.partyPoint = s_0.partyPoint` and
+`s_k.coeffs = s_0.coeffs` through the AE structural reduction. -/
+theorem avssStep_partyPoint_invariant (a : AVSSAction n F)
+    (s : AVSSState n t F) :
+    (avssStep a s).partyPoint = s.partyPoint := by
+  cases a <;> simp [avssStep, setLocal]
+
+omit [Fintype F] in
+theorem avssStep_coeffs_invariant (a : AVSSAction n F)
+    (s : AVSSState n t F) :
+    (avssStep a s).coeffs = s.coeffs := by
+  cases a <;> simp [avssStep, setLocal]
+
+omit [Fintype F] in
+theorem avssStep_corrupted_invariant (a : AVSSAction n F)
+    (s : AVSSState n t F) :
+    (avssStep a s).corrupted = s.corrupted := by
+  cases a <;> simp [avssStep, setLocal]
+
+section Phase6_OperationalView
+
+open scoped ProbabilityTheory
+
+/-- The kernel AE-preserves `s.partyPoint` (and analogous fields):
+under any `stepKernel` branch, the resulting state's `partyPoint`
+equals the input prefix's current-state `partyPoint`. -/
+private theorem avssSpec_stepKernel_partyPoint_AE
+    (sec : F) (corr : Finset (Fin n))
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) (k : ℕ)
+    (h : FinPrefix (AVSSState n t F) (AVSSAction n F) k) :
+    ∀ᵐ y ∂(stepKernel (avssSpec (t := t) sec corr) A k h),
+        y.1.partyPoint = h.currentState.partyPoint := by
+  classical
+  have hPset : MeasurableSet
+      {x : AVSSState n t F × Option (AVSSAction n F) |
+        x.1.partyPoint = h.currentState.partyPoint} :=
+    MeasurableSet.of_discrete
+  unfold stepKernel
+  simp only [ProbabilityTheory.Kernel.ofFunOfCountable, ProbabilityTheory.Kernel.coe_mk]
+  rcases A.schedule h.toList with _ | i
+  · rw [ae_dirac_iff hPset]
+  · by_cases hgate : ((avssSpec (t := t) sec corr).actions i).gate h.currentState
+    · simp only [hgate, dite_true]
+      rw [show ((avssSpec (t := t) sec corr).actions i).effect h.currentState hgate
+            = PMF.pure (avssStep i h.currentState) from rfl,
+          PMF.toMeasure_pure, Measure.map_dirac (by fun_prop), ae_dirac_iff hPset]
+      exact avssStep_partyPoint_invariant i h.currentState
+    · simp only [hgate, dite_false]
+      rw [ae_dirac_iff hPset]
+
+private theorem avssSpec_stepKernel_coeffs_AE
+    (sec : F) (corr : Finset (Fin n))
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) (k : ℕ)
+    (h : FinPrefix (AVSSState n t F) (AVSSAction n F) k) :
+    ∀ᵐ y ∂(stepKernel (avssSpec (t := t) sec corr) A k h),
+        y.1.coeffs = h.currentState.coeffs := by
+  classical
+  have hPset : MeasurableSet
+      {x : AVSSState n t F × Option (AVSSAction n F) |
+        x.1.coeffs = h.currentState.coeffs} :=
+    MeasurableSet.of_discrete
+  unfold stepKernel
+  simp only [ProbabilityTheory.Kernel.ofFunOfCountable, ProbabilityTheory.Kernel.coe_mk]
+  rcases A.schedule h.toList with _ | i
+  · rw [ae_dirac_iff hPset]
+  · by_cases hgate : ((avssSpec (t := t) sec corr).actions i).gate h.currentState
+    · simp only [hgate, dite_true]
+      rw [show ((avssSpec (t := t) sec corr).actions i).effect h.currentState hgate
+            = PMF.pure (avssStep i h.currentState) from rfl,
+          PMF.toMeasure_pure, Measure.map_dirac (by fun_prop), ae_dirac_iff hPset]
+      exact avssStep_coeffs_invariant i h.currentState
+    · simp only [hgate, dite_false]
+      rw [ae_dirac_iff hPset]
+
+private theorem avssSpec_stepKernel_corrupted_AE
+    (sec : F) (corr : Finset (Fin n))
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) (k : ℕ)
+    (h : FinPrefix (AVSSState n t F) (AVSSAction n F) k) :
+    ∀ᵐ y ∂(stepKernel (avssSpec (t := t) sec corr) A k h),
+        y.1.corrupted = h.currentState.corrupted := by
+  classical
+  have hPset : MeasurableSet
+      {x : AVSSState n t F × Option (AVSSAction n F) |
+        x.1.corrupted = h.currentState.corrupted} :=
+    MeasurableSet.of_discrete
+  unfold stepKernel
+  simp only [ProbabilityTheory.Kernel.ofFunOfCountable, ProbabilityTheory.Kernel.coe_mk]
+  rcases A.schedule h.toList with _ | i
+  · rw [ae_dirac_iff hPset]
+  · by_cases hgate : ((avssSpec (t := t) sec corr).actions i).gate h.currentState
+    · simp only [hgate, dite_true]
+      rw [show ((avssSpec (t := t) sec corr).actions i).effect h.currentState hgate
+            = PMF.pure (avssStep i h.currentState) from rfl,
+          PMF.toMeasure_pure, Measure.map_dirac (by fun_prop), ae_dirac_iff hPset]
+      exact avssStep_corrupted_invariant i h.currentState
+    · simp only [hgate, dite_false]
+      rw [ae_dirac_iff hPset]
+
+/-- AE invariance of `partyPoint` along the trace: at every step `k`,
+`(ω k).1.partyPoint = (ω 0).1.partyPoint`. Same induction structure
+as `traceDist_coalitionGrid_AE_eq_init`. -/
+theorem traceDist_partyPoint_AE_eq_init
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) (k : ℕ) :
+    ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
+        (ω k).1.partyPoint = (ω 0).1.partyPoint := by
+  classical
+  induction k with
+  | zero => exact Filter.Eventually.of_forall fun _ => rfl
+  | succ k ih =>
+    suffices hone_step :
+        ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
+          (ω (k+1)).1.partyPoint = (ω k).1.partyPoint by
+      filter_upwards [hone_step, ih] with ω h_step h_ih
+      rw [h_step, h_ih]
+    have hmeas_pair : Measurable
+        (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+          (Preorder.frestrictLe k ω, ω (k+1))) := by fun_prop
+    haveI : IsProbabilityMeasure
+        (μ₀.map (fun s : AVSSState n t F => (s, (none : Option (AVSSAction n F))))) :=
+      Measure.isProbabilityMeasure_map (by fun_prop)
+    have hk :
+        ((traceDist (avssSpec (t := t) sec corr) A μ₀).map
+            (Preorder.frestrictLe k)) ⊗ₘ
+          (stepKernel (avssSpec (t := t) sec corr) A k) =
+        (traceDist (avssSpec (t := t) sec corr) A μ₀).map
+          (fun ω => (Preorder.frestrictLe k ω, ω (k+1))) := by
+      unfold traceDist
+      exact ProbabilityTheory.Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure
+    have h_inner : ∀ᵐ h ∂((traceDist (avssSpec (t := t) sec corr) A μ₀).map
+          (Preorder.frestrictLe k)),
+        ∀ᵐ y ∂(stepKernel (avssSpec (t := t) sec corr) A k h),
+          y.1.partyPoint = h.currentState.partyPoint :=
+      Filter.Eventually.of_forall fun h =>
+        avssSpec_stepKernel_partyPoint_AE sec corr A k h
+    have hjoint :
+        ∀ᵐ x ∂(((traceDist (avssSpec (t := t) sec corr) A μ₀).map
+              (Preorder.frestrictLe k)) ⊗ₘ
+            (stepKernel (avssSpec (t := t) sec corr) A k)),
+          x.2.1.partyPoint = (FinPrefix.currentState x.1).partyPoint :=
+      Measure.ae_compProd_of_ae_ae MeasurableSet.of_discrete h_inner
+    rw [hk] at hjoint
+    rw [ae_map_iff hmeas_pair.aemeasurable MeasurableSet.of_discrete] at hjoint
+    exact hjoint
+
+theorem traceDist_coeffs_AE_eq_init
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) (k : ℕ) :
+    ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
+        (ω k).1.coeffs = (ω 0).1.coeffs := by
+  classical
+  induction k with
+  | zero => exact Filter.Eventually.of_forall fun _ => rfl
+  | succ k ih =>
+    suffices hone_step :
+        ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
+          (ω (k+1)).1.coeffs = (ω k).1.coeffs by
+      filter_upwards [hone_step, ih] with ω h_step h_ih
+      rw [h_step, h_ih]
+    have hmeas_pair : Measurable
+        (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+          (Preorder.frestrictLe k ω, ω (k+1))) := by fun_prop
+    haveI : IsProbabilityMeasure
+        (μ₀.map (fun s : AVSSState n t F => (s, (none : Option (AVSSAction n F))))) :=
+      Measure.isProbabilityMeasure_map (by fun_prop)
+    have hk :
+        ((traceDist (avssSpec (t := t) sec corr) A μ₀).map
+            (Preorder.frestrictLe k)) ⊗ₘ
+          (stepKernel (avssSpec (t := t) sec corr) A k) =
+        (traceDist (avssSpec (t := t) sec corr) A μ₀).map
+          (fun ω => (Preorder.frestrictLe k ω, ω (k+1))) := by
+      unfold traceDist
+      exact ProbabilityTheory.Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure
+    have h_inner : ∀ᵐ h ∂((traceDist (avssSpec (t := t) sec corr) A μ₀).map
+          (Preorder.frestrictLe k)),
+        ∀ᵐ y ∂(stepKernel (avssSpec (t := t) sec corr) A k h),
+          y.1.coeffs = h.currentState.coeffs :=
+      Filter.Eventually.of_forall fun h =>
+        avssSpec_stepKernel_coeffs_AE sec corr A k h
+    have hjoint :
+        ∀ᵐ x ∂(((traceDist (avssSpec (t := t) sec corr) A μ₀).map
+              (Preorder.frestrictLe k)) ⊗ₘ
+            (stepKernel (avssSpec (t := t) sec corr) A k)),
+          x.2.1.coeffs = (FinPrefix.currentState x.1).coeffs :=
+      Measure.ae_compProd_of_ae_ae MeasurableSet.of_discrete h_inner
+    rw [hk] at hjoint
+    rw [ae_map_iff hmeas_pair.aemeasurable MeasurableSet.of_discrete] at hjoint
+    exact hjoint
+
+theorem traceDist_corrupted_AE_eq_init
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) (k : ℕ) :
+    ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
+        (ω k).1.corrupted = (ω 0).1.corrupted := by
+  classical
+  induction k with
+  | zero => exact Filter.Eventually.of_forall fun _ => rfl
+  | succ k ih =>
+    suffices hone_step :
+        ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
+          (ω (k+1)).1.corrupted = (ω k).1.corrupted by
+      filter_upwards [hone_step, ih] with ω h_step h_ih
+      rw [h_step, h_ih]
+    have hmeas_pair : Measurable
+        (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+          (Preorder.frestrictLe k ω, ω (k+1))) := by fun_prop
+    haveI : IsProbabilityMeasure
+        (μ₀.map (fun s : AVSSState n t F => (s, (none : Option (AVSSAction n F))))) :=
+      Measure.isProbabilityMeasure_map (by fun_prop)
+    have hk :
+        ((traceDist (avssSpec (t := t) sec corr) A μ₀).map
+            (Preorder.frestrictLe k)) ⊗ₘ
+          (stepKernel (avssSpec (t := t) sec corr) A k) =
+        (traceDist (avssSpec (t := t) sec corr) A μ₀).map
+          (fun ω => (Preorder.frestrictLe k ω, ω (k+1))) := by
+      unfold traceDist
+      exact ProbabilityTheory.Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure
+    have h_inner : ∀ᵐ h ∂((traceDist (avssSpec (t := t) sec corr) A μ₀).map
+          (Preorder.frestrictLe k)),
+        ∀ᵐ y ∂(stepKernel (avssSpec (t := t) sec corr) A k h),
+          y.1.corrupted = h.currentState.corrupted :=
+      Filter.Eventually.of_forall fun h =>
+        avssSpec_stepKernel_corrupted_AE sec corr A k h
+    have hjoint :
+        ∀ᵐ x ∂(((traceDist (avssSpec (t := t) sec corr) A μ₀).map
+              (Preorder.frestrictLe k)) ⊗ₘ
+            (stepKernel (avssSpec (t := t) sec corr) A k)),
+          x.2.1.corrupted = (FinPrefix.currentState x.1).corrupted :=
+      Measure.ae_compProd_of_ae_ae MeasurableSet.of_discrete h_inner
+    rw [hk] at hjoint
+    rw [ae_map_iff hmeas_pair.aemeasurable MeasurableSet.of_discrete] at hjoint
+    exact hjoint
+
+/-- **Phase 6.2 structural theorem (`corruptViewFactorsThroughGrid`).**
+
+Almost surely, every corrupt party `p ∈ C` has, at every step `i < k`,
+a local state pinned to:
+  * `echoSent = false ∧ echoesReceived = ∅ ∧ readySent = false ∧
+     readyReceived = ∅ ∧ output = none` (constants, by
+     `corruptLocalInv`),
+  * `rowPoly = some (rowPolyOfDealer (ω 0).1.partyPoint
+     (ω 0).1.coeffs p.val)` whenever `delivered = true` (by
+     `outputDeterminedInv` plus the AE invariance of
+     `partyPoint`/`coeffs` along the trace), and
+  * `rowPoly = none` whenever `delivered = false` (by
+     `corruptLocalInv`).
+
+Combined with the schedule prefix (which determines the `delivered`
+bit at every step), this expresses the corrupt coalition's
+operational view as a deterministic function of `(s_0.partyPoint,
+s_0.coeffs, schedulePrefix)`, modulo the coalition-grid-vs-row-poly
+secrecy gap discussed at §17.12. -/
+theorem coalitionView_corrupt_factors_AE
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (A : Adversary (AVSSState n t F) (AVSSAction n F))
+    (C : BivariateShamir.Coalition n t)
+    (h_C_corr : C.val ⊆ corr) (k : ℕ) :
+    ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
+        ∀ p : C.val,
+          let ls := (ω k).1.local_ p.val
+          ls.echoSent = false ∧
+          ls.echoesReceived = ∅ ∧
+          ls.readySent = false ∧
+          ls.readyReceived = ∅ ∧
+          ls.output = none ∧
+          (ls.delivered = false → ls.rowPoly = none) ∧
+          (ls.delivered = true →
+            ls.rowPoly = some (rowPolyOfDealer (ω 0).1.partyPoint
+              (ω 0).1.coeffs p.val)) := by
+  classical
+  -- Pull the four AE invariants together: `phase6Inv` (operational
+  -- pin), plus AE preservation of `partyPoint`, `coeffs`, `corrupted`.
+  have h_inv : AlmostBox (avssSpec (t := t) sec corr) A μ₀ phase6Inv :=
+    avss_phase6Inv_AS sec corr μ₀ h_init A
+  have h_pp_AE := traceDist_partyPoint_AE_eq_init (t := t) sec corr μ₀ A k
+  have h_co_AE := traceDist_coeffs_AE_eq_init (t := t) sec corr μ₀ A k
+  have h_cr_AE := traceDist_corrupted_AE_eq_init (t := t) sec corr μ₀ A k
+  -- Pull `corrupted (ω 0).1 = corr` from the initial measure.
+  have h_init_ae :
+      ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
+          initPred sec corr (ω 0).1 := by
+    have hmeas_state0 : Measurable
+        (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) => (ω 0).1) := by
+      fun_prop
+    have hAE_init :
+        ∀ᵐ s ∂((traceDist (avssSpec (t := t) sec corr) A μ₀).map
+            (fun ω => (ω 0).1)),
+          initPred sec corr s := by
+      rw [traceDist_step_zero_state_marginal sec corr μ₀ A]
+      exact h_init
+    rwa [ae_map_iff hmeas_state0.aemeasurable MeasurableSet.of_discrete] at hAE_init
+  -- Combine all AE statements and conclude.
+  filter_upwards [h_inv, h_pp_AE, h_co_AE, h_cr_AE, h_init_ae]
+    with ω h_inv_ω h_pp_ω h_co_ω h_cr_ω h_init_ω p
+  obtain ⟨h_outdet, h_corrupt⟩ := h_inv_ω k
+  -- p ∈ C ⊆ corr, and (ω k).1.corrupted = (ω 0).1.corrupted = corr.
+  have h_p_in_corrk : p.val ∈ (ω k).1.corrupted := by
+    rw [h_cr_ω]
+    have h_corrupted_init : (ω 0).1.corrupted = corr := h_init_ω.2.2.1
+    rw [h_corrupted_init]
+    exact h_C_corr p.property
+  obtain ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none⟩ :=
+    h_corrupt p.val h_p_in_corrk
+  refine ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none, ?_⟩
+  intro hd
+  -- Apply outputDeterminedInv (clause 1) at step k, then rewrite partyPoint and coeffs.
+  have h := h_outdet.1 p.val hd
+  rw [h, h_pp_ω, h_co_ω]
+
+end Phase6_OperationalView
+
+/-! ## §17.12 Phase 6.3 — operational view secrecy (conditional headline)
+
+The headline operational secrecy theorem: under any adversary `A`
+and any step `k`, the marginal of the trace distribution projected
+to `(coalitionTraceView, schedulePrefix)` is invariant in the secret
+— **modulo a documented joint-marginal hypothesis**.
+
+### Why the unconditional theorem cannot be closed under the existing model
+
+Two structural blockers prevent an unconditional proof of the
+headline theorem against the existing `Adversary` in
+`Leslie/Prob/Adversary.lean`:
+
+1. **Schedule leakage (strong-adversary blocker).**
+   The current `Adversary` has full-state read access:
+   `schedule : List (σ × Option ι) → Option ι` may branch on any
+   field of `σ`, including `s.coeffs`. Concrete counterexample: the
+   strategy "schedule action `a` if `s.coeffs 0 0 = 0`, else action
+   `b`" yields different `schedulePrefix` distributions under
+   `sec = 0` vs. `sec = 1`. So
+   `(traceDist sec A μ_sec).map schedulePrefix` itself is *not*
+   invariant in the secret, and hence the joint marginal cannot be
+   invariant either. Phase 7 (the **rushing** adversary refactor)
+   replaces `Adversary` with a scheduler whose decisions depend only
+   on corrupt parties' visible view; that closes this leak.
+
+2. **Row-poly vs. grid secrecy (algebraic-core blocker).**
+   The operational view records `rowPoly : Option (Fin (t+1) → F)`
+   — the corrupt party's *full row polynomial*, having `t+1`
+   coefficients. Phase 5 Layer E (`avss_secrecy_AS`) proves
+   invariance of `coalitionGrid` only — at most `|C|·|D| ≤ t·t`
+   bivariate evaluations, strictly less informative than `t` row
+   polys (each `t+1` coefficients). The `+200 LOC` polynomial-
+   manipulation step deferred in §17 is exactly the row-poly
+   strengthening needed to close this gap.
+
+### What this commit delivers
+
+* `coalitionAlgebraicView` — the row-poly-level abstract operational
+  view: corrupt parties' row polys (from initial state) plus their
+  per-step `delivered` bits. This is the algebraic-level analogue of
+  `coalitionTraceView` modulo the trivial-field constants pinned by
+  `corruptLocalInv`.
+
+* `coalitionTraceView_eq_reconstruct_AE` — the Phase 6.2 → 6.3
+  structural bridge: almost surely along any trace,
+  `coalitionTraceView` agrees with a deterministic reconstruction
+  from `coalitionAlgebraicView`.
+
+* `avss_secrecy_AS_view_conditional` — the conditional headline:
+  given joint invariance of `(coalitionAlgebraicView,
+  schedulePrefix)` (which Phase 7 + row-poly secrecy will
+  unconditionally supply), the operational view's joint marginal
+  `(coalitionTraceView, schedulePrefix)` is invariant in the secret.
+
+A Phase 7 worker supplying the rushing-adversary + row-poly secrecy
+proofs can drop them in as `h_aux` and obtain the headline theorem
+mechanically. -/
+
+/-- The abstract row-poly-level operational view of the corrupt
+coalition at step `k`.
+
+Components:
+* `C.val → Fin (t+1) → F` — the corrupt parties' row polynomials,
+  derived from `(ω 0).1.partyPoint` and `(ω 0).1.coeffs` via
+  `rowPolyOfDealer`. Sec-secret in the row-poly sense (deferred
+  algebraic core).
+* `Fin k → C.val → Bool` — per-step `delivered` bits of every
+  corrupt party. A finite-alphabet trace observable to the corrupt
+  coalition.
+
+Joint invariance with `schedulePrefix` is what Phase 7 (rushing
+adversary) plus row-poly secrecy combine to provide. -/
+def coalitionAlgebraicView (C : BivariateShamir.Coalition n t)
+    (ω : ℕ → AVSSState n t F × Option (AVSSAction n F)) (k : ℕ) :
+    (C.val → Fin (t+1) → F) × (Fin k → C.val → Bool) :=
+  (fun p => rowPolyOfDealer (ω 0).1.partyPoint (ω 0).1.coeffs p.val,
+   fun i p => ((ω i.val).1.local_ p.val).delivered)
+
+/-- Local discrete-σ-algebra on `Fin (t+1) → F`. Required for the
+codomain of `coalitionAlgebraicView` to be a `MeasurableSpace`. -/
+instance : MeasurableSpace (Fin (t+1) → F) := ⊤
+instance : MeasurableSingletonClass (Fin (t+1) → F) := ⟨fun _ => trivial⟩
+
+@[fun_prop]
+theorem measurable_coalitionAlgebraicView
+    (C : BivariateShamir.Coalition n t) (k : ℕ) :
+    Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+        coalitionAlgebraicView C ω k) := by
+  classical
+  refine Measurable.prodMk (measurable_pi_iff.mpr fun p => ?_)
+    (measurable_pi_iff.mpr fun i => measurable_pi_iff.mpr fun p => ?_)
+  · -- p ↦ rowPolyOfDealer ((ω 0).1.partyPoint) ((ω 0).1.coeffs) p.val.
+    have h1 : Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+        ω 0) := measurable_pi_apply _
+    have h2 : Measurable (Prod.fst :
+        AVSSState n t F × Option (AVSSAction n F) → AVSSState n t F) := measurable_fst
+    have h3 : Measurable (fun s : AVSSState n t F =>
+        rowPolyOfDealer s.partyPoint s.coeffs p.val) := measurable_of_countable _
+    exact (h3.comp h2).comp h1
+  · -- (i, p) ↦ ((ω i.val).1.local_ p.val).delivered.
+    have h1 : Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+        ω i.val) := measurable_pi_apply _
+    have h2 : Measurable (Prod.fst :
+        AVSSState n t F × Option (AVSSAction n F) → AVSSState n t F) := measurable_fst
+    have h3 : Measurable (fun s : AVSSState n t F =>
+        (s.local_ p.val).delivered) := measurable_of_countable _
+    exact (h3.comp h2).comp h1
+
+/-- Build a corrupt party's local state from its row poly and the
+`delivered` bit, padding the trivial fields with their `init` values
+(as pinned by `corruptLocalInv`). -/
+def buildCorruptLocalState (rp : Fin (t+1) → F) (delivered : Bool) :
+    AVSSLocalState n t F :=
+  { delivered := delivered
+    rowPoly := if delivered then some rp else none
+    echoSent := false
+    echoesReceived := ∅
+    readySent := false
+    readyReceived := ∅
+    output := none }
+
+omit [Fintype F] in
+/-- A corrupt party's local state is uniquely determined by its
+`delivered` bit and its row poly, given that the other fields are
+pinned (by `corruptLocalInv`) and `rowPoly` follows
+`outputDeterminedInv` plus the pin. -/
+lemma corrupt_local_state_uniqueness
+    (ls : AVSSLocalState n t F) (rp : Fin (t+1) → F)
+    (h_es : ls.echoSent = false)
+    (h_er : ls.echoesReceived = ∅)
+    (h_rs : ls.readySent = false)
+    (h_rr : ls.readyReceived = ∅)
+    (h_out : ls.output = none)
+    (h_rp_none : ls.delivered = false → ls.rowPoly = none)
+    (h_rp_some : ls.delivered = true → ls.rowPoly = some rp) :
+    ls = buildCorruptLocalState rp ls.delivered := by
+  cases ls with
+  | mk d rp_actual es er rr rs out =>
+    simp only at h_es h_er h_rs h_rr h_out
+    subst h_es; subst h_er; subst h_rr; subst h_rs; subst h_out
+    cases d with
+    | false =>
+        have heq : rp_actual = none := h_rp_none rfl
+        subst heq
+        unfold buildCorruptLocalState
+        rfl
+    | true =>
+        have heq : rp_actual = some rp := h_rp_some rfl
+        subst heq
+        unfold buildCorruptLocalState
+        rfl
+
+/-- Reconstruct `coalitionTraceView` from a `coalitionAlgebraicView`:
+at every `(i, p)`, build the corrupt local state from `(rp p)` and
+`(delivered i p)`. -/
+def reconstructCoalitionTraceView
+    {C : BivariateShamir.Coalition n t} {k : ℕ}
+    (rp : C.val → Fin (t+1) → F) (delivered : Fin k → C.val → Bool) :
+    Fin k → C.val → AVSSLocalState n t F :=
+  fun i p => buildCorruptLocalState (rp p) (delivered i p)
+
+omit [Field F] in
+@[fun_prop]
+theorem measurable_reconstruct_pair
+    {C : BivariateShamir.Coalition n t} {k : ℕ} :
+    Measurable (fun rd : (C.val → Fin (t+1) → F) × (Fin k → C.val → Bool) =>
+        reconstructCoalitionTraceView (C := C) (k := k) rd.1 rd.2) :=
+  measurable_of_countable _
+
+/-- **Phase 6.2 → 6.3 structural bridge.** Almost surely along the
+trace, `coalitionTraceView` matches `reconstructCoalitionTraceView`
+applied to the components of `coalitionAlgebraicView`. -/
+theorem coalitionTraceView_eq_reconstruct_AE
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (A : Adversary (AVSSState n t F) (AVSSAction n F))
+    (C : BivariateShamir.Coalition n t)
+    (h_C_corr : C.val ⊆ corr) (k : ℕ) :
+    ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
+        coalitionTraceView C ω k =
+          reconstructCoalitionTraceView (C := C) (k := k)
+            (coalitionAlgebraicView C ω k).1
+            (coalitionAlgebraicView C ω k).2 := by
+  classical
+  -- Per-step factor: at every step `i`, the corrupt local states are pinned.
+  have h_step :
+      ∀ i : ℕ, ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
+          ∀ p : C.val,
+            (ω i).1.local_ p.val =
+              buildCorruptLocalState
+                (rowPolyOfDealer (ω 0).1.partyPoint (ω 0).1.coeffs p.val)
+                ((ω i).1.local_ p.val).delivered := by
+    intro i
+    have h_factor :=
+      coalitionView_corrupt_factors_AE (t := t) sec corr μ₀ h_init A
+        C h_C_corr i
+    filter_upwards [h_factor] with ω hω p
+    obtain ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none, h_rp_some⟩ := hω p
+    exact corrupt_local_state_uniqueness ((ω i).1.local_ p.val)
+      (rowPolyOfDealer (ω 0).1.partyPoint (ω 0).1.coeffs p.val)
+      h_es h_er h_rs h_rr h_out h_rp_none h_rp_some
+  -- AE-quantify over `i : Fin k`.
+  have h_all : ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
+      ∀ i : Fin k, ∀ p : C.val,
+        (ω i.val).1.local_ p.val =
+          buildCorruptLocalState
+            (rowPolyOfDealer (ω 0).1.partyPoint (ω 0).1.coeffs p.val)
+            ((ω i.val).1.local_ p.val).delivered := by
+    rw [ae_all_iff]
+    intro i
+    exact h_step i.val
+  filter_upwards [h_all] with ω hω
+  -- Conclude pointwise equality of the function maps.
+  funext i p
+  unfold coalitionTraceView coalitionView reconstructCoalitionTraceView
+    coalitionAlgebraicView
+  exact hω i p
+
+/-- **Phase 6.3 conditional headline theorem.** Given the joint
+invariance of `(coalitionAlgebraicView, schedulePrefix)` in the
+secret (a hypothesis that Phase 7 plus row-poly secrecy will
+unconditionally supply), the operational view's joint marginal
+`(coalitionTraceView, schedulePrefix)` is invariant in the secret.
+
+⚠ See the §17.12 doc-comment for the two structural blockers
+(schedule leakage + row-poly-vs-grid secrecy) that prevent an
+unconditional proof under the current `Adversary` model. -/
+theorem avss_secrecy_AS_view_conditional
+    (sec sec' : F) (corr : Finset (Fin n))
+    (μ_sec μ_sec' : Measure (AVSSState n t F))
+    [IsProbabilityMeasure μ_sec] [IsProbabilityMeasure μ_sec']
+    (h_init_sec : ∀ᵐ s ∂μ_sec, initPred sec corr s)
+    (h_init_sec' : ∀ᵐ s ∂μ_sec', initPred sec' corr s)
+    (C : BivariateShamir.Coalition n t)
+    (h_C_corr : C.val ⊆ corr)
+    (A : Adversary (AVSSState n t F) (AVSSAction n F))
+    (k : ℕ)
+    (h_aux :
+      (traceDist (avssSpec (t := t) sec corr) A μ_sec).map
+          (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k)) =
+        (traceDist (avssSpec (t := t) sec' corr) A μ_sec').map
+          (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k))) :
+    (traceDist (avssSpec (t := t) sec corr) A μ_sec).map
+        (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) =
+      (traceDist (avssSpec (t := t) sec' corr) A μ_sec').map
+        (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) := by
+  classical
+  -- The reduction map: given `(av, sp) : (algebraicView, schedule)`,
+  -- produce `(reconstruct av, sp) : (coalitionTraceView, schedule)`.
+  set G : ((C.val → Fin (t+1) → F) × (Fin k → C.val → Bool)) ×
+            (Fin k → Option (AVSSAction n F)) →
+          (Fin k → C.val → AVSSLocalState n t F) ×
+            (Fin k → Option (AVSSAction n F)) :=
+    fun avSp =>
+      (reconstructCoalitionTraceView (C := C) (k := k) avSp.1.1 avSp.1.2,
+       avSp.2)
+    with hG_def
+  have hmeas_G : Measurable G := measurable_of_countable _
+  -- Bridge: cTV ω = reconstruct (algebraicView ω) AE under both traces.
+  have h_bridge_sec :=
+    coalitionTraceView_eq_reconstruct_AE (t := t) sec corr μ_sec
+      h_init_sec A C h_C_corr k
+  have h_bridge_sec' :=
+    coalitionTraceView_eq_reconstruct_AE (t := t) sec' corr μ_sec'
+      h_init_sec' A C h_C_corr k
+  -- Push the `cTV, sP` marginal through `G ∘ (algebraicView, sP)`.
+  have h_push_sec :
+      (traceDist (avssSpec (t := t) sec corr) A μ_sec).map
+          (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) =
+        (traceDist (avssSpec (t := t) sec corr) A μ_sec).map
+          (fun ω => G (coalitionAlgebraicView C ω k, schedulePrefix ω k)) := by
+    apply Measure.map_congr
+    filter_upwards [h_bridge_sec] with ω hω
+    rw [hG_def]
+    simp only [hω]
+  have h_push_sec' :
+      (traceDist (avssSpec (t := t) sec' corr) A μ_sec').map
+          (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) =
+        (traceDist (avssSpec (t := t) sec' corr) A μ_sec').map
+          (fun ω => G (coalitionAlgebraicView C ω k, schedulePrefix ω k)) := by
+    apply Measure.map_congr
+    filter_upwards [h_bridge_sec'] with ω hω
+    rw [hG_def]
+    simp only [hω]
+  -- Compose with the auxiliary hypothesis (algebraicView × sP invariance).
+  rw [h_push_sec, h_push_sec']
+  -- Both sides equal `(map (algebraicView, sP)).map G`. Apply h_aux.
+  rw [show (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+        G (coalitionAlgebraicView C ω k, schedulePrefix ω k)) =
+      G ∘ (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k)) from rfl]
+  have hmeas_av_sp_sec :
+      Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+          (coalitionAlgebraicView C ω k, schedulePrefix ω k)) :=
+    (measurable_coalitionAlgebraicView C k).prodMk (measurable_schedulePrefix k)
+  rw [← Measure.map_map hmeas_G hmeas_av_sp_sec,
+      ← Measure.map_map hmeas_G hmeas_av_sp_sec, h_aux]
+
+/-! ## §18. Polynomial-level secrecy (Phase 4, kept for the headline)
 
 Direct passthrough to `BivariateShamir.bivariate_shamir_secrecy`.
 The post-deal grid view at any `t`-coalition is independent of the
-secret. This is the **grid form** — option (b) in the SyncVSS brief,
-the same form `bivariate_evals_uniform` directly delivers. The full
-**row + column** view secrecy (a strict generalisation) is the
-`+200 LOC` polynomial-manipulation step explicitly deferred in
-`SyncVSS.lean §10`; we inherit the same deferral here. -/
+secret. This is the **grid form** — option (b) in the SyncVSS brief.
+The full **row + column** view secrecy (a strict generalisation) is
+the +200 LOC polynomial-manipulation step explicitly deferred in
+`SyncVSS.lean §10`; we inherit the same deferral. See §17.12 for
+the trace-level analogue and `AVSS-MODEL-NOTES.md` for the broader
+adversary-model story. -/
 
 /-- AVSS coalition-view secrecy (grid form). -/
 theorem avss_secrecy (partyPoint : Fin n → F)
