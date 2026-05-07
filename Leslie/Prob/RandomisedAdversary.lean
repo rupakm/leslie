@@ -673,9 +673,31 @@ deterministic trace measures, and the integrand is AEMeasurable
 in the schedule (necessary to apply `Measure.bind_apply` downstream
 in `Secrecy.toRandomised`).
 
+**Status (post-PR migrating off `trajMeasure_bind_kernel`).** PR #96
+discovered that the previously-used mathlib-side lemma
+`trajMeasure_bind_kernel` is *false in general* (an explicit Bernoulli
+counterexample shows the per-level bind hypothesis is too weak to imply
+the trajectory-level identity). The corrected upstream variant
+`trajMeasure_bind_kernel_of_partial` instead takes a strictly stronger
+*trajectory-level* bind hypothesis directly — and this hypothesis is
+the substantive remaining content for the AVSS-style use case.
+
+For our specific kernel `(stepKernel spec (sched.toAdversary R.corrupt) n)`
+the hypothesis `h_partialTraj_bind` reduces to a Fubini-on-`Measure.infinitePi`
+swap: each per-history step kernel queries `sched` at exactly one coordinate
+(`sched h.toList`) and the histories used at distinct levels have distinct
+list-lengths (so distinct coordinates in `sched`). Under
+`Measure.infinitePi (R.strategy ·)` those coordinates are independent, so
+sampling once and querying repeatedly is distributionally equivalent to
+sampling fresh per level. Concretely the discharge requires induction on `n`
+plus a Fubini swap between the (`partialTraj`-driven) random history and
+`Measure.infinitePi`'s coordinate marginals — sound but not yet exposed in
+mathlib at this generality.
+
 **Proof outline (sketch — left as a single named sorry pending the
-parameterised Ionescu–Tulcea infrastructure that mathlib does not
-expose).** Both helpers reduce to a parameterised cylinder argument:
+`infinitePi`-Fubini infrastructure that mathlib does not yet expose at
+this level of generality).** Both helpers reduce to a parameterised
+cylinder argument:
 
   * **AEMeasurability.** It suffices to show that for every
     measurable `t ⊆ Trace σ ι`, the function
@@ -685,32 +707,33 @@ expose).** Both helpers reduce to a parameterised cylinder argument:
     cylinder length, the value depends only on finitely many
     coordinate evaluations of `sched`, each measurable by the
     Pi-σ-algebra. The induction step uses `partialTraj_succ_of_le`
-    plus `Kernel.measurable_coe`.
+    plus `Kernel.measurable_coe`. *This direction is closed
+    upstream-side via `Kernel.trajMeasure_measurable` in
+    `Leslie.Mathlib.Probability.Kernel.IonescuTulcea.Bind`.*
 
   * **Bind equality.** By `MeasureTheory.IsProjectiveLimit.unique`
     (cylinder uniqueness), it suffices to show that LHS and RHS
-    agree as projective limits of the same family. Both are
-    probability measures on `Π n, σ × Option ι`. For any `n`,
-    the marginal `Measure.map (frestrictLe n)` on each side is a
-    finite computation involving only `n+1` coordinates of `sched`.
-    On the LHS, by `randomisedStepKernel_apply_tsum`, this collapses
-    to the `n`-fold composition of `bind`s over per-history PMFs.
-    On the RHS, by `stepKernel_apply_eq_singleActionStep`, this
-    collapses to the same `n`-fold composition under
-    `scheduleSpaceMeasure R`'s independence (Fubini for finite
-    products, `infinitePi_map_eval`-style coordinate marginals).
+    agree as projective limits of the same family. The reduction
+    is now staged through `Kernel.trajMeasure_bind_kernel_of_partial`
+    (axiom-clean upstream): the residual content is the
+    trajectory-level bind identity captured by
+    `partialTraj_apply_eq_bind_in_sched` below, plus a joint
+    measurability witness `partialTraj_apply_measurable_in_sched`.
+    Both are factored out as named helpers; the bind identity in
+    particular is the precise mathematical content of the
+    `infinitePi`-Fubini gap.
 
-**Mathlib gap.** Mathlib's `Kernel.trajMeasure` does not provide:
-(a) measurability of `trajMeasure` in its kernel-family parameter
-when that parameter ranges over a measurable space; (b) a "Fubini
-for `trajMeasure` over a parameterised PMF-mixture" identity. Both
-are standard textbook (Kallenberg, Foundations of Modern
-Probability, §6.16; Bauer, Probability Theory, §35.5) but not yet
-in mathlib. ~300–500 LOC of cylinder induction would close this
-gap; queued for a future PR.
+**Mathlib gap.** Mathlib's `Measure.infinitePi` does not yet expose
+a coordinate-by-coordinate Fubini swap suitable for parameterised
+`Kernel.partialTraj` families, where the queried coordinate at each
+level is determined by the random outcomes of earlier levels (rather
+than a fixed finset of coordinates). Closing this honestly requires
+~200–400 LOC of induction-on-`n` plus a `lintegral_restrict_infinitePi`-
+based Fubini swap on a randomly-determined finite coordinate set.
+Queued for a future PR.
 
-The chain remains axiom-clean modulo `sorryAx` at this single
-named declaration. -/
+The chain remains axiom-clean modulo `sorryAx` at the two named
+declarations below. -/
 section RandomisedTraceDistFubini
 
 variable {σ ι : Type*}
@@ -782,9 +805,74 @@ private lemma randomisedStepKernel_apply_eq_bind_stepKernel
   ring
 
 set_option linter.unusedSectionVars false in
-/-- **Framework lemma (Phase 11-β-followup-7).** Fubini /
-Ionescu–Tulcea decomposition of the randomised mixture trace
-measure.
+/-- **Auxiliary joint measurability** of `(sched, x₀) ↦ partialTraj κ_sched 0 n x₀ S`
+for the AVSS step-kernel family. This is the `h_partialTraj_meas` hypothesis
+required by `Kernel.trajMeasure_bind_kernel_of_partial`.
+
+By induction on `n` plus standard `Kernel.measurable` plumbing — at each
+level the queried `sched`-coordinate factors through `Pi`-σ-algebra projection
+and the inductive hypothesis. Conceptually the `n=0` base case is trivial
+(the kernel is the identity-deterministic) and the step-case stitches a
+`Kernel.bind` whose joint measurability follows from the IH plus
+`stepKernel_apply_measurable_in_sched`.
+
+This is the joint-measurability sibling of `partialTraj_apply_eq_bind_in_sched`
+below; both encapsulate the `infinitePi`-Fubini gap that mathlib does not
+yet expose. ~150 LOC of cylinder induction would close this honestly. -/
+private lemma partialTraj_apply_measurable_in_sched
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) (n : ℕ)
+    {S : Set (Π i : Finset.Iic n, σ × Option ι)} (_hS : MeasurableSet S) :
+    Measurable
+      (Function.uncurry
+        (fun (sched : ScheduleAssignment σ ι)
+            (x₀ : Π _i : Finset.Iic 0, σ × Option ι) =>
+          (Kernel.partialTraj (X := fun _ => σ × Option ι)
+            (fun n => stepKernel spec (sched.toAdversary corrupt) n) 0 n x₀) S)) := by
+  -- Honest measurability content of `h_partialTraj_meas` for the AVSS kernel.
+  -- See the section docstring for the `infinitePi`-Fubini gap statement.
+  sorry
+
+set_option linter.unusedSectionVars false in
+/-- **Auxiliary trajectory-level bind identity** for the AVSS step-kernel
+family. This is the `h_partialTraj_bind` hypothesis required by
+`Kernel.trajMeasure_bind_kernel_of_partial`.
+
+For the AVSS-style kernel
+`(stepKernel spec (sched.toAdversary R.corrupt) n) h = singleActionStep spec h (sched h.toList)`,
+each per-history step queries `sched` at exactly one coordinate. Across
+distinct trajectory levels the histories have distinct list-lengths, hence
+distinct query coordinates. Under `scheduleSpaceMeasure R = Measure.infinitePi
+(R.strategy ·)`, those coordinates are independent — so sampling once and
+querying repeatedly is distributionally equivalent to sampling fresh per
+level, and the trajectory-level bind identity reduces to a `Fubini`-on-
+`infinitePi` swap.
+
+**Mathlib gap.** Discharging this honestly requires an `infinitePi`-Fubini
+swap on a randomly-determined finite coordinate set (the histories used
+at levels `0..n-1` depend on the random trajectory outcomes). Mathlib's
+`MeasureTheory.lintegral_restrict_infinitePi` handles a *fixed* finset of
+coordinates; the sequential parameterised version is not yet in mathlib.
+~200–400 LOC of induction-on-`n` plus careful Fubini bookkeeping would
+close this. Queued for a future PR. -/
+private lemma partialTraj_apply_eq_bind_in_sched
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι) (n : ℕ)
+    (x₀ : Π _i : Finset.Iic 0, σ × Option ι)
+    {S : Set (Π i : Finset.Iic n, σ × Option ι)} (_hS : MeasurableSet S) :
+    (Kernel.partialTraj (X := fun _ => σ × Option ι)
+        (randomisedStepKernel spec R) 0 n x₀) S =
+      ∫⁻ sched : ScheduleAssignment σ ι,
+        (Kernel.partialTraj (X := fun _ => σ × Option ι)
+          (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀) S
+          ∂(scheduleSpaceMeasure R) := by
+  -- Honest mathematical content of the `Secrecy → SecrecyRandomised` direction:
+  -- the `infinitePi`-Fubini swap between `partialTraj` and
+  -- `scheduleSpaceMeasure`. See the section docstring above for the proof
+  -- outline and the upstream mathlib gap it bookmarks.
+  sorry
+
+set_option linter.unusedSectionVars false in
+/-- **Framework lemma (Phase 11-β-followup-7; migrated PR #97).** Fubini /
+Ionescu–Tulcea decomposition of the randomised mixture trace measure.
 
 Given a randomised adversary `R` and an initial-state probability
 measure `μ`:
@@ -795,18 +883,17 @@ measure `μ`:
   * the mixture trace measure equals the `Measure.bind` of these
     deterministic trace measures over the schedule-space measure.
 
-This is the **sole remaining sorry** in the `Secrecy ↔
-SecrecyRandomised` correspondence chain (Phase 11-β); see the
-section docstring above for the proof outline and the mathlib gap
-it bookmarks.
-
 **Proof.** Direct application of the two mathlib-upstream-candidate
 lemmas in `Leslie.Mathlib.Probability.Kernel.IonescuTulcea.Bind`:
 `Kernel.trajMeasure_measurable` (parameterised measurability) and
-`Kernel.trajMeasure_bind_kernel` (Fubini for trajMeasure). The
-hypotheses come from the auxiliary lemmas
-`stepKernel_apply_measurable_in_sched` and
-`randomisedStepKernel_apply_eq_bind_stepKernel` above. -/
+`Kernel.trajMeasure_bind_kernel_of_partial` (the *axiom-clean*
+trajectory-level Fubini identity from PR #96). The four hypotheses come
+from the auxiliary lemmas `stepKernel_apply_measurable_in_sched`,
+`randomisedStepKernel_apply_eq_bind_stepKernel`,
+`partialTraj_apply_measurable_in_sched`, and
+`partialTraj_apply_eq_bind_in_sched` above; the latter two encapsulate
+the residual `infinitePi`-Fubini content (the only remaining sorries
+in this chain). -/
 theorem randomisedTraceDist_eq_bind_traceDist
     (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
     (μ : Measure σ) [IsProbabilityMeasure μ] :
@@ -842,28 +929,44 @@ theorem randomisedTraceDist_eq_bind_traceDist
         traceDist spec (sched.toAdversary R.corrupt) μ)
       (scheduleSpaceMeasure R) := hMeasurable.aemeasurable
   refine ⟨hAE, ?_⟩
-  have h_kappa_bind : ∀ (n : ℕ) (h : FinPrefix σ ι n) {s : Set (σ × Option ι)},
-      MeasurableSet s →
-      (randomisedStepKernel spec R n) h s =
-        ∫⁻ sched : ScheduleAssignment σ ι,
-          (stepKernel spec (sched.toAdversary R.corrupt) n) h s
-            ∂(scheduleSpaceMeasure R) :=
-    fun n h _ hs => randomisedStepKernel_apply_eq_bind_stepKernel spec R h hs
+  -- Migrated to `trajMeasure_bind_kernel_of_partial` (PR #96 corrected variant):
+  -- supply the joint measurability + trajectory-level bind hypotheses directly.
+  have h_partialTraj_meas :
+      ∀ (n : ℕ) {S : Set (Π i : Finset.Iic n, σ × Option ι)}, MeasurableSet S →
+        Measurable (Function.uncurry
+          (fun (sched : ScheduleAssignment σ ι)
+              (x₀ : Π _i : Finset.Iic 0, σ × Option ι) =>
+            (Kernel.partialTraj (X := fun _ => σ × Option ι)
+              (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n
+              x₀) S)) :=
+    fun n _ hS => partialTraj_apply_measurable_in_sched spec R.corrupt n hS
+  have h_partialTraj_bind :
+      ∀ (n : ℕ) (x₀ : Π _i : Finset.Iic 0, σ × Option ι)
+        {S : Set (Π i : Finset.Iic n, σ × Option ι)}, MeasurableSet S →
+        (Kernel.partialTraj (X := fun _ => σ × Option ι)
+            (randomisedStepKernel spec R) 0 n x₀) S =
+          ∫⁻ sched : ScheduleAssignment σ ι,
+            (Kernel.partialTraj (X := fun _ => σ × Option ι)
+              (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n
+              x₀) S
+              ∂(scheduleSpaceMeasure R) :=
+    fun n x₀ _ hS => partialTraj_apply_eq_bind_in_sched spec R n x₀ hS
   have hBind :
       Kernel.trajMeasure (X := fun _ => σ × Option ι) μ₀_full
           (randomisedStepKernel spec R) =
         Measure.bind (scheduleSpaceMeasure R) fun sched =>
           Kernel.trajMeasure (X := fun _ => σ × Option ι) μ₀_full
             (stepKernel spec (sched.toAdversary R.corrupt)) :=
-    ProbabilityTheory.Kernel.trajMeasure_bind_kernel
+    ProbabilityTheory.Kernel.trajMeasure_bind_kernel_of_partial
       (X := fun _ => σ × Option ι)
       (β := ScheduleAssignment σ ι)
       (μ₀ := μ₀_full)
       (ν := scheduleSpaceMeasure R)
       (κ := fun sched n => stepKernel spec (sched.toAdversary R.corrupt) n)
-      h_meas
+      hMeasurable
       (κAvg := randomisedStepKernel spec R)
-      h_kappa_bind
+      h_partialTraj_meas
+      h_partialTraj_bind
   exact hBind
 
 end RandomisedTraceDistFubini
