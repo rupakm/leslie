@@ -13473,53 +13473,77 @@ adversary, with NO algebraic-core or initial-measure-invariance
 hypotheses: just the structural conditions
 (`corr.card ≤ t`, `partyPoint` injective on `corr`, nonzero, field
 size).  This is the literature-faithful operational-secrecy theorem
-**under the AVSS state model** — Step C of §19.4.5, composing
-`avss_secrecy_AS_view_rushing_via_init_invariant` with
-`avssInitMeasure_simView_sec_invariant` (which itself rests on the
+under the **post-Phase-8 CR-faithful adversary model** —
+Step C of §19.4.5, composing
+`avss_secrecy_AS_view_rushing_via_init_invariant_indep` with
+`avssInitMeasure_simViewExt_sec_invariant` (which itself rests on the
 row-poly secrecy lemma `bivariate_shamir_secrecy_rowPoly_full`).
 
-⚠ **The qualifier "under the AVSS state model" is doing real work.**
-The rushing adversary used here is *strictly weaker* than the
-Canetti–Rabin '93 rushing adversary in three concrete respects (see
-`AVSS-MODEL-NOTES.md` §11 for the full discussion):
+The conclusion is closed uniformly across `dealerHonest : Bool` via
+the `_indep` chain: under both honest and corrupt dealer, the joint
+distribution of `(coalitionTraceView, schedulePrefix)` is invariant
+in the secret.  See `coalitionRowPolyAlignedInv` (the
+dealerHonest-independent structural protocol invariant whose
+preservation drives the cTV bridge).
 
-* **C1 — Corrupt parties cannot send echoes/readys/amplify.** The
-  gates of `partyEchoSend`, `partyReady`, and `partyAmplify` (around
-  lines 401–414 of this file) all require `p ∉ s.corrupted`.  Corrupt
-  parties' only protocol-relevant action in this model is
-  `partyCorruptDeliver` (passively receive their row polynomial).
-  In CR '93, the rushing adversary chooses *what* corrupt parties
-  send — including malformed/timed messages designed to manipulate
-  honest threshold counts.
+## Adversary-model coverage (post-Phase-8)
 
-* **C2 — Corrupt parties never receive honest echoes/readys.**
-  `partyEchoSend p` populates `inflightEchoes` only with `(p, q)` for
-  honest `q` (the effect filters by `q ∉ s.corrupted` near line 348).
-  The receive gates `partyEchoReceive p q` and `partyReceiveReady p q`
-  require `p ∉ s.corrupted`.  Corrupt parties' `echoesReceived` and
-  `readyReceived` are therefore empty throughout every trace.  In
-  CR '93, honest broadcasts go to every party including corrupt, so
-  corrupt-party state includes a real "I have received an echo from
-  honest p" channel.
+The adversary modelled here is the literature-standard rushing
+adversary: it is `RushingAdversary`-restricted (its scheduling
+decisions depend only on the corrupt-coalition view), but otherwise
+matches CR '93's threat model on every observable channel.  The
+three pre-Phase-8 caveats that previously qualified this theorem
+(`AVSS-MODEL-NOTES.md` §11.1, §11.2, §11.4) are all closed by the
+Phase 8 chain (PRs #57–#76, on `main`):
 
-* **C3 — `dealerShare` is not in `avssFairActions`.** A stalling
-  adversary that never fires `dealerShare` is compatible with this
-  theorem; the secrecy claim is trivially preserved in that case.
-  See `avss_termination_AS_fair`'s docstring and §11.3.
+* **§11.1 (C1 — corrupt-party send actions)** ✅ resolved by Phase
+  8.5b. Corrupt parties may now fire `partyEchoSend`/`partyReady`/
+  `partyAmplify` (the `p ∉ s.corrupted` gates were dropped); their
+  `echoesReceived`/`readyReceived` may be populated by adversarial
+  echoes.
 
-Operationally, C1+C2 mean the corrupt-coalition view in this model
-essentially reduces to "for each corrupt `p`, has `partyCorruptDeliver`
-fired? if so, here is `rowPolyOfDealer s.partyPoint s.coeffs p`",
-which is much smaller than the CR rushing-adversary view.  A proof
-of secrecy *here* therefore does **not** directly imply secrecy
-against the full CR rushing adversary that gets to send corrupt-party
-messages and observe honest broadcasts on corrupt receivers.
+* **§11.2 (C2 — honest broadcasts to corrupt receivers)** ✅
+  resolved by Phase 8.5b. The `partyEchoSend` broadcast filter was
+  widened to all parties (including corrupt receivers), and the
+  `partyEchoReceive`/`partyReceiveReady` honest-receiver gates were
+  dropped.
 
-A literature-faithful version of this theorem is Phase 8 (per-party
-dealer-and-protocol messages with corrupt-controlled send schedule).
-The current statement is the operational view-secrecy theorem against
-the *view-restricted* rushing adversary defined in
-`Leslie/Prob/Adversary.lean`. -/
+* **§11.4 (C4 — selective non-broadcast)** ✅ resolved by Phase
+  8.5d. The `dealerShare` action was replaced by per-party
+  `dealerShareTo (p : Fin n)`; corrupt dealers can selectively
+  short-share. Termination's hypothesis was strengthened to include
+  `consistent_quorum_AE` (≥ n−t honest parties received consistent
+  shares), matching CR '93's conditional-termination semantics.
+
+The `s.coeffs` field was migrated to μ₀ in Phase 8.5d-β: the
+dealer's bivariate polynomial is now an initial-state witness
+sampled at protocol start, not a runtime field.  This makes the
+existential-witness theorem forms (`avss_correctness_AS_existential`
+PR #43, `avss_commitment_AS_corrupt_dealer` PR #45+#48) the
+canonical surface API.
+
+## Strengthened bivariate form (Phase 11-δ-followup)
+
+The sibling theorem `avss_secrecy_AS_view_rushing_bivariate` (§19.7)
+bundles this trace-level operational headline with the
+polynomial-level row+column secrecy form
+(`avss_bivariate_corrGrid_sec_invariant`, Phase 11-δ / Phase 8.6):
+together they capture both the operational view secrecy and the
+algebraic bivariate uniformity that the CR '93 cryptographic
+analysis relies on.
+
+## Forward queue
+
+* **Phase 11-β (deferred)** — lift to `SecrecyRandomised` via
+  Phase 9's `RandomisedAdversary` framework; mechanical (~100 LOC).
+* **Phase 12** — UC-style composability layer (per
+  `AVSS-MODEL-NOTES.md` §15 plan); enables compositional secrecy
+  reasoning for higher-level protocols (e.g., random secret draw)
+  that use AVSS as a black-box subprotocol.
+
+`SecrecyRushing` framework abstraction (Phase 11-α) — see
+`avss_secrecy_AS_view_rushing_instance` (§19.5) for the
+protocol-independent restatement. -/
 theorem avss_secrecy_AS_view_rushing
     {corr : Finset (Fin n)}
     (sec sec' : F) (partyPoint : Fin n → F) (dealerHonest : Bool)
