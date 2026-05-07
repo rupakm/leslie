@@ -1320,11 +1320,13 @@ After Phase 8 lands, AVSS will be **literature-faithful** for Canetti–Rabin '9
 
 ### 12.4. Risks
 
-1. **PR 8.3's commitment proof** is the hardest cryptographic content. It requires showing Bracha amplification's "all accepted shares are consistent with some polynomial" property — threading the consistency-check predicate added in 8.4 through quorum intersection. Some risk this becomes a multi-PR effort itself.
+1. **Commitment proof's cryptographic content** ✅ resolved across PRs 8.3 + 8.4. PR 8.3 (PR #45) landed the existential statement of `joinedConsistencyInv` and a thin `s.coeffs`-witness preservation proof; PR 8.4 (PR #48) replaced it with a genuine Lagrange-interpolation / Vandermonde-uniqueness construction (`joinedConsistencyInv_via_vandermonde`) using `Lagrange.eq_interpolate_of_eval_eq`. Resolution differed from the original prediction (the consistency-check predicate was not threaded through quorum intersection — Vandermonde uniqueness directly suffices), but the cryptographic load-bearing content is now in place. New invariant `partyPointInjInv` (distinct evaluation points) added as the standard Shamir/Vandermonde precondition.
 
-2. **Variant analysis re-verification** (PRs 8.4, 8.5): adding corrupt-party send actions to the fair set changes the variant's strict-decrease story. Each fair action must still strictly decrease U; the per-action `_lt` lemmas need rework. Risk: the K-weighting may need reshuffling.
+2. **Variant analysis re-verification** (PR 8.5): adding corrupt-party send actions to the fair set changes the variant's strict-decrease story. Each fair action must still strictly decrease U; the per-action `_lt` lemmas need rework, and `unsentEchoSet` / `notReadySentSet` likely need extending to include corrupt parties. Risk: the K-weighting may need reshuffling. (Originally scoped into 8.4 but deferred — see §11.1 and §12.1 row 8.5.)
 
-3. **Row + column secrecy** (PR 8.6): the +200 LOC polynomial-manipulation step has been deferred since `SyncVSS.lean §10`. Doing it now is real cryptographic content (Vandermonde + Lagrange in two directions, with axis-zero handling). Could be its own multi-PR effort if we hit complications.
+3. **`corruptLocalInv` weakening** (PR 8.5): closing C1+C2 (corrupt parties' send actions + corrupt receiver reception) directly invalidates `corruptLocalInv`'s `echoesReceived = ∅ ∧ readyReceived = ∅` clauses, which are load-bearing for the Phase 6/7 coalition-view structural theorem `coalitionView_corrupt_factors_AE`. Resolving this requires either re-engineering `corruptLocalInv` to permit corrupt-receiver buffers (without feeding into the secrecy view), or strengthening the secrecy chain to tolerate the wider corrupt-local view. The interdependence with Risk 2 (variant analysis) is what re-scoped 8.5 from ~150 to ~400 LOC.
+
+4. **Row + column secrecy** (PR 8.6): the +200 LOC polynomial-manipulation step has been deferred since `SyncVSS.lean §10`. Doing it now is real cryptographic content (Vandermonde + Lagrange in two directions, with axis-zero handling). Could be its own multi-PR effort if we hit complications.
 
 ### 12.5. Maintenance protocol
 
