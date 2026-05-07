@@ -1414,7 +1414,7 @@ together: deterministic protocols get both for free.
 |---|---|---|---|---|
 | **10.1** | `DeterministicProbActionSpec` + simulate machinery (data) | Define `DeterministicProbActionSpec σ ι := { init, gate, step }` in new file `Leslie/Prob/DeterministicSimulate.lean`; provide `toProbActionSpec` adapter; define generic `simulateNext` / `simulateRev` / `simulateTrace` reading only `gate`, `step`, and `Adversary.schedule`.  Plus structural `_length`, `_ne_nil`, `_succ_eq`, `_head_eq`, `_zero` simp lemmas. | ~150 | ✅ landed (PR #42) |
 | **10.2** | The meta-bridge `traceDist_AE_eq_simulateTrace` | The substantive proof: for any `D : DeterministicProbActionSpec` and `A : Adversary` and any step `k`, `∀ᵐ ω ∂(traceDist D.toProbActionSpec A μ₀), ω k = simulateTrace D A (ω 0).1 k`.  Pure transcription of the existing AVSS-specific proof, with all references to `avssStep`, `avssSpec`, `actionGate` replaced by `D.step`, `D.toProbActionSpec`, `D.gate`. | ~300 | ✅ landed (PR #44) |
-| **10.3** | AVSS instantiation: shrink §19.2 | Define `avssDeterministic := { gate := actionGate, step := avssStep }`. Prove `avssSpec sec corr = (avssDeterministic sec corr).toProbActionSpec` (rfl). Replace `avssSimulateNext`/`avssSimulateRev`/`avssSimulateTrace` with one-line wrappers around the generic versions. Replace `traceDist_AE_eq_avssSimulateTrace` with one-line application of the generic meta-theorem. | ~50 (shrinks AVSS.lean by ~370 LOC) | ⏳ pending |
+| **10.3** | AVSS instantiation: shrink §19.2 | Define `avssDeterministic := { gate := actionGate, step := avssStep }`. Prove `avssSpec sec corr = (avssDeterministic sec corr).toProbActionSpec` (rfl).  `avssSimulate{Next,Rev,Trace}` definitions kept verbatim (signatures unchanged); bridge lemmas `avssSimulate*_eq_simulate*` prove their propositional equality with the generic forms (the kernel's `defEq` on `noncomputable def`s with structure projections does not see through; the bridge is a small structural induction).  Replace `traceDist_AE_eq_avssSimulateTrace`'s 300-LOC inductive proof with a one-line application of `Leslie.Prob.traceDist_AE_eq_simulateTrace` plus `rw [avssDeterministic_toProbActionSpec, avssSimulateTrace_eq_simulateTrace]`.  Delete the dead helper chain (`avssSpec_R_stepKernel_AE_simulate`, `traceDist_step_zero_pair_marginal`, `traceDist_step_zero_snd_AE`, `avssSimulateRev_reverse_eq_ofFn`, old strong form). | net −185 LOC (353 deleted, 168 added) | ✅ landed (PR #51) |
 
 **Total**: ~400 LOC across 3 PRs.  Net effect on AVSS.lean: shrinks by ~370 LOC.  Net effect on the codebase: +400 framework, -370 example = +30 LOC, but vastly more reusable.
 
@@ -1472,6 +1472,42 @@ The simulate machinery is generic; the projections downstream of it are not.  Th
   * `coalitionTraceView`, `coalitionAlgebraicView`, `coalitionGrid` — all reference AVSS-specific types.
 
 Phase 10 generalises the structural bridge between trace and simulate; the cryptographic projection of simulate onto the corrupt-coalition view remains AVSS-specific (and rightly so).
+
+### 14.7. Closing note — Phase 10 complete
+
+Phase 10 closed in PR 10.3 (#PENDING).  AVSS.lean §19.2's
+`avss_traceDist_AE_eq_avssSimulateTrace` is now a one-line
+instantiation of the generic meta-theorem
+`Leslie.Prob.traceDist_AE_eq_simulateTrace` (PR #44) at
+`avssDeterministic sec corr`.  The 300-LOC inductive proof chain in
+§19.2.4 has been replaced by:
+
+  * `avssDeterministic sec corr := { init := initPred sec corr, gate
+    := actionGate, step := avssStep }` (~6 LOC).
+  * Three `@[simp]` rfl-bridges
+    (`avssDeterministic_{toProbActionSpec,init,gate,step}`).
+  * Three structural-induction bridges
+    (`avssSimulate{Next,Rev,Trace}_eq_simulate{Next,Rev,Trace}`)
+    proving propositional equality with the generic forms — these
+    work around a Lean kernel `defEq` quirk where structure
+    projections on `noncomputable def` calls (`(avssDeterministic sec
+    corr).gate`) do not unfold automatically through `rfl` in the
+    presence of the surrounding `Filter.Eventually`/`Measure` machinery.
+  * One-line proof of the headline theorem.
+
+Net AVSS.lean impact: −185 LOC (353 deletions, 168 insertions).  The
+`avssSimulate{Next,Rev,Trace}` definitions and structural lemmas
+(`_length`, `_ne_nil`, `_succ_eq`, `_zero{,_fst,_snd}`,
+`_head_eq`) are kept verbatim — they are referenced by the
+downstream `avssSimulateTrace_simSyncInv` (§19.4.4) and by simp.  See
+§19.2.4 in `AVSS.lean` for the new one-line proof and the deletion
+manifest.
+
+After this PR: `AVSS.lean §19.2` is marked **✅ generalised — see
+`Leslie/Prob/DeterministicSimulate.lean`**.  All future protocols
+that fit the deterministic-spec abstraction (BrachaRBC, SyncVSS,
+AVSSAbstract) can apply the meta-theorem in one line; no further
+trace-determinism plumbing needed.
 
 ## How to read the formalised theorems
 
