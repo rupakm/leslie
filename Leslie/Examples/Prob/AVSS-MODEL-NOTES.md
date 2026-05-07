@@ -1304,18 +1304,60 @@ through the Phase 9.2 lifting meta-theorems
 randomised `FairASTCertificate.sound` core, and the rushing
 wrappers are one-liners through `R.toRandomisedAdversary`.
 
-**⚠ Cross-branch reconciliation caveat (post-Phase-8.5d).**  The
-Phase 9 chain (PRs #41–#56) typed its `_randomised` corollaries
-against the pre-Phase-8.5d-γ unconditional termination form.
-Phase 8.5d-γ (PR #70) re-scoped `avss_termination_AS_fair` to take
-a `consistent_quorum_AE` hypothesis (closing caveat C4).  Phase 9's
-`avss_termination_AS_fair_randomised` and `_rushing_randomised`
-corollaries therefore need a small statement-level update at
-merge time to thread the new hypothesis through.  The reconciliation
-is mechanical (no cryptographic content) and is queued as a
-followup PR; it does not affect any of the load-bearing
-`avss_correctness_AS_*` / `avss_commitment_AS_*` / `avss_secrecy_AS_*`
-randomised forms, which are already aligned.
+**⚠ Cross-branch reconciliation caveat (post-Phase-8.5d).**  Phase
+9's `avss_termination_AS_fair_randomised` (PR #54) and
+`_rushing_randomised` (PR #55) are typed against the **pre-Phase-8.5b
+deterministic-descent route** (via `RandomisedFairASTCertificate.sound`,
+which requires `RandomisedTrajectoryUMono` — AE-monotone `U` along
+the randomised mixture trace).  Two issues compound under the
+post-Phase-8.5b/d AVSS model:
+
+1. **Soundness route mismatch.** The deterministic version
+   `avss_termination_AS_fair` switched in Phase 8.5d-γ from the
+   deterministic-descent route to the BC running-min route
+   (`pi_n_AST_fair_with_progress_bc_of_running_min_drops`), taking
+   `consistent_quorum_AE` and `TrajectoryFairRunningMinDropIO`
+   hypotheses.  The randomised analogs still call the
+   deterministic-descent route under the hood.
+
+2. **`RandomisedTrajectoryUMono` is unsatisfiable for AVSS.**  The
+   reason for the deterministic switch — corrupt-fired actions
+   bump `avssU` post-Phase-8.5b — applies equally at the randomised
+   level.  AE-monotonicity is false under any `RandomisedAdversary`
+   that schedules corrupt-fired sends.  So the existing
+   `avss_termination_AS_fair_randomised` is **vacuously callable
+   but not usefully callable** for any post-Phase-8.5b AVSS
+   instance: the `RandomisedTrajectoryUMono` hypothesis cannot be
+   discharged.
+
+This is **not a small mechanical thread-through fix.**  Closing
+the gap requires:
+
+  * **Framework PR** — add
+    `pi_n_AST_fair_with_progress_bc_of_running_min_drops_randomised`
+    in `Leslie/Prob/Liveness.lean` plus
+    `RandomisedTrajectoryFairRunningMinDropIO` in
+    `Leslie/Prob/RandomisedAdversary.lean`.  Real measure-theoretic
+    work (~150–200 LOC) — the BC running-min argument needs to be
+    re-derived for the kernel-mixture trace, paralleling the
+    deterministic version's structure.
+
+  * **AVSS-side PR** — define
+    `consistent_quorum_AE_randomised` (analog of `consistent_quorum_AE`
+    on the randomised mixture trace), switch
+    `avss_termination_AS_fair_randomised` and `_rushing_randomised`
+    to call the new framework theorem, drop the now-unsatisfiable
+    `RandomisedTrajectoryUMono` hypothesis.  ~80 LOC.
+
+Total: ~230–280 LOC across 2 stacked PRs.  Tracked as a Phase
+11-β-followup or a new Phase 12-prerequisite (depending on whether
+the framework lift is composed before or after Phase 11-β
+extracts `Secrecy.lift_to_randomised`).
+
+The other Phase 9 randomised forms — `avss_correctness_AS_*` /
+`avss_commitment_AS_*` / `avss_secrecy_AS_*` (PRs #47, #49, #53,
+#55, #56, #74) — are aligned with their deterministic counterparts
+and do not need rebase work; only termination is affected.
 
 The historical context below is retained for completeness; readers
 of new code should reach for the `_randomised` and
@@ -2056,6 +2098,40 @@ If 9.4 / 9.5 / 9.6 land out of order with respect to 9.4 → 9.5 (the
 termination wrapper in 9.5 depends on 9.4), the affected row's
 status reverts to 🚧 with a footnote describing the dependency
 realisation.
+
+### 13.9. Post-Phase-8.5d randomised termination follow-up (queued)
+
+**Status: ⏳ pending framework PR.**
+
+The `_randomised` and `_rushing_randomised` corollaries for
+**termination** (PRs #54, #55) are typed against the
+deterministic-descent route (`RandomisedFairASTCertificate.sound`).
+Under the post-Phase-8.5b AVSS model, that route's
+`RandomisedTrajectoryUMono` hypothesis is **unsatisfiable** because
+corrupt-fired actions bump `avssU` (same reason the deterministic
+version switched to BC running-min in Phase 8.5d-γ).  The randomised
+termination theorems compile but are **vacuously-callable**.
+
+To close: a two-PR stack lifting the BC running-min soundness
+theorem to the randomised level.
+
+| PR | Scope | LOC |
+|---|---|---|
+| **9.7-α (framework)** | `pi_n_AST_fair_with_progress_bc_of_running_min_drops_randomised` in `Leslie/Prob/Liveness.lean` + `RandomisedTrajectoryFairRunningMinDropIO` in `Leslie/Prob/RandomisedAdversary.lean`.  Real measure-theoretic content: the BC running-min argument re-derived for the kernel-mixture trace measure, paralleling the deterministic version's structure | ~150–200 |
+| **9.7-β (AVSS-side)** | Define `consistent_quorum_AE_randomised` (analog of `consistent_quorum_AE` on the randomised mixture trace), switch `avss_termination_AS_fair_randomised` and `_rushing_randomised` to the new framework theorem, drop the now-unsatisfiable `RandomisedTrajectoryUMono` hypothesis, add `consistent_quorum_AE_randomised` and `RandomisedTrajectoryFairRunningMinDropIO` hypotheses | ~80 |
+
+**Total**: ~230–280 LOC, 2 stacked PRs.
+
+This work may be folded into Phase 11-β (which lifts `Secrecy` to
+randomised at the framework level — same shape of work) or into
+a Phase 12 prerequisite (UC composability requires usable
+randomised termination).  Cross-reference: §11.5 cross-branch
+caveat.
+
+The other Phase 9 randomised forms — `avss_correctness_AS_*` /
+`avss_commitment_AS_*` / `avss_secrecy_AS_*` (PRs #47, #49, #53,
+#55, #56, #74) — are aligned with their deterministic counterparts
+and do not need follow-up; only termination is affected.
 
 ## 14. Phase 10 — Generic deterministic-simulate meta-theorem
 
