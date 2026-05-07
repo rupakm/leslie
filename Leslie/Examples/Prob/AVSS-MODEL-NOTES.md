@@ -1542,8 +1542,8 @@ The actual landed sequence (PR-by-PR), which differs from the
   * **8.7** likely no-op (model edited in place; no parallel
     form to retire).
   * **8.8** subsumed by 8.5d-δ.
-  * **Phase 11** (§14) — secrecy framework abstraction; queued for
-    after 8.5d-δ, before 8.6.
+  * **Phase 11** (§14) — secrecy framework abstraction; **11-α
+    landed** (this PR); 11-β/γ/δ/ε queued for before 8.6.
 
 ### 12.3. Post-Phase-8 state — **canonical reference (frozen 2026-05-07)**
 
@@ -1711,16 +1711,17 @@ corresponding row of §13.1 (statuses ⏳ → 🚧 → ✅).  After Phase 9
 completes, §11.5 (C5) should be marked "✅ resolved by Phase 9 (PR
 #N)".
 
-## 14. Phase 11 — Secrecy framework abstraction (queued)
+## 14. Phase 11 — Secrecy framework abstraction
 
-**Status: ⏳ queued for after 8.5d-δ closes; ~320 LOC, 4 stacked
-sub-PRs.**
+**Status: 🚧 in progress; Phase 11-α ✅ landed (this PR); remaining
+sub-PRs queued.**
 
-After Phase 8 closes, extract `Secrecy` and `SecrecyRushing` as
-framework-level definitions in a new file `Leslie/Prob/Secrecy.lean`.
-Each protocol's headline secrecy theorem becomes an instance of the
-framework abstraction.  Plus framework lifts:
-`Secrecy.lift_to_randomised`, `SecrecyRushing.of_secrecy`.
+Extract `Secrecy` and `SecrecyRushing` as framework-level definitions
+in `Leslie/Prob/Secrecy.lean` (Phase 11-α, ✅).  Each protocol's
+headline secrecy theorem becomes an instance of the framework
+abstraction (Phase 11-γ).  Phase 11-β adds the framework lift to
+randomised adversaries (`Secrecy.lift_to_randomised`,
+`SecrecyRushing.of_secrecy`).
 
 **Why now (not earlier).**  Phase 8 has stabilised the AVSS-side
 shape of "operational secrecy under a rushing adversary"
@@ -1730,18 +1731,43 @@ BenOrAsync, ...) will follow the same shape; abstracting now means
 their secrecy theorems can be one-line corollaries instead of
 re-deriving the chain.
 
-**Sub-PR sequencing (rough).**
+**Sub-PR sequencing.**
 
-| Sub-PR | Scope | LOC |
-|---|---|---|
-| 11.1 | `Leslie/Prob/Secrecy.lean` — `Secrecy` (deterministic-adversary form) and `SecrecyRushing` (rushing form); `Secrecy.lift_to_randomised`; `SecrecyRushing.of_secrecy` | ~120 |
-| 11.2 | AVSS instance: `avss_secrecy_AS_view_rushing` re-stated as `instance : SecrecyRushing AVSSSpec ... := ...` | ~80 |
-| 11.3 | Apply to 8.6's row + column secrecy form (composes with the abstraction directly so 8.6 doesn't need its own framework boilerplate) | ~80 |
-| 11.4 | Cleanup, MODEL_NOTES note, citation table | ~40 |
+| Sub-PR | Scope | LOC | Status |
+|---|---|---|---|
+| 11-α | `Leslie/Prob/Secrecy.lean` — `Secrecy` (deterministic-adversary form) and `SecrecyRushing` (rushing form); structural lemmas (`Secrecy.mono_proj`, `SecrecyRushing.mono_proj`, `Secrecy.toRushing`) | ~140 | ✅ |
+| 11-β | `Secrecy.lift_to_randomised`, `SecrecyRushing.of_secrecy` (framework lifts to randomised adversaries) | ~80 | ⏳ |
+| 11-γ | AVSS instance: `avss_secrecy_AS_view_rushing` re-stated as `instance : SecrecyRushing avssSpec ... := ...` | ~80 | ⏳ |
+| 11-δ | Apply to 8.6's row + column secrecy form (composes with the abstraction directly so 8.6 doesn't need its own framework boilerplate) | ~80 | ⏳ |
+| 11-ε | Cleanup, MODEL_NOTES note, citation table | ~40 | ⏳ |
 
-**Sequence.**  After 8.5d-δ closes (this PR), before Phase 8.6, so
-8.6's operational-secrecy theorem instantiates the abstraction
-directly rather than re-deriving the chain bottom-up.
+**Sequence.**  Phase 11-α landed after 8.5d-δ (this PR's parent).
+Subsequent sub-PRs land before Phase 8.6, so 8.6's operational-secrecy
+theorem instantiates the abstraction directly rather than re-deriving
+the chain bottom-up.
+
+**Phase 11-α deliverables (this sub-PR).**
+
+The new file `Leslie/Prob/Secrecy.lean` adds two protocol-independent
+predicates plus three structural lemmas, all axiom-clean
+(`[propext, Classical.choice, Quot.sound]`):
+
+  * `Secrecy spec μ₀ proj` — operational secrecy: under any
+    deterministic adversary `A : Adversary σ ι`, the projected trace
+    distribution `(traceDist spec A (μ₀ sec)).map proj` is invariant
+    in the secret `sec`.
+  * `SecrecyRushing spec μ₀ view proj` — view-restricted variant: the
+    same equality but quantified over `RushingAdversary σ ι W` whose
+    `toProtocolView = view`.
+  * `Secrecy.mono_proj` / `SecrecyRushing.mono_proj` — coarsening the
+    projection by a measurable map preserves secrecy (via
+    `Measure.map_map`).
+  * `Secrecy.toRushing` — plain secrecy implies rushing-secrecy for
+    any view (the universal adversary class subsumes the
+    rushing-adversary image).
+
+The two main definitions intentionally mirror the existing AVSS-side
+shape so that Phase 11-γ's instantiation is a one-liner.
 
 (See `PHASE-8-5d-CHECKPOINT.md` for the worker-side note if a fuller
 plan is recorded there.)
