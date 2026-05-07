@@ -1,4 +1,46 @@
-# Phase 8.5d Checkpoint — γ-chain landed: termination re-scoped to consistent-quorum hypothesis (0 sorries)
+# Phase 8.5d Checkpoint — **chain fully closed (α + β + γ + δ; 0 sorries)**
+
+**Final state (2026-05-07):** Phase 8.5d chain is complete.
+8.5d-α (PR #68), 8.5d-β (PR #69), 8.5d-γ (PR #70), and 8.5d-δ
+(this PR — docs-only MODEL_NOTES finalisation) all landed.
+AVSS.lean has **0 sorries**; all C4 closure surgery is in
+place; `s.coeffs` migration to μ₀ is complete; termination is
+re-scoped to take `h_consistent_quorum`.  MODEL_NOTES §11
+caveats C1, C2, C4 are marked ✅ resolved with citation tables;
+C5 carries a cross-branch resolution note (Phase 9 chain on a
+parallel branch).  §12.1 status tracker reflects landed PRs
+#57–#70 (stale 8.5b-i/ii/iii planning rows dropped).  §12.3
+post-Phase-8 state table is frozen as the canonical citation
+target.  §12.4 risks 1–3 are marked resolved; risk 4 (row +
+column secrecy) remains pending in 8.6.  A new §14 stub
+documents the queued Phase 11 secrecy-framework-abstraction
+work.
+
+## Phase 8.5d-δ — what landed (this PR, docs-only)
+
+- `Leslie/Examples/Prob/AVSS-MODEL-NOTES.md` — §11.1 (C1) /
+  §11.2 (C2) gain ✅ resolution-status banners with citation
+  tables; §11.3 (C3) historical Phase-B fix retains its banner
+  with a forward pointer to 8.5d-α's `dealerShareTo`; §11.4 (C4)
+  resolution banner extended with PR #70 attribution and the
+  new theorem statement (`avss_termination_AS_fair` with
+  `h_consistent_quorum`); §11.5 (C5) gains a cross-branch
+  resolution note (Phase 9 chain, future merge-time
+  reconciliation).  §12.1 status tracker rewritten to reflect
+  actual landed PRs (drop stale 8.5b-i/ii/iii pre-implementation
+  rows; add #57–#70 as separate rows for the α/β/γ chain;
+  reclassify 8.7 as likely no-op; mark 8.8 subsumed by 8.5d-δ).
+  §12.3 post-Phase-8 state table frozen as canonical reference.
+  §12.4 risks 1, 2, 3 marked ✅ resolved; risk 4 retained as
+  ⏳ pending.  New §14 — Phase 11 secrecy-framework-abstraction
+  stub (~320 LOC, 4 stacked sub-PRs queued for after 8.5d-δ).
+- `PHASE-8-5d-CHECKPOINT.md` — this update.
+
+**No code changes** (docs-only PR).  Build remains green at
+`lake build Leslie.Prob.Index` and `lake build
+Leslie.Examples.Prob.AVSS` (0 sorries).
+
+## Phase 8.5d-γ — what landed (PR #70)
 
 **Branch**: `feat/randomized-leslie-m3-avss-phase8-5d-gamma`
 **Base**: PR #69 (8.5d-β, `coeffs` migration to μ₀, 0 sorries, fully closed β-chain).

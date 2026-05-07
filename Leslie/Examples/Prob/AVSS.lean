@@ -77,6 +77,7 @@ import Leslie.Prob.Liveness
 import Leslie.Prob.PMF
 import Leslie.Prob.Polynomial
 import Leslie.Prob.Refinement
+import Leslie.Prob.Secrecy
 import Leslie.Prob.Trace
 import Mathlib.Data.Fintype.Basic
 import Mathlib.Data.Fintype.Pi
@@ -13184,6 +13185,56 @@ theorem avss_secrecy_AS_view_rushing
     R C h_C_corr k
     (avssInitMeasure_simViewExt_sec_invariant sec sec' R h_R C h_C_corr
       partyPoint dealerHonest h_inj h_nz_pp h_F h_corr k)
+
+/-! ## §19.5. Phase 11-γ — `SecrecyRushing` instance
+
+The headline `avss_secrecy_AS_view_rushing` is restated as an instance of
+the protocol-independent `Leslie.Prob.SecrecyRushing` predicate from
+`Leslie/Prob/Secrecy.lean` (Phase 11-α).
+
+`SecrecyRushing` quantifies over a *single* spec; `avssSpec` carries a
+`sec : F` parameter that turns out to be vestigial — it only enters
+the spec's `init` field, which `traceDist` does not consume (only
+`spec.actions` is read by `stepKernel`).  We therefore pick `sec = 0`
+as the canonical spec and bridge the two sides by `rfl`. -/
+
+/-- `traceDist` ignores `avssSpec`'s `sec` parameter: only `spec.actions`
+is consumed by `stepKernel`, and `actions` is sec-independent. -/
+theorem traceDist_avssSpec_sec_irrelevant
+    (sec sec' : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (A : Adversary (AVSSState n t F) (AVSSAction n F))
+    (μ : Measure (AVSSState n t F)) :
+    traceDist (avssSpec (t := t) sec corr coeffs) A μ =
+      traceDist (avssSpec (t := t) sec' corr coeffs) A μ := rfl
+
+/-- **Phase 11-γ headline.**  `avss_secrecy_AS_view_rushing` restated as
+an instance of the protocol-independent `Leslie.Prob.SecrecyRushing`
+predicate.  The canonical spec is taken at `sec = 0` (any value works:
+see `traceDist_avssSpec_sec_irrelevant`); the secret is encoded in the
+initial measure family `fun sec => avssInitMeasure sec corr partyPoint
+dealerHonest`. -/
+theorem avss_secrecy_AS_view_rushing_instance
+    {corr : Finset (Fin n)}
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_inj : Set.InjOn partyPoint corr)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (h_corr : corr.card ≤ t)
+    (C : BivariateShamir.Coalition n t)
+    (h_C_corr : C.val ⊆ corr) (k : ℕ) :
+    Leslie.Prob.SecrecyRushing
+      (spec := avssSpec (t := t) (0 : F) corr coeffs)
+      (μ₀ := fun (sec : F) =>
+        avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest)
+      (view := avssCoalitionView corr)
+      (proj := fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) := by
+  intro sec sec' R hR
+  rw [traceDist_avssSpec_sec_irrelevant (sec := 0) (sec' := sec),
+      traceDist_avssSpec_sec_irrelevant (sec := 0) (sec' := sec')]
+  exact avss_secrecy_AS_view_rushing sec sec' partyPoint dealerHonest
+    h_inj h_nz_pp h_F h_corr R hR C h_C_corr k
 
 attribute [instance] instMeasurableSpaceAVSSRushingView
   instMeasurableSingletonClassAVSSRushingView
