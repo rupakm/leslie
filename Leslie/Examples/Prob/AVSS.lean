@@ -208,27 +208,6 @@ instance [DecidableEq F] (s : AVSSState n t F) (p : Fin n) :
     Decidable (s.isHonest p) :=
   inferInstanceAs (Decidable (p ∉ s.corrupted))
 
-/-- **Vestigial accessor (Phase 8.5d-β migration).**
-
-Pre-Phase-8.5d-β, `coeffs : Fin (t+1) → Fin (t+1) → F` was a state field
-storing the dealer's bivariate polynomial.  Phase 8.5d-β migrated this
-to μ₀ — the bivariate polynomial is now a witness sampled at protocol
-start (parametric to `initPred`), not a runtime field.
-
-This accessor is retained as a placeholder so `s.coeffs` syntax keeps
-compiling during the cascade migration.  It returns the all-zeros grid;
-theorems whose statements depend on the *actual* witness value should be
-restated to take `coeffs` as a parameter (matching the `initPred`
-signature) instead of reading `s.coeffs`.
-
-**Followup work (Phase 8.5d-β-followup):** restate each theorem that
-uses this accessor to thread the `coeffs` witness through, then delete
-the placeholder. -/
-@[deprecated "Phase 8.5d-β: use `coeffs` parameter from `initPred` instead." (since := "8.5d-β")]
-noncomputable def coeffs (_s : AVSSState n t F) :
-    Fin (t+1) → Fin (t+1) → F :=
-  fun _ _ => (0 : F)
-
 end AVSSState
 
 /-! ## §2. Bivariate evaluation primitives (mirror AVSSAbstract / BivariateShamir) -/
@@ -8524,19 +8503,13 @@ theorem phase6Inv_rowPoly_determined
   (hinv.1 hh).1 p hd
 
 omit [Fintype F] in
-/-- The initial state's `coeffs` and `partyPoint` are preserved by
-every `avssStep` action — both are unchanged in every branch of the
-`match` on `a`. Used to pull `s_k.partyPoint = s_0.partyPoint` and
-`s_k.coeffs = s_0.coeffs` through the AE structural reduction. -/
+/-- `partyPoint` is preserved by every `avssStep` action — unchanged in
+every branch of the `match` on `a`.  Used to pull `s_k.partyPoint =
+s_0.partyPoint` through the AE structural reduction. -/
 theorem avssStep_partyPoint_invariant (a : AVSSAction n F)
     (s : AVSSState n t F) :
     (avssStep a s).partyPoint = s.partyPoint := by
   cases a <;> simp [avssStep, setLocal]
-
-omit [Fintype F] in
-theorem avssStep_coeffs_invariant (a : AVSSAction n F)
-    (s : AVSSState n t F) :
-    (avssStep a s).coeffs = s.coeffs := rfl
 
 omit [Fintype F] in
 theorem avssStep_corrupted_invariant (a : AVSSAction n F)
@@ -8578,30 +8551,6 @@ private theorem avssSpec_stepKernel_partyPoint_AE
             = PMF.pure (avssStep i h.currentState) from rfl,
           PMF.toMeasure_pure, Measure.map_dirac (by fun_prop), ae_dirac_iff hPset]
       exact avssStep_partyPoint_invariant i h.currentState
-    · simp only [hgate, dite_false]
-      rw [ae_dirac_iff hPset]
-
-private theorem avssSpec_stepKernel_coeffs_AE
-    (sec : F) (corr : Finset (Fin n))
-    (A : Adversary (AVSSState n t F) (AVSSAction n F)) (k : ℕ)
-    (h : FinPrefix (AVSSState n t F) (AVSSAction n F) k) :
-    ∀ᵐ y ∂(stepKernel (avssSpec (t := t) sec corr coeffs) A k h),
-        y.1.coeffs = h.currentState.coeffs := by
-  classical
-  have hPset : MeasurableSet
-      {x : AVSSState n t F × Option (AVSSAction n F) |
-        x.1.coeffs = h.currentState.coeffs} :=
-    MeasurableSet.of_discrete
-  unfold stepKernel
-  simp only [ProbabilityTheory.Kernel.ofFunOfCountable, ProbabilityTheory.Kernel.coe_mk]
-  rcases A.schedule h.toList with _ | i
-  · rw [ae_dirac_iff hPset]
-  · by_cases hgate : ((avssSpec (t := t) sec corr coeffs).actions i).gate h.currentState
-    · simp only [hgate, dite_true]
-      rw [show ((avssSpec (t := t) sec corr coeffs).actions i).effect h.currentState hgate
-            = PMF.pure (avssStep i h.currentState) from rfl,
-          PMF.toMeasure_pure, Measure.map_dirac (by fun_prop), ae_dirac_iff hPset]
-      exact avssStep_coeffs_invariant i h.currentState
     · simp only [hgate, dite_false]
       rw [ae_dirac_iff hPset]
 
@@ -8672,51 +8621,6 @@ theorem traceDist_partyPoint_AE_eq_init
               (Preorder.frestrictLe k)) ⊗ₘ
             (stepKernel (avssSpec (t := t) sec corr coeffs) A k)),
           x.2.1.partyPoint = (FinPrefix.currentState x.1).partyPoint :=
-      Measure.ae_compProd_of_ae_ae MeasurableSet.of_discrete h_inner
-    rw [hk] at hjoint
-    rw [ae_map_iff hmeas_pair.aemeasurable MeasurableSet.of_discrete] at hjoint
-    exact hjoint
-
-theorem traceDist_coeffs_AE_eq_init
-    (sec : F) (corr : Finset (Fin n)) (coeffs : Fin (t+1) → Fin (t+1) → F)
-    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
-    (A : Adversary (AVSSState n t F) (AVSSAction n F)) (k : ℕ) :
-    ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
-        (ω k).1.coeffs = (ω 0).1.coeffs := by
-  classical
-  induction k with
-  | zero => exact Filter.Eventually.of_forall fun _ => rfl
-  | succ k ih =>
-    suffices hone_step :
-        ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
-          (ω (k+1)).1.coeffs = (ω k).1.coeffs by
-      filter_upwards [hone_step, ih] with ω h_step h_ih
-      rw [h_step, h_ih]
-    have hmeas_pair : Measurable
-        (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
-          (Preorder.frestrictLe k ω, ω (k+1))) := by fun_prop
-    haveI : IsProbabilityMeasure
-        (μ₀.map (fun s : AVSSState n t F => (s, (none : Option (AVSSAction n F))))) :=
-      Measure.isProbabilityMeasure_map (by fun_prop)
-    have hk :
-        ((traceDist (avssSpec (t := t) sec corr coeffs) A μ₀).map
-            (Preorder.frestrictLe k)) ⊗ₘ
-          (stepKernel (avssSpec (t := t) sec corr coeffs) A k) =
-        (traceDist (avssSpec (t := t) sec corr coeffs) A μ₀).map
-          (fun ω => (Preorder.frestrictLe k ω, ω (k+1))) := by
-      unfold traceDist
-      exact ProbabilityTheory.Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure
-    have h_inner : ∀ᵐ h ∂((traceDist (avssSpec (t := t) sec corr coeffs) A μ₀).map
-          (Preorder.frestrictLe k)),
-        ∀ᵐ y ∂(stepKernel (avssSpec (t := t) sec corr coeffs) A k h),
-          y.1.coeffs = h.currentState.coeffs :=
-      Filter.Eventually.of_forall fun h =>
-        avssSpec_stepKernel_coeffs_AE sec corr A k h
-    have hjoint :
-        ∀ᵐ x ∂(((traceDist (avssSpec (t := t) sec corr coeffs) A μ₀).map
-              (Preorder.frestrictLe k)) ⊗ₘ
-            (stepKernel (avssSpec (t := t) sec corr coeffs) A k)),
-          x.2.1.coeffs = (FinPrefix.currentState x.1).coeffs :=
       Measure.ae_compProd_of_ae_ae MeasurableSet.of_discrete h_inner
     rw [hk] at hjoint
     rw [ae_map_iff hmeas_pair.aemeasurable MeasurableSet.of_discrete] at hjoint
@@ -11642,20 +11546,17 @@ structure simSyncInv (corr : Finset (Fin n)) (s s' : AVSSState n t F) : Prop whe
   /-- Honest parties' `output` fields agree on `isSome`. -/
   local_honest_output_isSome :
     ∀ p, p ∉ corr → (s.local_ p).output.isSome = (s'.local_ p).output.isSome
-  /-- The row polynomials at corrupt parties agree. -/
-  rowPoly_corrupt_eq : ∀ p ∈ corr,
-    rowPolyOfDealer s.partyPoint s.coeffs p =
-      rowPolyOfDealer s'.partyPoint s'.coeffs p
   /-- Phase 8.1: per-party dealer payloads agree on `isSome` (so the
   new `(dealerMessages p).isSome` gate of `partyDeliver` /
   `partyCorruptDeliver` decides identically). -/
   dealerMessages_isSome_eq :
     ∀ p, (s.dealerMessages p).isSome = (s'.dealerMessages p).isSome
-  /-- Phase 8.1: at corrupt parties the dealer payloads agree
-  pointwise.  This holds because (a) `dealerShare` writes the same
-  `colPoly = fun _ => 0` placeholder on both sides, and (b) the
-  `rowPoly` payload is `rowPolyOfDealer …` whose value at corrupt
-  parties is pinned by `rowPoly_corrupt_eq`. -/
+  /-- Phase 8.1 / 8.5d-β: at corrupt parties the dealer payloads agree
+  pointwise.  Post-Phase-8.5d-β this is preserved via
+  `dealerCommit_corrupt_eq` (the per-party commitment is fixed at
+  init and never modified by `avssStep`); `dealerShareTo r` for
+  corrupt `r` writes the same payload to `dealerMessages r` on both
+  sides. -/
   dealerMessages_corrupt_eq :
     ∀ p ∈ corr, s.dealerMessages p = s'.dealerMessages p
   /-- Phase 8.5d-β: at corrupt parties the dealer's per-party
@@ -11693,7 +11594,6 @@ theorem symm (h : simSyncInv corr s s') : simSyncInv corr s' s :=
     local_honest_readySent := fun p hp => (h.local_honest_readySent p hp).symm
     local_honest_output_isSome :=
       fun p hp => (h.local_honest_output_isSome p hp).symm
-    rowPoly_corrupt_eq := fun p hp => (h.rowPoly_corrupt_eq p hp).symm
     dealerMessages_isSome_eq := fun p => (h.dealerMessages_isSome_eq p).symm
     dealerMessages_corrupt_eq :=
       fun p hp => (h.dealerMessages_corrupt_eq p hp).symm
@@ -11860,7 +11760,6 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         local_honest_readySent := fun p hp => h.local_honest_readySent p hp
         local_honest_output_isSome :=
           fun p hp => h.local_honest_output_isSome p hp
-        rowPoly_corrupt_eq := fun p hp => h.rowPoly_corrupt_eq p hp
         dealerMessages_isSome_eq := ?_
         dealerMessages_corrupt_eq := ?_
         dealerCommit_corrupt_eq := h.dealerCommit_corrupt_eq }
@@ -11899,7 +11798,6 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         local_honest_readyReceived := ?_
         local_honest_readySent := ?_
         local_honest_output_isSome := ?_
-        rowPoly_corrupt_eq := ?_
         dealerMessages_isSome_eq := h.dealerMessages_isSome_eq
         dealerMessages_corrupt_eq := h.dealerMessages_corrupt_eq
         dealerCommit_corrupt_eq := h.dealerCommit_corrupt_eq }
@@ -11943,7 +11841,6 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         exact h.local_honest_output_isSome p hp
       · simp only [avssStep, setLocal_local_ne _ _ _ _ hpq]
         exact h.local_honest_output_isSome p hp
-    · intro p hp; simp only [avssStep]; exact h.rowPoly_corrupt_eq p hp
   | partyCorruptDeliver q =>
     have hq_corr : q ∈ corr := h.corrupted_corr ▸ hgate.2.1
     refine
@@ -11962,7 +11859,6 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         local_honest_readyReceived := ?_
         local_honest_readySent := ?_
         local_honest_output_isSome := ?_
-        rowPoly_corrupt_eq := ?_
         dealerMessages_isSome_eq := h.dealerMessages_isSome_eq
         dealerMessages_corrupt_eq := h.dealerMessages_corrupt_eq
         dealerCommit_corrupt_eq := h.dealerCommit_corrupt_eq }
@@ -12001,7 +11897,6 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
       have hpq : p ≠ q := fun heq => hp (heq ▸ hq_corr)
       simp only [avssStep, setLocal_local_ne _ _ _ _ hpq]
       exact h.local_honest_output_isSome p hp
-    · intro p hp; simp only [avssStep]; exact h.rowPoly_corrupt_eq p hp
   | partyEchoSend q =>
     refine
       { partyPoint_eq := h.partyPoint_eq
@@ -12019,7 +11914,6 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         local_honest_readyReceived := ?_
         local_honest_readySent := ?_
         local_honest_output_isSome := ?_
-        rowPoly_corrupt_eq := ?_
         dealerMessages_isSome_eq := h.dealerMessages_isSome_eq
         dealerMessages_corrupt_eq := h.dealerMessages_corrupt_eq
         dealerCommit_corrupt_eq := h.dealerCommit_corrupt_eq }
@@ -12066,7 +11960,6 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         exact h.local_honest_output_isSome p hp
       · simp only [avssStep, setLocal_local_ne _ _ _ _ hpq]
         exact h.local_honest_output_isSome p hp
-    · intro p hp; simp only [avssStep]; exact h.rowPoly_corrupt_eq p hp
   | partyEchoReceive q r =>
     refine
       { partyPoint_eq := h.partyPoint_eq
@@ -12084,7 +11977,6 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         local_honest_readyReceived := ?_
         local_honest_readySent := ?_
         local_honest_output_isSome := ?_
-        rowPoly_corrupt_eq := ?_
         dealerMessages_isSome_eq := h.dealerMessages_isSome_eq
         dealerMessages_corrupt_eq := h.dealerMessages_corrupt_eq
         dealerCommit_corrupt_eq := h.dealerCommit_corrupt_eq }
@@ -12132,7 +12024,6 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         exact h.local_honest_output_isSome p hp
       · simp only [avssStep, setLocal_local_ne _ _ _ _ hpq]
         exact h.local_honest_output_isSome p hp
-    · intro p hp; simp only [avssStep]; exact h.rowPoly_corrupt_eq p hp
   | partyReady q =>
     refine
       { partyPoint_eq := h.partyPoint_eq
@@ -12150,7 +12041,6 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         local_honest_readyReceived := ?_
         local_honest_readySent := ?_
         local_honest_output_isSome := ?_
-        rowPoly_corrupt_eq := ?_
         dealerMessages_isSome_eq := h.dealerMessages_isSome_eq
         dealerMessages_corrupt_eq := h.dealerMessages_corrupt_eq
         dealerCommit_corrupt_eq := h.dealerCommit_corrupt_eq }
@@ -12197,7 +12087,6 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         exact h.local_honest_output_isSome p hp
       · simp only [avssStep, setLocal_local_ne _ _ _ _ hpq]
         exact h.local_honest_output_isSome p hp
-    · intro p hp; simp only [avssStep]; exact h.rowPoly_corrupt_eq p hp
   | partyAmplify q =>
     refine
       { partyPoint_eq := h.partyPoint_eq
@@ -12215,7 +12104,6 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         local_honest_readyReceived := ?_
         local_honest_readySent := ?_
         local_honest_output_isSome := ?_
-        rowPoly_corrupt_eq := ?_
         dealerMessages_isSome_eq := h.dealerMessages_isSome_eq
         dealerMessages_corrupt_eq := h.dealerMessages_corrupt_eq
         dealerCommit_corrupt_eq := h.dealerCommit_corrupt_eq }
@@ -12262,7 +12150,6 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         exact h.local_honest_output_isSome p hp
       · simp only [avssStep, setLocal_local_ne _ _ _ _ hpq]
         exact h.local_honest_output_isSome p hp
-    · intro p hp; simp only [avssStep]; exact h.rowPoly_corrupt_eq p hp
   | partyReceiveReady q r =>
     refine
       { partyPoint_eq := h.partyPoint_eq
@@ -12280,7 +12167,6 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         local_honest_readyReceived := ?_
         local_honest_readySent := ?_
         local_honest_output_isSome := ?_
-        rowPoly_corrupt_eq := ?_
         dealerMessages_isSome_eq := h.dealerMessages_isSome_eq
         dealerMessages_corrupt_eq := h.dealerMessages_corrupt_eq
         dealerCommit_corrupt_eq := h.dealerCommit_corrupt_eq }
@@ -12328,7 +12214,6 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         exact h.local_honest_output_isSome p hp
       · simp only [avssStep, setLocal_local_ne _ _ _ _ hpq]
         exact h.local_honest_output_isSome p hp
-    · intro p hp; simp only [avssStep]; exact h.rowPoly_corrupt_eq p hp
   | partyOutput q =>
     have hq : q ∉ corr := by
       have := hgate.1; intro h'; exact this (h.corrupted_corr ▸ h')
@@ -12348,7 +12233,6 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         local_honest_readyReceived := ?_
         local_honest_readySent := ?_
         local_honest_output_isSome := ?_
-        rowPoly_corrupt_eq := ?_
         dealerMessages_isSome_eq := h.dealerMessages_isSome_eq
         dealerMessages_corrupt_eq := h.dealerMessages_corrupt_eq
         dealerCommit_corrupt_eq := h.dealerCommit_corrupt_eq }
@@ -12391,7 +12275,6 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
       · subst hpq; simp only [avssStep, setLocal_local_self]; rfl
       · simp only [avssStep, setLocal_local_ne _ _ _ _ hpq]
         exact h.local_honest_output_isSome p hp
-    · intro p hp; simp only [avssStep]; exact h.rowPoly_corrupt_eq p hp
 end simSyncInv
 
 -- Per-step simulate matching: under `simSyncInv` on initial states,
@@ -12473,12 +12356,11 @@ theorem avssSimulateTrace_simSyncInv {corr : Finset (Fin n)}
 
 -- **Joint factoring:** if two states are simulate-synced, then both
 -- `simAlgebraicView` and `simSchedulePrefix` evaluate identically.
--- The first component of `simAlgebraicView` is `rowPolyOfDealer
--- s_0.partyPoint s_0.coeffs p` for `p ∈ corr ⊇ C`, which agrees by
--- `rowPoly_corrupt_eq`.  The second is the `delivered` bit at corrupt
--- parties at every step, which agrees because corrupt locals agree
--- under `simSyncInv` (preserved at every step).  `simSchedulePrefix`
--- agrees by `avssSimulateTrace_simSyncInv` (action equality).
+-- The `simAlgebraicView` data depends only on the corrupt-party
+-- locals + the per-party `dealerCommit`, which agree under
+-- `simSyncInv` (`local_corrupt_eq` and `dealerCommit_corrupt_eq`).
+-- `simSchedulePrefix` agrees by `avssSimulateTrace_simSyncInv`
+-- (action equality on the simulated trace).
 theorem simAlgebraicView_simSchedulePrefix_eq_of_simSyncInv
     {corr : Finset (Fin n)}
     (R : AVSSRushingAdversary n t F corr)
@@ -12553,11 +12435,10 @@ theorem simSyncInv_avssInitState
     simSyncInv corr
       (avssInitState (n := n) sec corr partyPoint dealerHonest c)
       (avssInitState (n := n) sec' corr partyPoint dealerHonest c') := by
-  -- Phase 8.5d-β: under the deprecated placeholder `s.coeffs = (fun _ _ => 0)`,
-  -- `rowPoly_corrupt_eq` is trivially true (both sides reduce to `fun l => 0`).
-  -- All other fields agree by construction of `avssInitState`; the new
-  -- `dealerCommit_corrupt_eq` field uses `h_rp` (rowPoly equality) plus the
-  -- `colPoly = fun _ => 0` agreement to derive payload equality at corrupt p.
+  -- All fields agree by construction of `avssInitState`; the load-bearing
+  -- `dealerCommit_corrupt_eq` uses `h_rp` (rowPoly equality across c/c')
+  -- plus the `colPoly = fun _ => 0` agreement to derive per-party payload
+  -- equality at corrupt p.
   refine
     { partyPoint_eq := rfl
       corrupted_eq := rfl
@@ -12574,7 +12455,6 @@ theorem simSyncInv_avssInitState
       local_honest_readyReceived := fun _ _ => rfl
       local_honest_readySent := fun _ _ => rfl
       local_honest_output_isSome := fun _ _ => rfl
-      rowPoly_corrupt_eq := fun _ _ => rfl
       dealerMessages_isSome_eq := fun _ => rfl
       dealerMessages_corrupt_eq := fun _ _ => rfl
       dealerCommit_corrupt_eq := ?_ }
