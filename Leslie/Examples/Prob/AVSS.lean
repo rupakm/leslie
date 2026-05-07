@@ -5542,6 +5542,87 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n))
 
 /-! ## §13. Termination theorems (Phase 3) -/
 
+/-! ### §13.0 Consistent-quorum hypothesis (Phase 8.5d-γ)
+
+Under Phase 8.5d-α (per-party `dealerShareTo`), a corrupt dealer can
+selectively short-share — refusing to fire `dealerShareTo p` for some
+honest `p`.  Termination is no longer unconditional under fair
+scheduling: the BC running-min route requires that progress actually
+happen, which under selective non-broadcast requires at least an
+`(n−t)`-sized honest quorum to receive a populated dealer message.
+
+The trajectory-AE predicate `consistent_quorum_AE` captures exactly
+this runtime condition (independent of the bivariate-polynomial
+witness in μ₀, since the per-party `dealerSent`/`dealerMessages`
+flags only depend on which `dealerShareTo p` actions have fired).
+For an honest dealer, `avssFairActions` already mandates that every
+`dealerShareTo p` (for honest `p`) eventually fires, so a
+trivial-schedule sanity-check lemma below confirms the form is
+satisfiable. For a corrupt dealer, this is a substantive runtime
+condition tied to the CR caveat (C4) of `AVSS-MODEL-NOTES.md`. -/
+
+/-- Trajectory-AE consistent-quorum hypothesis (Phase 8.5d-γ): AE on
+traces of the AVSS spec under adversary `A`, eventually a coalition
+of at least `n - t` honest parties has both `dealerSent p = true`
+and `dealerMessages p ≠ none`.
+
+This is the conditional-CR runtime hypothesis under selective
+non-broadcast (C4): without it, a corrupt dealer that refuses
+`dealerShareTo p` for too many honest `p` blocks termination, and
+the unconditional fair-AST claim from Phase 8.5b-δ no longer
+applies. -/
+def consistent_quorum_AE (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) : Prop :=
+  ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
+    ∃ k₀ : ℕ, ∀ k ≥ k₀,
+      ((Finset.univ : Finset (Fin n)).filter
+        (fun p => p ∉ corr ∧
+          (ω k).1.dealerSent p = true ∧
+          (ω k).1.dealerMessages p ≠ none)).card ≥ n - t
+
+/-- Sanity-check (Phase 8.5d-γ): under any schedule that AE delivers
+to **every** honest party (i.e. `dealerSent p = true ∧ dealerMessages p
+≠ none` for all `p ∉ corr`, eventually), the consistent-quorum
+hypothesis is satisfied.  This is the trivial witness establishing
+that the form is reasonable: an honest dealer firing `dealerShareTo p`
+for all honest `p` (mandated by `avssFairActions`) yields exactly this
+condition, so honest-dealer scheduling automatically supplies the
+hypothesis.  The cardinality argument: the filtered set equals
+`univ.filter (· ∉ corr) = univ \ corr`, of cardinality `n - corr.card
+≥ n - t` (by `h_corr`). -/
+theorem consistent_quorum_AE_of_all_honest_delivered
+    (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card ≤ t)
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (A : Adversary (AVSSState n t F) (AVSSAction n F))
+    (h_all_delivered :
+      ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
+        ∃ k₀ : ℕ, ∀ k ≥ k₀, ∀ p, p ∉ corr →
+          (ω k).1.dealerSent p = true ∧ (ω k).1.dealerMessages p ≠ none) :
+    consistent_quorum_AE sec corr coeffs μ₀ A := by
+  unfold consistent_quorum_AE
+  filter_upwards [h_all_delivered] with ω h
+  obtain ⟨k₀, hk₀⟩ := h
+  refine ⟨k₀, fun k hk => ?_⟩
+  have hfilter_eq :
+      ((Finset.univ : Finset (Fin n)).filter
+          (fun p => p ∉ corr ∧
+            (ω k).1.dealerSent p = true ∧
+            (ω k).1.dealerMessages p ≠ none)) =
+      (Finset.univ : Finset (Fin n)).filter (fun p => p ∉ corr) := by
+    apply Finset.filter_congr
+    intro p _
+    refine ⟨fun ⟨h, _, _⟩ => h, fun hp => ⟨hp, hk₀ k hk p hp⟩⟩
+  rw [hfilter_eq]
+  have hcompl :
+      ((Finset.univ : Finset (Fin n)).filter (fun p => p ∉ corr)) = corrᶜ := by
+    ext x
+    simp [Finset.mem_filter, Finset.mem_compl]
+  rw [hcompl, Finset.card_compl, Fintype.card_fin]
+  exact Nat.sub_le_sub_left h_corr n
+
 /-- Trajectory-form termination via the **BC running-min route**
 `pi_n_AST_fair_with_progress_bc_of_running_min_drops`.  Every fair
 execution almost-surely reaches a terminated state (every honest
@@ -5586,6 +5667,8 @@ theorem avss_termination_AS_fair_traj
     (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
     (A : Leslie.Prob.TrajectoryFairAdversary
             (avssSpec (t := t) sec corr coeffs) avssFair μ₀)
+    (_h_consistent_quorum :
+      consistent_quorum_AE sec corr coeffs μ₀ A.toAdversary)
     (h_drop_io : ∀ N : ℕ, FairASTCertificate.TrajectoryFairRunningMinDropIO
         (avssSpec (t := t) sec corr coeffs) avssFair
         (avssCert (t := t) sec corr coeffs h_corr) μ₀ A.toFair N) :
@@ -5633,7 +5716,11 @@ discharged via `avss_termination_AS_fair_traj` (the **BC running-min
 route**).  Wrapper preserving the original `avss_termination_AS_fair`
 name and signature for downstream callers.  Phase 8.5b-δ replaced the
 deterministic-descent route with the BC running-min route — see
-`avss_termination_AS_fair_traj`'s docstring. -/
+`avss_termination_AS_fair_traj`'s docstring.
+
+Phase 8.5d-γ: takes `h_consistent_quorum` (the conditional-CR
+runtime hypothesis under selective non-broadcast). See
+`consistent_quorum_AE`. -/
 theorem avss_termination_AS_fair
     (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card ≤ t)
     (coeffs : Fin (t+1) → Fin (t+1) → F)
@@ -5641,11 +5728,14 @@ theorem avss_termination_AS_fair
     (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
     (A : Leslie.Prob.TrajectoryFairAdversary
             (avssSpec (t := t) sec corr coeffs) avssFair μ₀)
+    (h_consistent_quorum :
+      consistent_quorum_AE sec corr coeffs μ₀ A.toAdversary)
     (h_drop_io : ∀ N : ℕ, FairASTCertificate.TrajectoryFairRunningMinDropIO
         (avssSpec (t := t) sec corr coeffs) avssFair
         (avssCert (t := t) sec corr coeffs h_corr) μ₀ A.toFair N) :
     AlmostDiamond (avssSpec (t := t) sec corr coeffs) A.toAdversary μ₀ terminated :=
-  avss_termination_AS_fair_traj sec corr h_corr coeffs μ₀ h_init A h_drop_io
+  avss_termination_AS_fair_traj sec corr h_corr coeffs μ₀ h_init A
+    h_consistent_quorum h_drop_io
 
 /-! ## §13.5 Dealer-messages consistency invariant (Phase 8.1)
 
@@ -9901,7 +9991,11 @@ witnesses formulated against that lift.
 Phase 8.5b-δ: switched to BC running-min route; the
 `TrajectoryUMono`/`TrajectoryFairStrictDecrease` witnesses required
 by the deterministic-descent route have been replaced by a single
-per-sublevel `TrajectoryFairRunningMinDropIO` witness. -/
+per-sublevel `TrajectoryFairRunningMinDropIO` witness.
+
+Phase 8.5d-γ: takes `h_consistent_quorum` (the conditional-CR
+runtime hypothesis under selective non-broadcast). See
+`consistent_quorum_AE`. -/
 theorem avss_termination_AS_fair_rushing
     (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card ≤ t)
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
@@ -9910,6 +10004,8 @@ theorem avss_termination_AS_fair_rushing
     (h_progress : FairASTCertificate.TrajectoryFairProgress
       (avssSpec (t := t) sec corr coeffs) avssFair μ₀
       ⟨R.toAdversary, trivial⟩)
+    (h_consistent_quorum :
+      consistent_quorum_AE sec corr coeffs μ₀ R.toAdversary)
     (h_drop_io : ∀ N : ℕ, FairASTCertificate.TrajectoryFairRunningMinDropIO
       (avssSpec (t := t) sec corr coeffs) avssFair
       (avssCert (t := t) sec corr coeffs h_corr) μ₀
@@ -9917,6 +10013,7 @@ theorem avss_termination_AS_fair_rushing
     AlmostDiamond (avssSpec (t := t) sec corr coeffs) R.toAdversary μ₀ terminated :=
   avss_termination_AS_fair sec corr h_corr coeffs μ₀ h_init
     ⟨⟨R.toAdversary, trivial⟩, h_progress⟩
+    h_consistent_quorum
     h_drop_io
 
 /-- Honest-dealer correctness against a *rushing* adversary: with an

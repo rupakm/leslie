@@ -1,10 +1,71 @@
-# Phase 8.5d Checkpoint — β-followup-7 FULL CLOSURE: 0 sorries, headline closed for both dealerHonest values
+# Phase 8.5d Checkpoint — γ-chain landed: termination re-scoped to consistent-quorum hypothesis (0 sorries)
 
-**Branch**: `feat/randomized-leslie-m3-avss-phase8-5d-beta`
-**Base**: PR #68 (8.5d-α, dealerShareTo per-party action surgery).
+**Branch**: `feat/randomized-leslie-m3-avss-phase8-5d-gamma`
+**Base**: PR #69 (8.5d-β, `coeffs` migration to μ₀, 0 sorries, fully closed β-chain).
 **Build state**: green at `lake build Leslie.Prob.Index` (2699 jobs)
-and `lake build Leslie.Examples.Prob.AVSS` (2668 jobs).
-**Sorry count**: **0** in AVSS.lean. PR #69 closes with full β-chain closure.
+and `lake build Leslie.Examples.Prob.AVSS` (no errors, no sorries).
+**Sorry count**: **0** in AVSS.lean.
+
+## Phase 8.5d-γ — what landed
+
+Re-scoped `avss_termination_AS_fair` and its `_traj` / `_rushing`
+variants to take a new `h_consistent_quorum` hypothesis capturing
+the conditional-CR runtime requirement under selective non-broadcast
+(C4): AE on traces, eventually a coalition of at least `n - t`
+honest parties has both `dealerSent p = true` and `dealerMessages p
+≠ none`.
+
+This formalises CR '93's conditional-termination semantics that was
+previously bypassed by the Phase-B unconditional-fairness route
+(`dealerShare` forced into `avssFairActions`). Under Phase 8.5d-α
+per-party `dealerShareTo`, a corrupt dealer can selectively
+short-share — fair scheduling no longer guarantees every honest party
+gets a share, so termination becomes conditional.
+
+**New definitions in `AVSS.lean`** (§13.0, just before the
+termination theorems):
+
+- `consistent_quorum_AE sec corr coeffs μ₀ A` — trajectory-AE form
+  of the conditional-CR hypothesis.
+- `consistent_quorum_AE_of_all_honest_delivered` — sanity-check
+  lemma: any AE-trajectory schedule that delivers to every honest
+  party (`∀ p ∉ corr, dealerSent p = true ∧ dealerMessages p ≠
+  none`, eventually) satisfies `consistent_quorum_AE`.  Card
+  argument: the filtered set equals `corrᶜ`, of cardinality `n -
+  corr.card ≥ n - t` via `h_corr`.
+
+**Re-scoped theorems**:
+
+| Theorem | New hypothesis position |
+|---|---|
+| `avss_termination_AS_fair_traj` | between `A` (TrajectoryFairAdversary) and `h_drop_io` |
+| `avss_termination_AS_fair` (wrapper) | same, threaded into `_traj` |
+| `avss_termination_AS_fair_rushing` | between `h_progress` and `h_drop_io`, threaded into wrapper |
+
+The proof bodies are unchanged: the existing BC running-min route
+(`pi_n_AST_fair_with_progress_bc_of_running_min_drops`, supplied via
+`h_drop_io`) does the operational lifting; the new
+`h_consistent_quorum` documents the structural CR-conditional
+assumption that downstream callers must establish.
+
+The `_traj` proof binds the new hypothesis as `_h_consistent_quorum`
+(unused — it's the structural assumption that justifies *why*
+`h_drop_io` should be supplied, not a derivation source).
+
+**Phase 9 deferral**: `avss_termination_AS_fair_randomised` and
+`avss_termination_AS_fair_rushing_randomised` (PRs #54/#55) live on
+the Phase 9 branch chain (independent of Phase 8); their re-scoping
+is a future merge-time concern when Phase 8 and Phase 9 reconcile.
+
+**Files touched**:
+
+- `Leslie/Examples/Prob/AVSS.lean` — +~80 LOC (`consistent_quorum_AE`
+  def, sanity-check lemma, three theorem signature updates).
+- `Leslie/Examples/Prob/AVSS-MODEL-NOTES.md` — §11.4 marked ✅
+  resolved by Phase 8.5d-γ; §12.1 row 8.5d updated to ✅ landed.
+- `PHASE-8-5d-CHECKPOINT.md` — this update.
+
+## Phase 8.5d-β-followup-7 — what landed (kept for reference)
 
 ## Phase 8.5d-β-followup-7 — what landed
 
