@@ -18,15 +18,28 @@ literature or when AVSS is used as a primitive for downstream protocols.
 | Adversary information | Rushing — sees corrupt-coalition view + in-flight messages | **Two adversary types coexist**: plain `Adversary` (full-state access; legacy) and `RushingAdversary` (view-restricted; Phase 7.1, generic in `Adversary.lean`). The classical AVSS theorems are restated against both (Phase 7.3) |
 | Static vs. adaptive corruption | Both treated; usually adaptive | Static (`corrupted` fixed at `μ₀` time) |
 | Dealer-to-party communication | Per-party row + column polys, possibly inconsistent under corrupt dealer | Single global `s.coeffs` field; consistent by construction |
-| Dealer's distribution choice | Honest = uniform with `f(0,0) = sec`; corrupt = adversarial | Both honest and corrupt dealer get uniform `coeffs` from `μ₀` |
-| Secrecy granularity | Trace-level on corrupt parties' actual observable view | Trace-level on the algebraic ideal grid `bivEval coeffs ...` |
+| Dealer's distribution choice | Honest = uniform of bidegree ≤ (t,t) with `f(0,0) = sec`; corrupt = adversarial | **`Polynomial.uniformBivariateWithFixedZero` is degenerate** — fixes all axis coefficients to 0, not just `f(0,0)`. Honest output equals `sec` directly (every share is `sec`), and corrupt-party row poly's constant term is `sec`. See §10 below |
+| Secrecy granularity | Trace-level on corrupt parties' actual observable view | Trace-level on the **algebraic ideal grid** `bivEval coeffs ...` at non-axis points (axis points are degenerate by point above). Operational view secrecy is **vacuously true** under the degenerate distribution — see §9–§10 |
 | Network model | Asynchronous with arbitrary delays, point-to-point messages | `Finset`-based in-flight queues; eventual delivery via fairness |
-| Cryptographic strength | Information-theoretic | Information-theoretic (aligned) |
+| Cryptographic strength | Information-theoretic | Information-theoretic (aligned in design) |
 
 The formalisation is sound and useful as a stepping stone, but the gap between
 its statements and the literature's statements is non-trivial.  Consumers of
 this module should consult the relevant section below before relying on a
 particular property.
+
+⚠ **Important since the May 2026 audit (§9–§10):** the polynomial distribution
+`Polynomial.uniformBivariateWithFixedZero` is structurally degenerate: it
+samples polynomials with **only** non-axis monomials random, so `f(x, 0) = sec`
+for all `x`. Under this distribution the formalised classical theorems
+(`avss_correctness_AS`, `avss_commitment_AS`, `avss_reconstruction`) collapse
+to the *simple* VSS form ("all honest shares = `sec`"), and the conditional
+operational-secrecy theorems (`avss_secrecy_AS_view_conditional`,
+`avss_secrecy_AS_view_rushing`) hold **vacuously** because their `h_aux`
+hypothesis is provably false. A planned **distribution refactor** (§10)
+fixes this; readers who care about the operational secrecy story should
+either wait for the refactor or read §9–§10 carefully before citing the
+existing theorems.
 
 ## 1. Adversary model
 
@@ -242,17 +255,31 @@ Two distinct secrecy theorems are formalised:
   versions agree pointwise, and both reduce to the polynomial-level theorem.
 
 - Operational view secrecy at the corrupt-coalition's actual observable
-  state (`coalitionView` projecting onto `local_` fields) is **not yet
-  formalised**.  See **Future directions**.
+  state (`coalitionView` projecting onto `local_` fields) is formalised
+  in conditional form: `avss_secrecy_AS_view_conditional` (PR #33) and
+  `avss_secrecy_AS_view_rushing` (PR #35) both take an auxiliary
+  hypothesis `h_aux` about joint marginal invariance of
+  `(coalitionAlgebraicView, schedulePrefix)`.  ⚠ Under the current
+  polynomial distribution this hypothesis is **provably false**; see
+  §9 and §10.  The conditional theorems hold vacuously and do not
+  carry useful operational content until §10's distribution refactor
+  lands.
 
 ### Implication
 
 `avss_secrecy_AS` is well-named only with the qualifier *"of the algebraic
-grid view"*.  It's a meaningful step (in particular, it lifts the polynomial-
-level secrecy through the `traceDist` infrastructure) but it doesn't say
-anything about what corrupt parties *operationally* observe.  In particular
-it's silent on what `(s.local_ p).rowPoly` distribution looks like for
-corrupt `p` after `partyCorruptDeliver` fires.
+grid view at non-axis points"*.  It's a meaningful step (it lifts the
+polynomial-level secrecy through the `traceDist` infrastructure) but it
+doesn't say anything about what corrupt parties *operationally* observe.
+The conditional theorems that target the operational view (`coalitionView`
+projecting `local_` including `rowPoly`) are vacuously true because of
+§10 — the constant term of every honest party's row poly is exactly
+`sec` under the current degenerate distribution, observable to any
+corrupt party that runs `partyCorruptDeliver`.
+
+The upshot: until §10 lands, **the only meaningful trace-level secrecy
+statement we have is at the algebraic grid view, not the operational
+local-state view**.
 
 ## 5. Network model
 
@@ -365,17 +392,177 @@ Lest the above read as a litany of caveats, here's what the formalisation
   `avssStep_coalitionGrid_invariant`.  This is the key structural fact that
   enables the step-`k` lift.
 
-## 9. Phase 7.4–7.5 deferral — schedule-leakage closing theorem
+## 9. Phase 7.4–7.5 partial closure — schedule-leakage closing theorem
 
-### What's deferred
+### What this PR-set delivers (Phase 7.4 + 7.5, partial)
 
-Phase 7 (this PR-set) delivers the rushing-adversary *type machinery* and
-the classical-theorem wrappers (Phases 7.1–7.3, **landed**), plus the
-docs update (Phase 7.6, this section).  The two cryptographic-core
-deliverables originally scoped for Phase 7 — Phase 7.4 (a generic
-`RushingAdversary.schedule_factors_through_view` lemma) and Phase 7.5
-(the headline `avss_secrecy_AS_view_rushing` that composes 7.4 with
-PR #33's conditional theorem) — are **deferred to a follow-up PR**.
+Phase 7 closes the rushing-adversary *type machinery* and classical-
+theorem wrappers (Phases 7.1–7.3, **landed**) plus the structural
+foundation for the schedule-leakage half of the headline (this section,
+**partially landed**):
+
+  * **Phase 7.4 (partial — simulate machinery).** AVSS.lean §19.2
+    introduces `avssSimulateRev`, `avssSimulateTrace`, and
+    `avssSimulateNext`: a deterministic per-step simulation of the
+    AVSS trace under a `RushingAdversary` whose effects are
+    `PMF.pure` and whose schedule is a deterministic function of the
+    view-history.  Plus structural lemmas: list length, head, succ
+    recurrence.  These are the foundation on which the inductive
+    AE-bridge `traceDist sec R.toAdversary μ₀ ⇝ μ₀.map (avssSimulateTrace R)`
+    is built.
+  * **Phase 7.5 (thin composition).** AVSS.lean §19.3 introduces
+    `avss_secrecy_AS_view_rushing`, a thin wrapper around PR #33's
+    `avss_secrecy_AS_view_conditional` that plugs in `R.toAdversary`
+    for the underlying adversary and bridges the
+    `MeasurableSpace`-instance discrepancy on
+    `↥↑C → AVSSLocalState n t F` (the conditional uses default Pi;
+    §19's `instMeasurableSpaceAVSSRushingView` shadows it locally).
+    The hypothesis `h_aux` (joint marginal invariance of
+    `(coalitionAlgebraicView, schedulePrefix)`) is unchanged from
+    the conditional — see "What's still deferred" below for what
+    discharges it.
+
+### What's still deferred (substantive Phase 7.4 + algebraic core)
+
+The two pieces remaining for an unconditional headline:
+
+  * **Phase 7.4 inductive AE-bridge (~300–500 LOC).**  The proof that
+    under `R.toAdversary`, the trace AE-equals `avssSimulateTrace R
+    (ω 0).1` at every step `k`.  Threads the marginal recurrence
+    `Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`
+    through the per-step Dirac kernel (each kernel branch is a Dirac
+    by `PMF.pure` on the effect side and by Dirac on the gate-fail /
+    no-schedule branches), inducting on `k` from the base
+    `(ω 0).2 = none` AE.  Once landed, the AE-bridge implies that
+    `schedulePrefix ω k` AE-equals a deterministic function of
+    `(coalitionAlgebraicView corr ω k)` — discharging the schedule-
+    leakage half.
+
+  * **Algebraic-core row-poly secrecy (~+200 LOC).**  The
+    polynomial-manipulation strengthening of
+    `BivariateShamir.bivariate_shamir_secrecy` that lifts the grid-
+    pointwise theorem (sec-invariant for `|C| × |D|` evaluations
+    with `|C|, |D| ≤ t`) to a *row-poly* form (sec-invariant for
+    `|C|` row polynomials, each a `Fin (t+1) → F` vector of
+    coefficients).  This is what's needed for `cAV.1`'s marginal
+    (the corrupt coalition's row polys at the initial state) to be
+    sec-invariant.  Together with the Phase 7.4 AE-bridge,
+    discharges `h_aux` of the conditional unconditionally.
+
+When both pieces land, `avss_secrecy_AS_view_rushing` becomes
+unconditional and is the literature-faithful operational secrecy
+theorem under the AVSS state model.
+
+### Why "row-poly secrecy" is *structurally false* under the current distribution (audit, 2026-05-04)
+
+A direct attempt to discharge `h_aux` under the current AVSS
+distribution **cannot succeed**, and the obstruction is at the
+distribution-design level, not the proof-engineering level.  Recording
+the audit here so a future attempt does not repeat it.
+
+**Observation.**
+`Polynomial.uniformBivariateWithFixedZero t t sec` (the distribution
+that `avssInitMeasure` couples to) is **not** the standard "uniform
+polynomial of bidegree ≤ (t, t) with `f(0, 0) = sec`".  Its def at
+`Leslie/Prob/Polynomial.lean:247–253` is:
+
+```
+(PMF.uniform (Fin dx → Fin dy → F)).map fun coefs =>
+    Polynomial.C (Polynomial.C s) +
+      ∑ i : Fin dx, ∑ j : Fin dy,
+        Polynomial.C (Polynomial.C (coefs i j)) *
+          Polynomial.X ^ (i.val + 1) *
+          (Polynomial.C Polynomial.X) ^ (j.val + 1)
+```
+
+Every monomial in the sum has both `X`-degree `≥ 1` *and* `Y`-degree
+`≥ 1`.  So all "axis" coefficients are forced to zero except the
+constant `(0, 0)` — which is `sec`.  Concretely:
+
+  * `coeffs(0, 0) = sec`
+  * `coeffs(k, 0) = 0` for every `k ≥ 1`
+  * `coeffs(0, l) = 0` for every `l ≥ 1`
+  * `coeffs(k, l)` for `k, l ≥ 1` is uniform random
+
+Equivalently, `f(x, 0) = sec` for **all** `x`, and symmetrically
+`f(0, y) = sec`.  This is why `Polynomial.bivariate_evals_uniform`
+carries the `0 ∉ pts_x ∪ pts_y` precondition: the axes are constants
+of `sec`, not uniformly distributed, and the proof's
+`step1 ∘ step2` factoring relies on the off-axis-only structure.
+
+**Consequence for `coalitionAlgebraicView.1`.**
+`rowPolyOfDealer pp coeffs p l = ∑_k coeffs(k, l) · pp(p)^k`.  At
+`l = 0` this evaluates to
+
+```
+rowPolyOfDealer pp coeffs p 0 = coeffs(0, 0) + ∑_{k ≥ 1} coeffs(k, 0) · pp(p)^k = sec
+```
+
+— **identically `sec` for every party `p`**.  Hence the `l = 0` row of
+`(coalitionAlgebraicView C ω k).1` is `Dirac (sec, sec, …, sec)` and
+
+```
+(traceDist sec).map (fun ω => coalitionAlgebraicView C ω k)
+≠
+(traceDist sec').map (fun ω => coalitionAlgebraicView C ω k)
+   for sec ≠ sec'
+```
+
+so `h_aux` of `avss_secrecy_AS_view_conditional` is **false** under
+the current distribution whenever `sec ≠ sec'`.  The conclusion of
+the conditional is also false (since the operational `coalitionView`
+stores the full `rowPoly`, including the leaked `sec` constant).
+The conditional theorem holds vacuously (its hypothesis is false),
+not as a discharge target.
+
+**The fix is in the distribution, not the proof.**
+A literature-faithful row-poly secrecy needs:
+
+  1. A **true** uniform bivariate `f` of bidegree ≤ (t, t) with the
+     single constraint `f(0, 0) = sec` — i.e., all `(t + 1)² − 1`
+     other coefficients independently uniform in `F`.  Under that
+     distribution `f(x, 0)` is a Shamir polynomial in `x` with secret
+     `sec`, so by univariate Shamir secrecy `(f(x_p, 0))_{p ∈ corr}`
+     for `corr.card ≤ t` and distinct nonzero `partyPoint`s has
+     sec-invariant marginal — the row poly's constant is no longer
+     constant-`sec`.
+  2. Re-prove `bivariate_evals_uniform` under that distribution.  The
+     existing factoring (`step1 ∘ step2`) does not apply; a
+     Vandermonde + Lagrange argument does.
+  3. Re-prove `BivariateShamir.bivariate_shamir_secrecy_pts` against
+     the new distribution (it currently calls
+     `bivariate_evals_uniform` directly).
+  4. Migrate `avssInitState ∘ polyToCoeffs` to the new distribution
+     so `s.coeffs` carries the random axis coefficients (which then
+     propagate into `rowPolyOfDealer p 0`).
+
+**Scope.**
+Step 1 lives in `Leslie/Prob/Polynomial.lean` (owned).
+Step 2 lives in `Leslie/Prob/Polynomial.lean` (owned).
+Step 3 lives in `Leslie/Examples/Prob/BivariateShamir.lean`
+(**read-only** per the worker brief), so completing the chain in a
+single PR violates the constraint.  An additive path that adds
+`uniformBivariateFullWithFixedZero` and a parallel proof family
+without modifying `BivariateShamir.lean` is feasible (≈ 250–400 LOC)
+but lives in parallel to the existing infrastructure and requires a
+separate `avssInitMeasureFull` plus an alternate conditional /
+headline; it has not been pursued in this PR-set.
+
+**Bottom line.**
+The "+200 LOC algebraic-core" deferral cannot be discharged purely
+inside `BivariateShamir.bivariate_shamir_secrecy`'s grid form: the
+row-poly form is provably false under the current distribution, and
+the fix requires a distribution change that crosses an off-limits
+file.  Either the worker brief's read-only constraint on
+`BivariateShamir.lean` needs to be lifted, or the additive
+parallel-distribution path described above needs to be sanctioned,
+before this work item can be closed.
+
+### Original deferral (kept for context)
+
+The original deferral note from before this PR-set is preserved in
+the project's git history; the precise statement of what was deferred
+and the proof outline below still apply to the remaining work.
 
 ### Precise statement of the gap
 
@@ -455,6 +642,79 @@ the only remaining gap (relative to a literature-faithful AVSS) is
 per-party dealer messages (§2 above) — the classical "row + column
 secrecy" formulation which `BivariateShamir`'s deferred +200 LOC
 polynomial-manipulation work will eventually supply.
+
+## 10. Distribution refactor (planned, follows from §9 audit)
+
+§9's audit identified that `Polynomial.uniformBivariateWithFixedZero`
+is degenerate — every random monomial has both `X`-degree ≥ 1 and
+`Y`-degree ≥ 1, forcing all axis coefficients to zero and making
+`f(x, 0) = sec` for all `x`.  This blocks the operational-view secrecy
+story at the polynomial level.
+
+This section records the **planned distribution refactor** that
+unblocks the chain.
+
+### Target distribution
+
+```lean
+noncomputable def uniformBivariateFullWithFixedZero (dx dy : ℕ) (s : F) :
+    PMF (Polynomial (Polynomial F)) :=
+  -- (PMF.uniform (Fin (dx+1) → Fin (dy+1) → F)).map fun coefs =>
+  --   ∑ i, ∑ j,
+  --     Polynomial.C (Polynomial.C (if (i, j) = (0, 0) then s else coefs i j))
+  --       * X^i.val * (C X)^j.val
+  ...
+```
+
+i.e., a true uniform bidegree-`(dx, dy)` bivariate polynomial with
+**only the `(0, 0)` coefficient pinned to `s`** and all other
+`(dx + 1) * (dy + 1) - 1` coefficients independently uniform.
+
+Under this distribution, `f(α_p, 0) = ∑_k coeffs(k, 0) · α_p^k` is a
+genuine degree-`dx` Shamir polynomial in `α_p` with constant term
+`coeffs(0, 0) = s`.  For any `t` distinct nonzero evaluation points
+`(α_p)_{p ∈ corr}` with `corr.card ≤ t`, univariate Shamir secrecy
+gives that the marginal `(f(α_p, 0))_{p ∈ corr}` is sec-invariant.
+
+### Refactor plan (~250–400 LOC, 4 commits)
+
+| Step | File | LOC |
+|---|---|---|
+| 1. Add `uniformBivariateFullWithFixedZero` + show it's a probability measure | `Leslie/Prob/Polynomial.lean` | ~80 |
+| 2. Re-prove `bivariate_evals_uniform_full` (analogue of `bivariate_evals_uniform` for the new distribution; the marginal is uniform on `(pts_x → pts_y → F)` for any `pts_x, pts_y` with `0 ∉ pts_x` and `pts_x.card + 1 ≤ Fintype.card F`, etc.). The proof is by Vandermonde + Lagrange in each direction; replaces the existing `step1 ∘ step2` factoring | `Leslie/Prob/Polynomial.lean` | ~150 |
+| 3. Re-prove `BivariateShamir.bivariate_shamir_secrecy_pts` against the new distribution. **Requires lifting the read-only constraint on `BivariateShamir.lean`** — sanctioned for this work | `Leslie/Examples/Prob/BivariateShamir.lean` | ~80 |
+| 4. Migrate `avssInitMeasure` (and `avssInitPMF`, `polyToCoeffs`) to use the new distribution.  Update affected theorem preconditions in AVSS.lean (the existing `avss_secrecy_initPMF` and trace-level secrecy theorems retain the `0 ∉ partyPoint(C ∪ D)` precondition; the operational-view conditional theorems' `h_aux` becomes provable) | `Leslie/Examples/Prob/AVSS.lean` | ~50 |
+
+### What changes after the refactor
+
+| Theorem | Before refactor (current state) | After refactor |
+|---|---|---|
+| `avss_correctness_AS` | honest output = `bivEval coeffs (pp p) 0`, which collapses to `sec` for all `p` (degenerate) | honest output = `bivEval coeffs (pp p) 0`, which is the *per-party Shamir share* — different `p` get different shares |
+| `avss_commitment_AS` | every honest output = `coeffs 0 0` (collapses) | every honest output = `bivEval coeffs (pp p) 0` (per-party share) |
+| `avss_reconstruction` | trivial since all shares = `sec` | genuine Lagrange interpolation: `t + 1` distinct shares recover `coeffs 0 0` (and reconstruction across fewer shares is information-theoretically impossible by Shamir secrecy) |
+| `avss_secrecy` | grid form at non-axis points; meaningful but doesn't say anything about axis row-poly contents | unchanged, but now reads as the foundational ingredient for operational secrecy |
+| `avss_secrecy_AS_view_conditional` / `_rushing` | vacuously true (h_aux false) | genuinely meaningful — h_aux becomes provable, and the conditional becomes the real operational secrecy statement |
+
+### Phase 7.4 inductive AE-bridge (still required)
+
+Even after the distribution refactor, the inductive AE-bridge proof
+sketched in §9's "Path forward" remains: the proof that under a
+`RushingAdversary`, the schedule prefix at step `k` AE-equals a
+deterministic function of the algebraic-coalition view at step `k`.
+This proof was Phase 7.4's substantive form; it consumes the
+simulate machinery (PR #35 commit `39b24d0`).  Estimated ~300–500
+additional LOC of inductive trace plumbing.
+
+### Why the current PR-set didn't do the refactor
+
+The original worker brief made `BivariateShamir.lean` read-only.  The
+worker correctly stopped at the boundary and recorded the finding
+(commit `2de1f2b`) rather than violate the constraint.  Future workers
+on this refactor need explicit authorisation to modify
+`BivariateShamir.lean` (and the parallel-distribution path —
+add `uniformBivariateFullWithFixedZero` without touching the existing
+infrastructure — is the secondary fallback if `BivariateShamir.lean`
+remains off-limits).
 
 ## Future directions
 

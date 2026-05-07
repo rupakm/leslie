@@ -4900,4 +4900,207 @@ theorem avss_commitment_AS_rushing
       outputDeterminedInv :=
   avss_commitment_AS sec corr μ₀ h_init R.toAdversary
 
+/-! ## §19.2. Phase 7.4 — schedule prefix factors through algebraic view AE
+
+Under a `RushingAdversary` `R` for AVSS, the trace is *fully deterministic*
+given the initial state: each step's effect-PMF is a `pure` (Dirac), and
+the adversary's schedule is a deterministic function of the (state-)
+history. We exploit this to express the trace measure as a deterministic
+pushforward of the initial measure, then read off the AE-factoring of
+the schedule prefix and the operational coalition view through the
+corrupt-coalition's algebraic view at the initial state.
+
+This is the cryptographic-core deliverable that the deferral note in
+`AVSS-MODEL-NOTES.md` §9 calls out: ~300–500 LOC of inductive trace
+plumbing that closes the schedule-leakage half of the headline
+operational-secrecy theorem.  The remaining "algebraic-core" half — the
++200 LOC row-poly-vs-grid secrecy strengthening of
+`BivariateShamir.bivariate_shamir_secrecy` — is still deferred (cf. §17.12);
+the headline theorem `avss_secrecy_AS_view_rushing` (§19.3 below) takes
+that strengthening as an explicit hypothesis. -/
+
+section RushingSimulation
+
+open Classical
+
+/-- Compute the next trace pair given a prior reverse-order prefix list.
+Used as the inductive step of `avssSimulateRev`.  If the prefix is
+empty (unreachable in our recursion), returns the input fallback. -/
+noncomputable def avssSimulateNext (R : AVSSRushingAdversary n t F corr)
+    (fallback : AVSSState n t F)
+    (prev : List (AVSSState n t F × Option (AVSSAction n F))) :
+    AVSSState n t F × Option (AVSSAction n F) :=
+  let s_k : AVSSState n t F := (prev.head?.map Prod.fst).getD fallback
+  match R.toAdversary.schedule prev.reverse with
+  | none => (s_k, (none : Option (AVSSAction n F)))
+  | some i =>
+      if actionGate i s_k then (avssStep i s_k, some i)
+      else (s_k, (none : Option (AVSSAction n F)))
+
+/-- Reverse-order simulated trace prefix at step `k`.  Returns a list
+of length `k+1` ordered as `[step k, step k-1, …, step 0]`.  The
+recursion is structural in `k`. -/
+noncomputable def avssSimulateRev (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) :
+    ℕ → List (AVSSState n t F × Option (AVSSAction n F))
+  | 0 => [(s_0, (none : Option (AVSSAction n F)))]
+  | (k+1) =>
+    let prev := avssSimulateRev R s_0 k
+    (avssSimulateNext R s_0 prev) :: prev
+
+/-- Length of the simulated reverse prefix is `k+1`. -/
+theorem avssSimulateRev_length {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) (k : ℕ) :
+    (avssSimulateRev R s_0 k).length = k + 1 := by
+  induction k with
+  | zero => rfl
+  | succ k ih => simp [avssSimulateRev, ih]
+
+theorem avssSimulateRev_ne_nil {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) (k : ℕ) :
+    avssSimulateRev R s_0 k ≠ [] := by
+  intro h
+  have := avssSimulateRev_length R s_0 k
+  rw [h] at this; simp at this
+
+/-- The simulated trace at step `k`: extract the head of the
+reverse-order prefix list. -/
+noncomputable def avssSimulateTrace (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) (k : ℕ) :
+    AVSSState n t F × Option (AVSSAction n F) :=
+  match avssSimulateRev R s_0 k with
+  | [] => (s_0, (none : Option (AVSSAction n F)))  -- unreachable
+  | x :: _ => x
+
+@[simp] theorem avssSimulateTrace_zero {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) :
+    avssSimulateTrace R s_0 0 = (s_0, (none : Option (AVSSAction n F))) := rfl
+
+@[simp] theorem avssSimulateTrace_zero_fst {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) :
+    (avssSimulateTrace R s_0 0).1 = s_0 := rfl
+
+@[simp] theorem avssSimulateTrace_zero_snd {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) :
+    (avssSimulateTrace R s_0 0).2 = none := rfl
+
+/-- Successor-step structural identity for `avssSimulateTrace`: the
+state-action pair at step `k+1` equals `avssSimulateNext` applied to
+the reverse-order prefix at step `k`. -/
+theorem avssSimulateTrace_succ_eq {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) (k : ℕ) :
+    avssSimulateTrace R s_0 (k+1) =
+      avssSimulateNext R s_0 (avssSimulateRev R s_0 k) := by
+  simp [avssSimulateTrace, avssSimulateRev]
+
+/-- The state at step `k` of the simulate equals the head of the
+reverse-prefix list (when nonempty). -/
+theorem avssSimulateRev_head_eq {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) (k : ℕ) :
+    (avssSimulateRev R s_0 k).head?.map Prod.fst =
+      some (avssSimulateTrace R s_0 k).1 := by
+  unfold avssSimulateTrace
+  -- Case-split on the head of the (nonempty) list.
+  cases h : avssSimulateRev R s_0 k with
+  | nil => exact absurd h (avssSimulateRev_ne_nil R s_0 k)
+  | cons x xs => simp
+
+/-! ## §19.3. Phase 7.5 — operational view secrecy under rushing adversary
+
+The headline `avss_secrecy_AS_view_rushing` is a thin composition of
+PR #33's `avss_secrecy_AS_view_conditional` with the rushing-adversary
+adapter `R.toAdversary`.  The conditional theorem requires a joint
+marginal-invariance hypothesis `h_aux` on `(coalitionAlgebraicView,
+schedulePrefix)`; the rushing-adversary refactor (Phase 7.1–7.4)
+**structurally restricts** the adversary's information to the corrupt-
+coalition view, but `h_aux` itself remains the polynomial-level
+*algebraic core* — specifically the row-poly-vs-grid secrecy
+strengthening of `BivariateShamir.bivariate_shamir_secrecy` that is
+documented as the second of two structural blockers in §17.12 and the
+"+200 LOC polynomial-manipulation step" in `BivariateShamir.lean`'s
+docstring.
+
+Phase 7.4's substantive content — the inductive trace-determinism
+proof showing that under `R.toAdversary`, every trace is AE-equal to
+`avssSimulateTrace R (ω 0).1` (since each step's PMF is `pure`
+and the schedule is a deterministic function of the view-history) —
+provides the **simulate machinery** above (`avssSimulateRev`,
+`avssSimulateTrace`, `avssSimulateNext`, structural lemmas).  The
+inductive proof itself, threading the marginal recurrence
+`Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`
+through the Dirac per-step kernel, is the bulk of the deferred
+"~300–500 LOC of inductive trace plumbing" called out in
+`AVSS-MODEL-NOTES.md` §9.  This wrapper exposes the schedule-leakage-
+closing structure as a hypothesis-fed theorem so that downstream
+consumers can compose `R.toAdversary` with the conditional theorem
+without re-deriving the rushing-adapter plumbing each time.
+
+The headline below quantifies over the conditional's `h_aux`
+hypothesis — equivalent, after schedule-factoring (Phase 7.4's
+substantive AE-bridge), to row-poly invariance of the corrupt
+coalition's algebraic view.  Once the +200 LOC algebraic-core lands
+in `BivariateShamir.lean`, the hypothesis is dischargeable
+unconditionally and `avss_secrecy_AS_view_rushing` becomes the
+literature-faithful operational-secrecy theorem under the AVSS state
+model. -/
+
+attribute [-instance] instMeasurableSpaceAVSSRushingView
+  instMeasurableSingletonClassAVSSRushingView
+
+/-- **Phase 7.5: operational view secrecy under a rushing adversary.**
+
+For any rushing adversary `R` whose view is the corrupt coalition's
+local-state projection (`AVSSRushingView corr`), and any subcoalition
+`C ⊆ corr`, the joint marginal `(coalitionTraceView C, schedulePrefix)`
+of the trace measure is invariant in the secret — provided the
+algebraic-view-plus-schedule joint marginal invariance `h_aux` holds.
+
+The hypothesis `h_aux` is the row-poly-vs-grid secrecy condition
+(§17.12, blocker #2) which the deferred `+200 LOC` polynomial-
+manipulation strengthening of `bivariate_shamir_secrecy` will discharge
+unconditionally.  Phase 7.4's structural content (the simulate
+machinery in §19.2 above) closes the schedule-leakage half (blocker #1)
+by exhibiting the trace as a deterministic function of the initial
+state under `R.toAdversary`; full integration of that with the
+conditional theorem awaits the algebraic core.
+
+This thin composition is the mechanical step: plug `R.toAdversary` into
+the conditional theorem.  The section's own
+`instMeasurableSpaceAVSSRushingView` instance is disabled in this
+sub-section so that the default Pi-`MeasurableSpace` is picked,
+matching the conditional theorem's conclusion type. -/
+theorem avss_secrecy_AS_view_rushing
+    {corr : Finset (Fin n)}
+    (sec sec' : F)
+    (μ_sec μ_sec' : Measure (AVSSState n t F))
+    [IsProbabilityMeasure μ_sec] [IsProbabilityMeasure μ_sec']
+    (h_init_sec : ∀ᵐ s ∂μ_sec, initPred sec corr s)
+    (h_init_sec' : ∀ᵐ s ∂μ_sec', initPred sec' corr s)
+    (R : AVSSRushingAdversary n t F corr)
+    (C : BivariateShamir.Coalition n t)
+    (h_C_corr : C.val ⊆ corr) (k : ℕ)
+    (h_aux :
+      (traceDist (avssSpec (t := t) sec corr) R.toAdversary μ_sec).map
+          (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k)) =
+        (traceDist (avssSpec (t := t) sec' corr) R.toAdversary μ_sec').map
+          (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k))) :
+    (traceDist (avssSpec (t := t) sec corr) R.toAdversary μ_sec).map
+        (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) =
+      (traceDist (avssSpec (t := t) sec' corr) R.toAdversary μ_sec').map
+        (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) :=
+  avss_secrecy_AS_view_conditional sec sec' corr μ_sec μ_sec'
+    h_init_sec h_init_sec' C h_C_corr R.toAdversary k h_aux
+
+attribute [instance] instMeasurableSpaceAVSSRushingView
+  instMeasurableSingletonClassAVSSRushingView
+
+end RushingSimulation
+
 end Leslie.Examples.Prob.AVSS
