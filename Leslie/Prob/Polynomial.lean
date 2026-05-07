@@ -243,7 +243,14 @@ noncomputable def uniformWithFixedZero (d : ℕ) (s : F) :
 /-- A uniform random bivariate polynomial of bidegree ≤ (dx, dy)
 with constant term `s`. Built as `Polynomial (Polynomial F)` —
 the inner ring is `Polynomial F` and its constants are coefficients
-in the outer `X` variable. -/
+in the outer `X` variable.
+
+⚠ **Degenerate for VSS.** This distribution forces *every* axis
+coefficient (both `(i, 0)` for `i ≥ 1` and `(0, j)` for `j ≥ 1`)
+to zero, so `f(x, 0) = s` for **all** `x` and `f(0, y) = s` for
+all `y`. See `Leslie/Examples/Prob/AVSS-MODEL-NOTES.md` §9–§10.
+For the literature-standard distribution, use
+`uniformBivariateFullWithFixedZero` below. -/
 noncomputable def uniformBivariateWithFixedZero (dx dy : ℕ) (s : F) :
     PMF (_root_.Polynomial (_root_.Polynomial F)) :=
   (PMF.uniform (Fin dx → Fin dy → F)).map fun coefs =>
@@ -251,6 +258,39 @@ noncomputable def uniformBivariateWithFixedZero (dx dy : ℕ) (s : F) :
       Polynomial.C (Polynomial.C (coefs i j)) *
         Polynomial.X ^ (i.val + 1) *
         (Polynomial.C Polynomial.X) ^ (j.val + 1)
+
+/-- A uniform random bivariate polynomial of bidegree ≤ `(dx, dy)`
+with **only** the constant `(0, 0)` coefficient pinned to `s`. All
+other `(dx + 1) * (dy + 1) - 1` coefficients are independently and
+uniformly distributed in `F`.
+
+Sampled in three independent pieces:
+* an *interior* matrix `coefs : Fin dx → Fin dy → F` —
+  the coefficients at `(i.val + 1, j.val + 1)` (i.e. both axes ≥ 1);
+* an *axis-X* vector `axisX : Fin dx → F` —
+  the coefficients at `(i.val + 1, 0)`;
+* an *axis-Y* vector `axisY : Fin dy → F` —
+  the coefficients at `(0, j.val + 1)`.
+
+This is the literature-standard distribution for bivariate Shamir
+secret-sharing: under it, `f(α, 0) = s + ∑_{i} axisX_i α^{i+1}` is
+a genuine degree-`dx` Shamir polynomial in `α` with constant
+term `s`.  Compare with `uniformBivariateWithFixedZero` (axis-zero
+variant) which forces every axis coefficient to zero — degenerate
+for VSS purposes; see `AVSS-MODEL-NOTES.md` §9–§10. -/
+noncomputable def uniformBivariateFullWithFixedZero (dx dy : ℕ) (s : F) :
+    PMF (_root_.Polynomial (_root_.Polynomial F)) :=
+  (PMF.uniform ((Fin dx → Fin dy → F) × (Fin dx → F) × (Fin dy → F))).map
+    fun ⟨coefs, axisX, axisY⟩ =>
+      Polynomial.C (Polynomial.C s) +
+      (∑ i : Fin dx, Polynomial.C (Polynomial.C (axisX i)) *
+        Polynomial.X ^ (i.val + 1)) +
+      (∑ j : Fin dy, Polynomial.C (Polynomial.C (axisY j)) *
+        (Polynomial.C Polynomial.X) ^ (j.val + 1)) +
+      ∑ i : Fin dx, ∑ j : Fin dy,
+        Polynomial.C (Polynomial.C (coefs i j)) *
+          Polynomial.X ^ (i.val + 1) *
+          (Polynomial.C Polynomial.X) ^ (j.val + 1)
 
 /-! ## Headline theorems (proofs deferred)
 
@@ -744,5 +784,297 @@ theorem bivariate_evals_uniform (dx dy : ℕ) (s : F)
                     (Polynomial.C Polynomial.X) ^ (j.val + 1)))
           = step2 ∘ step1 from h_factor_fun]
   rw [← PMF.map_comp, h_step1, h_step2]
+
+/-! ## Translation invariance of uniform
+
+For any uniform distribution on a finite group, addition by a constant
+is a bijection and hence preserves uniform.  Used by
+`bivariate_evals_uniform_full` to absorb the additive shift coming
+from the random axis-X / axis-Y coefficients of
+`uniformBivariateFullWithFixedZero`. -/
+
+omit [Fintype F] [DecidableEq F] in
+private theorem uniform_map_add_const (β : Type*) [Fintype β]
+    [Nonempty β] [DecidableEq β] [AddGroup β] (δ : β) :
+    (PMF.uniform β).map (fun b => b + δ) = PMF.uniform β :=
+  PMF.uniform_map_of_bijective (Function.bijective_iff_has_inverse.mpr
+    ⟨fun b => b - δ, fun _ => by simp, fun _ => by simp⟩)
+
+/-! ## Constant-fiber size from a uniform-pushforward equation
+
+Extracts the "every fiber has the same size" information from
+`(PMF.uniform α).map f = PMF.uniform β`. -/
+
+private theorem fiber_card_const_of_uniform_map_eq
+    {α β : Type*} [Fintype α] [Fintype β] [Nonempty α] [Nonempty β]
+    [DecidableEq α] [DecidableEq β]
+    {f : α → β} (h_uniform : (PMF.uniform α).map f = PMF.uniform β) :
+    ∃ k : ℕ, 0 < k ∧ ∀ b : β,
+      (Finset.univ.filter (fun a : α => f a = b)).card = k := by
+  -- Pattern from `uniform_pi_map_of_uniform_map`.
+  have h_card_β_pos : 0 < Fintype.card β := Fintype.card_pos
+  have h_card_α_pos : 0 < Fintype.card α := Fintype.card_pos
+  have h_fib : ∀ b : β,
+      (Finset.univ.filter (fun a : α => f a = b)).card * Fintype.card β
+        = Fintype.card α := by
+    intro b
+    have h_pmf : ((PMF.uniform α).map f) b = (PMF.uniform β) b := by rw [h_uniform]
+    simp only [PMF.map_apply, PMF.uniform_apply] at h_pmf
+    have h_sum : (∑' (a : α), if b = f a then ((Fintype.card α : ℝ≥0∞))⁻¹ else 0)
+        = (Finset.univ.filter (fun a : α => f a = b)).card *
+            ((Fintype.card α : ℝ≥0∞))⁻¹ := by
+      rw [tsum_eq_sum (s := Finset.univ.filter (fun a => f a = b))
+          (fun a ha => by simp at ha; simp [Ne.symm ha])]
+      have hsum_eq : ∀ a ∈ (Finset.univ.filter (fun a : α => f a = b)),
+          (if b = f a then ((Fintype.card α : ℝ≥0∞))⁻¹ else 0)
+            = ((Fintype.card α : ℝ≥0∞))⁻¹ := by
+        intro a ha; simp at ha; simp [ha]
+      rw [Finset.sum_congr rfl hsum_eq, Finset.sum_const, nsmul_eq_mul]
+    rw [h_sum] at h_pmf
+    have hα_ne : (Fintype.card α : ℝ≥0∞) ≠ 0 := by exact_mod_cast h_card_α_pos.ne'
+    have hα_ne_top : (Fintype.card α : ℝ≥0∞) ≠ ⊤ := ENNReal.natCast_ne_top _
+    have hβ_ne : (Fintype.card β : ℝ≥0∞) ≠ 0 := by exact_mod_cast h_card_β_pos.ne'
+    have hβ_ne_top : (Fintype.card β : ℝ≥0∞) ≠ ⊤ := ENNReal.natCast_ne_top _
+    have h_pmf2 :
+        ((Finset.univ.filter (fun a : α => f a = b)).card : ℝ≥0∞) * Fintype.card β
+          = Fintype.card α := by
+      have h_pmf' : ((Finset.univ.filter (fun a : α => f a = b)).card : ℝ≥0∞)
+          = (Fintype.card β : ℝ≥0∞)⁻¹ * Fintype.card α := by
+        have := congrArg (· * (Fintype.card α : ℝ≥0∞)) h_pmf
+        simp only at this
+        rw [mul_assoc, ENNReal.inv_mul_cancel hα_ne hα_ne_top, mul_one] at this
+        exact this
+      rw [h_pmf']
+      rw [mul_comm ((Fintype.card β : ℝ≥0∞)⁻¹), mul_assoc,
+          ENNReal.inv_mul_cancel hβ_ne hβ_ne_top, mul_one]
+    have h_pmf3 :
+        (((Finset.univ.filter (fun a : α => f a = b)).card * Fintype.card β : ℕ) : ℝ≥0∞)
+          = ((Fintype.card α : ℕ) : ℝ≥0∞) := by
+      push_cast; exact h_pmf2
+    exact_mod_cast h_pmf3
+  have h_β_dvd_α : Fintype.card β ∣ Fintype.card α := by
+    obtain ⟨b⟩ := (inferInstance : Nonempty β)
+    exact ⟨_, (h_fib b).symm.trans (by ring)⟩
+  refine ⟨Fintype.card α / Fintype.card β, ?_, ?_⟩
+  · -- 0 < |α| / |β| from divisibility + positivity.
+    exact Nat.div_pos (Nat.le_of_dvd h_card_α_pos h_β_dvd_α) h_card_β_pos
+  · intro b
+    have hfib_b := h_fib b
+    have hα_eq : Fintype.card α = Fintype.card β * (Fintype.card α / Fintype.card β) := by
+      rw [Nat.mul_div_cancel' h_β_dvd_α]
+    rw [hα_eq] at hfib_b
+    have h_eq : (Finset.univ.filter (fun a : α => f a = b)).card * Fintype.card β
+        = (Fintype.card α / Fintype.card β) * Fintype.card β := by
+      rw [hfib_b]; ring
+    exact Nat.eq_of_mul_eq_mul_right h_card_β_pos h_eq
+
+/-! ## Headline: `bivariate_evals_uniform` for the **full** distribution
+
+For `uniformBivariateFullWithFixedZero` (only constant fixed at `s`),
+the joint distribution of bivariate evaluations at the off-axis grid
+`pts_x × pts_y` is uniform on `pts_x → pts_y → F`.
+
+The proof reduces to the existing axis-zero `bivariate_evals_uniform`
+plus translation invariance: writing `f.eval (C p)).eval q` as
+`s + α(axisX)(p) + β(axisY)(q) + γ(coefs)(p, q)`, the γ-term's
+distribution is uniform by `bivariate_evals_uniform dx dy 0`, and
+`s + α(axisX)(p) + β(axisY)(q)` is a shift that depends only on
+`(axisX, axisY, p, q)` — adding a (possibly random) shift to a
+uniform distribution leaves it uniform. -/
+theorem bivariate_evals_uniform_full (dx dy : ℕ) (s : F)
+    (pts_x : Finset F) (pts_y : Finset F)
+    (h_cx : pts_x.card ≤ dx) (h_cy : pts_y.card ≤ dy)
+    (h_nx : (0 : F) ∉ pts_x) (h_ny : (0 : F) ∉ pts_y)
+    (h_Fx : dx + 1 ≤ Fintype.card F) (h_Fy : dy + 1 ≤ Fintype.card F) :
+    (uniformBivariateFullWithFixedZero dx dy s).map
+        (fun f => fun (p : pts_x) (q : pts_y) =>
+          (f.eval (Polynomial.C p.val)).eval q.val)
+      = PMF.uniform (pts_x → pts_y → F) := by
+  classical
+  -- Subsingleton edge cases (one or both pts empty).
+  by_cases h_xy_subsing : pts_x.card = 0 ∨ pts_y.card = 0
+  · have h_subsing : Subsingleton (pts_x → pts_y → F) := by
+      rcases h_xy_subsing with hx | hy
+      · haveI : IsEmpty pts_x := by
+          rw [Finset.card_eq_zero] at hx
+          subst hx
+          exact ⟨fun ⟨_, h⟩ => Finset.notMem_empty _ h⟩
+        infer_instance
+      · haveI : IsEmpty pts_y := by
+          rw [Finset.card_eq_zero] at hy
+          subst hy
+          exact ⟨fun ⟨_, h⟩ => Finset.notMem_empty _ h⟩
+        haveI : Subsingleton (pts_y → F) := inferInstance
+        infer_instance
+    apply PMF.ext
+    intro g
+    have h_default : ∀ a, a = g := fun a => Subsingleton.elim a g
+    have hμ := PMF.tsum_coe ((uniformBivariateFullWithFixedZero dx dy s).map
+        (fun f => fun (p : pts_x) (q : pts_y) =>
+          (f.eval (Polynomial.C p.val)).eval q.val))
+    have hν := PMF.tsum_coe (PMF.uniform (pts_x → pts_y → F))
+    rw [tsum_eq_single g (fun b hb => absurd (h_default b) hb)] at hμ
+    rw [tsum_eq_single g (fun b hb => absurd (h_default b) hb)] at hν
+    rw [hμ, hν]
+  push_neg at h_xy_subsing
+  obtain ⟨h_px_pos, h_py_pos⟩ := h_xy_subsing
+  have h_dx_pos : 0 < dx := lt_of_lt_of_le (Nat.pos_of_ne_zero h_px_pos) h_cx
+  have h_dy_pos : 0 < dy := lt_of_lt_of_le (Nat.pos_of_ne_zero h_py_pos) h_cy
+  haveI : Nonempty (Fin dx) := ⟨⟨0, h_dx_pos⟩⟩
+  haveI : Nonempty (Fin dy) := ⟨⟨0, h_dy_pos⟩⟩
+  haveI h_pts_x_ne : Nonempty pts_x := by
+    have h := Finset.card_pos.mp (Nat.pos_of_ne_zero h_px_pos)
+    exact ⟨⟨h.choose, h.choose_spec⟩⟩
+  haveI h_pts_y_ne : Nonempty pts_y := by
+    have h := Finset.card_pos.mp (Nat.pos_of_ne_zero h_py_pos)
+    exact ⟨⟨h.choose, h.choose_spec⟩⟩
+  -- Step 1: Algebraic eval factoring.  After unfolding the polynomial-
+  -- construction step, the eval-at-grid map equals the additive form M.
+  let M : ((Fin dx → Fin dy → F) × (Fin dx → F) × (Fin dy → F)) →
+      (pts_x → pts_y → F) :=
+    fun cax => fun (p : pts_x) (q : pts_y) =>
+      s + (∑ i : Fin dx, cax.2.1 i * p.val ^ (i.val + 1)) +
+          (∑ j : Fin dy, cax.2.2 j * q.val ^ (j.val + 1)) +
+          (∑ i : Fin dx, ∑ j : Fin dy,
+            cax.1 i j * p.val ^ (i.val + 1) * q.val ^ (j.val + 1))
+  have hM_def : ∀ (cax : (Fin dx → Fin dy → F) × (Fin dx → F) × (Fin dy → F))
+      (p : pts_x) (q : pts_y),
+      M cax p q = s + (∑ i : Fin dx, cax.2.1 i * p.val ^ (i.val + 1)) +
+          (∑ j : Fin dy, cax.2.2 j * q.val ^ (j.val + 1)) +
+          (∑ i : Fin dx, ∑ j : Fin dy,
+            cax.1 i j * p.val ^ (i.val + 1) * q.val ^ (j.val + 1)) :=
+    fun _ _ _ => rfl
+  have h_factor :
+      (uniformBivariateFullWithFixedZero dx dy s).map
+        (fun f (p : pts_x) (q : pts_y) =>
+          (f.eval (Polynomial.C p.val)).eval q.val) =
+        (PMF.uniform ((Fin dx → Fin dy → F) × (Fin dx → F) × (Fin dy → F))).map M := by
+    unfold uniformBivariateFullWithFixedZero
+    rw [PMF.map_comp]
+    congr 1
+    funext cax
+    obtain ⟨c, ax, ay⟩ := cax
+    funext p q
+    show ((Polynomial.C (Polynomial.C s) +
+        (∑ i : Fin dx, Polynomial.C (Polynomial.C (ax i)) * Polynomial.X ^ (i.val + 1)) +
+        (∑ j : Fin dy, Polynomial.C (Polynomial.C (ay j)) *
+          (Polynomial.C Polynomial.X) ^ (j.val + 1)) +
+        ∑ i : Fin dx, ∑ j : Fin dy,
+          Polynomial.C (Polynomial.C (c i j)) *
+            Polynomial.X ^ (i.val + 1) *
+            (Polynomial.C Polynomial.X) ^ (j.val + 1)).eval (Polynomial.C p.val)).eval q.val
+      = M (c, ax, ay) p q
+    rw [hM_def]
+    simp only [Polynomial.eval_add, Polynomial.eval_C,
+               Polynomial.eval_finset_sum, Polynomial.eval_mul,
+               Polynomial.eval_pow, Polynomial.eval_X]
+  rw [h_factor]
+  -- Step 2: γ-pushforward via existing `bivariate_evals_uniform dx dy 0`.
+  -- Re-cast the body of the `bivariate_evals_uniform` call into the
+  -- "γ" function we want.
+  have h_γ : (PMF.uniform (Fin dx → Fin dy → F)).map
+        (fun (c : Fin dx → Fin dy → F) (p : pts_x) (q : pts_y) =>
+          ∑ i : Fin dx, ∑ j : Fin dy,
+            c i j * p.val ^ (i.val + 1) * q.val ^ (j.val + 1))
+        = PMF.uniform (pts_x → pts_y → F) := by
+    have h_old := bivariate_evals_uniform dx dy (0 : F)
+        pts_x pts_y h_cx h_cy h_nx h_ny h_Fx h_Fy
+    unfold uniformBivariateWithFixedZero at h_old
+    rw [PMF.map_comp] at h_old
+    have h_eq : (fun (c : Fin dx → Fin dy → F) (p : pts_x) (q : pts_y) =>
+          ∑ i : Fin dx, ∑ j : Fin dy,
+            c i j * p.val ^ (i.val + 1) * q.val ^ (j.val + 1))
+        = (fun f (p : pts_x) (q : pts_y) =>
+            (f.eval (Polynomial.C p.val)).eval q.val) ∘
+          (fun (coefs : Fin dx → Fin dy → F) =>
+            Polynomial.C (Polynomial.C (0 : F)) +
+              ∑ i : Fin dx, ∑ j : Fin dy,
+                Polynomial.C (Polynomial.C (coefs i j)) *
+                  Polynomial.X ^ (i.val + 1) *
+                  (Polynomial.C Polynomial.X) ^ (j.val + 1)) := by
+      funext c p q
+      simp only [Function.comp_apply, Polynomial.eval_add, Polynomial.eval_C,
+                 Polynomial.eval_finset_sum, Polynomial.eval_mul,
+                 Polynomial.eval_pow, Polynomial.eval_X, ← Polynomial.C_pow,
+                 zero_add]
+    rw [h_eq]; exact h_old
+  -- Step 3: Show `(uniform on source).map M` = `uniform on target`
+  -- via constant-fiber surjection.  Fiber over v has size
+  -- `|F|^|pts_x| × |F|^|pts_y| × γ-fiber-size`, where γ-fiber-size is
+  -- extracted from `h_γ`.
+  obtain ⟨k_γ, hk_γ_pos, hk_γ_fib⟩ := fiber_card_const_of_uniform_map_eq h_γ
+  -- Source nonemptiness is automatic from existing instances.
+  haveI : Nonempty (Fin dx → Fin dy → F) := ⟨fun _ _ => 0⟩
+  haveI : Nonempty (Fin dx → F) := ⟨fun _ => 0⟩
+  haveI : Nonempty (Fin dy → F) := ⟨fun _ => 0⟩
+  haveI : Nonempty (pts_x → pts_y → F) := ⟨fun _ _ => 0⟩
+  haveI : Nonempty ((Fin dx → Fin dy → F) × (Fin dx → F) × (Fin dy → F)) :=
+    inferInstance
+  -- The fiber size we want.
+  set k_total : ℕ := (Fintype.card F) ^ (Fintype.card (Fin dx)) *
+                     (Fintype.card F) ^ (Fintype.card (Fin dy)) * k_γ with hk_total_def
+  have h_card_F_pos : 0 < Fintype.card F := by linarith
+  have hk_total_pos : 0 < k_total := by
+    rw [hk_total_def]
+    refine Nat.mul_pos (Nat.mul_pos ?_ ?_) hk_γ_pos
+    · exact pow_pos h_card_F_pos _
+    · exact pow_pos h_card_F_pos _
+  apply PMF.uniform_map_of_surjective_constFiber M k_total hk_total_pos
+  intro v
+  -- Define γEval and the (ax, ay)-shifted γ-target.
+  set γEval : (Fin dx → Fin dy → F) → (pts_x → pts_y → F) :=
+    fun c (p : pts_x) (q : pts_y) =>
+      ∑ i : Fin dx, ∑ j : Fin dy,
+        c i j * p.val ^ (i.val + 1) * q.val ^ (j.val + 1) with hγEval_def
+  set shifted : (Fin dx → F) → (Fin dy → F) → (pts_x → pts_y → F) :=
+    fun ax ay (p : pts_x) (q : pts_y) =>
+      v p q - s - (∑ i : Fin dx, ax i * p.val ^ (i.val + 1))
+              - (∑ j : Fin dy, ay j * q.val ^ (j.val + 1)) with hshifted_def
+  -- Algebraic identity: M(c, ax, ay) = v ↔ γEval c = shifted ax ay.
+  have h_eqv : ∀ (c : Fin dx → Fin dy → F) (ax : Fin dx → F) (ay : Fin dy → F),
+      M (c, ax, ay) = v ↔ γEval c = shifted ax ay := by
+    intro c ax ay
+    refine ⟨fun hM => ?_, fun hγ => ?_⟩
+    · funext p q
+      have hpq := congrFun (congrFun hM p) q
+      have hM_pq := hM_def (c, ax, ay) p q
+      simp only [hγEval_def, hshifted_def]
+      linear_combination hpq - hM_pq
+    · funext p q
+      have hpq := congrFun (congrFun hγ p) q
+      have hM_pq := hM_def (c, ax, ay) p q
+      simp only [hγEval_def, hshifted_def] at hpq
+      linear_combination hM_pq + hpq
+  -- Bijection between M-fiber over v and Σ (ax, ay), γ-fiber over (shifted ax ay).
+  let φ : {cax : (Fin dx → Fin dy → F) × (Fin dx → F) × (Fin dy → F) // M cax = v} →
+      Σ axay : (Fin dx → F) × (Fin dy → F),
+        {c : Fin dx → Fin dy → F // γEval c = shifted axay.1 axay.2} :=
+    fun ⟨⟨c, ax, ay⟩, hM⟩ => ⟨(ax, ay), ⟨c, (h_eqv c ax ay).mp hM⟩⟩
+  let ψ :
+      (Σ axay : (Fin dx → F) × (Fin dy → F),
+        {c : Fin dx → Fin dy → F // γEval c = shifted axay.1 axay.2}) →
+      {cax : (Fin dx → Fin dy → F) × (Fin dx → F) × (Fin dy → F) // M cax = v} :=
+    fun ⟨⟨ax, ay⟩, ⟨c, hc⟩⟩ => ⟨(c, ax, ay), (h_eqv c ax ay).mpr hc⟩
+  have h_card_eq :
+      (Finset.univ.filter (fun cax : (Fin dx → Fin dy → F) × (Fin dx → F) × (Fin dy → F) =>
+        M cax = v)).card =
+      Fintype.card (Σ axay : (Fin dx → F) × (Fin dy → F),
+        {c : Fin dx → Fin dy → F // γEval c = shifted axay.1 axay.2}) := by
+    rw [← Fintype.card_subtype]
+    apply Fintype.card_congr
+    refine ⟨φ, ψ, ?_, ?_⟩
+    · rintro ⟨⟨c, ax, ay⟩, _⟩; rfl
+    · rintro ⟨⟨ax, ay⟩, c, _⟩; rfl
+  rw [h_card_eq]
+  rw [Fintype.card_sigma]
+  -- Each summand has card = k_γ via hk_γ_fib.
+  have h_summand_card : ∀ axay : (Fin dx → F) × (Fin dy → F),
+      Fintype.card {c : Fin dx → Fin dy → F // γEval c = shifted axay.1 axay.2} = k_γ := by
+    intro axay
+    rw [Fintype.card_subtype]
+    exact hk_γ_fib (shifted axay.1 axay.2)
+  rw [Finset.sum_congr rfl (fun axay _ => h_summand_card axay)]
+  rw [Finset.sum_const, Finset.card_univ, smul_eq_mul, Fintype.card_prod,
+      Fintype.card_fun, Fintype.card_fun]
 
 end Leslie.Prob.Polynomial

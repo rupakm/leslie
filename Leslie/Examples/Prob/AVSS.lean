@@ -3023,13 +3023,23 @@ def avssInitState (sec : F) (corr : Finset (Fin n))
     dealerSent := false }
 
 /-- Operational initial PMF for AVSS, pulled back from
-`uniformBivariateWithFixedZero` through `avssInitState ∘ polyToCoeffs`.
-This is the structural anchor of Phase 5: the secret is sampled at
-`(0,0)` of the coefficient grid via the bivariate polynomial. -/
+`uniformBivariateFullWithFixedZero` through
+`avssInitState ∘ polyToCoeffs`.  This is the structural anchor of
+Phase 5: the secret is sampled at `(0,0)` of the coefficient grid
+via the bivariate polynomial.
+
+⚠ **Distribution refactor (Phase 7.7).**  Previously coupled to
+`uniformBivariateWithFixedZero` (axis-zero), which collapses every
+axis coefficient to zero and makes `f(x, 0) = sec` for all `x` —
+degenerate for VSS.  Now uses
+`uniformBivariateFullWithFixedZero`, the literature-standard
+distribution where only the `(0, 0)` constant is fixed and all
+other `(t + 1)² − 1` coefficients are independently uniform.  See
+`AVSS-MODEL-NOTES.md` §9–§10. -/
 noncomputable def avssInitPMF (sec : F) (corr : Finset (Fin n))
     (partyPoint : Fin n → F) (dealerHonest : Bool) :
     PMF (AVSSState n t F) :=
-  (Leslie.Prob.Polynomial.uniformBivariateWithFixedZero t t sec).map
+  (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero t t sec).map
     (fun f => avssInitState (n := n) sec corr partyPoint dealerHonest
       (polyToCoeffs f))
 
@@ -3049,13 +3059,13 @@ instance avssInitMeasure_isProbabilityMeasure (sec : F) (corr : Finset (Fin n))
   exact PMF.toMeasure.isProbabilityMeasure _
 
 /-- Coupling: the marginal of `avssInitMeasure` on `s.coeffs` is the
-pushforward of `uniformBivariateWithFixedZero` under `polyToCoeffs`,
-viewed as a PMF on the coefficient grid type. -/
+pushforward of `uniformBivariateFullWithFixedZero` under
+`polyToCoeffs`, viewed as a PMF on the coefficient grid type. -/
 theorem avssInitPMF_coeffs_map (sec : F) (corr : Finset (Fin n))
     (partyPoint : Fin n → F) (dealerHonest : Bool) :
     (avssInitPMF (n := n) (t := t) sec corr partyPoint dealerHonest).map
         (fun s => s.coeffs) =
-      (Leslie.Prob.Polynomial.uniformBivariateWithFixedZero (F := F) t t sec).map
+      (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero (F := F) t t sec).map
         polyToCoeffs := by
   classical
   unfold avssInitPMF
@@ -3066,7 +3076,7 @@ theorem avssInitPMF_coeffs_map (sec : F) (corr : Finset (Fin n))
 the structural part of `initPred` — empty queues, all-init locals,
 `dealerSent = false`. The dealer-honest constraint `coeffs 0 0 = sec`
 holds because `polyToCoeffs` extracts the constant term, which is
-always `sec` in the support of `uniformBivariateWithFixedZero`. -/
+always `sec` in the support of `uniformBivariateFullWithFixedZero`. -/
 theorem avssInitPMF_support_initPred (sec : F) (corr : Finset (Fin n))
     (partyPoint : Fin n → F) (dealerHonest : Bool) :
     ∀ s ∈ (avssInitPMF (n := n) (t := t) sec corr partyPoint dealerHonest).support,
@@ -3214,6 +3224,30 @@ theorem uniformBivariate_support_form (sec : F) (dx dy : ℕ)
   rw [PMF.support_map] at hf
   obtain ⟨coefs, _, hf_eq⟩ := hf
   exact ⟨coefs, hf_eq.symm⟩
+
+/-- For `f` in the support of `uniformBivariateFullWithFixedZero`,
+`f` has the explicit four-piece form: constant `sec`, axis-X part
+(degree-`dx` in X with no constant), axis-Y part (degree-`dy` in Y
+with no constant), and an interior part. -/
+theorem uniformBivariateFull_support_form (sec : F) (dx dy : ℕ)
+    (f : _root_.Polynomial (_root_.Polynomial F))
+    (hf : f ∈ (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero
+                 (F := F) dx dy sec).support) :
+    ∃ (coefs : Fin dx → Fin dy → F) (axisX : Fin dx → F) (axisY : Fin dy → F),
+      f = Polynomial.C (Polynomial.C sec) +
+            (∑ i : Fin dx, Polynomial.C (Polynomial.C (axisX i)) *
+              Polynomial.X ^ (i.val + 1)) +
+            (∑ j : Fin dy, Polynomial.C (Polynomial.C (axisY j)) *
+              (Polynomial.C Polynomial.X) ^ (j.val + 1)) +
+            ∑ i : Fin dx, ∑ j : Fin dy,
+              Polynomial.C (Polynomial.C (coefs i j)) *
+                Polynomial.X ^ (i.val + 1) *
+                (Polynomial.C Polynomial.X) ^ (j.val + 1) := by
+  classical
+  unfold Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero at hf
+  rw [PMF.support_map] at hf
+  obtain ⟨⟨coefs, axisX, axisY⟩, _, hf_eq⟩ := hf
+  exact ⟨coefs, axisX, axisY, hf_eq.symm⟩
 
 /-- Helper for the polynomial bridge: swap `(k, l) ↔ (i, j)` in a
 4-fold nested Finset sum (over `Fin a × Fin a × Fin b × Fin b`). -/
@@ -3386,6 +3420,268 @@ theorem bivEval_polyToCoeffs_eq_eval_of_support (sec : F)
     have := h_picker ⟨i.val + 1, h_iv⟩ ⟨j.val + 1, h_jv⟩ (coefs i j)
     convert this using 2
 
+/-- Polynomial bridge for the **full** distribution: for `f` in the
+support of `uniformBivariateFullWithFixedZero t t sec`,
+`bivEval (polyToCoeffs f) x y = (f.eval (C x)).eval y`.
+
+Direct adaptation of `bivEval_polyToCoeffs_eq_eval_of_support` with
+the new polynomial form `f = C(C sec) + ∑ax_i * X^(i+1)
++ ∑ay_j * (CX)^(j+1) + ∑coefs_ij * X^(i+1) * (CX)^(j+1)` —
+four-piece coefficient formula and four-piece eval. -/
+theorem bivEval_polyToCoeffs_eq_eval_of_support_full (sec : F)
+    (f : _root_.Polynomial (_root_.Polynomial F))
+    (hf : f ∈ (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero
+                 (F := F) t t sec).support)
+    (x y : F) :
+    bivEval (t := t) (polyToCoeffs (t := t) f) x y =
+      (f.eval (Polynomial.C x)).eval y := by
+  classical
+  obtain ⟨coefs, axisX, axisY, rfl⟩ := uniformBivariateFull_support_form sec t t f hf
+  unfold bivEval polyToCoeffs
+  -- Step 1: explicit form for the per-(i, j) interior term.
+  have h_term :
+      ∀ (i : Fin t) (j : Fin t),
+        (Polynomial.C (Polynomial.C (coefs i j)) *
+          Polynomial.X ^ (i.val + 1) *
+          (Polynomial.C Polynomial.X) ^ (j.val + 1) :
+          _root_.Polynomial (_root_.Polynomial F)) =
+        Polynomial.C (Polynomial.C (coefs i j) * Polynomial.X ^ (j.val + 1)) *
+          Polynomial.X ^ (i.val + 1) := by
+    intro i j
+    have h1 : (Polynomial.C Polynomial.X :
+                _root_.Polynomial (_root_.Polynomial F)) ^ (j.val + 1) =
+              Polynomial.C (Polynomial.X ^ (j.val + 1)) :=
+      (Polynomial.C_pow).symm
+    have h2 : Polynomial.C (Polynomial.C (coefs i j) * Polynomial.X ^ (j.val + 1)) =
+              Polynomial.C (Polynomial.C (coefs i j)) *
+                (Polynomial.C (Polynomial.X ^ (j.val + 1)) :
+                _root_.Polynomial (_root_.Polynomial F)) :=
+      Polynomial.C_mul
+    rw [h1, h2]; ring
+  -- Step 2: explicit form for the per-j axisY term.
+  have h_termY : ∀ (j : Fin t),
+      (Polynomial.C (Polynomial.C (axisY j)) *
+        (Polynomial.C Polynomial.X) ^ (j.val + 1) :
+        _root_.Polynomial (_root_.Polynomial F)) =
+      Polynomial.C (Polynomial.C (axisY j) * Polynomial.X ^ (j.val + 1)) := by
+    intro j
+    have h1 : (Polynomial.C Polynomial.X :
+                _root_.Polynomial (_root_.Polynomial F)) ^ (j.val + 1) =
+              Polynomial.C (Polynomial.X ^ (j.val + 1)) :=
+      (Polynomial.C_pow).symm
+    rw [h1, ← Polynomial.C_mul]
+  -- Step 3: 4-case coefficient formula.
+  have h_coeff : ∀ (k l : ℕ),
+      ((Polynomial.C (Polynomial.C sec) +
+        (∑ i : Fin t, Polynomial.C (Polynomial.C (axisX i)) *
+          Polynomial.X ^ (i.val + 1)) +
+        (∑ j : Fin t, Polynomial.C (Polynomial.C (axisY j)) *
+          (Polynomial.C Polynomial.X) ^ (j.val + 1)) +
+        ∑ i : Fin t, ∑ j : Fin t,
+          Polynomial.C (Polynomial.C (coefs i j)) *
+            Polynomial.X ^ (i.val + 1) *
+            (Polynomial.C Polynomial.X) ^ (j.val + 1)).coeff k).coeff l =
+      (if k = 0 ∧ l = 0 then sec else 0) +
+      (∑ i : Fin t, if k = i.val + 1 ∧ l = 0 then axisX i else 0) +
+      (∑ j : Fin t, if k = 0 ∧ l = j.val + 1 then axisY j else 0) +
+      (∑ i : Fin t, ∑ j : Fin t,
+        if k = i.val + 1 ∧ l = j.val + 1 then coefs i j else 0) := by
+    intros k l
+    rw [Polynomial.coeff_add, Polynomial.coeff_add, Polynomial.coeff_add,
+        Polynomial.coeff_add, Polynomial.coeff_add, Polynomial.coeff_add,
+        Polynomial.finset_sum_coeff, Polynomial.finset_sum_coeff,
+        Polynomial.finset_sum_coeff]
+    simp only [Polynomial.finset_sum_coeff]
+    -- Sum order: const + axisX + axisY + interior.
+    refine congrArg₂ (· + ·) (congrArg₂ (· + ·) (congrArg₂ (· + ·) ?_ ?_) ?_) ?_
+    · -- ((C(C sec)).coeff k).coeff l = if (k, l) = (0, 0) then sec else 0
+      by_cases hk : k = 0
+      · subst hk
+        rw [Polynomial.coeff_C_zero, Polynomial.coeff_C]
+        by_cases hl : l = 0
+        · subst hl; simp
+        · simp [hl]
+      · rw [Polynomial.coeff_C, if_neg hk, Polynomial.coeff_zero]; simp [hk]
+    · -- axisX sum: (C(C(axisX i)) * X^(i+1)).coeff k).coeff l.
+      apply Finset.sum_congr rfl
+      intro i _
+      rw [Polynomial.coeff_C_mul_X_pow]
+      by_cases h1 : k = i.val + 1
+      · rw [if_pos h1]
+        rw [Polynomial.coeff_C]
+        by_cases h2 : l = 0
+        · subst h2; simp [h1]
+        · rw [if_neg h2, if_neg]
+          rintro ⟨_, hcontra⟩; exact h2 hcontra
+      · rw [if_neg h1, Polynomial.coeff_zero, if_neg]
+        rintro ⟨hcontra, _⟩; exact h1 hcontra
+    · -- axisY sum: ((C(C(axisY j)) * (CX)^(j+1)).coeff k).coeff l.
+      apply Finset.sum_congr rfl
+      intro j _
+      rw [h_termY j]
+      by_cases hk : k = 0
+      · subst hk
+        rw [Polynomial.coeff_C_zero, Polynomial.coeff_C_mul_X_pow]
+        by_cases hl : l = j.val + 1
+        · simp [hl]
+        · rw [if_neg hl, if_neg]
+          rintro ⟨_, hcontra⟩; exact hl hcontra
+      · rw [Polynomial.coeff_C, if_neg hk, Polynomial.coeff_zero, if_neg]
+        rintro ⟨hcontra, _⟩; exact hk hcontra
+    · -- interior 2D sum (same as the existing proof).
+      apply Finset.sum_congr rfl
+      intro i _
+      apply Finset.sum_congr rfl
+      intro j _
+      rw [h_term i j, Polynomial.coeff_C_mul_X_pow]
+      by_cases h1 : k = i.val + 1
+      · rw [if_pos h1, Polynomial.coeff_C_mul_X_pow]
+        by_cases h2 : l = j.val + 1
+        · rw [if_pos h2, if_pos ⟨h1, h2⟩]
+        · rw [if_neg h2, if_neg]
+          rintro ⟨_, hcontra⟩; exact h2 hcontra
+      · rw [if_neg h1, Polynomial.coeff_zero, if_neg]
+        rintro ⟨hcontra, _⟩; exact h1 hcontra
+  -- Step 4: bivEval picker — extracts a single nonzero (k, l) term.
+  have h_picker : ∀ (p q : Fin (t+1)) (v : F),
+      (∑ k : Fin (t+1), ∑ l : Fin (t+1),
+        (if k.val = p.val ∧ l.val = q.val then v else 0) * x ^ k.val * y ^ l.val) =
+      v * x ^ p.val * y ^ q.val := by
+    intros p q v
+    rw [Finset.sum_eq_single p]
+    · rw [Finset.sum_eq_single q]
+      · simp
+      · intros l _ hl
+        rw [if_neg]; · ring
+        push_neg; intro _ hc; exact hl (Fin.ext hc)
+      · intro h; exact (h (Finset.mem_univ _)).elim
+    · intros k _ hk
+      apply Finset.sum_eq_zero
+      intros l _
+      rw [if_neg]; · ring
+      push_neg; intro hc; exact (hk (Fin.ext hc)).elim
+    · intro h; exact (h (Finset.mem_univ _)).elim
+  -- Step 5: substitute h_coeff into LHS.
+  rw [show (∑ k : Fin (t+1), ∑ l : Fin (t+1),
+        ((Polynomial.C (Polynomial.C sec) +
+          (∑ i : Fin t, Polynomial.C (Polynomial.C (axisX i)) *
+            Polynomial.X ^ (i.val + 1)) +
+          (∑ j : Fin t, Polynomial.C (Polynomial.C (axisY j)) *
+            (Polynomial.C Polynomial.X) ^ (j.val + 1)) +
+          ∑ i : Fin t, ∑ j : Fin t,
+            Polynomial.C (Polynomial.C (coefs i j)) *
+              Polynomial.X ^ (i.val + 1) *
+              (Polynomial.C Polynomial.X) ^ (j.val + 1)).coeff k.val).coeff l.val *
+        x ^ k.val * y ^ l.val) =
+      (∑ k : Fin (t+1), ∑ l : Fin (t+1),
+        ((if k.val = 0 ∧ l.val = 0 then sec else 0) +
+          (∑ i : Fin t, if k.val = i.val + 1 ∧ l.val = 0 then axisX i else 0) +
+          (∑ j : Fin t, if k.val = 0 ∧ l.val = j.val + 1 then axisY j else 0) +
+          (∑ i : Fin t, ∑ j : Fin t,
+            if k.val = i.val + 1 ∧ l.val = j.val + 1 then coefs i j else 0)) *
+        x ^ k.val * y ^ l.val) from by
+      apply Finset.sum_congr rfl
+      intro k _
+      apply Finset.sum_congr rfl
+      intro l _
+      rw [h_coeff k.val l.val]]
+  simp only [add_mul, Finset.sum_add_distrib]
+  -- Step 6: compute RHS.
+  have h_RHS : ((Polynomial.C (Polynomial.C sec) +
+        (∑ i : Fin t, Polynomial.C (Polynomial.C (axisX i)) *
+          Polynomial.X ^ (i.val + 1)) +
+        (∑ j : Fin t, Polynomial.C (Polynomial.C (axisY j)) *
+          (Polynomial.C Polynomial.X) ^ (j.val + 1)) +
+        ∑ i : Fin t, ∑ j : Fin t,
+          Polynomial.C (Polynomial.C (coefs i j)) *
+            Polynomial.X ^ (i.val + 1) *
+            (Polynomial.C Polynomial.X) ^ (j.val + 1)).eval
+                (Polynomial.C x)).eval y =
+      sec + (∑ i : Fin t, axisX i * x ^ (i.val + 1)) +
+            (∑ j : Fin t, axisY j * y ^ (j.val + 1)) +
+            (∑ i : Fin t, ∑ j : Fin t,
+              coefs i j * x ^ (i.val + 1) * y ^ (j.val + 1)) := by
+    simp only [Polynomial.eval_add, Polynomial.eval_finset_sum, Polynomial.eval_mul,
+               Polynomial.eval_pow, Polynomial.eval_C, Polynomial.eval_X,
+               ← Polynomial.C_pow]
+  rw [h_RHS]
+  -- Step 7: match LHS and RHS via h_picker for each piece.
+  -- The LHS has 4 summands by the add_mul + sum_add_distrib distribution.
+  -- Each matches one piece on RHS via h_picker.
+  -- Strategy: compute each LHS piece individually using h_picker.
+  have h_const : (∑ k : Fin (t+1), ∑ l : Fin (t+1),
+      (if k.val = 0 ∧ l.val = 0 then sec else 0) * x ^ k.val * y ^ l.val) = sec := by
+    have := h_picker (0 : Fin (t+1)) (0 : Fin (t+1)) sec
+    simpa using this
+  have h_aX : (∑ k : Fin (t+1), ∑ l : Fin (t+1),
+      (∑ i : Fin t, if k.val = i.val + 1 ∧ l.val = 0 then axisX i else 0) *
+        x ^ k.val * y ^ l.val) =
+      ∑ i : Fin t, axisX i * x ^ (i.val + 1) := by
+    -- Distribute multiplication over the i-sum, then swap sum order.
+    have hdist : ∀ k l : Fin (t+1),
+        (∑ i : Fin t, if k.val = i.val + 1 ∧ l.val = 0 then axisX i else 0) *
+          x ^ k.val * y ^ l.val =
+        ∑ i : Fin t,
+          (if k.val = i.val + 1 ∧ l.val = 0 then axisX i else 0) *
+            x ^ k.val * y ^ l.val := by
+      intro k l
+      simp only [Finset.sum_mul]
+    rw [Finset.sum_congr rfl (fun k _ =>
+        Finset.sum_congr rfl (fun l _ => hdist k l))]
+    rw [Finset.sum_congr rfl (fun k _ => Finset.sum_comm)]
+    rw [Finset.sum_comm]
+    apply Finset.sum_congr rfl
+    intro i _
+    have h_iv : i.val + 1 < t + 1 := by omega
+    have := h_picker ⟨i.val + 1, h_iv⟩ ⟨0, by omega⟩ (axisX i)
+    simpa using this
+  have h_aY : (∑ k : Fin (t+1), ∑ l : Fin (t+1),
+      (∑ j : Fin t, if k.val = 0 ∧ l.val = j.val + 1 then axisY j else 0) *
+        x ^ k.val * y ^ l.val) =
+      ∑ j : Fin t, axisY j * y ^ (j.val + 1) := by
+    have hdist : ∀ k l : Fin (t+1),
+        (∑ j : Fin t, if k.val = 0 ∧ l.val = j.val + 1 then axisY j else 0) *
+          x ^ k.val * y ^ l.val =
+        ∑ j : Fin t,
+          (if k.val = 0 ∧ l.val = j.val + 1 then axisY j else 0) *
+            x ^ k.val * y ^ l.val := by
+      intro k l
+      simp only [Finset.sum_mul]
+    rw [Finset.sum_congr rfl (fun k _ =>
+        Finset.sum_congr rfl (fun l _ => hdist k l))]
+    rw [Finset.sum_congr rfl (fun k _ => Finset.sum_comm)]
+    rw [Finset.sum_comm]
+    apply Finset.sum_congr rfl
+    intro j _
+    have h_jv : j.val + 1 < t + 1 := by omega
+    have := h_picker ⟨0, by omega⟩ ⟨j.val + 1, h_jv⟩ (axisY j)
+    simpa using this
+  have h_int : (∑ k : Fin (t+1), ∑ l : Fin (t+1),
+      (∑ i : Fin t, ∑ j : Fin t,
+        if k.val = i.val + 1 ∧ l.val = j.val + 1 then coefs i j else 0) *
+        x ^ k.val * y ^ l.val) =
+      ∑ i : Fin t, ∑ j : Fin t,
+        coefs i j * x ^ (i.val + 1) * y ^ (j.val + 1) := by
+    rw [show (∑ k : Fin (t+1), ∑ l : Fin (t+1),
+        (∑ i : Fin t, ∑ j : Fin t,
+          (if k.val = i.val + 1 ∧ l.val = j.val + 1 then coefs i j else 0)) *
+        x ^ k.val * y ^ l.val) =
+      (∑ i : Fin t, ∑ j : Fin t,
+        ∑ k : Fin (t+1), ∑ l : Fin (t+1),
+          (if k.val = i.val + 1 ∧ l.val = j.val + 1 then coefs i j else 0) *
+            x ^ k.val * y ^ l.val) from by
+      simp only [Finset.sum_mul]
+      exact quad_sum_swap (a := t+1) (b := t) _]
+    apply Finset.sum_congr rfl
+    intro i _
+    apply Finset.sum_congr rfl
+    intro j _
+    have h_iv : i.val + 1 < t + 1 := by omega
+    have h_jv : j.val + 1 < t + 1 := by omega
+    have := h_picker ⟨i.val + 1, h_iv⟩ ⟨j.val + 1, h_jv⟩ (coefs i j)
+    convert this using 2
+  rw [h_const, h_aX, h_aY, h_int]
+
 /-! ## §17.7 Static initial-grid secrecy (Layer C2 conclusion)
 
 With the polynomial bridge in place, we can now state and prove the
@@ -3417,12 +3713,12 @@ theorem avss_secrecy_initPMF
       (avssInitPMF (n := n) (t := t) sec' corr partyPoint dealerHonest).map
         (coalitionGrid C D) := by
   classical
-  -- Both sides factor through `uniformBivariateWithFixedZero` ↦ `coalitionGrid`.
+  -- Both sides factor through `uniformBivariateFullWithFixedZero` ↦ `coalitionGrid`.
   -- Reduce both to the bivariate-shamir form via the polynomial bridge.
   have h_form : ∀ s : F,
       (avssInitPMF (n := n) (t := t) s corr partyPoint dealerHonest).map
           (coalitionGrid C D) =
-        (Leslie.Prob.Polynomial.uniformBivariateWithFixedZero (F := F) t t s).map
+        (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero (F := F) t t s).map
           (fun f (i : C.val) (j : D.val) =>
             some ((f.eval (Polynomial.C (partyPoint i.val))).eval
               (partyPoint j.val))) := by
@@ -3435,9 +3731,9 @@ theorem avss_secrecy_initPMF
     intro f hf
     funext i j
     simp only [coalitionGrid, avssInitState, Function.comp_apply]
-    rw [bivEval_polyToCoeffs_eq_eval_of_support (sec := s) f hf]
+    rw [bivEval_polyToCoeffs_eq_eval_of_support_full (sec := s) f hf]
   rw [h_form sec, h_form sec']
-  exact BivariateShamir.bivariate_shamir_secrecy
+  exact BivariateShamir.bivariate_shamir_secrecy_full
     partyPoint h_nz_pp h_F C D sec sec'
 
 /-! ## §17.8 Trace-level grid secrecy (Phase 5 Layer D)
@@ -3552,6 +3848,7 @@ theorem traceDist_step_zero_state_marginal
   rw [hmarg_zero, hμ₀_full_def, Measure.map_map hmeas_fst (by fun_prop)]
   convert Measure.map_id (μ := μ₀)
 
+set_option maxHeartbeats 800000 in
 /-- **Trace-level operational secrecy (Phase 5 Layer D).**
 
 For any adversary `A` and any two coalitions `C` (rows) and `D`
@@ -4729,21 +5026,21 @@ the +200 LOC polynomial-manipulation step explicitly deferred in
 the trace-level analogue and `AVSS-MODEL-NOTES.md` for the broader
 adversary-model story. -/
 
-/-- AVSS coalition-view secrecy (grid form). -/
+/-- AVSS coalition-view secrecy (grid form, **full** distribution). -/
 theorem avss_secrecy (partyPoint : Fin n → F)
     (h_nz_pp : ∀ i, partyPoint i ≠ 0)
     (h_F : t + 1 ≤ Fintype.card F)
     (C D : BivariateShamir.Coalition n t) (sec sec' : F) :
-    (Leslie.Prob.Polynomial.uniformBivariateWithFixedZero t t sec).map
+    (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero t t sec).map
         (fun f => fun (i : C.val) (j : D.val) =>
           some ((f.eval (Polynomial.C (partyPoint i.val))).eval
             (partyPoint j.val)))
       =
-    (Leslie.Prob.Polynomial.uniformBivariateWithFixedZero t t sec').map
+    (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero t t sec').map
         (fun f => fun (i : C.val) (j : D.val) =>
           some ((f.eval (Polynomial.C (partyPoint i.val))).eval
             (partyPoint j.val))) :=
-  BivariateShamir.bivariate_shamir_secrecy partyPoint h_nz_pp h_F C D sec sec'
+  BivariateShamir.bivariate_shamir_secrecy_full partyPoint h_nz_pp h_F C D sec sec'
 
 /-! ## §19. Rushing adversary instantiation (Phase 7.2)
 

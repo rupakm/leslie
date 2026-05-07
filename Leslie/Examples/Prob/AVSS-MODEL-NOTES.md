@@ -28,18 +28,23 @@ its statements and the literature's statements is non-trivial.  Consumers of
 this module should consult the relevant section below before relying on a
 particular property.
 
-⚠ **Important since the May 2026 audit (§9–§10):** the polynomial distribution
-`Polynomial.uniformBivariateWithFixedZero` is structurally degenerate: it
-samples polynomials with **only** non-axis monomials random, so `f(x, 0) = sec`
-for all `x`. Under this distribution the formalised classical theorems
-(`avss_correctness_AS`, `avss_commitment_AS`, `avss_reconstruction`) collapse
-to the *simple* VSS form ("all honest shares = `sec`"), and the conditional
-operational-secrecy theorems (`avss_secrecy_AS_view_conditional`,
-`avss_secrecy_AS_view_rushing`) hold **vacuously** because their `h_aux`
-hypothesis is provably false. A planned **distribution refactor** (§10)
-fixes this; readers who care about the operational secrecy story should
-either wait for the refactor or read §9–§10 carefully before citing the
-existing theorems.
+✅ **Distribution refactor landed (Phase 7.7).** As of the polynomial
+refactor PR (Phase 7.7), `avssInitMeasure` no longer couples to the
+degenerate `Polynomial.uniformBivariateWithFixedZero`.  Instead it
+uses `Polynomial.uniformBivariateFullWithFixedZero` — a true
+uniform bivariate of bidegree ≤ (t, t) with **only** the `(0, 0)`
+constant pinned to `sec`.  Under the new distribution
+`f(α_p, 0) = sec + ∑_{i ≥ 1} coeffs(i, 0) · α_p^i` is a genuine
+degree-`t` Shamir polynomial in `α_p`, so the per-party operational
+content of `avss_correctness_AS`, `avss_commitment_AS`, and
+`avss_reconstruction` is no longer trivially-`sec`.  The
+conditional operational-secrecy theorems
+(`avss_secrecy_AS_view_conditional`,
+`avss_secrecy_AS_view_rushing`)' `h_aux` becomes provable in
+principle (Phase 7.4 inductive AE-bridge remains the substantive
+~300–500 LOC follow-on work).  See §10 below for the per-theorem
+"after refactor" semantics; §9's audit is preserved for historical
+context.
 
 ## 1. Adversary model
 
@@ -643,16 +648,16 @@ per-party dealer messages (§2 above) — the classical "row + column
 secrecy" formulation which `BivariateShamir`'s deferred +200 LOC
 polynomial-manipulation work will eventually supply.
 
-## 10. Distribution refactor (planned, follows from §9 audit)
+## 10. Distribution refactor (✅ landed Phase 7.7)
 
 §9's audit identified that `Polynomial.uniformBivariateWithFixedZero`
 is degenerate — every random monomial has both `X`-degree ≥ 1 and
 `Y`-degree ≥ 1, forcing all axis coefficients to zero and making
-`f(x, 0) = sec` for all `x`.  This blocks the operational-view secrecy
-story at the polynomial level.
+`f(x, 0) = sec` for all `x`.  This blocked the operational-view
+secrecy story at the polynomial level.
 
-This section records the **planned distribution refactor** that
-unblocks the chain.
+This section records the **distribution refactor** that
+unblocked the chain (now landed as Phase 7.7).
 
 ### Target distribution
 
@@ -676,24 +681,24 @@ genuine degree-`dx` Shamir polynomial in `α_p` with constant term
 `(α_p)_{p ∈ corr}` with `corr.card ≤ t`, univariate Shamir secrecy
 gives that the marginal `(f(α_p, 0))_{p ∈ corr}` is sec-invariant.
 
-### Refactor plan (~250–400 LOC, 4 commits)
+### Refactor plan (~360 LOC, 4 commits — ✅ all landed)
 
-| Step | File | LOC |
+| Step | File | LOC | Status |
+|---|---|---|---|
+| 1. Added `uniformBivariateFullWithFixedZero` (3-product source: interior matrix + axisX vector + axisY vector) | `Leslie/Prob/Polynomial.lean` | ~40 | ✅ |
+| 2. Proved `bivariate_evals_uniform_full` (joint eval at off-axis grid uniform on `pts_x → pts_y → F`).  Reduces to existing `bivariate_evals_uniform dx dy 0` plus translation invariance: the new polynomial decomposes as `s + α(axisX)(p) + β(axisY)(q) + γ(coefs)(p, q)`, with γ exactly the eval of the axis-zero distribution at constant 0 | `Leslie/Prob/Polynomial.lean` | ~290 | ✅ |
+| 3. Added `bivariate_shamir_secrecy_pts_full` and `bivariate_shamir_secrecy_full` against the new distribution | `Leslie/Examples/Prob/BivariateShamir.lean` | ~90 | ✅ |
+| 4. Migrated `avssInitPMF` to use `uniformBivariateFullWithFixedZero`; added `bivEval_polyToCoeffs_eq_eval_of_support_full` bridge; updated `avss_secrecy_initPMF` and `avss_secrecy` to consume `bivariate_shamir_secrecy_full` | `Leslie/Examples/Prob/AVSS.lean` | ~280 | ✅ |
+
+### What changed after the refactor
+
+| Theorem | Before refactor (axis-zero distribution) | After refactor (full distribution) |
 |---|---|---|
-| 1. Add `uniformBivariateFullWithFixedZero` + show it's a probability measure | `Leslie/Prob/Polynomial.lean` | ~80 |
-| 2. Re-prove `bivariate_evals_uniform_full` (analogue of `bivariate_evals_uniform` for the new distribution; the marginal is uniform on `(pts_x → pts_y → F)` for any `pts_x, pts_y` with `0 ∉ pts_x` and `pts_x.card + 1 ≤ Fintype.card F`, etc.). The proof is by Vandermonde + Lagrange in each direction; replaces the existing `step1 ∘ step2` factoring | `Leslie/Prob/Polynomial.lean` | ~150 |
-| 3. Re-prove `BivariateShamir.bivariate_shamir_secrecy_pts` against the new distribution. **Requires lifting the read-only constraint on `BivariateShamir.lean`** — sanctioned for this work | `Leslie/Examples/Prob/BivariateShamir.lean` | ~80 |
-| 4. Migrate `avssInitMeasure` (and `avssInitPMF`, `polyToCoeffs`) to use the new distribution.  Update affected theorem preconditions in AVSS.lean (the existing `avss_secrecy_initPMF` and trace-level secrecy theorems retain the `0 ∉ partyPoint(C ∪ D)` precondition; the operational-view conditional theorems' `h_aux` becomes provable) | `Leslie/Examples/Prob/AVSS.lean` | ~50 |
-
-### What changes after the refactor
-
-| Theorem | Before refactor (current state) | After refactor |
-|---|---|---|
-| `avss_correctness_AS` | honest output = `bivEval coeffs (pp p) 0`, which collapses to `sec` for all `p` (degenerate) | honest output = `bivEval coeffs (pp p) 0`, which is the *per-party Shamir share* — different `p` get different shares |
-| `avss_commitment_AS` | every honest output = `coeffs 0 0` (collapses) | every honest output = `bivEval coeffs (pp p) 0` (per-party share) |
+| `avss_correctness_AS` | honest output = `bivEval coeffs (pp p) 0`, collapsed to `sec` for all `p` (degenerate) | honest output = `bivEval coeffs (pp p) 0`, the *per-party Shamir share* — different `p` get different shares |
+| `avss_commitment_AS` | every honest output = `coeffs 0 0` (collapsed) | every honest output = `bivEval coeffs (pp p) 0` (per-party share) |
 | `avss_reconstruction` | trivial since all shares = `sec` | genuine Lagrange interpolation: `t + 1` distinct shares recover `coeffs 0 0` (and reconstruction across fewer shares is information-theoretically impossible by Shamir secrecy) |
-| `avss_secrecy` | grid form at non-axis points; meaningful but doesn't say anything about axis row-poly contents | unchanged, but now reads as the foundational ingredient for operational secrecy |
-| `avss_secrecy_AS_view_conditional` / `_rushing` | vacuously true (h_aux false) | genuinely meaningful — h_aux becomes provable, and the conditional becomes the real operational secrecy statement |
+| `avss_secrecy` | grid form at non-axis points; meaningful but doesn't say anything about axis row-poly contents | unchanged shape (still the polynomial-level grid form), now reads as the foundational ingredient for operational secrecy.  Statement migrated to `uniformBivariateFullWithFixedZero` |
+| `avss_secrecy_AS_view_conditional` / `_rushing` | vacuously true (`h_aux` provably false) | **conditional theorem unchanged**, but `h_aux` now becomes provable in principle.  Discharging it remains Phase 7.4 inductive AE-bridge (~300–500 LOC follow-on) |
 
 ### Phase 7.4 inductive AE-bridge (still required)
 
@@ -705,16 +710,18 @@ This proof was Phase 7.4's substantive form; it consumes the
 simulate machinery (PR #35 commit `39b24d0`).  Estimated ~300–500
 additional LOC of inductive trace plumbing.
 
-### Why the current PR-set didn't do the refactor
+### History (now superseded by the landed refactor)
 
-The original worker brief made `BivariateShamir.lean` read-only.  The
-worker correctly stopped at the boundary and recorded the finding
-(commit `2de1f2b`) rather than violate the constraint.  Future workers
-on this refactor need explicit authorisation to modify
-`BivariateShamir.lean` (and the parallel-distribution path —
-add `uniformBivariateFullWithFixedZero` without touching the existing
-infrastructure — is the secondary fallback if `BivariateShamir.lean`
-remains off-limits).
+The original Phase 7 worker brief made `BivariateShamir.lean`
+read-only.  The worker correctly stopped at the boundary and
+recorded the finding (commit `2de1f2b`) rather than violate the
+constraint.  Phase 7.7's worker received explicit authorisation
+to modify `BivariateShamir.lean` for the duration of the
+distribution refactor; the parallel-additive path was chosen
+(both `uniformBivariateWithFixedZero` and
+`uniformBivariateFullWithFixedZero` coexist) so that `SyncVSS.lean`
+and `AVSSAbstract.lean` (off-limits) continue to consume the
+axis-zero variant unchanged.
 
 ## Future directions
 
