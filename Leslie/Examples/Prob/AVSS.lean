@@ -2684,6 +2684,84 @@ theorem avss_termination_AS_fair_traj
   · exact hN N hbnd
   · exact absurd hunb h_inf
 
+/-! ## §13.4 Echo / ready flow invariants (Phase 8.5b precursor)
+
+Two structural invariants tracking the relationship between
+`echoSent`/`readySent` flags, the corresponding inflight queues, and
+receiver buffers.
+
+* `echoFlowInv`: `(s.local_ p).echoSent = false` implies (i) no echo
+  in transit from `p` and (ii) no party has received an echo from `p`.
+* `readyFlowInv`: analogous for `readySent`/`inflightReady`/
+  `readyReceived`.
+
+These are structural facts about the model: `inflightEchoes` is
+populated only by `partyEchoSend p`, which simultaneously sets
+`echoSent_p := true`; `q.echoesReceived` is populated only by
+`partyEchoReceive q p`, which requires `(p, q) ∈ inflightEchoes`.
+By transitivity, every echo population is witnessed by
+`echoSent_p = true`.  Symmetric for readys.
+
+Used by Phase 8.5b's disjunct argument in
+`avssU_step_partyEchoSend_disj` (forthcoming): once corrupt parties
+may fire `partyEchoSend p`, the variant doesn't strictly decrease for
+corrupt-fired sends, but `partyEchoReceive q p` is enabled at the
+post-state for any `q` (the just-added `(p, q) ∈ inflightEchoes`,
+plus `p ∉ q.echoesReceived` from `echoFlowInv` applied at gate-pre
+where `echoSent_p = false`).  The `FairASTCertificate.U_dec_det`
+disjunct (variant decrease *or* another fair action enabled) is
+satisfied via the second clause.
+
+This precursor commit lands the *definitions* and the `initPred`
+lemmas; the per-action preservation theorems are deferred to PR 8.5b
+itself (their proofs interleave naturally with the gate-weakening
+case-by-case work). -/
+
+omit [Field F] [Fintype F] in
+/-- Echo flow consistency: `(s.local_ p).echoSent = false` implies
+no in-transit echoes from `p` and no party has received an echo from
+`p`. -/
+def echoFlowInv (s : AVSSState n t F) : Prop :=
+  ∀ p, (s.local_ p).echoSent = false →
+    (∀ q, (p, q) ∉ s.inflightEchoes) ∧
+    (∀ q, p ∉ (s.local_ q).echoesReceived)
+
+omit [Field F] [Fintype F] in
+/-- Ready flow consistency: analogous to `echoFlowInv` for
+`readySent`/`inflightReady`/`readyReceived`. -/
+def readyFlowInv (s : AVSSState n t F) : Prop :=
+  ∀ p, (s.local_ p).readySent = false →
+    p ∉ s.inflightReady ∧
+    (∀ q, p ∉ (s.local_ q).readyReceived)
+
+omit [Field F] [Fintype F] in
+theorem initPred_echoFlowInv (sec : F) (corr : Finset (Fin n))
+    (s : AVSSState n t F) (h : initPred sec corr s) :
+    echoFlowInv s := by
+  obtain ⟨hloc, _, _, _, _, hife, _⟩ := h
+  intro p _
+  refine ⟨?_, ?_⟩
+  · intro q hin
+    rw [hife] at hin
+    exact absurd hin (Finset.notMem_empty _)
+  · intro q hin
+    rw [hloc q] at hin
+    simp [AVSSLocalState.init] at hin
+
+omit [Field F] [Fintype F] in
+theorem initPred_readyFlowInv (sec : F) (corr : Finset (Fin n))
+    (s : AVSSState n t F) (h : initPred sec corr s) :
+    readyFlowInv s := by
+  obtain ⟨hloc, _, _, _, _, _, hifr, _⟩ := h
+  intro p _
+  refine ⟨?_, ?_⟩
+  · intro hin
+    rw [hifr] at hin
+    exact absurd hin (Finset.notMem_empty _)
+  · intro q hin
+    rw [hloc q] at hin
+    simp [AVSSLocalState.init] at hin
+
 /-! ## §13.5 Dealer-messages consistency invariant (Phase 8.1)
 
 After `dealerShare` fires, the `s.dealerMessages` map carries the
@@ -5840,6 +5918,65 @@ theorem measurable_reconstruct_pair
     Measurable (fun rd : (C.val → Fin (t+1) → F) × (Fin k → C.val → Bool) =>
         reconstructCoalitionTraceView (C := C) (k := k) rd.1 rd.2) :=
   measurable_of_countable _
+
+/-! ### Phase 8.5b forward-looking infrastructure: `TrivialView`
+
+Phase 8.5b plans to weaken `corruptLocalInv` to drop the
+`{echoSent, echoesReceived, readySent, readyReceived} = ∅` clauses
+(once corrupt parties may fire send/receive actions and produce
+non-trivial values for these fields).  The structural bridge
+`coalitionTraceView_eq_reconstruct_AE` then needs to factor through a
+new `coalitionTrivialView` projection that captures these
+schedule-derived fields per step per corrupt party.
+
+This section defines the `TrivialView` carrier type and the
+`coalitionTrivialView` projection, with measurability lemmas, ahead
+of the actual model surgery.  The current model still has corrupt
+parties' trivial fields pinned at their `init` values (by the strong
+form of `corruptLocalInv`), so `coalitionTrivialView` evaluates to
+the constant tuple `(false, ∅, false, ∅)` at every step in every
+reachable trace; the infrastructure becomes load-bearing only in
+Phase 8.5b's gate weakening + `corruptLocalInv` weakening, where
+these fields gain schedule-dependent values. -/
+
+/-- Carrier for the schedule-derived trivial-field view of a corrupt
+party's local state at one step: `(echoSent, echoesReceived,
+readySent, readyReceived)`. -/
+abbrev TrivialView (n : ℕ) : Type :=
+  Bool × Finset (Fin n) × Bool × Finset (Fin n)
+
+instance : MeasurableSpace (TrivialView n) := ⊤
+instance : MeasurableSingletonClass (TrivialView n) := ⟨fun _ => trivial⟩
+
+/-- The corrupt coalition's per-step trivial-field view.  Reads the
+schedule-derived fields directly from the trace.  Pinned at
+`(false, ∅, false, ∅)` everywhere under the current (pre-8.5b)
+`corruptLocalInv`, but designed to admit non-trivial values once
+Phase 8.5b weakens the invariant. -/
+def coalitionTrivialView (C : BivariateShamir.Coalition n t)
+    (ω : ℕ → AVSSState n t F × Option (AVSSAction n F)) (k : ℕ) :
+    Fin k → C.val → TrivialView n :=
+  fun i p =>
+    let ls := (ω i.val).1.local_ p.val
+    (ls.echoSent, ls.echoesReceived, ls.readySent, ls.readyReceived)
+
+omit [Field F] in
+@[fun_prop]
+theorem measurable_coalitionTrivialView
+    (C : BivariateShamir.Coalition n t) (k : ℕ) :
+    Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+        coalitionTrivialView C ω k) := by
+  classical
+  refine measurable_pi_iff.mpr fun i => measurable_pi_iff.mpr fun p => ?_
+  have h1 : Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+      ω i.val) := measurable_pi_apply _
+  have h2 : Measurable (Prod.fst :
+      AVSSState n t F × Option (AVSSAction n F) → AVSSState n t F) := measurable_fst
+  have h3 : Measurable (fun s : AVSSState n t F =>
+      ((s.local_ p.val).echoSent, (s.local_ p.val).echoesReceived,
+       (s.local_ p.val).readySent, (s.local_ p.val).readyReceived)) :=
+    measurable_of_countable _
+  exact (h3.comp h2).comp h1
 
 /-- **Phase 6.2 → 6.3 structural bridge.** Almost surely along the
 trace, `coalitionTraceView` matches `reconstructCoalitionTraceView`
