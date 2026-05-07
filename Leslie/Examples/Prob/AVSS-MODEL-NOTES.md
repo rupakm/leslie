@@ -16,6 +16,7 @@ literature or when AVSS is used as a primitive for downstream protocols.
 | Aspect | Canetti–Rabin literature | This formalisation |
 |---|---|---|
 | Adversary information | Rushing — sees corrupt-coalition view + in-flight messages | **Two adversary types coexist**: plain `Adversary` (full-state access; legacy) and `RushingAdversary` (view-restricted; Phase 7.1, generic in `Adversary.lean`). The classical AVSS theorems are restated against both (Phase 7.3) |
+| Adversary *power* (what corrupt parties can do/observe) | Rushing adversary controls all corrupt-party messages and observes every honest broadcast on corrupt receivers | ⚠ **Strictly weaker.** Corrupt parties cannot send echoes/readys/amplify (C1); they never receive honest echoes/readys (C2); fairness does not require `dealerShare` (C3). See **§11** |
 | Static vs. adaptive corruption | Both treated; usually adaptive | Static (`corrupted` fixed at `μ₀` time) |
 | Dealer-to-party communication | Per-party row + column polys, possibly inconsistent under corrupt dealer | Single global `s.coeffs` field; consistent by construction |
 | Dealer's distribution choice | Honest = uniform of bidegree ≤ (t,t) with `f(0,0) = sec`; corrupt = adversarial | **`Polynomial.uniformBivariateWithFixedZero` is degenerate** — fixes all axis coefficients to 0, not just `f(0,0)`. Honest output equals `sec` directly (every share is `sec`), and corrupt-party row poly's constant term is `sec`. See §10 below |
@@ -40,7 +41,7 @@ content of `avss_correctness_AS`, `avss_commitment_AS`, and
 `avss_reconstruction` is no longer trivially-`sec`.  The
 conditional operational-secrecy theorems
 (`avss_secrecy_AS_view_conditional`,
-`avss_secrecy_AS_view_rushing`)' `h_aux` becomes provable in
+`avss_secrecy_AS_view_rushing_via_aux`)' `h_aux` becomes provable in
 principle (Phase 7.4 inductive AE-bridge remains the substantive
 ~300–500 LOC follow-on work).  See §10 below for the per-theorem
 "after refactor" semantics; §9's audit is preserved for historical
@@ -104,13 +105,20 @@ Two practical consequences for downstream reasoning:
    `avss_secrecy_AS_view` (PR #33) and its joint marginalisation with
    the schedule.
 
-2. **`RushingAdversary` strictly restricts adversary information.**
-   Under a `RushingAdversary R`, the adversary's strategy is — by
-   construction — a function only of the view-history
+2. **`RushingAdversary` strictly restricts adversary information,
+   but is also message-restricted and reception-restricted relative
+   to CR.**  Under a `RushingAdversary R`, the adversary's strategy
+   is — by construction — a function only of the view-history
    `(R.view of state, action)`-pairs.  It *cannot* branch on
    `s.coeffs`, on honest parties' internal state outside the view, or
    on anything else outside `corr → AVSSLocalState`.  This is the
-   literature-standard rushing adversary.
+   information half of the literature-standard rushing adversary.
+
+   ⚠ The *capability* half is **strictly weaker than CR's**: in this
+   model corrupt parties cannot send echoes/readys/amplify (C1) and
+   never receive honest echoes/readys (C2).  See **§11** below for
+   the full statement of these restrictions and their operational
+   implication for the secrecy claim.
 
 3. **The classical AVSS theorems re-prove against `RushingAdversary`.**
    `avss_termination_AS_fair_rushing`, `avss_correctness_AS_rushing`,
@@ -147,9 +155,12 @@ A literature-faithful operational secrecy theorem (Phases 6–7, see
 - ✅ Re-proving termination / correctness / commitment against the new
   adversary type (Phase 7.3, **landed** — `*_rushing` variants of the
   classical theorems).
-- ⏳ A *cryptographic-core* lemma "schedule prefix factors through the
-  coalition's algebraic view" (Phase 7.4, **deferred**) and the
-  composition `avss_secrecy_AS_view_rushing` (Phase 7.5, **deferred**)
+- ✅ A *cryptographic-core* lemma "schedule prefix factors through the
+  coalition's algebraic view" (Phase 7.4, **landed**) and the
+  composition `avss_secrecy_AS_view_rushing` (Phase 7.5, **landed** —
+  fully unconditional in §19.4.5; intermediates
+  `avss_secrecy_AS_view_rushing_via_aux` and
+  `avss_secrecy_AS_view_rushing_via_init_invariant` retained)
   that closes the schedule-leakage caveat from Phase 6 by discharging
   the `h_aux` hypothesis of `avss_secrecy_AS_view_conditional`.  The
   proof is an inductive argument on `k` showing that, under the rushing
@@ -262,7 +273,7 @@ Two distinct secrecy theorems are formalised:
 - Operational view secrecy at the corrupt-coalition's actual observable
   state (`coalitionView` projecting onto `local_` fields) is formalised
   in conditional form: `avss_secrecy_AS_view_conditional` (PR #33) and
-  `avss_secrecy_AS_view_rushing` (PR #35) both take an auxiliary
+  `avss_secrecy_AS_view_rushing_via_aux` (PR #35) both take an auxiliary
   hypothesis `h_aux` about joint marginal invariance of
   `(coalitionAlgebraicView, schedulePrefix)`.  ⚠ Under the current
   polynomial distribution this hypothesis is **provably false**; see
@@ -285,6 +296,13 @@ corrupt party that runs `partyCorruptDeliver`.
 The upshot: until §10 lands, **the only meaningful trace-level secrecy
 statement we have is at the algebraic grid view, not the operational
 local-state view**.
+
+(Phase 7.7 has now landed §10's distribution refactor, so the
+operational view-secrecy theorem `avss_secrecy_AS_view_rushing` does
+hold.  But its rushing adversary is the *view-restricted, message-
+restricted, reception-restricted* one of §11 — see **§11** for what
+that means concretely and why a literature-faithful version is still
+Phase 8 territory.)
 
 ## 5. Network model
 
@@ -399,64 +417,96 @@ Lest the above read as a litany of caveats, here's what the formalisation
 
 ## 9. Phase 7.4–7.5 partial closure — schedule-leakage closing theorem
 
-### What this PR-set delivers (Phase 7.4 + 7.5, partial)
+### What Phases 7.4–7.5 deliver
 
 Phase 7 closes the rushing-adversary *type machinery* and classical-
-theorem wrappers (Phases 7.1–7.3, **landed**) plus the structural
-foundation for the schedule-leakage half of the headline (this section,
-**partially landed**):
+theorem wrappers (Phases 7.1–7.3, **landed**) plus the schedule-leakage
+half of the headline (this section, **landed**):
 
-  * **Phase 7.4 (partial — simulate machinery).** AVSS.lean §19.2
+  * **Phase 7.4 simulate machinery (landed).** AVSS.lean §19.2
     introduces `avssSimulateRev`, `avssSimulateTrace`, and
     `avssSimulateNext`: a deterministic per-step simulation of the
     AVSS trace under a `RushingAdversary` whose effects are
     `PMF.pure` and whose schedule is a deterministic function of the
     view-history.  Plus structural lemmas: list length, head, succ
-    recurrence.  These are the foundation on which the inductive
-    AE-bridge `traceDist sec R.toAdversary μ₀ ⇝ μ₀.map (avssSimulateTrace R)`
-    is built.
-  * **Phase 7.5 (thin composition).** AVSS.lean §19.3 introduces
-    `avss_secrecy_AS_view_rushing`, a thin wrapper around PR #33's
-    `avss_secrecy_AS_view_conditional` that plugs in `R.toAdversary`
-    for the underlying adversary and bridges the
-    `MeasurableSpace`-instance discrepancy on
-    `↥↑C → AVSSLocalState n t F` (the conditional uses default Pi;
-    §19's `instMeasurableSpaceAVSSRushingView` shadows it locally).
-    The hypothesis `h_aux` (joint marginal invariance of
-    `(coalitionAlgebraicView, schedulePrefix)`) is unchanged from
-    the conditional — see "What's still deferred" below for what
-    discharges it.
-
-### What's still deferred (substantive Phase 7.4 + algebraic core)
-
-The two pieces remaining for an unconditional headline:
-
-  * **Phase 7.4 inductive AE-bridge (~300–500 LOC).**  The proof that
-    under `R.toAdversary`, the trace AE-equals `avssSimulateTrace R
-    (ω 0).1` at every step `k`.  Threads the marginal recurrence
+    recurrence, `avssSimulateRev_reverse_eq_ofFn` (index-form
+    characterisation matching `FinPrefix.toList`).
+  * **Phase 7.4 inductive AE-bridge (landed).** AVSS.lean §19.2.4
+    proves `traceDist_AE_eq_avssSimulateTrace`: under `R.toAdversary`,
+    every step's trace AE-equals `avssSimulateTrace R (ω 0).1` at
+    that step.  Threads the marginal recurrence
     `Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`
-    through the per-step Dirac kernel (each kernel branch is a Dirac
-    by `PMF.pure` on the effect side and by Dirac on the gate-fail /
-    no-schedule branches), inducting on `k` from the base
-    `(ω 0).2 = none` AE.  Once landed, the AE-bridge implies that
-    `schedulePrefix ω k` AE-equals a deterministic function of
-    `(coalitionAlgebraicView corr ω k)` — discharging the schedule-
-    leakage half.
+    through the per-step Dirac kernel (each branch is Dirac by
+    `PMF.pure` on the effect side and by Dirac on stutter branches),
+    using a strong induction-form
+    `traceDist_AE_eq_avssSimulateTrace_strong` over the entire
+    prefix.  Per-prefix Dirac-identification lemma
+    `avssSpec_R_stepKernel_AE_simulate` factors the kernel through
+    the simulate's `avssSimulateNext` under prefix-matching
+    hypothesis.
+  * **Phase 7.4 joint factoring (landed).** AVSS.lean §19.2.5 defines
+    `simAlgebraicView` and `simSchedulePrefix` as deterministic
+    functions of `s_0`, then proves
+    `coalitionAlgebraicView_schedulePrefix_AE_eq_sim` (AE form) and
+    `traceDist_algebraicView_schedulePrefix_factors_AE` (pushforward
+    form).  Combined with the step-0 state marginal
+    (`traceDist_step_zero_state_marginal`, PR #32), expresses the
+    trace-level joint marginal as a pushforward of the initial
+    measure through `(simAlgebraicView, simSchedulePrefix)` —
+    `traceDist_jointMarginal_eq_init` (§19.4).
+  * **Phase 7.5 (thin composition, landed).** AVSS.lean §19.3
+    introduces `avss_secrecy_AS_view_rushing_via_aux`, a thin wrapper
+    around PR #33's `avss_secrecy_AS_view_conditional` that plugs in
+    `R.toAdversary` for the underlying adversary.  Hypothesis
+    `h_aux` (trace-level joint marginal invariance) is reduced to
+    `h_init_invariant` (initial-measure pushforward invariance) via
+    `traceDist_algebraicView_schedulePrefix_invariant` (§19.4).
+  * **Phase 7.4 headline (landed).** AVSS.lean §19.4 introduces
+    `avss_secrecy_AS_view_rushing_via_init_invariant`, taking
+    `h_init_invariant` (a polynomial-level initial-measure
+    invariance) as a hypothesis instead of the abstract trace-level
+    `h_aux`.  Composed with the row-poly secrecy lemma, §19.4.5
+    discharges `h_init_invariant` and yields the canonical
+    fully-unconditional headline `avss_secrecy_AS_view_rushing`.
+
+### What's still deferred (algebraic-core row-poly secrecy)
+
+The single piece remaining for a fully unconditional headline:
 
   * **Algebraic-core row-poly secrecy (~+200 LOC).**  The
     polynomial-manipulation strengthening of
-    `BivariateShamir.bivariate_shamir_secrecy` that lifts the grid-
-    pointwise theorem (sec-invariant for `|C| × |D|` evaluations
-    with `|C|, |D| ≤ t`) to a *row-poly* form (sec-invariant for
-    `|C|` row polynomials, each a `Fin (t+1) → F` vector of
-    coefficients).  This is what's needed for `cAV.1`'s marginal
-    (the corrupt coalition's row polys at the initial state) to be
-    sec-invariant.  Together with the Phase 7.4 AE-bridge,
-    discharges `h_aux` of the conditional unconditionally.
+    `BivariateShamir.bivariate_shamir_secrecy_full` that lifts the
+    grid-pointwise theorem (sec-invariant for `|C| × |D|`
+    bivariate-evaluations with `|C|, |D| ≤ t`) to a *row-poly*
+    form (sec-invariant for `|S|` row polynomials at corrupt
+    coalition `S` with `|S| ≤ t`, each row poly a `Fin (t+1) → F`
+    vector of coefficients).  This is what's needed for
+    `(simAlgebraicView, simSchedulePrefix)`'s initial-measure
+    pushforward to be sec-invariant.
 
-When both pieces land, `avss_secrecy_AS_view_rushing` becomes
-unconditional and is the literature-faithful operational secrecy
-theorem under the AVSS state model.
+    Concretely: under `uniformBivariateFullWithFixedZero t t sec`
+    (PR #36), for any `S : Finset (Fin n)` with `S.card ≤ t` and
+    `partyPoint` avoiding zero, the joint distribution of
+    `(rowPolyOfDealer partyPoint (polyToCoeffs f) q)_{q ∈ S}` is
+    uniform on `S → Fin (t+1) → F` — and hence sec-invariant.
+    Sketch: decompose `uniformBivariateFullWithFixedZero` into
+    independent column polynomials `g_l(x)` for `l ∈ Fin (t+1)`;
+    `g_0` has Shamir-secret structure with secret `sec` (uniform
+    by `evals_uniform`), `g_l` for `l ≥ 1` is fully uniform.
+    Combine via product-of-uniforms.
+
+    Modular composition: when this lemma lands as a separate PR,
+    `h_init_invariant` becomes provable via
+    `traceDist_jointMarginal_eq_init` plus the row-poly secrecy
+    plus the structural fact that `(simAlgebraicView,
+    simSchedulePrefix)` factors through `(rowPolyOfDealer at corr)`
+    (provable via simulate's view-history-only dependence).
+
+This piece has landed (`bivariate_shamir_secrecy_rowPoly_full`),
+discharging `h_init_invariant` and yielding the canonical
+literature-faithful operational secrecy theorem
+`avss_secrecy_AS_view_rushing` under the AVSS state model —
+completing Phase 7.
 
 ### Why "row-poly secrecy" is *structurally false* under the current distribution (audit, 2026-05-04)
 
@@ -591,8 +641,11 @@ Under a `RushingAdversary R` with `R.toAdversary` plugged into
 of the corrupt-coalition view-history.  Combined with Phase 6.2's
 bridge (corrupt local states factor through `algebraicView`) and
 Phase 5 step-`k` algebraic-view secrecy, this forces `h_aux` to hold.
-The theorem `avss_secrecy_AS_view_rushing` should then follow by
-`apply avss_secrecy_AS_view_conditional`.
+The theorem `avss_secrecy_AS_view_rushing_via_aux` then follows by
+`apply avss_secrecy_AS_view_conditional`; composition with the
+initial-measure invariance (§19.4) and the row-poly secrecy lemma
+(§19.4.5) yields the canonical fully-unconditional
+`avss_secrecy_AS_view_rushing`.
 
 ### Why the proof is non-trivial
 
@@ -723,6 +776,186 @@ distribution refactor; the parallel-additive path was chosen
 and `AVSSAbstract.lean` (off-limits) continue to consume the
 axis-zero variant unchanged.
 
+## 11. Adversary-power restrictions (relative to CR '93)
+
+§1 documents the *information* the rushing adversary may use (a
+projection of the state).  This section documents three orthogonal
+restrictions on what the adversary can *do* and *observe* in this
+state model.  They are not bugs in the formalisation — every theorem
+is sound about the model it speaks of — but they weaken the implicit
+adversary relative to Canetti–Rabin '93, and a reader who cites the
+formalised secrecy / commitment / termination theorems without
+consulting them risks overclaiming.
+
+The shorthand C1, C2, C3 is used in theorem docstrings
+(`avss_secrecy_AS_view_rushing`, `avss_correctness_AS`,
+`avss_commitment_AS`, `avss_termination_AS_fair`) when pointing at
+this section.
+
+### 11.1. C1 — Corrupt parties cannot send echoes/readys/amplify
+
+Every send-action's gate has `p ∉ s.corrupted` (see
+`Leslie/Examples/Prob/AVSS.lean`):
+
+  * `partyEchoSend p` (gate, line ~401–403): `p ∉ s.corrupted`.
+  * `partyReady p` (gate, line ~407–410): `p ∉ s.corrupted`.
+  * `partyAmplify p` (gate, line ~411–414): `p ∉ s.corrupted`.
+
+Consequence: in this model, corrupt parties' only protocol-relevant
+action is `partyCorruptDeliver` (passively receive their row poly
+from the dealer).  They cannot inject echoes, fake readys, equivocate,
+or amplify — every protocol message they would emit is gate-blocked.
+
+In CR '93 the rushing adversary controls *what* corrupt parties send,
+including malformed and adversarially-timed messages designed to
+manipulate honest threshold counts (e.g., racing an echo so that an
+honest party's `echoesReceived` reaches `n − t` from a corrupt-only
+quorum).
+
+**Implication.**
+
+  * For *termination/correctness/commitment*, this makes the
+    formalised theorems strictly stronger than the literature: the
+    adversary has fewer disruption options, so any property proved
+    holds against a (proper) restriction of the CR adversary.
+  * For *secrecy*, the implication runs the other way: a proof of
+    secrecy in this model is against a *strictly weaker* adversary
+    than CR's, so it does **not** directly imply CR-rushing secrecy.
+
+**Bridge to literature.**  Phase 8 (per-party dealer messages and
+adversary-controlled corrupt-party send schedule) replaces these
+gates with adversary-chosen send actions subject to message-format
+verifiability.
+
+### 11.2. C2 — Honest echoes/readys are addressed only to honest receivers
+
+`partyEchoSend p`'s effect (around line 348 of `AVSS.lean`) populates
+`inflightEchoes` only with `(p, q)` for `q ∉ s.corrupted` (the
+`Finset.filter` excludes corrupt receivers).  The receive gates
+`partyEchoReceive p q` and `partyReceiveReady p q` additionally
+require `p ∉ s.corrupted`.  Symmetrically for `partyReady`.
+
+Consequence: no honest-to-corrupt echo or ready is ever in transit,
+and corrupt parties never receive any echo or ready from honest
+parties.  Their `(s.local_ p).echoesReceived` and `readyReceived`
+fields remain empty throughout every reachable trace.
+
+In CR '93, honest broadcasts are point-to-point messages that go to
+*every* party including corrupt ones.  The corrupt-coalition view in
+CR therefore includes "I have received an echo from honest p" /
+"honest q has readied" — which is a real information channel that
+the adversary can use both to learn about honest progress and to
+correlate scheduling decisions.
+
+**Implication.**  Combined with C1, the corrupt-coalition view in
+this model essentially reduces to:
+
+> for each corrupt `p`, has `partyCorruptDeliver` fired? if so, here
+> is `rowPolyOfDealer s.partyPoint s.coeffs p`.
+
+That is a much smaller view than CR's.  This is why
+`avss_secrecy_AS_view_rushing`'s rushing adversary, while
+view-restricted in the §1 sense, still carries the qualifier "under
+the AVSS state model" — the model has carved out the operational
+channels through which a CR-rushing adversary would observe honest
+broadcasts on corrupt receivers.
+
+**Bridge to literature.**  Same as C1: Phase 8's per-party messages
+refactor closes both C1 and C2 simultaneously by giving the adversary
+full delivery scheduling on every honest message including those
+addressed to corrupt receivers.
+
+### 11.3. C3 — `dealerShare` is not in `avssFairActions`
+
+`avssFairActions` (definition at `AVSS.lean` line ~568) explicitly
+lists only honest-party receive/send/output actions:
+
+```
+def avssFairActions : Set (AVSSAction n F) :=
+  { a | match a with
+        | .partyDeliver _ | .partyEchoSend _ | .partyEchoReceive _ _
+        | .partyReady _ | .partyAmplify _ | .partyReceiveReady _ _
+        | .partyOutput _ => True
+        | _ => False }
+```
+
+`dealerShare` and `partyCorruptDeliver` fall into the catch-all
+`_ => False` and are not fair-required.
+
+Consequence: a "fair adversary" in this model is *not required* to
+ever fire `dealerShare`.  A stalling adversary that never fires it
+keeps `s.dealerSent = false` forever; every fair action's gate then
+fails (`partyDeliver` requires `s.dealerSent = true`); no honest
+party outputs; `terminated` is unreachable.
+
+The termination theorem (`avss_termination_AS_fair`) is still
+logically sound — for such a stalling adversary, the user-supplied
+`h_U_mono` / `h_U_strict` certificate witnesses *cannot be
+discharged*, so the theorem holds vacuously for that input.  But the
+theorem carries no operational content in that case.  A naive reader
+might infer "the formalised model implies an honest dealer's
+protocol always terminates"; the precise statement is "the protocol
+terminates *if the adversary eventually fires `dealerShare` and the
+fair-progress certificate is dischargeable*".
+
+In CR '93 an honest dealer broadcasts by definition (the dealer's
+share-out step is part of the protocol script, not the adversary's
+schedule).
+
+**Bridge to literature.**  Two clean fixes:
+
+  1. **Phase B (small):** add the hypothesis "honest dealer ⇒
+     `dealerShare` eventually fires" at the call site of
+     `avss_termination_AS_fair` (a stutter-free trace condition or a
+     fairness side-condition outside `avssFair`).
+  2. **Phase B alt:** fold `dealerShare` into `avssFairActions` (so
+     fair scheduling guarantees it fires).  Slightly tighter: the
+     resulting `avssFair` then enforces "dealer eventually shares"
+     for every adversary, so honest-dealer termination is genuinely
+     unconditional.
+
+Either fix is local; neither requires changes to the cryptographic
+content.  The Phase A docs commit (this PR's docs commit) flags the
+issue; a follow-on Phase B commit will adjust the model.
+
+### 11.4. Correctness/commitment subtlety (per-party share, not the secret)
+
+This is not strictly an *adversary-power* restriction — it's a
+restatement subtlety that affects how readers should interpret the
+correctness and commitment theorems.
+
+`avss_correctness_AS` concludes
+
+```
+v = bivEval s.coeffs (s.partyPoint p) 0
+```
+
+for every honest party `p` with output `v` — i.e., each honest party
+outputs its **per-party share** `f_p(0)`, **not the secret**
+`s.coeffs 0 0`.  This is consistent with CR-style AVSS where outputs
+are *shares* and reconstruction is a separate phase, but readers who
+expect the colloquial "honest dealer ⇒ honest outputs equal `sec`"
+will be surprised: that holds only after `avss_reconstruction`'s
+Lagrange step (any `t + 1` distinct honest shares interpolate at `0`
+to recover `s.coeffs 0 0`).
+
+`avss_commitment_AS` is similarly "every honest output is
+`bivEval coeffs (partyPoint p) 0`" — strong enough (combined with
+`avss_reconstruction`) to imply the literature's "any `t + 1` honest
+outputs Lagrange-interpolate to one secret", but the model's
+commitment is structurally trivial because there is only one
+`s.coeffs` field in the state (already disclosed in §2).
+
+**Bridge to literature.**  The Lagrange step is already formalised
+(`avss_reconstruction`); composing it with `avss_correctness_AS`
+gives the user-facing "honest dealer ⇒ recovered secret = `sec`"
+property at any committee of `t + 1` honest parties.  The
+*genuinely-harder* commitment property — "the corrupt dealer cannot
+fool honest parties into outputting values inconsistent with any
+single bivariate polynomial" — is structural in this model (one
+global `s.coeffs`) and recovered properly only under Phase 8's
+per-party dealer messages.
+
 ## Future directions
 
 The honest path to a literature-faithful AVSS — what we'd call a "Phase B+"
@@ -757,10 +990,12 @@ trajectory — has four components, each shippable as a separate PR:
    `avss_reconstruction` is purely algebraic, no rushing version
    needed.  **Landed in this PR.**
 
-5. ⏳ **Phase 7.4 + 7.5: schedule-leakage-closing theorem.**  See
+5. ✅ **Phase 7.4 + 7.5: schedule-leakage-closing theorem.**  See
    §9 above — the cryptographic-core composition that produces the
-   unconditional `avss_secrecy_AS_view_rushing`.  Deferred to a
-   follow-up PR.
+   unconditional `avss_secrecy_AS_view_rushing` (canonical name).
+   Intermediate variants `avss_secrecy_AS_view_rushing_via_aux` and
+   `avss_secrecy_AS_view_rushing_via_init_invariant` are retained
+   as the conditional building blocks.  **Landed.**
 
 6. ⏳ **Phase 8: Per-party dealer messages.**  Replace `s.coeffs` with
    per-party messages `dealerMessages : Fin n → (RowPoly × ColPoly)`.
@@ -832,6 +1067,13 @@ When citing the formalisation in a paper or report, the precise claim is:
 > adversary, completing the literature-faithful operational secrecy
 > theorem.  The dealer's bivariate polynomial is modeled as a single
 > global field rather than per-party messages, so the formalised
-> commitment theorem is in an abstracted form.  See
+> commitment theorem is in an abstracted form.  ⚠ The formalised
+> rushing adversary is **strictly weaker than CR '93's rushing
+> adversary**: corrupt parties cannot send echoes/readys/amplify (C1),
+> never receive honest echoes/readys (C2), and `dealerShare` is not
+> fair-required (C3) — see §11.  Citers of `avss_secrecy_AS_view_rushing`
+> in particular should note that secrecy *here* does not directly imply
+> secrecy against a CR rushing adversary that controls corrupt-party
+> messages; closing that gap is Phase 8 territory.  See
 > `Leslie/Examples/Prob/AVSS-MODEL-NOTES.md` for the full abstraction
 > inventory and pointers to the remaining literature-faithful refactor.
