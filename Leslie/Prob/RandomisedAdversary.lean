@@ -804,33 +804,219 @@ private lemma randomisedStepKernel_apply_eq_bind_stepKernel
         (MeasurableSet.singleton _)]
   ring
 
+/-! ### Joint kernel construction for `partialTraj` parameterised over `sched`.
+
+We replicate (in private form) the `kappaJoint` / `jointStepKernel` /
+`jointPartialTraj` construction from `Leslie.Mathlib.Probability.Kernel.IonescuTulcea.Bind`,
+specialised to the AVSS step-kernel family. The point is to obtain joint
+measurability of `(sched, x₀) ↦ partialTraj (κ sched) 0 n x₀ S` from joint
+kernel-measurability of a single kernel `Kernel (ScheduleAssignment σ ι ×
+FinPrefix σ ι 0) (FinPrefix σ ι n)` whose value at `(sched, x₀)` agrees with
+`partialTraj (κ sched) 0 n x₀`. The construction is identical to the upstream
+private helpers in `Bind.lean`; we re-derive it locally because those helpers
+are private and the AVSS kernel `κ sched n h := stepKernel spec
+(sched.toAdversary corrupt) n h` is what we need to specialise to. -/
+
+set_option linter.unusedSectionVars false in
+/-- Joint kernel `(sched, h) ↦ stepKernel spec (sched.toAdversary corrupt) n h`,
+with measurability bootstrapped from `stepKernel_apply_measurable_in_sched` plus
+countability of `FinPrefix σ ι n`. -/
+private noncomputable def kappaJointSched
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) (n : ℕ) :
+    Kernel (ScheduleAssignment σ ι × FinPrefix σ ι n) (σ × Option ι) where
+  toFun bh := (stepKernel spec (bh.1.toAdversary corrupt) n) bh.2
+  measurable' := by
+    refine Measure.measurable_of_measurable_coe _ (fun s hs => ?_)
+    refine measurable_from_prod_countable_left fun h => ?_
+    exact stepKernel_apply_measurable_in_sched spec corrupt h hs
+
+set_option linter.unusedSectionVars false in
+private instance kappaJointSched_isMarkov
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) (n : ℕ) :
+    IsMarkovKernel (kappaJointSched spec corrupt n) :=
+  ⟨fun bh => by
+    show IsProbabilityMeasure
+      ((stepKernel spec (bh.1.toAdversary corrupt) n) bh.2)
+    infer_instance⟩
+
+set_option linter.unusedSectionVars false in
+/-- The joint per-step Ionescu–Tulcea kernel parameterised over `sched`. -/
+private noncomputable def jointStepKernelSched
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) (n : ℕ) :
+    Kernel (ScheduleAssignment σ ι × FinPrefix σ ι n) (FinPrefix σ ι (n + 1)) :=
+  (Kernel.deterministic Prod.snd measurable_snd
+      ×ₖ (kappaJointSched spec corrupt n).map
+          (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n)).map
+    (IicProdIoc (X := fun _ : ℕ => σ × Option ι) n (n + 1))
+
+set_option linter.unusedSectionVars false in
+private instance jointStepKernelSched_isMarkov
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) (n : ℕ) :
+    IsMarkovKernel (jointStepKernelSched spec corrupt n) := by
+  unfold jointStepKernelSched
+  have : IsMarkovKernel
+      ((kappaJointSched spec corrupt n).map
+        (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n)) :=
+    Kernel.IsMarkovKernel.map _
+      (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n).measurable
+  exact Kernel.IsMarkovKernel.map _ measurable_IicProdIoc
+
+set_option linter.unusedSectionVars false in
+private lemma jointStepKernelSched_apply
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) (n : ℕ)
+    (sched : ScheduleAssignment σ ι) (y : FinPrefix σ ι n) :
+    jointStepKernelSched spec corrupt n (sched, y) =
+      ((Kernel.id ×ₖ
+        ((stepKernel spec (sched.toAdversary corrupt) n).map
+          (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n))) y).map
+        (IicProdIoc (X := fun _ : ℕ => σ × Option ι) n (n + 1)) := by
+  unfold jointStepKernelSched
+  rw [show ((Kernel.deterministic Prod.snd measurable_snd ×ₖ (kappaJointSched spec corrupt n).map
+            (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n)).map
+          (IicProdIoc (X := fun _ : ℕ => σ × Option ι) n (n + 1))) (sched, y) =
+        Measure.map (IicProdIoc (X := fun _ : ℕ => σ × Option ι) n (n + 1))
+          ((Kernel.deterministic Prod.snd measurable_snd ×ₖ (kappaJointSched spec corrupt n).map
+            (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n)) (sched, y))
+          from Kernel.map_apply _ measurable_IicProdIoc _]
+  congr 1
+  rw [Kernel.prod_apply, Kernel.prod_apply, Kernel.deterministic_apply, Kernel.id_apply]
+  congr 1
+  rw [Kernel.map_apply _ (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n).measurable,
+    Kernel.map_apply _ (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n).measurable]
+  rfl
+
+set_option linter.unusedSectionVars false in
+/-- The joint kernel version of `partialTraj (κ sched) 0 n`. -/
+private noncomputable def jointPartialTrajSched
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) :
+    (n : ℕ) → Kernel (ScheduleAssignment σ ι × FinPrefix σ ι 0) (FinPrefix σ ι n)
+  | 0 => Kernel.deterministic Prod.snd measurable_snd
+  | n + 1 =>
+      ((jointPartialTrajSched spec corrupt n) ⊗ₖ
+        ((jointStepKernelSched spec corrupt n).comap
+          (fun bxy : (ScheduleAssignment σ ι × FinPrefix σ ι 0) × FinPrefix σ ι n =>
+            (bxy.1.1, bxy.2))
+          (by fun_prop))).map Prod.snd
+
+set_option linter.unusedSectionVars false in
+private instance jointPartialTrajSched_isMarkov
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) :
+    ∀ (n : ℕ), IsMarkovKernel (jointPartialTrajSched spec corrupt n) := by
+  intro n
+  induction n with
+  | zero =>
+    show IsMarkovKernel (Kernel.deterministic Prod.snd measurable_snd)
+    infer_instance
+  | succ n ih =>
+    have := ih
+    have hStep : IsMarkovKernel ((jointStepKernelSched spec corrupt n).comap
+        (fun bxy : (ScheduleAssignment σ ι × FinPrefix σ ι 0) × FinPrefix σ ι n =>
+          (bxy.1.1, bxy.2))
+        (by fun_prop)) := Kernel.IsMarkovKernel.comap _ _
+    show IsMarkovKernel
+      (((jointPartialTrajSched spec corrupt n) ⊗ₖ
+        ((jointStepKernelSched spec corrupt n).comap
+          (fun bxy : (ScheduleAssignment σ ι × FinPrefix σ ι 0) × FinPrefix σ ι n =>
+            (bxy.1.1, bxy.2))
+          (by fun_prop))).map Prod.snd)
+    have : IsMarkovKernel ((jointPartialTrajSched spec corrupt n) ⊗ₖ
+        ((jointStepKernelSched spec corrupt n).comap
+          (fun bxy : (ScheduleAssignment σ ι × FinPrefix σ ι 0) × FinPrefix σ ι n =>
+            (bxy.1.1, bxy.2))
+          (by fun_prop))) := inferInstance
+    exact Kernel.IsMarkovKernel.map _ measurable_snd
+
+set_option linter.unusedSectionVars false in
+/-- Pointwise agreement: at `(sched, x₀)`, the joint partial-trajectory kernel
+equals `partialTraj (κ sched) 0 n x₀`. -/
+private lemma jointPartialTrajSched_apply
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) (n : ℕ)
+    (sched : ScheduleAssignment σ ι) (x₀ : FinPrefix σ ι 0) :
+    jointPartialTrajSched spec corrupt n (sched, x₀) =
+      Kernel.partialTraj (X := fun _ => σ × Option ι)
+        (fun n => stepKernel spec (sched.toAdversary corrupt) n) 0 n x₀ := by
+  induction n with
+  | zero =>
+    show (Kernel.deterministic Prod.snd measurable_snd) (sched, x₀) = _
+    rw [Kernel.deterministic_apply, Kernel.partialTraj_self, Kernel.id_apply]
+  | succ n ih =>
+    have hMark_jptN : IsMarkovKernel (jointPartialTrajSched spec corrupt n) := inferInstance
+    have hMark_step_comap : IsMarkovKernel ((jointStepKernelSched spec corrupt n).comap
+        (fun bxy : (ScheduleAssignment σ ι × FinPrefix σ ι 0) × FinPrefix σ ι n =>
+          (bxy.1.1, bxy.2))
+        (by fun_prop)) := Kernel.IsMarkovKernel.comap _ _
+    show ((jointPartialTrajSched spec corrupt n ⊗ₖ
+        ((jointStepKernelSched spec corrupt n).comap
+          (fun bxy : (ScheduleAssignment σ ι × FinPrefix σ ι 0) × FinPrefix σ ι n =>
+            (bxy.1.1, bxy.2))
+          (by fun_prop))).map Prod.snd) (sched, x₀) = _
+    ext s hs
+    rw [Kernel.map_apply' _ measurable_snd _ hs,
+      Kernel.compProd_apply (measurable_snd hs)]
+    have hcomap : ∀ y, ((jointStepKernelSched spec corrupt n).comap
+        (fun bxy : (ScheduleAssignment σ ι × FinPrefix σ ι 0) × FinPrefix σ ι n =>
+          (bxy.1.1, bxy.2))
+        (by fun_prop)) ((sched, x₀), y) (Prod.mk y ⁻¹' (Prod.snd ⁻¹' s)) =
+          jointStepKernelSched spec corrupt n (sched, y) s := by
+      intro y; rw [Kernel.comap_apply']; rfl
+    simp_rw [hcomap, ih]
+    rw [Kernel.partialTraj_succ_of_le (zero_le _)]
+    have hmap_apply' :=
+      Kernel.map_apply' (((Kernel.id ×ₖ
+              ((stepKernel spec (sched.toAdversary corrupt) n).map
+                (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n))) ∘ₖ
+              (Kernel.partialTraj (X := fun _ => σ × Option ι)
+                (fun n => stepKernel spec (sched.toAdversary corrupt) n) 0 n)))
+        (measurable_IicProdIoc (X := fun _ : ℕ => σ × Option ι) (m := n) (n := n + 1))
+        x₀ hs
+    rw [hmap_apply']
+    have hcomp_apply' :=
+      Kernel.comp_apply'
+        (Kernel.id ×ₖ
+          ((stepKernel spec (sched.toAdversary corrupt) n).map
+            (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n)))
+        (Kernel.partialTraj (X := fun _ => σ × Option ι)
+          (fun n => stepKernel spec (sched.toAdversary corrupt) n) 0 n)
+        x₀
+        (measurable_IicProdIoc (X := fun _ : ℕ => σ × Option ι) (m := n) (n := n + 1) hs)
+    rw [hcomp_apply']
+    refine lintegral_congr (fun y => ?_)
+    rw [jointStepKernelSched_apply,
+      Measure.map_apply
+        (measurable_IicProdIoc (X := fun _ : ℕ => σ × Option ι) (m := n) (n := n + 1)) hs]
+
 set_option linter.unusedSectionVars false in
 /-- **Auxiliary joint measurability** of `(sched, x₀) ↦ partialTraj κ_sched 0 n x₀ S`
 for the AVSS step-kernel family. This is the `h_partialTraj_meas` hypothesis
 required by `Kernel.trajMeasure_bind_kernel_of_partial`.
 
-By induction on `n` plus standard `Kernel.measurable` plumbing — at each
-level the queried `sched`-coordinate factors through `Pi`-σ-algebra projection
-and the inductive hypothesis. Conceptually the `n=0` base case is trivial
-(the kernel is the identity-deterministic) and the step-case stitches a
-`Kernel.bind` whose joint measurability follows from the IH plus
-`stepKernel_apply_measurable_in_sched`.
-
-This is the joint-measurability sibling of `partialTraj_apply_eq_bind_in_sched`
-below; both encapsulate the `infinitePi`-Fubini gap that mathlib does not
-yet expose. ~150 LOC of cylinder induction would close this honestly. -/
+Discharged by the joint-kernel construction `jointPartialTrajSched` above:
+joint measurability of the kernel evaluated at a fixed measurable set `S`
+follows from `Kernel.measurable` (kernel-as-measure-valued-map is measurable)
+composed with `Measure.measurable_coe hS` (measure-evaluation at `S` is
+measurable). -/
 private lemma partialTraj_apply_measurable_in_sched
     (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) (n : ℕ)
-    {S : Set (Π i : Finset.Iic n, σ × Option ι)} (_hS : MeasurableSet S) :
+    {S : Set (Π _i : Finset.Iic n, σ × Option ι)} (hS : MeasurableSet S) :
     Measurable
       (Function.uncurry
         (fun (sched : ScheduleAssignment σ ι)
             (x₀ : Π _i : Finset.Iic 0, σ × Option ι) =>
           (Kernel.partialTraj (X := fun _ => σ × Option ι)
             (fun n => stepKernel spec (sched.toAdversary corrupt) n) 0 n x₀) S)) := by
-  -- Honest measurability content of `h_partialTraj_meas` for the AVSS kernel.
-  -- See the section docstring for the `infinitePi`-Fubini gap statement.
-  sorry
+  -- Rewrite via `jointPartialTrajSched_apply`.
+  have hRw : (Function.uncurry
+      (fun (sched : ScheduleAssignment σ ι)
+          (x₀ : Π _i : Finset.Iic 0, σ × Option ι) =>
+        (Kernel.partialTraj (X := fun _ => σ × Option ι)
+          (fun n => stepKernel spec (sched.toAdversary corrupt) n) 0 n x₀) S))
+      = (fun bx₀ : ScheduleAssignment σ ι × FinPrefix σ ι 0 =>
+          (jointPartialTrajSched spec corrupt n bx₀) S) := by
+    funext bx₀
+    rcases bx₀ with ⟨sched, x₀⟩
+    rw [Function.uncurry_apply_pair, jointPartialTrajSched_apply]
+  rw [hRw]
+  exact (Measure.measurable_coe hS).comp (Kernel.measurable _)
 
 set_option linter.unusedSectionVars false in
 /-- **Auxiliary trajectory-level bind identity** for the AVSS step-kernel
@@ -847,13 +1033,45 @@ querying repeatedly is distributionally equivalent to sampling fresh per
 level, and the trajectory-level bind identity reduces to a `Fubini`-on-
 `infinitePi` swap.
 
-**Mathlib gap.** Discharging this honestly requires an `infinitePi`-Fubini
-swap on a randomly-determined finite coordinate set (the histories used
-at levels `0..n-1` depend on the random trajectory outcomes). Mathlib's
-`MeasureTheory.lintegral_restrict_infinitePi` handles a *fixed* finset of
-coordinates; the sequential parameterised version is not yet in mathlib.
-~200–400 LOC of induction-on-`n` plus careful Fubini bookkeeping would
-close this. Queued for a future PR. -/
+**Mathlib gap (ESTABLISHED, NOT FIXABLE WITHIN THIS FILE).** Discharging this
+honestly requires an `infinitePi`-Fubini swap on a *sequentially-determined*
+finset of coordinates (the histories visited at levels `0..n-1` depend on the
+random trajectory outcomes of earlier levels). A pure structural induction on
+`n` *does not work*: at the inductive step the inner integral against
+`partialTraj κAvg 0 n x₀` cannot be replaced by an inner integral against
+`partialTraj (κ b) 0 n x₀` for the same outer-`b` because `κAvg n` and
+`κ b n` are *different* per-step kernels — this is exactly the failure mode
+of the unconditional `trajMeasure_bind_kernel` discovered in PR #96 (see the
+Bernoulli counterexample in the docstring of
+`Kernel.trajMeasure_bind_kernel_of_partial`).
+
+The honest proof requires using the *product structure* of
+`ν = scheduleSpaceMeasure R = infinitePi (R.strategy ·)` — namely, that for
+distinct histories the corresponding `sched` coordinates are independent.
+Mathlib exposes coordinate-marginal lemmas
+(`MeasureTheory.infinitePi_map_eval`, `lintegral_restrict_infinitePi`,
+`lintegral_infinitePi_of_piFinset`) only for *fixed* coordinate sets, while
+here the relevant coordinate is determined by the random level-`k` history
+`h_k` — i.e. by the level-`k` outcome of `partialTraj`. Closing this gap
+requires roughly:
+
+  1. an `infinitePi`-Fubini lemma for *sequentially-defined* finsets of
+     coordinates (the queried coordinate at step `k` is a measurable
+     function of the partial trajectory through level `k`, not a fixed
+     finset member); and
+  2. a careful induction on `n` using the per-step bind identity
+     (`randomisedStepKernel_apply_eq_bind_stepKernel`) at each level,
+     factored over the fresh query coordinate at that level.
+
+We estimate ≥500 LOC of new measure-theoretic infrastructure to close this
+inside `Leslie/Prob/RandomisedAdversary.lean` directly; the cleaner home is
+a small upstream-style file, e.g.
+`Leslie/Mathlib/Probability/Kernel/IonescuTulcea/InfinitePiFubini.lean`,
+exposing the sequential-Fubini lemma in fully general form. **Queued
+explicitly as a follow-up PR.** All other pieces of the
+`Secrecy → SecrecyRandomised` chain are now axiom-clean (Helper 1
+`partialTraj_apply_measurable_in_sched` is closed via the
+`jointPartialTrajSched` construction above). -/
 private lemma partialTraj_apply_eq_bind_in_sched
     (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι) (n : ℕ)
     (x₀ : Π _i : Finset.Iic 0, σ × Option ι)
@@ -866,9 +1084,22 @@ private lemma partialTraj_apply_eq_bind_in_sched
           ∂(scheduleSpaceMeasure R) := by
   -- Honest mathematical content of the `Secrecy → SecrecyRandomised` direction:
   -- the `infinitePi`-Fubini swap between `partialTraj` and
-  -- `scheduleSpaceMeasure`. See the section docstring above for the proof
-  -- outline and the upstream mathlib gap it bookmarks.
-  sorry
+  -- `scheduleSpaceMeasure`. See the docstring above for the precise gap
+  -- statement (sequentially-defined finset of coordinates required at each
+  -- inductive step). Queued for a follow-up PR exposing the sequential
+  -- `infinitePi`-Fubini lemma in upstream-style form.
+  --
+  -- Partial progress: the `n = 0` base case closes by `partialTraj_self` plus
+  -- `lintegral_const`. The successor case `n → n + 1` requires the upstream
+  -- gap above (sequentially-Fubini on `infinitePi`) and is left as a sorry.
+  induction n with
+  | zero =>
+    rw [Kernel.partialTraj_self, Kernel.id_apply]
+    simp_rw [Kernel.partialTraj_self, Kernel.id_apply]
+    rw [lintegral_const, measure_univ, mul_one]
+  | succ n _ih =>
+    -- Successor step requires sequential `infinitePi`-Fubini; see docstring.
+    sorry
 
 set_option linter.unusedSectionVars false in
 /-- **Framework lemma (Phase 11-β-followup-7; migrated PR #97).** Fubini /
