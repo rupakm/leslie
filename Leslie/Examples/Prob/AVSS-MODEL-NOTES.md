@@ -1324,17 +1324,21 @@ adversary-type level.  Either can be done first.
 |---|---|---|---|---|
 | **9.1** | `RandomisedAdversary` type + mixture trace measure | Define `RandomisedAdversary σ ι` as `History → PMF (Option ι)` in `Leslie/Prob/RandomisedAdversary.lean` (new file).  Define the mixture trace measure `randomisedTraceDist` via the same `Kernel.trajMeasure` plumbing as `traceDist` but with the per-step kernel sampling the strategy's PMF.  Adapter `Adversary.toRandomised : Adversary σ ι → RandomisedAdversary σ ι` lifts deterministic strategies (Dirac PMF on `Option ι`).  Sanity theorem `randomisedTraceDist_toRandomised` shows the lift agrees with `traceDist`.  Plus `@[simp]` lemmas `toRandomised_strategy` / `toRandomised_corrupt`. | ~230 | ✅ landed (PR #41) |
 | **9.2** | Three lifting meta-theorems | `AlmostBoxRandomised_of_inductive` / `AlmostBox.lift_to_randomised`: per-step inductive preservation lifts to randomised AS-Box.  `randomisedTraceDist_map_eq_of_deterministic_at_zero`: secrecy form for coord-0 projections (the AVSS use case).  `AlmostDiamond.lift_to_randomised`: AS-Diamond from inductive data.  Heart of the proofs is the per-step kernel mixture identity `randomisedStepKernel_apply_tsum`.  Inductive-form hypothesis selected over the abstract Fubini-tape form (worker-task §1) since the latter would require Mathlib infrastructure on infinite product measures over countable index sets — see comments in `RandomisedAdversary.lean`'s Phase 9.2 header. | ~310 | ✅ landed (PR #46) |
-| **9.3** | AVSS-side restatements + MODEL_NOTES | One-line corollaries: `avss_secrecy_AS_view_rushing_randomised`, `avss_correctness_AS_randomised`, etc., each obtained by composing the Phase 9.2 meta-theorem with the existing deterministic-quantified theorem.  Update MODEL_NOTES §11.5 to mark C5 resolved. | ~50 | ⏳ pending |
+| **9.3** | AVSS-side restatements (partial coverage) | `avss_correctness_AS_randomised` and `avss_commitment_AS_randomised` via `AlmostBoxRandomised_of_inductive` (re-feeding the same per-step preservation data used by the deterministic versions); `avss_secrecy_AS_step_zero_grid_randomised` via `randomisedTraceDist_map_eq_of_deterministic_at_zero` (coord-0 form). `avss_termination_AS_fair_randomised` is **NOT** lifted in this PR because PR #46's `AlmostDiamond.lift_to_randomised` is degenerate (`exact ⟨0, hω 0⟩` only); termination is deferred to Phase 9.4. Closes C5 for correctness, commitment, and coord-0 secrecy. | ~150 | ✅ landed (PR #47) |
+| **9.4** | Termination lifting (deferred from 9.3) | Randomised analog of `avss_termination_AS_fair`: introduce `RandomisedTrajectoryFairAdversary`, redo the `FairASTCertificate.sound` supermartingale + Borel-Cantelli argument under the schedule PMF, expose `avss_termination_AS_fair_randomised`. Also folds in the step-`k` general `avss_secrecy_AS_randomised` (coord-`k` form) via the same machinery. See §13.4 for the full plan. | ~250 | ⏳ pending |
 
-**Total**: ~250 LOC, 3 PRs.  Estimated worker time: 6–10 hours.
+**Total**: ~500 LOC, 4 PRs.  Estimated worker time: 12–16 hours.
 
 ### 13.2. Sequencing
 
   * **PR 9.1** depends on nothing else — can be dispatched immediately.
   * **PR 9.2** depends on 9.1 (needs the type + mixture trace measure).
   * **PR 9.3** depends on 9.2 (needs the lifting meta-theorems to compose).
+  * **PR 9.4** depends on 9.3 (needs the partial-coverage AVSS lifts in place
+    so the termination machinery slots into the same restatement pattern);
+    independent of Phase 8 and Phase 10.
 
-Phase 9 is **independent of Phase 8**: PRs 9.1–9.3 can ship in
+Phase 9 is **independent of Phase 8**: PRs 9.1–9.4 can ship in
 parallel with Phases 8.1–8.8.  Once both phases land, AVSS will
 quantify over arbitrary randomised rushing adversaries — the
 literature-standard threat model.
@@ -1366,7 +1370,68 @@ Option 1 is the right choice because:
      the Fubini argument is structural, not protocol-specific, so
      once the meta-theorem lands the cryptographic story is automatic.
 
-### 13.4. Risks
+### 13.4. Phase 9.4 — Termination lifting (deferred from 9.3)
+
+PR #46's `AlmostDiamond.lift_to_randomised` only derives "eventually"
+from "always" trivially (`exact ⟨0, hω 0⟩`).  It cannot lift true
+diamond claims like `avss_termination_AS_fair`, whose proof goes
+through `FairASTCertificate.sound` (supermartingale +
+Borel-Cantelli on a strictly-decreasing rank function under
+trajectory fairness).  PR 9.3 therefore ships AVSS-side restatements
+of the AS-Box invariants (`avss_correctness_AS_randomised`,
+`avss_commitment_AS_randomised`) and the coord-0 secrecy form
+(`avss_secrecy_AS_step_zero_grid_randomised`) but **explicitly
+defers** the termination restatement.
+
+Phase 9.4 introduces:
+
+  * `RandomisedTrajectoryFairAdversary spec fair μ₀` — randomised
+    analog of `TrajectoryFairAdversary` parameterised by the same
+    fairness predicate, with the schedule's PMF integrated into the
+    fairness witness.
+  * `RandomisedFairASTCertificate` — randomised analog of
+    `FairASTCertificate`, with `TrajectoryFairProgress` /
+    `TrajectoryUMono` / `TrajectoryFairStrictDecrease` adapted for
+    the schedule PMF.  Strict-decrease has to be re-derived: under
+    a randomised schedule, "the next gated fair action makes
+    progress" becomes "the schedule PMF assigns positive weight to
+    a progress-making action".
+  * `RandomisedFairASTCertificate.sound` — the supermartingale +
+    Borel-Cantelli argument adapted for tape-mixed schedules.  The
+    deterministic `FairASTCertificate.sound` integrates over the
+    deterministic trajectory; the randomised analog integrates over
+    `randomisedTraceDist`, which adds one more integration layer
+    (Fubini between the schedule mixture and the rank evolution).
+  * `avss_termination_AS_fair_randomised` — the AVSS-side restatement,
+    a thin wrapper analogous to `avss_termination_AS_fair_rushing`.
+  * `AVSSRushingRandomisedAdversary` — randomised analog of
+    `AVSSRushingAdversary` (the rushing-view-restricted adversary),
+    with `R.toRandomisedAdversary` adapter.  Plus `_rushing`
+    wrappers (`avss_correctness_AS_rushing_randomised`,
+    `avss_commitment_AS_rushing_randomised`,
+    `avss_secrecy_AS_view_rushing_randomised`,
+    `avss_termination_AS_fair_rushing_randomised`) — thin
+    one-liners around the corresponding `_randomised` theorems.
+    These are deferred from PR 9.3 because the underlying adversary
+    type does not yet exist; defining it requires additional
+    measurability infrastructure on the rushing-view σ-algebra
+    that's separate from PR 9.3's scope.
+
+Also folds in the step-`k` general form of secrecy
+(`avss_secrecy_AS_randomised` at coord `k > 0`) via the same machinery
+— the deterministic `traceDist_coalitionGrid_AE_eq_init` lifts
+branchwise to `randomisedStepKernel` because each gated action
+preserves `coalitionGrid` (`avssStep_coalitionGrid_invariant`) and
+the schedule PMF integrates that AE-equality.
+
+**Estimated LOC**: ~250 (the supermartingale argument has to be
+re-derived for the randomised setting; tape mixing adds another
+integration layer).
+
+**Sequencing**: independent of Phase 8 and Phase 10.  Can land any
+time after PR #47.
+
+### 13.5. Risks
 
   1. **Mathlib Fubini availability**: the lifting argument uses
      `MeasureTheory.Integral.Fubini` for kernel composition.  This is
@@ -1377,13 +1442,20 @@ Option 1 is the right choice because:
      (terminated, output-determined, coalition-view marginals) are
      measurable, but each AVSS-side restatement (PR 9.3) needs to
      check this.
+  3. **Phase 9.4 supermartingale machinery**: the Borel-Cantelli step
+     in `FairASTCertificate.sound` needs adaptation for tape-mixed
+     schedules.  Mathlib's `MeasureTheory.Martingale.BorelCantelli`
+     supports countable index sets and is adversary-agnostic, so the
+     adaptation is a re-derivation rather than new measure-theoretic
+     content.
 
-### 13.5. Maintenance protocol
+### 13.6. Maintenance protocol
 
 Same as §12.5 but for Phase 9: each PR's commit message updates the
 corresponding row of §13.1 (statuses ⏳ → 🚧 → ✅).  After Phase 9
-completes, §11.5 (C5) should be marked "✅ resolved by Phase 9 (PR
-#N)".
+completes (PRs 9.1–9.4 all ✅), §11.5 (C5) should be marked
+"✅ resolved by Phase 9 (PRs #41, #46, #47, #N)" with `#N` being the
+9.4 PR.
 
 ## 14. Phase 10 — Generic deterministic-simulate meta-theorem
 
