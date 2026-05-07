@@ -1836,7 +1836,7 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) :
   inv_step := avssTermInv_step
   V_term := avssCert_V_term
   V_pos := avssCert_V_pos
-  V_super := fun a s h hinv _hnt => by
+  V_super := fun a s h hinv _hnt => Or.inl <| by
     classical
     have heff : ((avssSpec (t := t) sec corr).actions a).effect s h
                 = PMF.pure (avssStep a s) := rfl
@@ -1850,7 +1850,7 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) :
       exact_mod_cast this
     · intro b hb
       rw [PMF.pure_apply, if_neg hb, zero_mul]
-  V_super_fair := fun a s h hfair hinv _hnt => by
+  V_super_fair := fun a s h hfair hinv _hnt => Or.inl <| by
     classical
     have heff : ((avssSpec (t := t) sec corr).actions a).effect s h
                 = PMF.pure (avssStep a s) := rfl
@@ -1880,21 +1880,6 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) :
     exact avssU_step_lt_of_fair a s h hfair' hinv
   U_bdd_subl := fun _ =>
     ⟨(5 * n + 5) * (2 * n + 1) ^ 4, fun s _ _ => avssU_le_bound s⟩
-  U_dec_prob := fun _ => by
-    refine ⟨1, by norm_num, fun a s h hfair hinv _hnt _ => ?_⟩
-    classical
-    have heff : ((avssSpec (t := t) sec corr).actions a).effect s h
-                = PMF.pure (avssStep a s) := rfl
-    rw [heff]
-    rw [tsum_eq_single (avssStep a s)]
-    · rw [PMF.pure_apply, if_pos rfl, one_mul]
-      have hfair' : a ∈ avssFairActions := hfair
-      have hlt : avssU (avssStep a s) < avssU s :=
-        avssU_step_lt_of_fair a s h hfair' hinv
-      rw [if_pos hlt]
-      simp
-    · intro b hb
-      rw [PMF.pure_apply, if_neg hb, zero_mul]
   V_init_bdd :=
     ⟨((5 * n + 5) * (2 * n + 1) ^ 4 : ℕ), fun s _ => by
       show ((avssU s : ℝ≥0)) ≤ (((5 * n + 5) * (2 * n + 1) ^ 4 : ℕ) : ℝ≥0)
