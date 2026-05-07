@@ -1570,7 +1570,7 @@ for archaeological context.
 | **8.6** | Operational secrecy under full adversary (post-8.5d-α/β/γ) | Re-prove `avss_secrecy_AS_view_rushing` against the post-8.5d adversary.  Consists of (a) the +200 LOC row + column secrecy form (deferred since `SyncVSS.lean §10` — full polynomial-manipulation step in two directions), and (b) wiring the row+col form into a strengthened headline conclusion. | ✅ **landed**. **(a)** Phase 11-δ (PR #75): `Leslie.Prob.Polynomial.bivariate_evals_uniform_row_col` (statement + full proof via `bivariate_evals_uniform_full` + constant-fiber projection) and the AVSS-side wrappers `avss_bivariate_corrGrid_uniform` / `avss_bivariate_corrGrid_sec_invariant`.  **(b)** Phase 11-δ-followup (this PR): sibling theorem `avss_secrecy_AS_view_rushing_bivariate` in §19.7 of `AVSS.lean` — bundles the existing operational headline and the bivariate corrupt-grid sec-invariance into a single citation-ready conjunction.  The original `avss_secrecy_AS_view_rushing` is unchanged (backward-compat).  All five load-bearing AVSS theorems remain `[propext, Classical.choice, Quot.sound]`-axiom-clean; zero sorries. |
 | **8.7** | Adapter retirement / cleanup | **Likely empty.** The 8.5b/c/d chain edited the model in place; there is no parallel pre-Phase-8 form to retire (no compatibility shim was kept).  Documented here as a finding — if a deprecation-shim layer is needed for downstream consumers, that work would be added back; otherwise this row is closeable as a no-op. | 🟡 likely no-op |
 | **8.8 (Fix 1, post-PR `#77`)** | **Rename** misleadingly-named commitment headline from `avss_commitment_AS_corrupt_dealer` to `avss_commitment_AS_existential` (mirroring sibling `avss_correctness_AS_existential` pattern). | The old name claimed "corrupt-dealer commitment" but the conclusion has been honest-dealer-conditional since Phase 8.5d-β migrated `s.coeffs → μ₀` (the Vandermonde extraction route requires `outputDeterminedInv coeffs s`, which is honest-dealer-conditional). All four variants (`*`, `*_rushing`, `*_randomised`, `*_rushing_randomised`) renamed. Theorem statements unchanged — pure rename + docstring refresh. Queues §16 (Phase 8.6 Bracha amplification) as the proper corrupt-dealer fix. | ✅ landed |
-| **8.6 (renumbered)** | Genuine corrupt-dealer commitment via Bracha echo+ready amplification | Strengthen `joinedConsistencyInv` to be **dealerHonest-INDEPENDENT**: prove that the AVSS echo+ready threshold dynamics force all honest outputs to lie on a single bivariate polynomial of degree ≤ t, even under corrupt dealer.  Proof outline: (a) define `bivariateAlignedInv` — state-level invariant saying "there exists a bivariate `B` such that every honest party with `delivered = true` has `rowPoly = some (B(·, partyPoint p))`"; (b) prove `bivariateAlignedInv` is preserved by `partyEcho`/`partyReady` actions via threshold counting (any t+1 honest parties echoing on the same row+col vote-pair fix `B` uniquely by Vandermonde, dealerHonest-INDEPENDENT); (c) drop the `s.dealerHonest = true →` guards on `avss_commitment_AS_existential` and the 3 wrapper variants.  ~200–400 LOC of new cryptographic content. **Note**: This is the row originally numbered 8.6 in pre-Fix-1 versions, but that row got merged into 8.5d as the row+column secrecy work; the genuine corrupt-dealer commitment was effectively never landed.  Renumbered here as the new 8.6 / queued. | ⏳ queued |
+| **8.6 (renumbered)** | Genuine corrupt-dealer commitment via Bracha echo+ready amplification | **First attempt failed.** Worker 1 (PR #88, `feature/phase8-6`) did the model surgery for echo type expansion (~1086 LOC, 4 compile errors at handoff).  Worker 2 (PR #95, `feature/phase8-6-step2`) rebased onto current main, then **stopped** — the planned `echoValid` + `simSyncInv.local_honest_rowPoly_eq` path is structurally unsound under the bivariate-Shamir secrecy pairing (would force `c = c'`, trivialising secrecy).  Both PRs preserved as record (not merged); see `STEP2-BLOCKED.md` on Worker 2's branch for the structural diagnosis.  Phase 8.6 redesign required — see §12.6 below. | ❌ **structural mismatch** — see §12.6 |
 | **8.8** | MODEL_NOTES rewrite | Subsumed by **8.5d-δ** (this PR).  The original "comprehensive rewrite" scope is replaced by the targeted §11 / §12 / §13 reconciliation here. | 🟢 subsumed by 8.5d-δ |
 
 ### 12.2. Sequencing — actual landed order
@@ -1725,6 +1725,55 @@ This tracker is the source of truth for Phase 8 status.  As each PR lands:
   3. After Phase 8 completes, §11.1–§11.4 caveats should be marked "✅ resolved by Phase 8 (PR #N)" and the post-Phase-8 state table (§12.3) frozen as the citation reference.
 
 If the plan changes in the middle (e.g., a worker discovers a structural issue that re-scopes a PR), the affected row's status reverts to 🚧 with a footnote describing the change.
+
+### 12.6. Phase 8.6 redesign findings (post-PR #95)
+
+**Status**: paused.  The original 4-step plan (echo type expansion → echoValid predicate → bivariateAlignedInv state invariant → drop honest-dealer guards) was attempted in two PRs and found structurally unsound at step 2.
+
+#### What was attempted
+
+  * **PR #88** (Worker 1, `feature/phase8-6`).  ~1086 LOC of model surgery:
+    - Expanded `AVSSLocalState.echoesReceived : Finset (Fin n)` → `Finset (Fin n × F)` (sender + value).
+    - Expanded `AVSSState.inflightEchoes : Finset (Fin n × Fin n)` → `Finset (Fin n × Fin n × F)`.
+    - Updated `partyEchoSend` / `partyEchoReceive` action labels to carry the value.
+    - Threaded preservation through all Phase-1 invariants (`avssTermInv`, `avssQueueWfInv`, `avssFreshInv`, `avssFlowInv`, `corruptLocalInv`).
+    - Introduced `avssInflightEchoesValueDeterminate`.
+    - Halted with 4 compile errors in §17/§19 secrecy abstractions; handed off via `STEP2-HANDOFF.md`.
+  * **PR #95** (Worker 2, `feature/phase8-6-step2`).  Rebased Worker 1's branch onto post-#81/#82/#89 main.  Investigated the 4 errors and concluded the handoff plan cannot work — see `STEP2-BLOCKED.md` for the diagnosis.
+
+#### Why the original plan is unsound
+
+`simSyncInv` is the bivariate-Shamir secrecy pairing invariant: it pins **only corrupt-party** state across two simulating traces (different secrets `c`, `c'`).  The handoff suggested adding `local_honest_rowPoly_eq : ∀ p ∉ corr, delivered → rowPoly p s = rowPoly p s'`.
+
+But under bivariate Shamir secrecy, *honest-party row polys legitimately differ* between the two traces — that's how the same coalition view emerges from different secrets.  Forcing them equal cascades into requiring honest dealerCommit + dealerMessages agreement, which forces `c = c'` and **trivialises the secrecy claim**.
+
+`coalitionRowPolyAlignedInv` (Phase 8.5d-β-followup-7's invariant, the obvious candidate) is **unary** — it relates corrupt parties' row-polys to the dealer's commitments within a single state, but says nothing across two simulating states.
+
+For errors 1–3 (`corrupt_local_state_uniqueness` consumers), the planned discharge closes the honest-dealer cases but leaves the `_AE_indep` (dealerHonest-INDEPENDENT) variant unmatched: corrupt senders' row polys aren't pinned to canonical `bivEval` under arbitrary dealer choice.
+
+#### Redesign options (Worker 2's analysis)
+
+Three candidate paths surfaced in `STEP2-BLOCKED.md`:
+
+| # | Path | Approach | Estimated LOC |
+|---|---|---|---|
+| **X** | Reconstruction-side | Thread `schedulePrefix` through `buildCorruptLocalState` and `reconstructCoalitionTraceView`.  The schedule recovers echo values directly without needing `simSyncInv` to pin them across traces. | ~600–900 |
+| **Y** | Action-label refactor | Drop `(v : F)` from `AVSSAction.partyEchoReceive`; find `v` via uniqueness in `avssStep` from the existing `inflightEchoes` set.  Sidesteps the value-tracking-in-`simSyncInv` problem entirely. | ~250–400 |
+| **Z** | Skip Bracha amplification entirely | Accept honest-dealer-conditional commitment as final; drop the Phase 8.6 goal.  Update §16 audit verdict accordingly. | ~30 (docs only) |
+
+**Combined X+Y**: ~850–1300 LOC.  Either way, Worker 3's `bivariateAlignedInv` work and Worker 4's headline-guard-drop remain unchanged.
+
+#### Recommended
+
+Defer commitment to a path until the cost-vs-value tradeoff is reassessed.  The current `_existential` form (post-Fix 1) is honest about what it proves.  CR '93 property parity is achieved modulo this gap and the adaptive-corruption gap (§16); both are documented and not soundness issues.
+
+If pursued later: prefer Path X+Y combined, since they address different residual sub-problems (Y closes error 4 cheaply; X is needed for errors 1-3).  Estimated total chain: ~1500-2000 LOC across 4-5 PRs.
+
+#### Status of artefacts
+
+  * **PR #88**: open, broken (4 errors), CONFLICTING with main.  Preserved as record of Worker 1's analysis + 1086 LOC of model surgery work.  **Closed** when (Z) chosen, or **superseded** when X+Y land.
+  * **PR #95**: open, contains structural-blocker analysis (`STEP2-BLOCKED.md`).  Preserved as canonical record of why the original plan failed.  **Closed** alongside PR #88.
+  * **Branches**: `feature/phase8-6`, `feature/phase8-6-step2` retained for forensics; can be deleted if/when (Z) chosen.
 
 ## 13. Phase 9 — Randomised adversary support (independent of Phase 8)
 
