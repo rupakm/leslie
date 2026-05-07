@@ -1044,6 +1044,44 @@ Phase 8 also addresses §2 (per-party messages), C1 (corrupt-party
 sends), and C2 (honest broadcasts to corrupt receivers) — all four
 gaps are entangled and a single refactor closes them together.
 
+##### Phase 8.1 (this PR) — A-lite refactor: data carrier in place
+
+Phase 8.1 introduces the `DealerPayload` structure and the
+`dealerMessages : Fin n → Option (DealerPayload t F)` field on
+`AVSSState` without changing any theorem semantics.  The `s.coeffs`
+field is retained as the dealer's *intended* polynomial; `dealerShare`
+populates `dealerMessages` deterministically from `s.coeffs` and
+`s.partyPoint` for every party (honest and corrupt).  The per-party
+`partyDeliver` and `partyCorruptDeliver` actions are migrated to read
+from `dealerMessages` (with a new `(dealerMessages p).isSome` gate)
+rather than recomputing `rowPolyOfDealer` directly.
+
+The refactor is supported by a new sibling invariant
+`dealerMessagesInv s` ensuring every populated `dealerMessages p`
+agrees with `rowPolyOfDealer s.partyPoint s.coeffs p` on its `rowPoly`
+field.  `colPoly` is currently a `0` placeholder; PR 8.4 will start
+populating it for cross-check verification.  All existing classical
+theorems re-prove unchanged, lifting the joint
+`outputDeterminedInv ∧ dealerMessagesInv` (or `honestDealerInv ∧
+dealerMessagesInv`) and projecting back to the surface invariant.
+
+What Phase 8.1 sets up for later PRs:
+
+  * **PR 8.4** (corrupt-party sends, payload-carrying echoes): drop
+    the `p ∉ s.corrupted` gates from `partyEchoSend` / `partyReady` /
+    `partyAmplify`; carry payload values via the echo actions.
+  * **PR 8.5** (selective non-broadcast): let `dealerShare` populate
+    only a subset of parties; let a corrupt dealer choose
+    `dealerMessages p` independently of `s.coeffs`.
+  * **PR 8.6** (full secrecy): re-prove operational secrecy in the
+    row+column form.
+
+What Phase 8.1 does *not* do:
+
+  * Move `s.coeffs` out of state into `μ₀` (PR 8.5).
+  * Drop the `p ∉ s.corrupted` honest-action gates (PR 8.4).
+  * Allow corrupt-dealer freedom in `dealerMessages` (PR 8.5).
+
 ### 11.5. C5 — Deterministic-adversary quantification only
 
 ⚠ **All theorems in this formalisation universally quantify over
@@ -1095,11 +1133,12 @@ Dirac point, instead becoming a mixture of Diracs which is not
 itself a Dirac.
 
 The clean fix is **not** to lift the bridge to kernel form
-(strictly more work and only needed if a downstream consumer wants
-a kernel-form simulate).  Instead, lift the **headline** theorems
-via a one-shot meta-theorem that operates above the bridge — the
-bridge stays in its current deterministic form as a structural fact
-about deterministic-strategy AVSS.
+(that's option (c) in §12.4-style risk analysis — strictly more
+work and only needed if a downstream consumer wants a kernel-form
+simulate).  Instead, lift the **headline** theorems via a one-shot
+meta-theorem that operates above the bridge — the bridge stays in
+its current deterministic form as a structural fact about
+deterministic-strategy AVSS.
 
 #### Phase 9 fix (planned — see §13)
 
@@ -1110,7 +1149,7 @@ a measurable kernel, prove
 `Measure.map`-equality (secrecy) and `AlmostDiamond` (termination),
 and every theorem in `AVSS.lean` (and any other protocol module)
 immediately re-states against randomised adversaries by
-composition.  No protocol-specific work; ≈250 LOC total.
+composition.  No protocol-specific work; ≈150–250 LOC total.
 
 The simulate AE-bridge stays deterministic; the lifting argument
 operates above it.
@@ -1224,9 +1263,9 @@ in-flight to ✅ landed.
 
 | PR | Title | Scope | LOC | Status |
 |---|---|---|---|---|
-| **8.1** | DealerPayload + state surgery (A-lite) | Foundational refactor: introduce `DealerPayload` type and `dealerMessages : Fin n → Option (DealerPayload t F)` field; keep `coeffs` alongside; migrate `dealerShare`/`partyDeliver`/`partyCorruptDeliver` to read from `dealerMessages`; add consistency invariant. **No theorem semantics change.** | ~200 | 🚧 in-flight |
-| **8.2** | Honest-dealer consistency invariant + correctness re-verification | Define `honestDealerConsistencyInv`: for honest dealer, ∃ witness coeffs such that every honest party's payload matches `rowPolyOfDealer`/`colPolyOfDealer`. Re-prove `avss_correctness_AS` against the new model with existential witness. | ~250 | ⏳ pending |
-| **8.3** | Corrupt-dealer commitment (the genuine theorem) | The headline literature-faithful theorem `joinedConsistencyInv`: ≥ t+1 honest outputs ⇒ ∃ coeffs witnessing all of them. Argument leverages Bracha amplification's consistency-check property. Hardest cryptographic content of Phase 8. | ~300 | ⏳ pending |
+| **8.1** | DealerPayload + state surgery (A-lite) | Foundational refactor: introduce `DealerPayload` type and `dealerMessages : Fin n → Option (DealerPayload t F)` field; keep `coeffs` alongside; migrate `dealerShare`/`partyDeliver`/`partyCorruptDeliver` to read from `dealerMessages`; add consistency invariant. **No theorem semantics change.** | ~200 (actual: 442/-82) | ✅ landed (PR #39) |
+| **8.2** | Honest-dealer consistency invariant + correctness re-verification | Define `honestDealerConsistencyInv`: for honest dealer, ∃ witness coeffs such that every honest party's payload matches `rowPolyOfDealer`/`colPolyOfDealer`. Re-prove `avss_correctness_AS` against the new model with existential witness. Also adds bookkeeping `coeffsSecretInv` and `avss_correctness_AS_existential` (+ `_rushing` variant). Witness in current projection := `s.coeffs`; PR 8.5 will route the witness through μ₀'s sample. | ~250 (actual: 201/-0) | ✅ landed (PR #43) |
+| **8.3** | Corrupt-dealer commitment (the genuine theorem) | The headline literature-faithful theorem `joinedConsistencyInv`: ≥ t+1 honest outputs ⇒ ∃ coeffs witnessing all of them.  Adds `consistentPayload` (per-payload consistency predicate, reusable by 8.4), `honestOutputCount`, `joinedConsistencyInv`, and the `AlmostBox` form `avss_commitment_AS_corrupt_dealer` (+ `_rushing` variant).  In the Phase 8.3 model the witness is supplied by `s.coeffs` and the cryptographic content (Bracha quorum + Vandermonde uniqueness) becomes load-bearing only after PRs 8.4 and 8.5 let the adversary deviate from `s.coeffs`; the *statement* — Canetti–Rabin's existential-witness commitment form — is unchanged across the migration. | ~300 (actual: 198/-0) | ✅ landed (PR #45) |
 | **8.4** | Corrupt-party send actions (C1) + reception (C2) | Drop `p ∉ s.corrupted` from `partyEchoSend`/`partyReady`/`partyAmplify` gates. Update `partyEchoReceive` to populate corrupt receivers. Echoes carry payload values; consistency check predicate added; only consistent echoes count toward thresholds. Termination becomes conditional on "≥ n−t honest parties have consistent shares". | ~250 | ⏳ pending |
 | **8.5** | Selective non-broadcast (C4) | Replace `dealerShare` with `dealerShareTo (p : Fin n)`; adversary chooses recipients and payloads. Move `coeffs` out of state into `μ₀` (or honest-dealer witness). Refactor variant analysis to handle the new fair-action structure. Most subtle PR; budget extra time. | ~150 | ⏳ pending |
 | **8.6** | Operational secrecy under the full adversary | Re-prove `avss_secrecy_AS_view_rushing` against the post-8.4+8.5 adversary, which now has corrupt-party messages and honest-broadcast reception. Requires the **+200 LOC row + column secrecy** form (deferred since `SyncVSS.lean §10`) — the full polynomial-manipulation step. | ~250 | ⏳ pending |
@@ -1345,6 +1384,130 @@ Same as §12.5 but for Phase 9: each PR's commit message updates the
 corresponding row of §13.1 (statuses ⏳ → 🚧 → ✅).  After Phase 9
 completes, §11.5 (C5) should be marked "✅ resolved by Phase 9 (PR
 #N)".
+
+## 14. Phase 10 — Generic deterministic-simulate meta-theorem
+
+The Phase 7.4 inductive AE-bridge `traceDist_AE_eq_avssSimulateTrace`
+currently lives in `AVSS.lean` §19.2.  Reviewing the proof: nothing
+in it depends on AVSS-specific semantics.  The bridge is a fact about
+**deterministic state-machine specs** (every effect is `PMF.pure`) and
+**deterministic adversary strategies** — the AVSS instantiation is
+the consumer, not the source of any structural reasoning.
+
+Promoting the bridge to a meta-theorem in `Leslie/Prob/`
+(a) shrinks `AVSS.lean` §19.2 to a one-page instantiation,
+(b) makes the same machinery reusable by `BrachaRBC`, `SyncVSS`,
+`AVSSAbstract`, and any future deterministic-spec protocol, and
+(c) cleanly demarcates "protocol determinism" (structural,
+generic) from "cryptographic security" (substantive, AVSS-specific).
+
+Closely related to Phase 9 (randomised-adversary lifting): both
+phases promote framework-level reasoning out of `AVSS.lean` and into
+`Leslie/Prob/`.  Phase 10's meta-bridge holds for any
+`(DeterministicProbActionSpec, Adversary)` pair; Phase 9's meta-lift
+takes any such ∀-deterministic theorem to randomised.  Stacked
+together: deterministic protocols get both for free.
+
+### 14.1. Status tracker
+
+| PR | Title | Scope | LOC | Status |
+|---|---|---|---|---|
+| **10.1** | `DeterministicProbActionSpec` + simulate machinery (data) | Define `DeterministicProbActionSpec σ ι := { init, gate, step }` in new file `Leslie/Prob/DeterministicSimulate.lean`; provide `toProbActionSpec` adapter; define generic `simulateNext` / `simulateRev` / `simulateTrace` reading only `gate`, `step`, and `Adversary.schedule`.  Plus structural `_length`, `_ne_nil`, `_succ_eq`, `_head_eq`, `_zero` simp lemmas. | ~150 | ✅ landed (PR #42) |
+| **10.2** | The meta-bridge `traceDist_AE_eq_simulateTrace` | The substantive proof: for any `D : DeterministicProbActionSpec` and `A : Adversary` and any step `k`, `∀ᵐ ω ∂(traceDist D.toProbActionSpec A μ₀), ω k = simulateTrace D A (ω 0).1 k`.  Pure transcription of the existing AVSS-specific proof, with all references to `avssStep`, `avssSpec`, `actionGate` replaced by `D.step`, `D.toProbActionSpec`, `D.gate`. | ~300 | ✅ landed (PR #44) |
+| **10.3** | AVSS instantiation: shrink §19.2 | Define `avssDeterministic := { gate := actionGate, step := avssStep }`. Prove `avssSpec sec corr = (avssDeterministic sec corr).toProbActionSpec` (rfl).  `avssSimulate{Next,Rev,Trace}` definitions kept verbatim (signatures unchanged); bridge lemmas `avssSimulate*_eq_simulate*` prove their propositional equality with the generic forms (the kernel's `defEq` on `noncomputable def`s with structure projections does not see through; the bridge is a small structural induction).  Replace `traceDist_AE_eq_avssSimulateTrace`'s 300-LOC inductive proof with a one-line application of `Leslie.Prob.traceDist_AE_eq_simulateTrace` plus `rw [avssDeterministic_toProbActionSpec, avssSimulateTrace_eq_simulateTrace]`.  Delete the dead helper chain (`avssSpec_R_stepKernel_AE_simulate`, `traceDist_step_zero_pair_marginal`, `traceDist_step_zero_snd_AE`, `avssSimulateRev_reverse_eq_ofFn`, old strong form). | net −185 LOC (353 deleted, 168 added) | ✅ landed (PR #51) |
+
+**Total**: ~400 LOC across 3 PRs.  Net effect on AVSS.lean: shrinks by ~370 LOC.  Net effect on the codebase: +400 framework, -370 example = +30 LOC, but vastly more reusable.
+
+### 14.2. Sequencing
+
+  * **PR 10.1** depends on nothing else — can be dispatched immediately.
+  * **PR 10.2** depends on 10.1 (needs the data definitions).
+  * **PR 10.3** depends on 10.2 (needs the meta-theorem to apply).
+
+Phase 10 is **independent of Phase 8 and Phase 9**: PRs 10.1–10.3 can ship in parallel with both, since:
+  - Phase 8 modifies `AVSSState` and AVSS actions; Phase 10 is generic over the state/action types.
+  - Phase 9 lifts deterministic theorems to randomised; Phase 10 *produces* a deterministic theorem (the AE-bridge) that 9's lifter can then handle.
+
+When all three phases land, the AVSS chain reads:
+
+```
+(deterministic spec, det. adversary)              [Phase 10 meta-bridge]
+  → trace AE-equals simulateTrace
+  → (per-property pointwise reasoning, via rushing-adversary projection)
+  → (deterministic theorem)                        [Phase 9 meta-lift]
+  → (randomised theorem)
+```
+
+Each link is a one-shot meta-theorem; AVSS-specific content is only the
+projection-and-composition step in the middle.
+
+### 14.3. Why this is worth doing concretely
+
+1. **Reuse**.  At least three other state-machine protocols in the library have `PMF.pure` effects:
+   - `BrachaRBC` — no protocol-internal randomness; reliable broadcast.
+   - `SyncVSS` — synchronous VSS, deterministic transitions.
+   - `AVSSAbstract` — the simpler abstraction that predates the threshold-faithful AVSS.
+   Each of these currently re-derives or hand-writes any trace-determinism reasoning it needs.  Once the meta-bridge lands, those proofs collapse to one-line instantiations.
+
+2. **Composability with Phase 9**.  The two abstractions stack cleanly: any `(DeterministicProbActionSpec, Adversary)` pair gets the AE-bridge from Phase 10; any `∀ Adversary, P` theorem lifts to `∀ RandomisedAdversary, P` via Phase 9.  Each protocol gets both for free without further engineering.
+
+3. **Sharper statement of what AVSS contributes cryptographically**.  Once the bridge is generic, the AVSS section is left holding only the cryptographic content: Shamir/bivariate row-poly secrecy + the polynomial-pushforward composition.  That's the right separation: protocol determinism is structural; cryptographic security is the substance.
+
+4. **Demarcation of where randomness becomes load-bearing**.  As soon as a future protocol introduces a non-pure effect (a common-coin step, a random oracle), it stops fitting the `DeterministicProbActionSpec` abstraction — and that's the right place for the type system to register the obstruction, rather than the failure cropping up deep inside a protocol-specific lemma.
+
+### 14.4. Subtlety — fallback parameter
+
+The current `avssSimulateNext` takes a `fallback : AVSSState` argument used in the unreachable `prev = []` case (Lean totality).  In the meta-version this becomes `fallback : σ`.  If we want to remove it cleanly, the alternative is to define `simulateRev 0 := [(s_0, none)]` (already the base case) and take `head` as well-defined by the structural fact that the list is non-empty (`avssSimulateRev_ne_nil` already proves this).  Generalising it lets the meta-version state `simulateTrace` without a fallback.  Worth doing for cleanliness; not load-bearing.  Decide during PR 10.1.
+
+### 14.5. Maintenance protocol
+
+Same as §12.5 / §13.5 but for Phase 10: each PR's commit message updates the corresponding row of §14.1 (statuses ⏳ → 🚧 → ✅).  After Phase 10 completes, AVSS.lean §19.2 should be marked "✅ generalised — see `Leslie/Prob/DeterministicSimulate.lean`".
+
+### 14.6. AVSS-side projections that stay AVSS-specific
+
+The simulate machinery is generic; the projections downstream of it are not.  These remain in `AVSS.lean` even after Phase 10:
+
+  * `simAlgebraicView R C k s_0 := (rowPolyOfDealer s_0.partyPoint s_0.coeffs ·, fun i p => (sim ... .local_).delivered)` — references `partyPoint`, `coeffs`, `local_.delivered`, `rowPolyOfDealer`.  AVSS-specific.
+  * `simSchedulePrefix` — generic in shape, but its consumers in AVSS-side proofs reference AVSS-specific structure.
+  * `coalitionTraceView`, `coalitionAlgebraicView`, `coalitionGrid` — all reference AVSS-specific types.
+
+Phase 10 generalises the structural bridge between trace and simulate; the cryptographic projection of simulate onto the corrupt-coalition view remains AVSS-specific (and rightly so).
+
+### 14.7. Closing note — Phase 10 complete
+
+Phase 10 closed in PR 10.3 (#PENDING).  AVSS.lean §19.2's
+`avss_traceDist_AE_eq_avssSimulateTrace` is now a one-line
+instantiation of the generic meta-theorem
+`Leslie.Prob.traceDist_AE_eq_simulateTrace` (PR #44) at
+`avssDeterministic sec corr`.  The 300-LOC inductive proof chain in
+§19.2.4 has been replaced by:
+
+  * `avssDeterministic sec corr := { init := initPred sec corr, gate
+    := actionGate, step := avssStep }` (~6 LOC).
+  * Three `@[simp]` rfl-bridges
+    (`avssDeterministic_{toProbActionSpec,init,gate,step}`).
+  * Three structural-induction bridges
+    (`avssSimulate{Next,Rev,Trace}_eq_simulate{Next,Rev,Trace}`)
+    proving propositional equality with the generic forms — these
+    work around a Lean kernel `defEq` quirk where structure
+    projections on `noncomputable def` calls (`(avssDeterministic sec
+    corr).gate`) do not unfold automatically through `rfl` in the
+    presence of the surrounding `Filter.Eventually`/`Measure` machinery.
+  * One-line proof of the headline theorem.
+
+Net AVSS.lean impact: −185 LOC (353 deletions, 168 insertions).  The
+`avssSimulate{Next,Rev,Trace}` definitions and structural lemmas
+(`_length`, `_ne_nil`, `_succ_eq`, `_zero{,_fst,_snd}`,
+`_head_eq`) are kept verbatim — they are referenced by the
+downstream `avssSimulateTrace_simSyncInv` (§19.4.4) and by simp.  See
+§19.2.4 in `AVSS.lean` for the new one-line proof and the deletion
+manifest.
+
+After this PR: `AVSS.lean §19.2` is marked **✅ generalised — see
+`Leslie/Prob/DeterministicSimulate.lean`**.  All future protocols
+that fit the deterministic-spec abstraction (BrachaRBC, SyncVSS,
+AVSSAbstract) can apply the meta-theorem in one line; no further
+trace-determinism plumbing needed.
 
 ## How to read the formalised theorems
 
