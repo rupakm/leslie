@@ -1,12 +1,82 @@
-# Phase 8.5d Checkpoint — β-followup-5 closed 11 of 12 sorries
+# Phase 8.5d Checkpoint — β-followup-6 honest-dealer headline closed (1 sorry → 1 sorry, scope-shifted)
 
 **Branch**: `feat/randomized-leslie-m3-avss-phase8-5d-beta`
 **Base**: PR #68 (8.5d-α, dealerShareTo per-party action surgery).
 **Build state**: green at `lake build Leslie.Examples.Prob.AVSS`
-(2668 jobs) with **1** sorry in AVSS.lean (down from 3 after followup-5).
-**Sorry count**: **1** in AVSS — bounded scope, tagged `TODO Phase 8.5d-β-followup-6`.
+(2668 jobs) with **1** sorry in AVSS.lean (corrupt-dealer case only,
+tagged `TODO Phase 8.5d-β-followup-7`). The honest-dealer case is closed.
+**Sorry count**: **1** in AVSS — bounded scope, tagged `TODO Phase 8.5d-β-followup-7`.
 
-## Phase 8.5d-β-followup-5 — what landed
+## Phase 8.5d-β-followup-6 — what landed
+
+Closed the honest-dealer case of `avss_secrecy_AS_view_rushing` via the
+full `_ex`-variant chain. The cTV bridge fires only under honest dealer
+(inherited from followup-5's `h_dH_sec` requirements), so the headline
+now case-splits on `dealerHonest`:
+
+| `dealerHonest` value | Status |
+|---|---|
+| `true` | ✅ Closed via `_via_init_invariant_ex` chain + `avssInitMeasure_simViewExt_sec_invariant` |
+| `false` | 🟡 Deferred to followup-7 — structurally distinct argument (cTV bridge unavailable) |
+
+**New `_ex` variant chain (consumes existential `∃ c, initPred sec corr c s` AE)**:
+
+- `coalitionView_corrupt_factors_AE_ex` — coeffs-free conclusion
+  using `(ω 0).1.dealerCommit p .rowPoly` directly (matching
+  `coalitionAlgebraicView`).
+- `coalitionTraceView_eq_reconstruct_AE_ex` — same conclusion as
+  fixed-c version (already coeffs-free), takes existential h_init.
+- `avss_secrecy_AS_view_conditional_ex`, `_via_aux_ex`,
+  `_via_init_invariant_ex` — existential-h_init variants of the chain.
+
+**New supporting infrastructure**:
+
+- `avssStep_dealerCommit_invariant` — dealerCommit preserved by every
+  avssStep (trivial).
+- `avssSpec_stepKernel_dealerCommit_AE` — kernel-level preservation.
+- `traceDist_dealerCommit_AE_eq_init` — trace-AE preservation;
+  bridges `(ω k).1.dealerCommit` (used in `dealerMessagesInv`) to
+  `(ω 0).1.dealerCommit` (used in `coalitionAlgebraicView`).
+- `avss_phase6InvEx_AS` — existential AlmostBox for phase6Inv via
+  `AlmostBox_of_pure_inductive` with predicate `∃ c, phase6Inv c s`.
+  The c-witness can vary per step but the c-dependence in the
+  factor lemma cancels via `dealerMessagesInv c (ω k).1` (which
+  pins `dealerCommit p .rowPoly = rowPolyOfDealer ... c p`,
+  independent of which `c` is chosen).
+
+**Headline closure (honest-dealer case)**: the chain feeds
+`avssInitMeasure_AE_initPred` (existential AE) directly to
+`_via_init_invariant_ex`, with `h_dH_sec` derived from the
+`avssInitState` structural fact `s.dealerHonest = dealerHonest = true`.
+The `h_init_invariant` is discharged by `avssInitMeasure_simViewExt_sec_invariant`.
+
+## Remaining 1 sorry — followup-7 scope
+
+`avss_secrecy_AS_view_rushing` corrupt-dealer case (`dealerHonest = false`)
+— tagged `TODO Phase 8.5d-β-followup-7`. The `_ex` chain inherits the
+cTV bridge's honest-dealer guard from followup-5; under corrupt dealer
+the chain doesn't apply. The result still holds — under R rushing the
+corrupt-coalition view factors through corrupt rowPolys deterministically
+regardless of `dealerHonest`, and corrupt rowPolys are sec-invariant
+(`corrRowMap_uniform_sec_invariant`). Closing requires a structurally
+distinct argument:
+
+```
+simCoalitionTraceView R C k s_0 := fun i p =>
+  (avssSimulateTrace R s_0 i.val).1.local_ p.val
+
+-- Bridge (no honest-dealer needed):
+∀ᵐ ω ∂traceDist (avssSpec sec corr coeffs) R.toAdversary μ₀,
+  (coalitionTraceView C ω k, schedulePrefix ω k) =
+  (simCoalitionTraceView R C k (ω 0).1, simSchedulePrefix R k (ω 0).1)
+```
+
+Plus a sim-cTV-version of `avssInitMeasure_simViewExt_sec_invariant`
+(factoring through `corrRowMap`, applying `corrRowMap_uniform_sec_invariant`).
+Estimated ~80-100 LOC. The cryptographic content is identical; the
+plumbing is what's needed.
+
+## Phase 8.5d-β-followup-5 — what landed (kept for reference)
 
 Closed **2 of the 3** remaining sorries via the dealerCommit-based
 restatement of `coalitionAlgebraicView` (a coeffs-free alternative to
