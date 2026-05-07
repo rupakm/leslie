@@ -1863,3 +1863,153 @@ When citing the formalisation in a paper or report, the precise claim is:
 > messages; closing that gap is Phase 8 territory.  See
 > `Leslie/Examples/Prob/AVSS-MODEL-NOTES.md` for the full abstraction
 > inventory and pointers to the remaining literature-faithful refactor.
+
+
+## 15. Phase 12 — UC-style composability layer (queued)
+
+Phase 11's `Secrecy` and `SecrecyRushing` abstractions are *whole-protocol*
+predicates — they say nothing about how secrecy composes across
+subprotocol boundaries. Many cryptographic protocols (random secret
+draw, MPC, byzantine agreement with sub-rounds, ...) build on AVSS or
+similar primitives as black-box subroutines. We want compositional
+reasoning: "the bigger protocol inherits secrecy from the subprotocol
++ a secrecy-respecting composer", without re-opening the subprotocol's
+internal proof.
+
+This is the operational form of **Universal Composability** (Canetti
+UC, Backes-Pfitzmann-Waidner reactive simulatability). The Leslie
+framework needs a new abstraction layer to express it.
+
+### 15.1. Goal
+
+Enable reasoning of the form:
+
+> Q is a protocol that uses P as a subprotocol (P being a
+> `SubprotocolFunctionality` with secrecy on its inputs).
+> Q's combiner is "secrecy-respecting" (e.g., deterministic in P's
+> outputs + non-secret state, or a sum-of-uniforms form).
+> Then Q inherits secrecy on those inputs.
+
+The motivating instance: random secret draw on top of `n` AVSS
+instances + a sum combiner. The honest-uniform input plus AVSS's
+per-instance secrecy plus sum-of-uniforms gives Q's secrecy.
+
+### 15.2. Sub-PR sequence
+
+| Sub-PR | Scope | LOC |
+|---|---|---|
+| **12-α** | `SubprotocolFunctionality` definition + structural foundations in `Leslie/Prob/Subprotocol.lean` (new file) | ~150 |
+| **12-β** | Parallel composition operator on `ProbActionSpec`s (interleaving traces; per-instance μ₀) | ~200 |
+| **12-γ** | Conditional-independence theorem under parallel composition (the load-bearing measure-theoretic content) | ~250 |
+| **12-δ** | Sum-of-uniforms / convolution at the trace-distribution level (one-honest-uniform-addend ⇒ uniform sum) | ~100 |
+| **12-ε** | Main composability theorem: subprotocol secrecy + secrecy-respecting composer ⇒ composite secrecy | ~150 |
+| **12-ζ** | AVSS as `SubprotocolFunctionality` instance (bridging to existing `SecrecyRushing` from Phase 11-γ) | ~80 |
+| **12-η** | RandomSecretDraw protocol definition + secrecy proof via composability | ~200 |
+| **12-θ** | Cleanup + MODEL_NOTES rewrite reflecting Phase 12 state | ~50 |
+
+**Total**: ~1180 LOC, 8 sub-PRs.
+
+### 15.3. Key definitions (preliminary)
+
+```lean
+-- in Leslie/Prob/Subprotocol.lean (new file, Phase 12-α):
+structure SubprotocolFunctionality (α β V : Type*)
+    [MeasurableSpace α] [MeasurableSpace β] [MeasurableSpace V] where
+  spec        : ProbActionSpec σ ι
+  μ₀          : α → Measure σ            -- input → initial measure
+  outputProj  : Trace σ ι → β            -- trace → output
+  viewProj    : Trace σ ι → V            -- trace → corrupt-coalition view
+  -- Operational guarantees:
+  output_AE   : ∀ a A, ∀ᵐ ω ∂(traceDist spec A (μ₀ a)), outputProj ω = ...
+  secrecy     : ∀ a a' A, (traceDist spec A (μ₀ a)).map viewProj
+                       = (traceDist spec A (μ₀ a')).map viewProj
+
+-- in Leslie/Prob/Composition.lean (Phase 12-β):
+def parallelCompose
+    (subs : Fin n → SubprotocolFunctionality α β V)
+    (combiner : (Fin n → β) → γ)
+    (Q_spec : ProbActionSpec _ _) : ProbActionSpec _ _
+  := ...
+
+-- Phase 12-ε (the load-bearing theorem):
+theorem secrecy_of_parallel_composition
+    (subs : Fin n → SubprotocolFunctionality α β V)
+    (combiner : (Fin n → β) → γ)
+    (h_each_secrecy : ∀ i, (subs i).secrecy)
+    (h_combiner_respects : SecrecyRespectingCombiner combiner ...)
+    : Secrecy (parallelCompose subs combiner ...) ...
+```
+
+### 15.4. Key risks
+
+1. **Conditional-independence formalisation** (12-γ): the theorem "AVSS
+   instances are independent given the bigger protocol's schedule" is
+   measure-theoretically subtle.  Mathlib has independence lemmas for
+   product measures; we need to lift to trace distributions over
+   kernel-composed protocols.  If it doesn't fit cleanly in mathlib's
+   existing infrastructure, may need a substantial helper.
+
+2. **Adversary-class subtleties**: the bigger protocol's adversary
+   has joint access to all subprotocol instances' corrupt views.
+   Reducing to per-instance secrecy requires care: the per-instance
+   adversaries derived from a Q-adversary depend on the schedule;
+   formalising this dependency is a real obligation.
+
+3. **Subroutine vs parallel composition**: this plan covers parallel
+   composition (multiple P-instances + a combiner).  Subroutine
+   composition (Q invokes P, awaits output, continues) is harder —
+   the Q-trace contains nested P-traces with explicit
+   call/return points.  Defer to Phase 12-followup or Phase 13.
+
+4. **Schedule semantics**: if Q's adversary can adaptively schedule
+   per-instance actions (e.g., delay AVSS_2 until learning AVSS_1's
+   view), the conditional-independence argument needs care.  The
+   right model is probably: the adversary controls Q's schedule and
+   per-step picks one subprotocol-instance to advance.
+
+### 15.5. Sequence in the master plan
+
+```
+Today's queue (post-Phase-11):
+  Phase 11-α (PR #72)     — Secrecy framework abstraction ✅ landed
+  Phase 11-γ (in flight)  — AVSS instance of SecrecyRushing
+  Phase 11-δ (= Phase 8.6) — operational secrecy + row+col
+  Phase 11-ε              — cleanup + docs
+  ↓
+  Phase 11 closure point — operational secrecy at the protocol level
+  ↓
+  Phase 12-α              — SubprotocolFunctionality abstraction      ← queued here
+  Phase 12-β / γ / δ      — parallel composition + independence + sum
+  Phase 12-ε              — main composability theorem
+  Phase 12-ζ              — AVSS as SubprotocolFunctionality
+  Phase 12-η              — RandomSecretDraw (the motivating instance)
+  Phase 12-θ              — cleanup
+```
+
+### 15.6. Alternative: shortcut path
+
+If random secret draw is the *only* compositional protocol we need,
+the principled Phase 12 layer is overkill.  The shortcut is:
+
+  * Formalise random secret draw directly as a `ProbActionSpec`.
+  * Prove its secrecy *inline*, treating AVSS's per-instance secrecy
+    as a library lemma (call site of `avss_secrecy_AS_view_rushing_instance`
+    from Phase 11-γ).
+  * No `SubprotocolFunctionality` abstraction, no composition operator.
+
+Estimated cost: ~500 LOC for the random secret draw protocol +
+specific secrecy proof.
+
+The principled Phase 12 path costs ~1180 LOC but amortises across
+future protocols (each new compositional protocol becomes ~150-200
+LOC instead of ~500 LOC).
+
+**Decision criterion**: if 3+ compositional protocols are planned,
+go principled.  If random secret draw is one-off, shortcut.
+
+### 15.7. Maintenance protocol
+
+Same as §13.8: each Phase 12 sub-PR's commit message updates
+§15.2's table from ⏳ pending to ✅ landed.  After Phase 12
+completes, this section freezes as the canonical reference for
+the composability layer.
