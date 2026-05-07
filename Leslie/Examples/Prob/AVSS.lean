@@ -6386,6 +6386,55 @@ theorem avss_commitment_AS_corrupt_dealer_randomised
   intro p hp v hv
   exact (hP k).2 p hp v hv
 
+/-! ### §19.1.4. Phase 9.4 — termination against a randomised adversary
+
+Closes the termination half of caveat **C5** (MODEL_NOTES §11.5):
+together with PR #41 / PR #46 / PR #47 / PR #49, every classical
+AVSS property (correctness, commitment, secrecy at coord 0,
+termination) now holds against any randomised adversary.
+
+The randomised analog of `avss_termination_AS_fair` (§13). Routes
+through `RandomisedFairASTCertificate.sound` (the randomised
+specialisation of the measure-generic
+`partition_almostDiamond_fair_on` core in
+`Leslie/Prob/Liveness.lean`); the underlying certificate
+(`avssCert sec corr`) is the same protocol-data witness used by
+the deterministic version.
+
+Per the maintenance plan in `AVSS-MODEL-NOTES.md` §13.4. -/
+
+/-- **Termination against a randomised adversary.**  The randomised
+analog of `avss_termination_AS_fair` (§13).  Every randomised
+trajectory-fair adversary almost-surely drives the protocol to a
+terminated state, where "trajectory-fair" means an AE witness of
+fair-action progress along the mixture trace measure
+(`RandomisedTrajectoryFairAdversary.progress`).
+
+Discharged via `RandomisedFairASTCertificate.sound`, which
+specialises the measure-generic `partition_almostDiamond_fair_on`
+core (in `Liveness.lean`) to the randomised mixture trace measure
+plus the inductive randomised-Box lift
+`AlmostBoxRandomised_of_inductive`.
+
+Closes C5 for termination. -/
+theorem avss_termination_AS_fair_randomised
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : Leslie.Prob.RandomisedTrajectoryFairAdversary
+            (avssSpec (t := t) sec corr) avssFair μ₀)
+    (h_U_mono : FairASTCertificate.RandomisedTrajectoryUMono
+        (avssCert (t := t) sec corr) μ₀ R.toRandomised)
+    (h_U_strict : ∀ N : ℕ, FairASTCertificate.RandomisedTrajectoryFairStrictDecrease
+        (avssCert (t := t) sec corr) μ₀ R.toRandomised N) :
+    AlmostDiamondRandomised (avssSpec (t := t) sec corr) R.toRandomised μ₀
+      terminated := by
+  have h_init' : ∀ᵐ s ∂μ₀, (avssCert (t := t) sec corr).Inv s := by
+    filter_upwards [h_init] with s hs
+    exact (avssCert (t := t) sec corr).inv_init s hs
+  exact RandomisedFairASTCertificate.sound
+    (avssCert (t := t) sec corr) μ₀ h_init' R h_U_mono h_U_strict
+
 /-! ## §19.2. Phase 7.4 — schedule prefix factors through algebraic view AE
 
 Under a `RushingAdversary` `R` for AVSS, the trace is *fully deterministic*
