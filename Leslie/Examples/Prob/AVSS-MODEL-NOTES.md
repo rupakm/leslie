@@ -16,7 +16,7 @@ literature or when AVSS is used as a primitive for downstream protocols.
 | Aspect | Canetti–Rabin literature | This formalisation |
 |---|---|---|
 | Adversary information | Rushing — sees corrupt-coalition view + in-flight messages | **Two adversary types coexist**: plain `Adversary` (full-state access; legacy) and `RushingAdversary` (view-restricted; Phase 7.1, generic in `Adversary.lean`). The classical AVSS theorems are restated against both (Phase 7.3) |
-| Adversary *power* (what corrupt parties can do/observe) | Rushing adversary controls all corrupt-party messages and observes every honest broadcast on corrupt receivers | ⚠ **Strictly weaker.** Corrupt parties cannot send echoes/readys/amplify (C1); they never receive honest echoes/readys (C2); fairness does not require `dealerShare` (C3). See **§11** |
+| Adversary *power* (what corrupt parties can do/observe) | Rushing adversary controls all corrupt-party messages and observes every honest broadcast on corrupt receivers; corrupt dealer can selectively short-share honest parties | ⚠ **Strictly weaker.** Corrupt parties cannot send echoes/readys/amplify (C1); they never receive honest echoes/readys (C2); selective non-broadcast not modelled — `dealerShare` always sends to all honest parties (C4). C3 (dealer-share fairness) **resolved by Phase B** — `dealerShare` is now in `avssFairActions`. See **§11** |
 | Static vs. adaptive corruption | Both treated; usually adaptive | Static (`corrupted` fixed at `μ₀` time) |
 | Dealer-to-party communication | Per-party row + column polys, possibly inconsistent under corrupt dealer | Single global `s.coeffs` field; consistent by construction |
 | Dealer's distribution choice | Honest = uniform of bidegree ≤ (t,t) with `f(0,0) = sec`; corrupt = adversarial | **`Polynomial.uniformBivariateWithFixedZero` is degenerate** — fixes all axis coefficients to 0, not just `f(0,0)`. Honest output equals `sec` directly (every share is `sec`), and corrupt-party row poly's constant term is `sec`. See §10 below |
@@ -879,22 +879,23 @@ def avssFairActions : Set (AVSSAction n F) :=
         | _ => False }
 ```
 
-`dealerShare` and `partyCorruptDeliver` fall into the catch-all
-`_ => False` and are not fair-required.
+**(Pre-Phase-B history, kept for context.)** Pre-Phase-B,
+`dealerShare` and `partyCorruptDeliver` both fell into the catch-all
+`_ => False` and were not fair-required.
 
-Consequence: a "fair adversary" in this model is *not required* to
-ever fire `dealerShare`.  A stalling adversary that never fires it
-keeps `s.dealerSent = false` forever; every fair action's gate then
-fails (`partyDeliver` requires `s.dealerSent = true`); no honest
-party outputs; `terminated` is unreachable.
+Consequence (pre-Phase-B): a "fair adversary" was *not required* to
+ever fire `dealerShare`.  A stalling adversary that never fired it
+kept `s.dealerSent = false` forever; every fair action's gate then
+failed (`partyDeliver` requires `s.dealerSent = true`); no honest
+party output; `terminated` was unreachable.
 
-The termination theorem (`avss_termination_AS_fair`) is still
+The termination theorem (`avss_termination_AS_fair`) was still
 logically sound — for such a stalling adversary, the user-supplied
-`h_U_mono` / `h_U_strict` certificate witnesses *cannot be
-discharged*, so the theorem holds vacuously for that input.  But the
-theorem carries no operational content in that case.  A naive reader
-might infer "the formalised model implies an honest dealer's
-protocol always terminates"; the precise statement is "the protocol
+`h_U_mono` / `h_U_strict` certificate witnesses *could not be
+discharged*, so the theorem held vacuously for that input.  But the
+theorem carried no operational content in that case.  A naive reader
+might have inferred "the formalised model implies an honest dealer's
+protocol always terminates"; the precise statement was "the protocol
 terminates *if the adversary eventually fires `dealerShare` and the
 fair-progress certificate is dischargeable*".
 
@@ -902,7 +903,34 @@ In CR '93 an honest dealer broadcasts by definition (the dealer's
 share-out step is part of the protocol script, not the adversary's
 schedule).
 
-**Bridge to literature.**  Two clean fixes:
+#### Phase B fix landed
+
+✅ **Resolved.** Phase B (this PR) folds `dealerShare` into
+`avssFairActions` (Option B2 from the original plan).  The new
+strict-decrease witness `avssU_step_dealerShare_lt` requires
+`(honestSet s).card ≥ 1`; the helper
+`honestSet_pos_of_not_terminated_pre_share` derives this from
+`¬ terminated s ∧ avssTermInv s ∧ s.dealerSent = false`.  When
+`honestSet.card = 0`, every honest-party conjunct of `terminated`
+is vacuous and the queue conjuncts follow from inv clause 1, so
+`terminated s` already holds — the strict-decrease witness is only
+needed off-terminated, exactly the context of `avssCert.U_dec_det`.
+
+`avssU_step_lt_of_fair` was extended with a `(hnt : ¬ terminated s)`
+premise to thread the helper into the dealerShare case; the three
+call sites in `avssCert` (`V_super_fair`, `U_dec_det`,
+`U_dec_prob`) all already had the `_hnt` parameter unused, so the
+threading was mechanical.
+
+For corrupt-dealer scenarios, folding `dealerShare` into the fair
+set is conservative: under fair scheduling, even a corrupt dealer
+is forced to broadcast.  Real-CR allows a corrupt dealer to refuse
+to broadcast, in which case CR's termination is conditional on the
+dealer's behaviour.  A future Phase 8 with per-party dealer
+messages would distinguish honest- vs. corrupt-dealer fairness
+more precisely.
+
+**Bridge to literature.**  Two clean fixes were considered:
 
   1. **Phase B (small):** add the hypothesis "honest dealer ⇒
      `dealerShare` eventually fires" at the call site of
@@ -915,10 +943,108 @@ schedule).
      unconditional.
 
 Either fix is local; neither requires changes to the cryptographic
-content.  The Phase A docs commit (this PR's docs commit) flags the
-issue; a follow-on Phase B commit will adjust the model.
+content.  Phase A's docs commit flagged the issue; this PR's
+Phase B commit chose Option B2 (fold `dealerShare` into
+`avssFairActions`).
 
-### 11.4. Correctness/commitment subtlety (per-party share, not the secret)
+### 11.4. C4 — Selective non-broadcast and the load-bearing role of Bracha amplification
+
+⚠ **Closely related to §2 (Dealer-to-party communication) but worth
+spelling out separately**: in CR '93, a corrupt dealer's adversarial
+power includes choosing *which subset of parties* to send shares to,
+not just whether to broadcast at all.
+
+#### What CR '93 actually models
+
+The CR adversary controlling the dealer can:
+
+  1. Refuse to broadcast entirely (handled by C3's fix in our model
+     by forcing `dealerShare` via fairness).
+  2. **Send shares to only some honest parties** (selective non-
+     broadcast — what we call C4).
+  3. Send *inconsistent* shares to different parties (handled by §2's
+     deferred per-party messages).
+
+For (2), CR distinguishes two regimes:
+
+  * **At least `n − t` honest parties receive consistent shares**:
+    Bracha amplification fires.  The honest parties who received
+    shares broadcast echoes; those who didn't receive shares but
+    observe `≥ n − t` echoes amplify via the `readyReceived ≥ t + 1`
+    rule (`partyAmplify` in our model).  All honest parties output
+    values jointly consistent with some bivariate polynomial.
+  * **Fewer than `n − t` honest parties receive shares**: no echo
+    cascade, no amplification, no termination.  The protocol simply
+    doesn't decide.  CR's termination theorem is conditional on the
+    first regime.
+
+The protocol **is correct in both regimes** — there are no
+incorrect outputs in the no-termination case (output is `none`,
+not "wrong"), and in the termination case Bracha amplification's
+joint-consistency property holds.  What's *not* unconditional is
+termination.
+
+#### What our model captures and what it doesn't
+
+`dealerShare`'s effect (post-Phase-B) at `AVSS.lean:319–323`
+populates `s.inflightDeliveries` with **all** honest parties:
+
+```
+| .dealerShare =>
+    { s with
+      dealerSent := true
+      inflightDeliveries :=
+        (Finset.univ : Finset (Fin n)).filter (fun p => p ∉ s.corrupted) }
+```
+
+So in our model every honest party always receives a share, and
+selective non-broadcast is impossible — the adversary cannot choose
+which parties to short.  Consequence:
+
+  * The `partyAmplify` action exists in the state machine and the
+    variant analysis treats it as fair-required, but in practice
+    every honest party can take the direct path
+    `partyDeliver → partyEchoSend → partyReady → partyOutput`
+    since they all receive shares.  `partyAmplify` is never
+    operationally load-bearing in our reachable traces.
+  * Bracha amplification's role — letting parties *without* a direct
+    share output via echo cascade — is not exercised.
+  * Termination becomes unconditional under fair scheduling
+    (post-Phase-B), where in CR it would be conditional on the
+    `≥ n − t` consistent-share regime.
+
+#### Implication for the formalised theorems
+
+  * **Termination**: stronger than CR — our model forces the dealer
+    to broadcast to all honest parties, so the "fewer than `n − t`"
+    regime is unreachable.  CR's conditional termination is bypassed
+    rather than proved.
+  * **Correctness/commitment**: weaker threat model — selective
+    non-broadcast and inconsistent-broadcast attacks are not
+    considered.
+  * **Secrecy**: orthogonal — selective non-broadcast doesn't change
+    what corrupt parties learn about `sec`, only whether honest
+    parties terminate.  The secrecy theorems remain meaningful.
+
+#### Phase 8 closes C4
+
+The per-party dealer messages refactor (Phase 8, scoped separately)
+addresses C4 directly:
+
+  * `dealerMessages : Fin n → Option DealerPayload` — the dealer's
+    output to each party, possibly `none` (corrupt dealer chose to
+    skip this party) or `some payload`.
+  * `partyDeliver p` reads from `dealerMessages p` rather than a
+    global `coeffs`.
+  * Honest parties without a direct share rely on `partyAmplify`.
+  * Termination becomes conditional on "≥ `n − t` honest parties got
+    consistent shares" — the genuine CR statement.
+
+Phase 8 also addresses §2 (per-party messages), C1 (corrupt-party
+sends), and C2 (honest broadcasts to corrupt receivers) — all four
+gaps are entangled and a single refactor closes them together.
+
+### 11.5. Correctness/commitment subtlety (per-party share, not the secret)
 
 This is not strictly an *adversary-power* restriction — it's a
 restatement subtlety that affects how readers should interpret the
@@ -997,20 +1123,82 @@ trajectory — has four components, each shippable as a separate PR:
    `avss_secrecy_AS_view_rushing_via_init_invariant` are retained
    as the conditional building blocks.  **Landed.**
 
-6. ⏳ **Phase 8: Per-party dealer messages.**  Replace `s.coeffs` with
-   per-party messages `dealerMessages : Fin n → (RowPoly × ColPoly)`.
-   Honest dealer = consistent assignment; corrupt dealer = adversarial
-   choice subject to verifiability.  Re-prove commitment as the
-   genuine "joint consistency" theorem.  This is the
-   literature-faithful AVSS modulo cryptographic content already in
-   `BivariateShamir`'s deferred row-poly secrecy.
+6. ⏳ **Phase 8: Per-party dealer messages — full literature-faithful AVSS.**
+   Closes the four entangled gaps **§2 (dealer-to-party communication),
+   C1 (corrupt-party sends), C2 (honest broadcasts to corrupt
+   receivers), C4 (selective non-broadcast)** in a single coherent
+   refactor.  After Phase 8, AVSS matches Canetti–Rabin '93's model:
+   per-party dealer messages, corrupt-party send actions, honest
+   broadcasts to corrupt receivers, and selective non-broadcast as an
+   adversary capability.  Termination becomes conditional on Bracha
+   amplification, as in the literature.
+
+   This is **the load-bearing remaining gap**.  Estimated 1500–2200 LOC
+   across 6–8 PRs.  See **§12** below for the detailed plan and
+   status tracker.
 
 Estimated cost: Phase 6 ≈ 600 LOC (landed); Phase 7.1 ≈ 130 LOC
 (landed); Phase 7.2 ≈ 90 LOC (landed); Phase 7.3 ≈ 70 LOC (landed);
-Phase 7.4+7.5 ≈ 300–500 LOC (deferred); Phase 8 ≈ 600–1000 LOC.  The
-bulk of the cryptographic content is already in the formalisation;
-what remains is largely *adversary-information plumbing*, which is
-real engineering work but conceptually well-understood.
+Phase 7.4+7.5 ≈ 800 LOC (landed); Phase 7.7 (distribution refactor)
+≈ 780 LOC (landed); Phase A (docs) ≈ 150 LOC (landed); Phase B
+(C3 fix) ≈ 200 LOC (landed); Phase 8 ≈ 1500–2200 LOC (in progress).
+
+## 12. Phase 8 — per-party dealer messages: detailed plan + status tracker
+
+This section tracks the multi-PR Phase 8 initiative as it lands.
+Each row corresponds to one PR; statuses move from ⏳ pending to 🚧
+in-flight to ✅ landed.
+
+### 12.1. Status tracker
+
+| PR | Title | Scope | LOC | Status |
+|---|---|---|---|---|
+| **8.1** | DealerPayload + state surgery (A-lite) | Foundational refactor: introduce `DealerPayload` type and `dealerMessages : Fin n → Option (DealerPayload t F)` field; keep `coeffs` alongside; migrate `dealerShare`/`partyDeliver`/`partyCorruptDeliver` to read from `dealerMessages`; add consistency invariant. **No theorem semantics change.** | ~200 | 🚧 in-flight |
+| **8.2** | Honest-dealer consistency invariant + correctness re-verification | Define `honestDealerConsistencyInv`: for honest dealer, ∃ witness coeffs such that every honest party's payload matches `rowPolyOfDealer`/`colPolyOfDealer`. Re-prove `avss_correctness_AS` against the new model with existential witness. | ~250 | ⏳ pending |
+| **8.3** | Corrupt-dealer commitment (the genuine theorem) | The headline literature-faithful theorem `joinedConsistencyInv`: ≥ t+1 honest outputs ⇒ ∃ coeffs witnessing all of them. Argument leverages Bracha amplification's consistency-check property. Hardest cryptographic content of Phase 8. | ~300 | ⏳ pending |
+| **8.4** | Corrupt-party send actions (C1) + reception (C2) | Drop `p ∉ s.corrupted` from `partyEchoSend`/`partyReady`/`partyAmplify` gates. Update `partyEchoReceive` to populate corrupt receivers. Echoes carry payload values; consistency check predicate added; only consistent echoes count toward thresholds. Termination becomes conditional on "≥ n−t honest parties have consistent shares". | ~250 | ⏳ pending |
+| **8.5** | Selective non-broadcast (C4) | Replace `dealerShare` with `dealerShareTo (p : Fin n)`; adversary chooses recipients and payloads. Move `coeffs` out of state into `μ₀` (or honest-dealer witness). Refactor variant analysis to handle the new fair-action structure. Most subtle PR; budget extra time. | ~150 | ⏳ pending |
+| **8.6** | Operational secrecy under the full adversary | Re-prove `avss_secrecy_AS_view_rushing` against the post-8.4+8.5 adversary, which now has corrupt-party messages and honest-broadcast reception. Requires the **+200 LOC row + column secrecy** form (deferred since `SyncVSS.lean §10`) — the full polynomial-manipulation step. | ~250 | ⏳ pending |
+| **8.7** | Adapter retirement / cleanup | Decide whether to keep pre-Phase-8 model alongside or retire it. Recommend a thin compatibility shim with deprecation warnings for downstream migration. | ~100 | ⏳ pending |
+| **8.8** | MODEL_NOTES rewrite | Comprehensive rewrite to reflect post-Phase-8 state. Most §-level caveats become "✅ resolved by Phase 8". Preserve historical context. | ~150 | ⏳ pending |
+
+### 12.2. Sequencing constraints
+
+- **PRs 8.1–8.3** can be a tight unit (state surgery → honest-dealer correctness → commitment).
+- **PR 8.4** depends on 8.1's `dealerMessages` infrastructure.
+- **PR 8.5** depends on 8.4's consistency-check infrastructure.
+- **PR 8.6** depends on PRs 8.4 + 8.5 (full adversary model + selective broadcast).
+- **PRs 8.7, 8.8** are cleanup, can be deferred.
+
+### 12.3. Post-Phase-8 state
+
+After Phase 8 lands, AVSS will be **literature-faithful** for Canetti–Rabin '93:
+
+| Theorem | Pre-Phase-8 (current) | Post-Phase-8 |
+|---|---|---|
+| Termination | Unconditional under fair scheduling (model forces dealer to all-broadcast) | Conditional on ≥ n−t honest parties receiving consistent shares (CR statement) |
+| Correctness | Honest dealer ⇒ outputs consistent with `s.coeffs` (state field) | Honest dealer ⇒ outputs consistent with *some* bivariate polynomial (existential witness) |
+| Commitment | Trivially true (single global `coeffs`) | Genuine joint-consistency theorem under corrupt dealer (Bracha amplification load-bearing) |
+| Reconstruction | Lagrange theorem, unchanged | Lagrange theorem, unchanged |
+| Secrecy | Row-poly secrecy under restricted adversary | Full row + column secrecy under CR rushing adversary |
+
+### 12.4. Risks
+
+1. **PR 8.3's commitment proof** is the hardest cryptographic content. It requires showing Bracha amplification's "all accepted shares are consistent with some polynomial" property — threading the consistency-check predicate added in 8.4 through quorum intersection. Some risk this becomes a multi-PR effort itself.
+
+2. **Variant analysis re-verification** (PRs 8.4, 8.5): adding corrupt-party send actions to the fair set changes the variant's strict-decrease story. Each fair action must still strictly decrease U; the per-action `_lt` lemmas need rework. Risk: the K-weighting may need reshuffling.
+
+3. **Row + column secrecy** (PR 8.6): the +200 LOC polynomial-manipulation step has been deferred since `SyncVSS.lean §10`. Doing it now is real cryptographic content (Vandermonde + Lagrange in two directions, with axis-zero handling). Could be its own multi-PR effort if we hit complications.
+
+### 12.5. Maintenance protocol
+
+This tracker is the source of truth for Phase 8 status.  As each PR lands:
+
+  1. The PR's own commit message updates the corresponding row of §12.1 (statuses ⏳ → 🚧 → ✅).
+  2. New caveats discovered during implementation are added to §11 (or to a new sub-section here if scope-specific).
+  3. After Phase 8 completes, §11.1–§11.4 caveats should be marked "✅ resolved by Phase 8 (PR #N)" and the post-Phase-8 state table (§12.3) frozen as the citation reference.
+
+If the plan changes in the middle (e.g., a worker discovers a structural issue that re-scopes a PR), the affected row's status reverts to 🚧 with a footnote describing the change.
 
 ## How to read the formalised theorems
 
