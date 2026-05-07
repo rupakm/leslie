@@ -13239,6 +13239,95 @@ theorem avss_secrecy_AS_view_rushing_instance
 attribute [instance] instMeasurableSpaceAVSSRushingView
   instMeasurableSingletonClassAVSSRushingView
 
+/-! ## §19.6. Phase 11-δ (= Phase 8.6) — bivariate row+column secrecy
+
+This section instantiates the polynomial-level row+column uniformity
+theorem `Leslie.Prob.Polynomial.bivariate_evals_uniform_row_col` to the
+AVSS coalition setting.  This is the cryptographic content **deferred
+since SyncVSS §10**: it generalises the row-only bivariate uniformity
+that flows through the existing `corrRowMap_uniform_sec_invariant` chain
+from a *rectangular* `pts_x × pts_y` form to **arbitrary subsets**
+`S ⊆ R × R` of corrupt parties' point set.
+
+Practically, the upgraded form is used by future protocols that need
+a stronger secrecy conclusion than "corrupt rowPolys are uniform" — for
+example column cross-checks (CR'93 §10) where the corrupt coalition's
+**column-axis** evaluations at corrupt-party rows must also be uniform.
+
+The wrapper takes the AVSS coalition `corr` (size ≤ t) and an arbitrary
+subset `S ⊆ (corr.image partyPoint) ×ˢ (corr.image partyPoint)`,
+specialising the polynomial-level theorem via the standard
+`partyPoint`-injection bridge.
+
+**Status (2026-05-07).**  Theorem statement landed; constant-fiber
+projection step proved up to one TODO Phase 11-δ-followup-1 sorry in
+`PMF.uniform_pi_restrict` (the generic per-coordinate restriction
+lemma).  See MODEL_NOTES §12.1 row 8.6 + §12.4 risk 4 for context. -/
+
+/-- **AVSS-side bivariate row+column uniformity (Phase 11-δ).**
+
+Specialisation of `Leslie.Prob.Polynomial.bivariate_evals_uniform_row_col`
+to the AVSS coalition setting (`R = corr.image partyPoint`).  For any
+subset `S` of the corrupt-party bivariate grid, the joint evaluation
+distribution is uniform on `↑S → F` — independently of `sec`.
+
+This is strictly stronger than `corrRowMap_uniform_sec_invariant` (which
+gives only the rowPoly-coefficient form) and matches the literature
+"row + column" secrecy form used in CR'93 §10's cross-check argument. -/
+theorem avss_bivariate_corrGrid_uniform
+    (sec : F) (corr : Finset (Fin n)) (partyPoint : Fin n → F)
+    (h_inj : Set.InjOn partyPoint corr)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (h_corr : corr.card ≤ t)
+    (S : Finset (F × F))
+    (hS : S ⊆ corr.image partyPoint ×ˢ corr.image partyPoint)
+    [Nonempty S]
+    [Nonempty (↥(corr.image partyPoint) × ↥(corr.image partyPoint))] :
+    (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero (F := F) t t sec).map
+        (fun (f : _root_.Polynomial (_root_.Polynomial F)) (pq : S) =>
+          (f.eval (Polynomial.C pq.val.1)).eval pq.val.2) =
+      PMF.uniform (S → F) := by
+  classical
+  -- Deduce the `R = corr.image partyPoint` hypotheses from the AVSS-side ones.
+  have h_R_card : (corr.image partyPoint).card ≤ t := by
+    rw [Finset.card_image_of_injOn h_inj]; exact h_corr
+  have h_R_nz : (0 : F) ∉ corr.image partyPoint := by
+    intro h_mem
+    rw [Finset.mem_image] at h_mem
+    obtain ⟨i, _, h_eq⟩ := h_mem
+    exact h_nz_pp i h_eq
+  exact Leslie.Prob.Polynomial.bivariate_evals_uniform_row_col t sec
+    (corr.image partyPoint) h_R_card h_R_nz h_F S hS
+
+/-- **AVSS-side row+column secrecy corollary (Phase 11-δ).**
+
+Two sec-values yield the same `S`-marginal of
+`uniformBivariateFullWithFixedZero` — the *secrecy* form of
+`avss_bivariate_corrGrid_uniform`.  This is the headline form that
+downstream consumers (e.g. column cross-check protocols) use as a
+black-box "corrupt coalition's bivariate view is sec-invariant". -/
+theorem avss_bivariate_corrGrid_sec_invariant
+    (sec sec' : F) (corr : Finset (Fin n)) (partyPoint : Fin n → F)
+    (h_inj : Set.InjOn partyPoint corr)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (h_corr : corr.card ≤ t)
+    (S : Finset (F × F))
+    (hS : S ⊆ corr.image partyPoint ×ˢ corr.image partyPoint)
+    [Nonempty S]
+    [Nonempty (↥(corr.image partyPoint) × ↥(corr.image partyPoint))] :
+    (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero (F := F) t t sec).map
+        (fun (f : _root_.Polynomial (_root_.Polynomial F)) (pq : S) =>
+          (f.eval (Polynomial.C pq.val.1)).eval pq.val.2) =
+      (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero (F := F) t t sec').map
+        (fun (f : _root_.Polynomial (_root_.Polynomial F)) (pq : S) =>
+          (f.eval (Polynomial.C pq.val.1)).eval pq.val.2) := by
+  rw [avss_bivariate_corrGrid_uniform sec corr partyPoint
+        h_inj h_nz_pp h_F h_corr S hS,
+      avss_bivariate_corrGrid_uniform sec' corr partyPoint
+        h_inj h_nz_pp h_F h_corr S hS]
+
 end RushingSimulation
 
 end Leslie.Examples.Prob.AVSS
