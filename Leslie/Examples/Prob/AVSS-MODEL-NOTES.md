@@ -2708,3 +2708,184 @@ Same as §13.8: each Phase 12 sub-PR's commit message updates
 §15.2's table from ⏳ pending to ✅ landed.  After Phase 12
 completes, this section freezes as the canonical reference for
 the composability layer.
+
+## 16. CR '93 threshold and fairness audit
+
+A reader who picks up the formalised theorems may reasonably ask:
+"under what assumptions on `n` and `t` are these claims meaningful?"
+The headline theorems all carry only `corr.card ≤ t` as their
+threshold hypothesis (no explicit `n ≥ 3t + 1` or `n ≥ 4t + 1`).
+The preamble of `AVSS.lean` does claim "`n ≥ 3t + 1`" as the model's
+intended setting, but **no theorem in the codebase enforces this
+bound as a hypothesis**.  This section audits where the actual bounds
+sit and how the formalisation relates to Canetti–Rabin '93's stated
+threat model.
+
+### 16.1. Threshold bounds — what's enforced vs claimed
+
+| Bound | Status in code | Where it appears |
+|---|---|---|
+| `corr.card ≤ t` | ✅ enforced as theorem hypothesis | All headline theorems take `h_corr : corr.card ≤ t` |
+| `n ≥ 2t + 1` (so `n - t ≥ t + 1`) | ⚠️ implicit | Used silently when `n - t` is required to dominate `t + 1` (e.g., honest-output quorum existence in `consistent_quorum_AE_of_all_honest_delivered` cardinality argument) |
+| `n ≥ 3t + 1` (Bracha echo-quorum intersection) | ❌ **claimed but not enforced** | Stated in `AVSS.lean` preamble (line 6); `quorum_intersection_card` lemma (§16 of `AVSS.lean`) carries the bound information but is **defined-but-never-used** — no headline theorem consumes it |
+| `n ≥ 4t + 1` (Bracha-quality intersection: `≥ t+1` honest in any two output-quorums) | ❌ not enforced | Quorum-intersection lemma's docstring mentions it as a stronger setting; not actually used |
+
+**Interpretation.**  The headline theorems are mathematically valid
+under the weakest standing hypothesis (`corr.card ≤ t`), but their
+*cryptographic content* is non-vacuous only under `n ≥ 3t + 1` —
+because under weaker bounds, the runtime hypothesis `consistent_quorum_AE`
+(see §16.3) becomes unsatisfiable in the actual Bracha-amplified
+protocol semantics.
+
+This is **not a soundness bug**: the theorems are honestly stated as
+"if these runtime hypotheses are satisfied, then …".  But the
+**discharge** of those runtime hypotheses (in particular
+`consistent_quorum_AE`) is what requires `n ≥ 3t + 1`, and we don't
+formalise the discharge — see §16.4.
+
+### 16.2. Fairness predicate — `avssFair` vs CR '93 weak fairness
+
+`avssFair : FairnessAssumptions` (AVSS.lean §11) defines the fair
+action set as every action **except** corrupt-fired sends:
+
+```
+avssFairActions = { dealerShareTo p, partyDeliver p, partyEchoSend p,
+                    partyEchoReceive p q, partyReady p, partyAmplify p,
+                    partyReceiveReady p q, partyOutput p }
+                  -- corrupt-fired sends NOT fair
+```
+
+with `isWeaklyFair := fun _ => True` (every fair action is weakly
+fair-required to fire).
+
+This matches CR '93's standard async fairness assumption: every
+honest-party-initiated action eventually fires, every sent message
+is eventually delivered.  Corrupt-fired sends are NOT fair because
+the adversary chooses their schedule.
+
+**Verdict**: `avssFair` is faithful to CR '93's weak fairness.
+
+### 16.3. The `consistent_quorum_AE` runtime hypothesis
+
+Phase 8.5d-γ (PR #70) re-scoped `avss_termination_AS_fair` to take
+an extra runtime hypothesis:
+
+```
+def consistent_quorum_AE ... (A : Adversary ...) : Prop :=
+  ∀ᵐ ω ∂(traceDist (avssSpec ...) A μ₀),
+    ∃ k₀ : ℕ, ∀ k ≥ k₀,
+      |{p ∉ corr ∧ ω k.dealerSent p ∧ ω k.dealerMessages p ≠ none}| ≥ n - t
+```
+
+In words: AE on traces, eventually at least `n - t` honest parties
+have received their dealer share.
+
+**Why we add this.**  Phase 8.5d-α split the dealer's broadcast into
+per-party `dealerShareTo p` actions (closing caveat C4 — selective
+non-broadcast).  Under that model, a corrupt dealer can selectively
+refuse to send to some honest parties, blocking their output and
+breaking termination unconditionally.
+
+**CR '93's contrast.**  The original CR '93 protocol assumes the
+dealer broadcasts a single message to all parties (atomic
+broadcast).  Under that assumption, `consistent_quorum_AE` is
+**derivable** from broadcast atomicity + `avssFair`'s weak-
+delivery — no extra hypothesis needed.
+
+**Verdict**: `consistent_quorum_AE` is **strictly extra** relative
+to CR '93's stated threat model.  It's a runtime hypothesis our
+formalisation needs because we model the more permissive selective-
+non-broadcast adversary.  Under CR '93's atomic-broadcast model,
+it would be a theorem, not a hypothesis.
+
+The sanity-check lemma `consistent_quorum_AE_of_all_honest_delivered`
+shows the form is satisfiable: under any schedule that AE delivers
+to every honest party, the consistent-quorum hypothesis holds.
+
+### 16.4. Bracha amplification gap
+
+CR '93's protocol uses Bracha-style echo+ready amplification to
+guarantee that **if any honest party outputs, then all honest
+parties eventually output** (the "any-or-all" property).  The
+amplification argument is:
+
+  1. Output requires `readyReceived.card ≥ n - t`.
+  2. Among `n - t` ready-senders, at least `n - t - t = n - 2t` are
+     honest (since at most `t` are corrupt).
+  3. Each of those honest ready-senders satisfies the `partyAmplify`
+     gate (`readyReceived ≥ t + 1`), which forces every other honest
+     party with `readyReceived ≥ t + 1` to also send ready.
+  4. Cascade: once one honest party outputs, every honest party
+     eventually has `readyReceived.card ≥ n - t` and outputs.
+
+This argument requires `n ≥ 3t + 1` for the intersection step (so
+that any two ready-quorums of size `n - t` share at least one honest
+party).  **We do not formalise this argument.**  Instead, the
+termination certificate `avssCert` (§12 of AVSS.lean) takes
+`consistent_quorum_AE` as a hypothesis and produces termination from
+there.
+
+**Status**: this is a known formalisation simplification.  CR '93's
+core "any-or-all" property is the missing piece.  Closing it would
+require a substantive PR (~150–250 LOC) proving:
+
+  ```
+  theorem avss_any_or_all
+      (h_corr : corr.card ≤ t) (h_n_geq : 3 * t + 1 ≤ n)
+      ... :
+    AlmostBox ... (fun s =>
+      (∃ p ∉ s.corrupted, (s.local_ p).output.isSome) →
+      ∀ᵐ ω ..., ∃ k₀, ∀ k ≥ k₀, ∀ p ∉ corr,
+        (ω k).1.local_ p .output.isSome)
+  ```
+
+Once proven, `consistent_quorum_AE` could be discharged from
+`avss_any_or_all` + dealer-broadcast + `avssFair`, recovering CR
+'93's unconditional fair-AST claim.
+
+### 16.5. Net assessment relative to CR '93
+
+| CR '93 claim | Our formalisation |
+|---|---|
+| **Threat model**: `n ≥ 3t + 1`, byzantine static corruption ≤ `t` | Static corruption ✅; threshold bound **claimed but not enforced** |
+| **Fairness**: weak fairness (every fair action eventually fires) | ✅ via `avssFair` |
+| **Termination**: every honest party eventually outputs | ✅ conditional on `consistent_quorum_AE` (which CR '93 derives from broadcast + fairness; we leave as runtime hypothesis) |
+| **Correctness** (honest dealer): every honest output equals `bivEval coeffs (partyPoint p) 0` | ✅ existential-witness form |
+| **Commitment** (corrupt dealer): all honest outputs jointly determined | ⚠️ honest-dealer-conditional after Phase 8.5d-β; queued Phase 8.6 (Bracha amplification) drops the guard |
+| **Secrecy**: `t`-coalition view independent of secret | ✅ operational view, dealerHonest-INDEPENDENT |
+| **Reconstruction**: `t + 1` honest shares recover the secret | ✅ as Lagrange lemma (not a protocol phase) |
+| **Bracha "any-or-all"** amplification | ❌ not formalised; replaced by `consistent_quorum_AE` runtime hypothesis |
+| **Adaptive corruption** | ❌ static only; gap |
+| **Dealer broadcast** (atomic) | ⚠️ permissive: per-party `dealerShareTo p` actions; closes caveat C4 but introduces `consistent_quorum_AE` hypothesis |
+
+**Verdict**: **CR '93 property parity**, with two structural gaps:
+
+  1. **Bracha "any-or-all" amplification** (§16.4) — replaced by
+     `consistent_quorum_AE` runtime hypothesis.  Closing this would
+     also let us drop the `consistent_quorum_AE` hypothesis on
+     `avss_termination_AS_fair`, recovering CR '93's unconditional
+     fair-AST.
+
+  2. **Adaptive corruption** — our model is static; CR '93 is
+     adaptive.  Closing this requires substantial state surgery
+     (~600–1000 LOC) and is a known modern-formalisation
+     simplification.
+
+The threshold bound `n ≥ 3t + 1` is **not enforced** in our
+theorems but is the bound under which the runtime hypotheses are
+satisfiable in the actual protocol.  Adding `n ≥ 3t + 1` as an
+explicit hypothesis to the headline theorems would make them
+**self-documenting** but would not change their content (since the
+bound is needed for the hypotheses' satisfiability, not for the
+theorems themselves).  Recommended as a **light-touch follow-up**:
+add `(h_n_geq : 3 * t + 1 ≤ n)` to the four headline theorems'
+signatures, drop unused but document-aligned, ~20 LOC.
+
+### 16.6. Recommended follow-ups (queued)
+
+| # | Follow-up | Scope | LOC |
+|---|---|---|---|
+| **16-α** | Add `n ≥ 3 * t + 1` hypothesis to headline theorems for self-documentation | Light-touch, signature surgery | ~20 |
+| **16-β** | Formalise Bracha "any-or-all" amplification → discharge `consistent_quorum_AE` from `avssFair` + broadcast | Substantive | ~150–250 |
+| **16-γ** | Adaptive corruption support | Substantial state surgery | ~600–1000 |
+
