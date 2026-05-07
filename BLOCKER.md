@@ -195,17 +195,83 @@ post-state's `(r, q, v_rq)` triples are unique by construction).
 
 ## What this PR contains
 
-* **No code changes to `Leslie/Examples/Prob/AVSS.lean`.**  The file
-  is byte-for-byte identical to its `main` state.
-* **`BLOCKER.md`** (this file) with the analysis above.
+* **`BLOCKER.md`** (this file) with the analysis above (Step 1a deliverable).
+* **Step 1b WIP**: `Leslie/Examples/Prob/AVSS.lean` carries the in-progress
+  surgery for Step 1b (commit-2 below).  The file does **not** build green
+  in this PR; ~5-7 errors remain, all clustered in §17/§19 secrecy
+  abstractions (`simSyncInv`, `TrivialView`, `corrupt_local_state_uniqueness`)
+  that rely on echo *values* being secret-independent — which they are not
+  after step-1.  Resolving these is properly Step 2/3 work (echo
+  validation + `bivariateAlignedInv`).
 
-The build remains green at the start of Worker 1b's session.  Build:
+## Step 1b WIP — what compiles, what doesn't
+
+**Compiling cleanly** (the bulk of step-1):
+
+* Type expansion of `AVSSLocalState.echoesReceived` (sender + value) and
+  `AVSSState.inflightEchoes` (sender + receiver + value).
+* `AVSSAction.partyEchoReceive` extended with `(v : F)` argument; gates,
+  step function, and Fintype instances follow.
+* `partyEchoSend` emits canonical CR'93 echo content
+  `evalRowPoly rp (s.partyPoint q)` for each receiver `q`.
+* `actionGate` for `partyEchoReceive p q v` uses image-of-Prod.fst for
+  the freshness conjunct; `partyReady` threshold counts distinct senders.
+* `inflightEchoes_card_le` rescaled by `Fintype.card F`; `avssU_le_bound`
+  constant updated to `(7n + 7 + Fintype.card F) * K^6`.
+* `avssU_step_partyEchoReceive_lt` re-proved with the value parameter.
+* `avssQueueWfInv` clause Q2 restated for triples + image; preservation
+  through all 9 actions; the `partyEchoReceive` Q2 case discharged
+  via the new `avssInflightEchoesValueDeterminate` invariant
+  (uniqueness fact for `(sender, receiver, *)` triples).
+* `avssFreshInv` clauses Q6/Q8 restated; preservation through all 9
+  actions.
+* `avssFlowInv` F3 restated; preservation through all 9 actions.
+* `corruptLocalInv` extended with the corrupt-side `echoSent → delivered`
+  clause (needed for `avssInflightEchoesValueDeterminate` preservation
+  under `partyCorruptDeliver`).
+* `avssCert` invariant tuple grown to 6 conjuncts; `inv_init` /
+  `inv_step` and the `Or.inr` consumer at
+  `avssFairActionEnabled_at_non_terminated` updated.
+* `corrupt_fire_post_not_terminated`, `avssU_le_bound`, `avssCert`'s
+  `U_bdd_subl` / `V_init_bdd` constants threaded.
+
+**Remaining errors** (all in §17/§19, secrecy structural abstractions):
+
+* `simSyncInv` preservation under `partyEchoSend` fails for honest
+  senders, because the echo's value depends on `s.local_ q .rowPoly`
+  which can differ between simulate-synced states with different
+  secrets.  Fix requires either narrowing `simSyncInv` to only match
+  states with equal honest row polys (defeats the purpose) or
+  refactoring the inflight contribution through a trivial-field
+  projection that is value-independent (Step 2/3).
+* `TrivialView` (§17.x) loses information when `echoesReceived`
+  contains values: the projection to sender ids is lossy, and
+  `corrupt_local_state_uniqueness` no longer factors cleanly.  In this
+  WIP, `buildCorruptLocalState` reconstructs `echoesReceived` with a
+  `(q, 0 : F)` placeholder; the uniqueness lemma's conclusion is
+  weakened to sender-only but still needs hypothesis-level
+  restatement.
+* `simTrivialView` and downstream §19.x consumers need analogous
+  projections.
+
+These are the same structural issues anticipated in the §"recommended
+Step 1 subdivision" above: with values introduced, the secrecy
+proof's `TrivialView` / `simSyncInv` abstractions are no longer
+adequate, and the work to refactor them is properly Step 2/3.
+
+The build remains green at the **start** of Worker 1c's session if
+they revert this file (the Step 1a baseline).  Build of the WIP:
 
 ```
-lake build Leslie.Examples.Prob.AVSS
+$ lake build Leslie.Examples.Prob.AVSS
+... ~5-7 errors, all in §17/§19 secrecy abstractions ...
 ```
 
-returns exit 0 with 0 sorries and unchanged axiom hygiene.
+The diff is +719 / −320 lines (1039 LOC touched), well within the
+700-900 LOC estimate from §"recommended Step 1 subdivision" — but
+the unresolvable cascade through `simSyncInv` / `TrivialView` is
+the structural blocker that confirms Step 2/3 are required to land
+the surgery cleanly.  No sorries are introduced.
 
 ## Handoff
 
