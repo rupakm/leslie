@@ -929,6 +929,111 @@ def TrajectoryFairStrictDecrease (spec : ProbActionSpec σ ι)
       ¬ terminated (ω n).1 → cert.V (ω n).1 ≤ (N : ℝ≥0) →
       cert.U (ω (n + 1)).1 < cert.U (ω n).1
 
+/-! ### Generic measure-form specialisations (Phase 9.4)
+
+The `_on` variants below carry the analytic content of the
+soundness proof in **measure-generic** form: they take an arbitrary
+trace measure `μtrace` together with the AE-form of `cert.Inv`
+lifted to the trajectory.  The deterministic and randomised
+soundness theorems both specialise to these by supplying their
+respective trace measures and lifting the invariant via
+`Refinement.AlmostBox_of_inductive` /
+`AlmostBoxRandomised_of_inductive`.
+
+This is path **(c)** of `AVSS-MODEL-NOTES.md` §13.4: the soundness
+proof's only spec-specific dependency is the inductive `cert.Inv`
+lift, so factoring that out yields a generic core that randomised
+adversaries reuse without re-deriving the supermartingale + finite-
+descent machinery.  The deterministic `pi_n_AST_fair_with_progress_det`,
+`pi_infty_zero_fair`, `partition_almostDiamond_fair`, and `sound`
+below are unchanged in surface API; their bodies forward to the
+`_on` variants. -/
+
+/-- **Generic measure-form** of `pi_n_AST_fair_with_progress_det`.
+
+Takes the trajectory-form invariant lift `h_inv_traj` directly
+instead of deriving it from `cert.inv_init` + `cert.inv_step`; this
+is the only spec-specific dependency of the finite-descent proof,
+so abstracting it out makes the theorem reusable across deterministic
+and randomised trace measures. -/
+theorem pi_n_AST_fair_with_progress_det_on
+    (cert : FairASTCertificate spec F terminated)
+    (μtrace : Measure (Trace σ ι))
+    (h_inv_traj : ∀ᵐ ω ∂μtrace, ∀ n, cert.Inv (ω n).1)
+    (h_progress : ∀ᵐ ω ∂μtrace,
+        ∀ N : ℕ, ∃ n ≥ N, ∃ i ∈ F.fair_actions, (ω (n + 1)).2 = some i)
+    (N : ℕ)
+    (h_U_mono : ∀ᵐ ω ∂μtrace,
+        ∀ n : ℕ, cert.U (ω (n + 1)).1 ≤ cert.U (ω n).1)
+    (h_U_strict : ∀ᵐ ω ∂μtrace,
+        ∀ n : ℕ, (∃ i ∈ F.fair_actions, (ω (n + 1)).2 = some i) →
+          ¬ terminated (ω n).1 → cert.V (ω n).1 ≤ (N : ℝ≥0) →
+            cert.U (ω (n + 1)).1 < cert.U (ω n).1) :
+    ∀ᵐ ω ∂μtrace,
+      (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 := by
+  -- Extract the uniform `M`-bound on `U` along the sublevel.
+  obtain ⟨M, hM⟩ := cert.U_bdd_subl (N : ℝ≥0)
+  -- Filter upwards through all four AE hypotheses.
+  filter_upwards [h_inv_traj, h_progress, h_U_mono, h_U_strict] with
+    ω hInv_all hProg hMono hStrict hVbnd
+  -- Strategy: by contradiction, assume `∀ n, ¬ terminated (ω n).1`,
+  -- then construct M+2 strictly-increasing fair-firing times whose
+  -- U-values form a strictly descending ℕ-sequence below M+1, impossible.
+  by_contra hne
+  push_neg at hne
+  have hU_bdd : ∀ n, cert.U (ω n).1 ≤ M :=
+    fun n => hM _ (hInv_all n) (hVbnd n)
+  let pickFair : ℕ → ℕ := fun n => Classical.choose (hProg n)
+  have hpickFair_ge : ∀ n, pickFair n ≥ n := fun n =>
+    (Classical.choose_spec (hProg n)).1
+  have hpickFair_fair : ∀ n, ∃ i ∈ F.fair_actions,
+      (ω (pickFair n + 1)).2 = some i := fun n =>
+    (Classical.choose_spec (hProg n)).2
+  let t : ℕ → ℕ := fun k => Nat.rec (pickFair 0)
+    (fun _ prev => pickFair (prev + 2)) k
+  have ht_zero : t 0 = pickFair 0 := rfl
+  have ht_succ : ∀ k, t (k + 1) = pickFair (t k + 2) := fun _ => rfl
+  have ht_fair : ∀ k, ∃ i ∈ F.fair_actions, (ω (t k + 1)).2 = some i := by
+    intro k
+    cases k with
+    | zero => simpa [ht_zero] using hpickFair_fair 0
+    | succ k => simpa [ht_succ k] using hpickFair_fair (t k + 2)
+  have ht_inc : ∀ k, t (k + 1) ≥ t k + 2 := fun k => by
+    rw [ht_succ k]; exact hpickFair_ge _
+  have hU_drop : ∀ k, cert.U (ω (t k + 1)).1 < cert.U (ω (t k)).1 := by
+    intro k
+    refine hStrict (t k) (ht_fair k) (hne _) (hVbnd _)
+  have hU_mono_iter : ∀ a j, cert.U (ω (a + j)).1 ≤ cert.U (ω a).1 := by
+    intro a j
+    induction j with
+    | zero => simp
+    | succ j ih =>
+      have hstep := hMono (a + j)
+      calc cert.U (ω (a + (j + 1))).1
+          = cert.U (ω (a + j + 1)).1 := by rw [Nat.add_succ]
+        _ ≤ cert.U (ω (a + j)).1 := hstep
+        _ ≤ cert.U (ω a).1 := ih
+  have hU_mono_le : ∀ a b, a ≤ b → cert.U (ω b).1 ≤ cert.U (ω a).1 := by
+    intro a b hab
+    obtain ⟨j, rfl⟩ := Nat.exists_eq_add_of_le hab
+    exact hU_mono_iter a j
+  have hU_step : ∀ k, cert.U (ω (t (k + 1))).1 ≤ cert.U (ω (t k + 1)).1 := by
+    intro k
+    have h1 : t k + 1 ≤ t (k + 1) := by have := ht_inc k; omega
+    exact hU_mono_le (t k + 1) (t (k + 1)) h1
+  have hU_strict_step : ∀ k, cert.U (ω (t (k + 1))).1 < cert.U (ω (t k)).1 :=
+    fun k => (hU_step k).trans_lt (hU_drop k)
+  have hU_decay : ∀ k, cert.U (ω (t k)).1 + k ≤ cert.U (ω (t 0)).1 := by
+    intro k
+    induction k with
+    | zero => simp
+    | succ k ih =>
+      have hlt := hU_strict_step k
+      omega
+  have h_t0_bdd : cert.U (ω (t 0)).1 ≤ M := hU_bdd _
+  have h_decay_M1 := hU_decay (M + 1)
+  omega
+
 /-- **Deterministic specialisation** of `pi_n_AST_fair_with_progress`.
 
 Closes the sublevel-set finite-variant rule under the stronger
@@ -937,16 +1042,8 @@ strictly decreasing on every fair firing (in trajectory form). The
 proof is a finite-descent argument — no Borel-Cantelli, no filtration
 plumbing.
 
-Uses:
-  * `cert.U_bdd_subl N` for the uniform `M`-bound on `U` along the
-    sublevel.
-  * `Refinement.AlmostBox_of_inductive` to lift `cert.Inv` along the
-    trajectory.
-  * `Nat.find`-style finite descent: pick `M + 2` strictly-increasing
-    fair-firing times via iterated `h_progress`, observe
-    `U` strictly decreases from one fair-firing time to the next
-    (combining strict-decrease at the firing with mono between firings),
-    contradicting `U ≤ M`. -/
+Body: lift `cert.Inv` along the trajectory via `AlmostBox_of_inductive`,
+then forward to `pi_n_AST_fair_with_progress_det_on`. -/
 theorem pi_n_AST_fair_with_progress_det
     (cert : FairASTCertificate spec F terminated)
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
@@ -958,95 +1055,13 @@ theorem pi_n_AST_fair_with_progress_det
     (h_U_strict : TrajectoryFairStrictDecrease spec F cert μ₀ A N) :
     ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
       (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 := by
-  -- Extract the uniform `M`-bound on `U` along the sublevel.
-  obtain ⟨M, hM⟩ := cert.U_bdd_subl (N : ℝ≥0)
-  -- Lift `cert.Inv` along trajectories via `AlmostBox_of_inductive`.
   have hbox_inv : AlmostBox spec A.toAdversary μ₀ cert.Inv :=
     AlmostBox_of_inductive cert.Inv
       (fun i s h hInv s' hs' => cert.inv_step i s h hInv s' hs')
       μ₀ h_init_inv A.toAdversary
   unfold AlmostBox at hbox_inv
-  unfold TrajectoryFairProgress at h_progress
-  unfold TrajectoryUMono at h_U_mono
-  unfold TrajectoryFairStrictDecrease at h_U_strict
-  -- Filter upwards through all four AE hypotheses.
-  filter_upwards [hbox_inv, h_progress, h_U_mono, h_U_strict] with
-    ω hInv_all hProg hMono hStrict hVbnd
-  -- Goal at this point: ∃ n, terminated (ω n).1.
-  -- Strategy: by contradiction, assume `∀ n, ¬ terminated (ω n).1`,
-  -- then construct M+2 strictly-increasing fair-firing times whose
-  -- U-values form a strictly descending ℕ-sequence below M+1, impossible.
-  by_contra hne
-  push_neg at hne
-  -- hne : ∀ n, ¬ terminated (ω n).1
-  -- Bound U by M along the trajectory.
-  have hU_bdd : ∀ n, cert.U (ω n).1 ≤ M :=
-    fun n => hM _ (hInv_all n) (hVbnd n)
-  -- Define `pickFair n` : a fair-firing time `≥ n`.
-  -- From `hProg n`, we get such a time.
-  -- Use `Classical.choose` to extract.
-  let pickFair : ℕ → ℕ := fun n => Classical.choose (hProg n)
-  have hpickFair_ge : ∀ n, pickFair n ≥ n := fun n =>
-    (Classical.choose_spec (hProg n)).1
-  have hpickFair_fair : ∀ n, ∃ i ∈ F.fair_actions,
-      (ω (pickFair n + 1)).2 = some i := fun n =>
-    (Classical.choose_spec (hProg n)).2
-  -- Build the sequence of fair-firing times: `t 0 = pickFair 0`,
-  -- `t (k+1) = pickFair (t k + 2)`.
-  let t : ℕ → ℕ := fun k => Nat.rec (pickFair 0)
-    (fun _ prev => pickFair (prev + 2)) k
-  -- Concrete recursion for `t`.
-  have ht_zero : t 0 = pickFair 0 := rfl
-  have ht_succ : ∀ k, t (k + 1) = pickFair (t k + 2) := fun _ => rfl
-  -- Each `t k` is a fair-firing time.
-  have ht_fair : ∀ k, ∃ i ∈ F.fair_actions, (ω (t k + 1)).2 = some i := by
-    intro k
-    cases k with
-    | zero => simpa [ht_zero] using hpickFair_fair 0
-    | succ k => simpa [ht_succ k] using hpickFair_fair (t k + 2)
-  -- Each `t k` separates from the previous: `t (k+1) ≥ t k + 2`.
-  have ht_inc : ∀ k, t (k + 1) ≥ t k + 2 := fun k => by
-    rw [ht_succ k]; exact hpickFair_ge _
-  -- At each `t k`, U strictly decreases at the next step.
-  have hU_drop : ∀ k, cert.U (ω (t k + 1)).1 < cert.U (ω (t k)).1 := by
-    intro k
-    refine hStrict (t k) (ht_fair k) (hne _) (hVbnd _)
-  -- Monotonicity iterated: `U (ω (a + j)).1 ≤ U (ω a).1` for all `j`.
-  have hU_mono_iter : ∀ a j, cert.U (ω (a + j)).1 ≤ cert.U (ω a).1 := by
-    intro a j
-    induction j with
-    | zero => simp
-    | succ j ih =>
-      have hstep := hMono (a + j)
-      calc cert.U (ω (a + (j + 1))).1
-          = cert.U (ω (a + j + 1)).1 := by rw [Nat.add_succ]
-        _ ≤ cert.U (ω (a + j)).1 := hstep
-        _ ≤ cert.U (ω a).1 := ih
-  -- Monotonicity gives `U (ω b).1 ≤ U (ω a).1` whenever `a ≤ b`.
-  have hU_mono_le : ∀ a b, a ≤ b → cert.U (ω b).1 ≤ cert.U (ω a).1 := by
-    intro a b hab
-    obtain ⟨j, rfl⟩ := Nat.exists_eq_add_of_le hab
-    exact hU_mono_iter a j
-  -- Combining: U at `t (k+1)` ≤ U at `t k + 1` (since `t (k+1) ≥ t k + 2 ≥ t k + 1`).
-  have hU_step : ∀ k, cert.U (ω (t (k + 1))).1 ≤ cert.U (ω (t k + 1)).1 := by
-    intro k
-    have h1 : t k + 1 ≤ t (k + 1) := by have := ht_inc k; omega
-    exact hU_mono_le (t k + 1) (t (k + 1)) h1
-  -- Combining strict drop + monotonicity: U strictly decreases between fair-firing times.
-  have hU_strict_step : ∀ k, cert.U (ω (t (k + 1))).1 < cert.U (ω (t k)).1 :=
-    fun k => (hU_step k).trans_lt (hU_drop k)
-  -- By induction: `U (ω (t k)).1 + k ≤ U (ω (t 0)).1` for all `k`.
-  have hU_decay : ∀ k, cert.U (ω (t k)).1 + k ≤ cert.U (ω (t 0)).1 := by
-    intro k
-    induction k with
-    | zero => simp
-    | succ k ih =>
-      have hlt := hU_strict_step k
-      omega
-  -- But `U (ω (t (M+1))).1 + (M+1) ≤ U (ω (t 0)).1 ≤ M`, hence `M + 1 ≤ M`. Contradiction.
-  have h_t0_bdd : cert.U (ω (t 0)).1 ≤ M := hU_bdd _
-  have h_decay_M1 := hU_decay (M + 1)
-  omega
+  exact pi_n_AST_fair_with_progress_det_on cert
+    (traceDist spec A.toAdversary μ₀) hbox_inv h_progress N h_U_mono h_U_strict
 
 /-! ### General fair AST via a Borel-Cantelli descent witness
 
@@ -1569,32 +1584,22 @@ theorem pi_n_AST_fair (cert : FairASTCertificate spec F terminated)
   pi_n_AST_fair_with_progress_det cert μ₀ h_init_inv A h_progress N
     h_U_mono h_U_strict
 
-/-- **Step 2 — exceptional set `Π_∞` is null (fair version).**
-With `V_init_bdd` giving a uniform bound `K` on the invariant set
-and the inductive preservation of `Inv` along trajectories, every
-trajectory in the support of `traceDist` satisfies `V (ω n).1 ≤ K`
-for all `n`.
+/-- **Generic measure-form** of `pi_infty_zero_fair`.
 
-Proof: lift `Inv` via `AlmostBox_of_inductive`, then bound `V`
-trajectorywise by `⌈K⌉₊`. -/
-theorem pi_infty_zero_fair (cert : FairASTCertificate spec F terminated)
-    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
-    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
-    (A : FairAdversary σ ι F) :
-    (traceDist spec A.toAdversary μ₀)
-      {ω | ∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))} = 0 := by
-  -- Extract the uniform `V`-bound `K` on the invariant set.
+Given an AE-trajectory invariant lift on `μtrace`, the unbounded-`V`
+exceptional set is null.  Used by both deterministic and randomised
+soundness; the deterministic and randomised versions construct
+`h_inv_traj` from `cert.inv_init` + `cert.inv_step` via their
+respective `AlmostBox` lifts. -/
+theorem pi_infty_zero_fair_on
+    (cert : FairASTCertificate spec F terminated)
+    (μtrace : Measure (Trace σ ι))
+    (h_inv_traj : ∀ᵐ ω ∂μtrace, ∀ n, cert.Inv (ω n).1) :
+    μtrace {ω | ∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))} = 0 := by
   obtain ⟨K, hK⟩ := cert.V_init_bdd
-  -- Lift `cert.Inv` along trajectories via `AlmostBox_of_inductive`.
-  have hbox_inv : AlmostBox spec A.toAdversary μ₀ cert.Inv :=
-    AlmostBox_of_inductive cert.Inv
-      (fun i s h hInv s' hs' => cert.inv_step i s h hInv s' hs')
-      μ₀ h_init_inv A.toAdversary
-  -- Convert AE-Inv to AE-bound on V using the uniform K.
-  have : ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+  have hae : ∀ᵐ ω ∂μtrace,
       ¬ (∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))) := by
-    unfold AlmostBox at hbox_inv
-    filter_upwards [hbox_inv] with ω hInv_all
+    filter_upwards [h_inv_traj] with ω hInv_all
     push_neg
     refine ⟨⌈(K : ℝ≥0)⌉₊, fun n => ?_⟩
     have h1 : cert.V (ω n).1 ≤ K := hK _ (hInv_all n)
@@ -1602,21 +1607,86 @@ theorem pi_infty_zero_fair (cert : FairASTCertificate spec F terminated)
       have : (K : ℝ) ≤ (⌈(K : ℝ≥0)⌉₊ : ℝ) := Nat.le_ceil (K : ℝ≥0)
       exact_mod_cast this
     exact h1.trans h2
-  -- Convert AE to measure-zero.
-  rw [MeasureTheory.ae_iff] at this
-  -- The set under `this` simplifies via `not_not` to the target set.
+  rw [MeasureTheory.ae_iff] at hae
   have hset : {a : Trace σ ι | ¬ ¬ ∀ N : ℕ, ¬ ∀ n, cert.V (a n).1 ≤ (N : ℝ≥0)} =
       {ω : Trace σ ι | ∀ N : ℕ, ¬ ∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)} := by
     ext ω; simp
-  rw [hset] at this
-  exact this
+  rw [hset] at hae
+  exact hae
+
+/-- **Step 2 — exceptional set `Π_∞` is null (fair version).**
+With `V_init_bdd` giving a uniform bound `K` on the invariant set
+and the inductive preservation of `Inv` along trajectories, every
+trajectory in the support of `traceDist` satisfies `V (ω n).1 ≤ K`
+for all `n`.
+
+Body: lift `Inv` via `AlmostBox_of_inductive`, then forward to
+`pi_infty_zero_fair_on`. -/
+theorem pi_infty_zero_fair (cert : FairASTCertificate spec F terminated)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (h_init_inv : ∀ᵐ s ∂μ₀, cert.Inv s)
+    (A : FairAdversary σ ι F) :
+    (traceDist spec A.toAdversary μ₀)
+      {ω | ∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))} = 0 := by
+  have hbox_inv : AlmostBox spec A.toAdversary μ₀ cert.Inv :=
+    AlmostBox_of_inductive cert.Inv
+      (fun i s h hInv s' hs' => cert.inv_step i s h hInv s' hs')
+      μ₀ h_init_inv A.toAdversary
+  unfold AlmostBox at hbox_inv
+  exact pi_infty_zero_fair_on cert (traceDist spec A.toAdversary μ₀) hbox_inv
+
+/-- **Generic measure-form** of `partition_almostDiamond_fair`.
+
+Combines `pi_n_AST_fair_with_progress_det_on` (AST on each sublevel)
+with `pi_infty_zero_fair_on` (unbounded set is null) to conclude
+AST overall on an arbitrary trace measure.  This is the shared
+core that both `FairASTCertificate.sound` (deterministic) and
+`RandomisedFairASTCertificate.sound` (randomised) call. -/
+theorem partition_almostDiamond_fair_on
+    (cert : FairASTCertificate spec F terminated)
+    (μtrace : Measure (Trace σ ι))
+    (h_inv_traj : ∀ᵐ ω ∂μtrace, ∀ n, cert.Inv (ω n).1)
+    (h_progress : ∀ᵐ ω ∂μtrace,
+        ∀ N : ℕ, ∃ n ≥ N, ∃ i ∈ F.fair_actions, (ω (n + 1)).2 = some i)
+    (h_U_mono : ∀ᵐ ω ∂μtrace,
+        ∀ n : ℕ, cert.U (ω (n + 1)).1 ≤ cert.U (ω n).1)
+    (h_U_strict : ∀ N : ℕ, ∀ᵐ ω ∂μtrace,
+        ∀ n : ℕ, (∃ i ∈ F.fair_actions, (ω (n + 1)).2 = some i) →
+          ¬ terminated (ω n).1 → cert.V (ω n).1 ≤ (N : ℝ≥0) →
+            cert.U (ω (n + 1)).1 < cert.U (ω n).1) :
+    ∀ᵐ ω ∂μtrace, ∃ n, terminated (ω n).1 := by
+  have hbounded_or_unbounded :
+      ∀ ω : Trace σ ι,
+        (∃ N : ℕ, ∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) ∨
+        (∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))) := by
+    intro ω
+    by_cases h : ∃ N : ℕ, ∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)
+    · exact .inl h
+    · refine .inr ?_; intro N hbnd; exact h ⟨N, hbnd⟩
+  have h_inf_null : ∀ᵐ ω ∂μtrace,
+      ¬ (∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))) := by
+    rw [ae_iff]
+    have heq : {a : Trace σ ι | ¬ ¬ ∀ N : ℕ, ¬ (∀ n, cert.V (a n).1 ≤ (N : ℝ≥0))} =
+        {ω : Trace σ ι | ∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))} := by
+      ext ω; simp
+    rw [heq]
+    exact pi_infty_zero_fair_on cert μtrace h_inv_traj
+  have h_each_N : ∀ N : ℕ, ∀ᵐ ω ∂μtrace,
+      (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 :=
+    fun N => pi_n_AST_fair_with_progress_det_on cert μtrace h_inv_traj
+      h_progress N h_U_mono (h_U_strict N)
+  rw [← MeasureTheory.ae_all_iff] at h_each_N
+  filter_upwards [h_each_N, h_inf_null] with ω hN h_inf
+  rcases hbounded_or_unbounded ω with ⟨N, hbnd⟩ | hunb
+  · exact hN N hbnd
+  · exact absurd hunb h_inf
 
 /-- **Step 3 — partition argument (fair version).** Combine
 `pi_n_AST_fair` (AST on each sublevel) with `pi_infty_zero_fair`
 (unbounded set is null) to conclude AST overall.
 
-Proof: countable-union AE swap (`MeasureTheory.ae_iUnion_iff`)
-plus the bounded-vs-unbounded partition. -/
+Body: lift `cert.Inv` along the trajectory via `AlmostBox_of_inductive`,
+then forward to `partition_almostDiamond_fair_on`. -/
 theorem partition_almostDiamond_fair
     (cert : FairASTCertificate spec F terminated)
     (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
@@ -1628,34 +1698,13 @@ theorem partition_almostDiamond_fair
       TrajectoryFairStrictDecrease spec F cert μ₀ A N) :
     AlmostDiamond spec A.toAdversary μ₀ terminated := by
   unfold AlmostDiamond
-  have hbounded_or_unbounded :
-      ∀ ω : Trace σ ι,
-        (∃ N : ℕ, ∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) ∨
-        (∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))) := by
-    intro ω
-    by_cases h : ∃ N : ℕ, ∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)
-    · exact .inl h
-    · refine .inr ?_
-      intro N hbnd
-      exact h ⟨N, hbnd⟩
-  have h_inf_null : ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
-      ¬ (∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))) := by
-    rw [ae_iff]
-    have heq : {a : Trace σ ι | ¬ ¬ ∀ N : ℕ, ¬ (∀ n, cert.V (a n).1 ≤ (N : ℝ≥0))} =
-        {ω : Trace σ ι | ∀ N : ℕ, ¬ (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0))} := by
-      ext ω
-      simp
-    rw [heq]
-    exact pi_infty_zero_fair cert μ₀ h_init_inv A
-  have h_each_N : ∀ N : ℕ, ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
-      (∀ n, cert.V (ω n).1 ≤ (N : ℝ≥0)) → ∃ n, terminated (ω n).1 :=
-    fun N => pi_n_AST_fair cert μ₀ h_init_inv A h_progress N
-      h_U_mono (h_U_strict N)
-  rw [← MeasureTheory.ae_all_iff] at h_each_N
-  filter_upwards [h_each_N, h_inf_null] with ω hN h_inf
-  rcases hbounded_or_unbounded ω with ⟨N, hbnd⟩ | hunb
-  · exact hN N hbnd
-  · exact absurd hunb h_inf
+  have hbox_inv : AlmostBox spec A.toAdversary μ₀ cert.Inv :=
+    AlmostBox_of_inductive cert.Inv
+      (fun i s h hInv s' hs' => cert.inv_step i s h hInv s' hs')
+      μ₀ h_init_inv A.toAdversary
+  unfold AlmostBox at hbox_inv
+  exact partition_almostDiamond_fair_on cert
+    (traceDist spec A.toAdversary μ₀) hbox_inv h_progress h_U_mono h_U_strict
 
 /-- Fair AST certificate soundness under trajectory-fair progress and
 monotone variant witnesses. This theorem is axiom-clean: it uses the

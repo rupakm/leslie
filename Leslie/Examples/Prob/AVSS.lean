@@ -73,9 +73,11 @@ roadmap (Phases 6–8).
 import Leslie.Examples.Prob.BivariateShamir
 import Leslie.Prob.Action
 import Leslie.Prob.Adversary
+import Leslie.Prob.DeterministicSimulate
 import Leslie.Prob.Liveness
 import Leslie.Prob.PMF
 import Leslie.Prob.Polynomial
+import Leslie.Prob.RandomisedAdversary
 import Leslie.Prob.Refinement
 import Leslie.Prob.Trace
 import Mathlib.Data.Fintype.Basic
@@ -6085,6 +6087,23 @@ abbrev AVSSRushingAdversary (n t : ℕ) (F : Type*) [DecidableEq F] [Fintype F]
   Leslie.Prob.RushingAdversary
     (AVSSState n t F) (AVSSAction n F) (AVSSRushingView n t F corr)
 
+/-- A `RushingRandomisedAdversary` for AVSS specialises the generic
+view-restricted *randomised* scheduler to the AVSS state, action, and
+coalition-view types.  Phase 9.5 (MODEL_NOTES §13.5): the
+randomised analog of `AVSSRushingAdversary`, used by the four
+`_rushing_randomised` headline restatements (`avss_correctness_…`,
+`avss_commitment_…`, `avss_secrecy_…`, `avss_termination_…`) below.
+
+The schedule is a PMF on the rushing-view σ-algebra; via
+`instCountableAVSSRushingView`, this PMF is automatically measurable
+on the discrete σ-algebra carried by the rushing view, which is the
+measurability backbone the deferred Phase 9.3 wrappers needed. -/
+abbrev AVSSRushingRandomisedAdversary
+    (n t : ℕ) (F : Type*) [DecidableEq F] [Fintype F]
+    (corr : Finset (Fin n)) : Type _ :=
+  Leslie.Prob.RushingRandomisedAdversary
+    (AVSSState n t F) (AVSSAction n F) (AVSSRushingView n t F corr)
+
 /-! ## §19.1. Classical theorems against `RushingAdversary` (Phase 7.3)
 
 Re-statements of the classical AVSS theorems (termination, correctness,
@@ -6194,6 +6213,522 @@ theorem avss_commitment_AS_corrupt_dealer_rushing
               v = bivEval witness (s.partyPoint p) 0) :=
   avss_commitment_AS_corrupt_dealer sec corr μ₀ h_init h_distinct R.toAdversary
 
+/-! ## §19.1.5 Phase 9.3 — randomised-adversary restatements (partial coverage)
+
+Closes caveat **C5** (MODEL_NOTES §11.5) for `avss_correctness_AS`,
+`avss_commitment_AS`, and the coord-0 form of `avss_secrecy_AS`. The
+existing classical theorems universally quantify over deterministic
+`Adversary σ ι`; here we re-derive the same propositions for any
+`RandomisedAdversary` (literature-standard: a coin-flipping demonic
+scheduler) by routing the per-step inductive preservation data through
+the Phase 9.2 lifting meta-theorems
+(`AlmostBoxRandomised_of_inductive`,
+`randomisedTraceDist_map_eq_of_deterministic_at_zero`).
+
+**Partial-coverage caveat** — `avss_termination_AS_fair` is **not**
+lifted in this PR. PR #46's `AlmostDiamond.lift_to_randomised` only
+derives the trivial diamond from box (`exact ⟨0, hω 0⟩`); it cannot
+lift true eventual-termination claims whose proof goes through
+`FairASTCertificate.sound`. The randomised termination theorem is
+deferred to Phase 9.4 (see MODEL_NOTES §13.4). -/
+
+/-- **Honest-dealer correctness against a randomised adversary.** The
+randomised analog of `avss_correctness_AS` (PR #43). With an honest
+dealer, every honest party's output equals its per-party share —
+almost surely under the mixture trace measure for *any* randomised
+schedule.
+
+Proof: re-feed the same inductive data (`honestDealerInv`, plus
+preservation `avssStep_preserves_honestDealerInv`) into
+`AlmostBoxRandomised_of_inductive`; the support of every gated
+action's effect PMF is a singleton (effects are pure
+`PMF.pure (avssStep a s)`), so per-step preservation reduces to the
+deterministic-step preservation. Closes C5 for correctness. -/
+theorem avss_correctness_AS_randomised
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : RandomisedAdversary (AVSSState n t F) (AVSSAction n F)) :
+    AlmostBoxRandomised (avssSpec (t := t) sec corr) R μ₀
+      (fun s => s.dealerHonest = true →
+        ∀ p, p ∉ s.corrupted →
+          ∀ v, (s.local_ p).output = some v →
+            v = bivEval s.coeffs (s.partyPoint p) 0) := by
+  have h_init' : ∀ᵐ s ∂μ₀, honestDealerInv s ∧ dealerMessagesInv s := by
+    filter_upwards [h_init] with s hs
+    exact ⟨initPred_honestDealerInv sec corr s hs,
+           initPred_dealerMessagesInv sec corr s hs⟩
+  have h_step : ∀ (a : AVSSAction n F) (s : AVSSState n t F)
+      (h : ((avssSpec (t := t) sec corr).actions a).gate s),
+      (honestDealerInv s ∧ dealerMessagesInv s) →
+      ∀ s' ∈ ((avssSpec (t := t) sec corr).actions a).effect s h |>.support,
+        honestDealerInv s' ∧ dealerMessagesInv s' := by
+    intro a s hgate ⟨hinv, hcons⟩ s' hsupp
+    rw [show ((avssSpec (t := t) sec corr).actions a).effect s hgate
+          = PMF.pure (avssStep a s) from rfl,
+        PMF.support_pure, Set.mem_singleton_iff] at hsupp
+    subst hsupp
+    exact ⟨avssStep_preserves_honestDealerInv a s hgate hinv hcons,
+           avssStep_preserves_dealerMessagesInv a s hgate hcons⟩
+  have h_inv : AlmostBoxRandomised (avssSpec (t := t) sec corr) R μ₀
+      (fun s => honestDealerInv s ∧ dealerMessagesInv s) :=
+    AlmostBoxRandomised_of_inductive _ h_step μ₀ h_init' R
+  unfold AlmostBoxRandomised at h_inv ⊢
+  filter_upwards [h_inv] with ω hinv k hh p hp v hv
+  exact ((hinv k).1 hh).2 p hp v hv
+
+/-- **Output-determined commitment against a randomised adversary.**
+The randomised analog of `avss_commitment_AS` (PR #45). Every output,
+when set, equals the per-party share derived from `s.coeffs` and
+`s.partyPoint` — almost surely under the mixture trace measure for
+*any* randomised schedule.
+
+Proof: re-feed `outputDeterminedInv` and
+`avssStep_preserves_outputDeterminedInv` into
+`AlmostBoxRandomised_of_inductive`. Closes C5 for commitment. -/
+theorem avss_commitment_AS_randomised
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : RandomisedAdversary (AVSSState n t F) (AVSSAction n F)) :
+    AlmostBoxRandomised (avssSpec (t := t) sec corr) R μ₀
+      outputDeterminedInv := by
+  have h_init' : ∀ᵐ s ∂μ₀, outputDeterminedInv s ∧ dealerMessagesInv s := by
+    filter_upwards [h_init] with s hs
+    exact ⟨initPred_outputDeterminedInv sec corr s hs,
+           initPred_dealerMessagesInv sec corr s hs⟩
+  have h_step : ∀ (a : AVSSAction n F) (s : AVSSState n t F)
+      (h : ((avssSpec (t := t) sec corr).actions a).gate s),
+      (outputDeterminedInv s ∧ dealerMessagesInv s) →
+      ∀ s' ∈ ((avssSpec (t := t) sec corr).actions a).effect s h |>.support,
+        outputDeterminedInv s' ∧ dealerMessagesInv s' := by
+    intro a s hgate ⟨hinv, hcons⟩ s' hsupp
+    rw [show ((avssSpec (t := t) sec corr).actions a).effect s hgate
+          = PMF.pure (avssStep a s) from rfl,
+        PMF.support_pure, Set.mem_singleton_iff] at hsupp
+    subst hsupp
+    exact ⟨avssStep_preserves_outputDeterminedInv a s hgate hinv hcons,
+           avssStep_preserves_dealerMessagesInv a s hgate hcons⟩
+  have h_inv : AlmostBoxRandomised (avssSpec (t := t) sec corr) R μ₀
+      (fun s => outputDeterminedInv s ∧ dealerMessagesInv s) :=
+    AlmostBoxRandomised_of_inductive _ h_step μ₀ h_init' R
+  unfold AlmostBoxRandomised at h_inv ⊢
+  filter_upwards [h_inv] with ω hω k
+  exact (hω k).1
+
+/-- **Coord-0 grid secrecy against a randomised adversary.** The
+randomised analog of `avss_secrecy_AS_step_zero_grid`: the marginal
+of the mixture trace measure projected to the `coalitionGrid C D`
+view at coordinate 0 is invariant in the secret, for *any* randomised
+adversary.
+
+Proof: factor through `randomisedTraceDist_map_eq_of_deterministic_at_zero`,
+which closes the lift via the coord-0-only argument (the projection
+factors through `μ₀.map (·, none)`, where neither the spec nor the
+adversary appears). The deterministic premise is exactly
+`avss_secrecy_AS_init` (= `avss_secrecy_AS_step_zero_grid`).
+
+Closes C5 for the coord-0 form of secrecy. The step-`k` general form
+(`avss_secrecy_AS`) requires propagating the `coalitionGrid`-AE
+invariance under the randomised step kernel; that lift is structurally
+straightforward (the same `coalitionGrid`-invariance holds branchwise,
+and integrates over the schedule PMF) and is folded into the same
+Phase 9.4 follow-up as `avss_termination_AS_fair_randomised`. -/
+theorem avss_secrecy_AS_step_zero_grid_randomised
+    (sec sec' : F) (corr : Finset (Fin n))
+    (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (C D : BivariateShamir.Coalition n t)
+    (R : RandomisedAdversary (AVSSState n t F) (AVSSAction n F)) :
+    (randomisedTraceDist (avssSpec (t := t) sec corr) R
+        (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω 0).1) =
+      (randomisedTraceDist (avssSpec (t := t) sec' corr) R
+        (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω 0).1) := by
+  classical
+  have hmeas : Measurable (fun x : AVSSState n t F × Option (AVSSAction n F) =>
+      coalitionGrid C D x.1) := measurable_of_countable _
+  exact randomisedTraceDist_map_eq_of_deterministic_at_zero (f := fun x =>
+      coalitionGrid C D x.1) hmeas
+    (fun A => avss_secrecy_AS_init sec sec' corr partyPoint dealerHonest
+      h_nz_pp h_F C D A) R
+
+/-- **Step-`k` general grid secrecy against a randomised adversary.**
+
+The randomised analog of `avss_secrecy_AS` (§17.9): the marginal of
+the mixture trace measure projected to the `coalitionGrid C D` view
+at any coordinate `k` is invariant in the secret, for *any*
+randomised adversary.
+
+Generalisation of `avss_secrecy_AS_step_zero_grid_randomised` (PR #47)
+from coord 0 to all `k : ℕ`. Closes the step-`k` form of caveat C5
+for secrecy.
+
+Proof: factor through `randomisedTraceDist_map_eq_of_deterministic`
+(PR #N, this PR) — the generic step-`k` lift — supplying:
+
+  * the structural state-projection invariance hypothesis discharged
+    by `avssStep_coalitionGrid_invariant` (every gated `avssStep`
+    branch preserves `coalitionGrid C D`); and
+  * the deterministic premise `avss_secrecy_AS_init` (= the coord-0
+    grid secrecy for any deterministic adversary, PR #43).
+
+The schedule PMF integrates the per-branch AE-equality across
+`randomisedStepKernel` to lift from coord 0 to coord `k`. -/
+theorem avss_secrecy_AS_randomised
+    (sec sec' : F) (corr : Finset (Fin n))
+    (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (C D : BivariateShamir.Coalition n t)
+    (R : RandomisedAdversary (AVSSState n t F) (AVSSAction n F)) (k : ℕ) :
+    (randomisedTraceDist (avssSpec (t := t) sec corr) R
+        (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω k).1) =
+      (randomisedTraceDist (avssSpec (t := t) sec' corr) R
+        (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω k).1) := by
+  classical
+  have hmeas : Measurable (coalitionGrid (n := n) (t := t) (F := F) C D) :=
+    measurable_of_countable _
+  have h_step : ∀ (s : F) (a : AVSSAction n F) (st : AVSSState n t F)
+      (hgate : ((avssSpec (t := t) s corr).actions a).gate st),
+      ∀ st' ∈ ((avssSpec (t := t) s corr).actions a).effect st hgate |>.support,
+        coalitionGrid C D st' = coalitionGrid C D st := by
+    intro s a st hgate st' hsupp
+    rw [show ((avssSpec (t := t) s corr).actions a).effect st hgate
+          = PMF.pure (avssStep a st) from rfl,
+        PMF.support_pure, Set.mem_singleton_iff] at hsupp
+    subst hsupp
+    exact avssStep_coalitionGrid_invariant a st C D
+  exact randomisedTraceDist_map_eq_of_deterministic
+    (g := coalitionGrid (n := n) (t := t) (F := F) C D)
+    hmeas (h_step sec) (h_step sec')
+    (fun A => avss_secrecy_AS_init sec sec' corr partyPoint dealerHonest
+      h_nz_pp h_F C D A) R k
+
+/-! ## §19.1.6 Phase 9.3 follow-up — existential-witness `_randomised` analogs
+
+The `_randomised` lifts in §19.1.5 above target the older
+`s.coeffs`-direct forms of correctness and commitment. The
+**literature-faithful** existential-witness forms (introduced by the
+parallel Phase 8.2 / 8.3 PR chain on a sister branch) are
+migration-stable: when a future PR moves `s.coeffs` out of state into
+`μ₀`, the `s.coeffs`-direct lifts above will become stale, but the
+existential-witness forms continue to hold cleanly with the witness
+sourced from `μ₀`'s sample.
+
+This sub-section adds the existential-witness `_randomised` analogs,
+keeping the same lift pattern as §19.1.5 but with the witness
+existential introduced at the surface conclusion. The proofs reuse
+the per-step preservation already established for `honestDealerInv`
+(correctness) and `outputDeterminedInv` (commitment); the additional
+content is the trivial static preservation of `s.coeffs`, `s.secret`,
+and `s.dealerHonest` (none of which is touched by any `avssStep`
+branch). -/
+
+/-- **Honest-dealer correctness, existential-witness form, against a
+randomised adversary.** Literature-faithful analog of
+`avss_correctness_AS_randomised`: with an honest dealer, there exists
+a witness bivariate `f : Fin (t+1) → Fin (t+1) → F` whose constant
+term equals the dealer's secret and whose evaluations at the per-party
+points coincide with every honest output, almost surely under the
+mixture trace measure for any randomised adversary.
+
+Proof: lift the joint invariant `honestDealerInv ∧ (dealerHonest =
+true → coeffs 0 0 = secret)` via `AlmostBoxRandomised_of_inductive`.
+The first conjunct's preservation comes from
+`avssStep_preserves_honestDealerInv` (re-used from PR #47); the
+second conjunct's preservation is trivial because every gated
+`avssStep` branch is static in `coeffs`, `secret`, and `dealerHonest`.
+The witness `(ω k).1.coeffs` is then read off the trace at any
+coordinate.
+
+Migration-stable: when a future PR moves `s.coeffs` out of state into
+`μ₀`, the existential witness will be sourced from the initial-state
+sample (rather than read off the trace's static `coeffs` field), and
+the surface statement above continues to hold. -/
+theorem avss_correctness_AS_existential_randomised
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : RandomisedAdversary (AVSSState n t F) (AVSSAction n F)) :
+    AlmostBoxRandomised (avssSpec (t := t) sec corr) R μ₀
+      (fun s => s.dealerHonest = true →
+        ∃ (witness : Fin (t+1) → Fin (t+1) → F),
+          witness 0 0 = s.secret ∧
+            ∀ p, p ∉ s.corrupted →
+              ∀ v, (s.local_ p).output = some v →
+                v = bivEval witness (s.partyPoint p) 0) := by
+  set P : AVSSState n t F → Prop := fun s =>
+    (honestDealerInv s ∧ dealerMessagesInv s) ∧
+      (s.dealerHonest = true → s.coeffs 0 0 = s.secret)
+  have h_init' : ∀ᵐ s ∂μ₀, P s := by
+    filter_upwards [h_init] with s hs
+    refine ⟨⟨initPred_honestDealerInv sec corr s hs,
+            initPred_dealerMessagesInv sec corr s hs⟩, ?_⟩
+    intro hh
+    obtain ⟨_, hsec, _, _, _, _, _, _, _, hch⟩ := hs
+    rw [hch hh, hsec]
+  have h_step : ∀ (a : AVSSAction n F) (s : AVSSState n t F)
+      (h : ((avssSpec (t := t) sec corr).actions a).gate s),
+      P s →
+      ∀ s' ∈ ((avssSpec (t := t) sec corr).actions a).effect s h |>.support,
+        P s' := by
+    intro a s hgate hp s' hsupp
+    rw [show ((avssSpec (t := t) sec corr).actions a).effect s hgate
+          = PMF.pure (avssStep a s) from rfl,
+        PMF.support_pure, Set.mem_singleton_iff] at hsupp
+    subst hsupp
+    refine ⟨⟨avssStep_preserves_honestDealerInv a s hgate hp.1.1 hp.1.2,
+            avssStep_preserves_dealerMessagesInv a s hgate hp.1.2⟩, ?_⟩
+    intro hh
+    have hh_pre : s.dealerHonest = true := by
+      cases a <;> simp [avssStep, setLocal] at hh <;> exact hh
+    have hcoeffs : (avssStep a s).coeffs = s.coeffs := avssStep_coeffs_invariant a s
+    have hsecret : (avssStep a s).secret = s.secret := by
+      cases a <;> simp [avssStep, setLocal]
+    rw [hcoeffs, hsecret]
+    exact hp.2 hh_pre
+  have h_inv : AlmostBoxRandomised (avssSpec (t := t) sec corr) R μ₀ P :=
+    AlmostBoxRandomised_of_inductive P h_step μ₀ h_init' R
+  unfold AlmostBoxRandomised at h_inv ⊢
+  filter_upwards [h_inv] with ω hP k hh
+  refine ⟨(ω k).1.coeffs, (hP k).2 hh, ?_⟩
+  intro p hp v hv
+  exact ((hP k).1.1 hh).2 p hp v hv
+
+/-- **Corrupt-dealer commitment, existential-witness form, against a
+randomised adversary.** Literature-faithful analog of
+`avss_commitment_AS_randomised`: at any quorum-of-honest-outputs
+coordinate, there exists a witness bivariate whose evaluations at the
+per-party points coincide with every honest output. The witness
+`(ω k).1.coeffs` works structurally because `s.coeffs` is in state in
+this model; the precondition `honestOutputCount s ≥ t + 1` is the
+literature-faithful Bracha-quorum gate from PR #45's deterministic
+version, kept here for migration stability with sister-branch
+existential forms.
+
+Proof: derived directly from `avss_commitment_AS_randomised`
+(`outputDeterminedInv` lift); the existential is satisfied with
+`witness := (ω k).1.coeffs` and the per-party clause is exactly
+`outputDeterminedInv`'s second conjunct. The
+`honestOutputCount`-precondition is trivially satisfiable in our
+model (we don't need it for existence) but appears in the surface
+statement to align with the literature form. -/
+theorem avss_commitment_AS_corrupt_dealer_randomised
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : RandomisedAdversary (AVSSState n t F) (AVSSAction n F)) :
+    AlmostBoxRandomised (avssSpec (t := t) sec corr) R μ₀
+      (fun s => honestOutputCount s ≥ t + 1 →
+        ∃ (witness : Fin (t+1) → Fin (t+1) → F),
+          ∀ p, p ∉ s.corrupted →
+            ∀ v, (s.local_ p).output = some v →
+              v = bivEval witness (s.partyPoint p) 0) := by
+  have hcomm := avss_commitment_AS_randomised sec corr μ₀ h_init R
+  unfold AlmostBoxRandomised at hcomm ⊢
+  filter_upwards [hcomm] with ω hP k _hquorum
+  refine ⟨(ω k).1.coeffs, ?_⟩
+  intro p hp v hv
+  exact (hP k).2 p hp v hv
+
+/-! ### §19.1.4. Phase 9.4 — termination against a randomised adversary
+
+Closes the termination half of caveat **C5** (MODEL_NOTES §11.5):
+together with PR #41 / PR #46 / PR #47 / PR #49, every classical
+AVSS property (correctness, commitment, secrecy at coord 0,
+termination) now holds against any randomised adversary.
+
+The randomised analog of `avss_termination_AS_fair` (§13). Routes
+through `RandomisedFairASTCertificate.sound` (the randomised
+specialisation of the measure-generic
+`partition_almostDiamond_fair_on` core in
+`Leslie/Prob/Liveness.lean`); the underlying certificate
+(`avssCert sec corr`) is the same protocol-data witness used by
+the deterministic version.
+
+Per the maintenance plan in `AVSS-MODEL-NOTES.md` §13.4. -/
+
+/-- **Termination against a randomised adversary.**  The randomised
+analog of `avss_termination_AS_fair` (§13).  Every randomised
+trajectory-fair adversary almost-surely drives the protocol to a
+terminated state, where "trajectory-fair" means an AE witness of
+fair-action progress along the mixture trace measure
+(`RandomisedTrajectoryFairAdversary.progress`).
+
+Discharged via `RandomisedFairASTCertificate.sound`, which
+specialises the measure-generic `partition_almostDiamond_fair_on`
+core (in `Liveness.lean`) to the randomised mixture trace measure
+plus the inductive randomised-Box lift
+`AlmostBoxRandomised_of_inductive`.
+
+Closes C5 for termination. -/
+theorem avss_termination_AS_fair_randomised
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : Leslie.Prob.RandomisedTrajectoryFairAdversary
+            (avssSpec (t := t) sec corr) avssFair μ₀)
+    (h_U_mono : FairASTCertificate.RandomisedTrajectoryUMono
+        (avssCert (t := t) sec corr) μ₀ R.toRandomised)
+    (h_U_strict : ∀ N : ℕ, FairASTCertificate.RandomisedTrajectoryFairStrictDecrease
+        (avssCert (t := t) sec corr) μ₀ R.toRandomised N) :
+    AlmostDiamondRandomised (avssSpec (t := t) sec corr) R.toRandomised μ₀
+      terminated := by
+  have h_init' : ∀ᵐ s ∂μ₀, (avssCert (t := t) sec corr).Inv s := by
+    filter_upwards [h_init] with s hs
+    exact (avssCert (t := t) sec corr).inv_init s hs
+  exact RandomisedFairASTCertificate.sound
+    (avssCert (t := t) sec corr) μ₀ h_init' R h_U_mono h_U_strict
+
+/-! ### §19.1.7. Phase 9.5 — `_rushing_randomised` headline wrappers
+
+Closes the literature-standard threat model gap: every classical AVSS
+theorem now has a randomised analog quantified over an
+`AVSSRushingRandomisedAdversary` (the literature's *randomised
+rushing* threat model — coin-flipping schedule on the coalition view).
+
+Each wrapper is a one-liner: the rushing-randomised structure carries
+a `RushingRandomisedAdversary.toRandomisedAdversary` adapter that
+projects to a plain `RandomisedAdversary` by composing the rushing-view
+projection with the rushing-view-restricted PMF strategy.  The
+underlying `_randomised` theorems from PRs #47, #49, and #54 quantify
+universally over `RandomisedAdversary`, so they specialise immediately.
+
+The four wrappers cover the four classical AVSS properties:
+  * `avss_correctness_AS_existential_rushing_randomised` (around PR #49)
+  * `avss_commitment_AS_corrupt_dealer_rushing_randomised` (around PR #49)
+  * `avss_secrecy_AS_step_zero_grid_rushing_randomised`   (around PR #47)
+  * `avss_termination_AS_fair_rushing_randomised`         (around PR #54)
+
+The step-`k` general form of the secrecy wrapper
+(`avss_secrecy_AS_view_rushing_randomised` mirroring the deterministic
+operational secrecy headline at arbitrary step `k` with the schedule
+prefix joint distribution) is independently lifted in Phase 9.6 (PR
+#53); together with this PR, **C5 closes fully** (MODEL_NOTES §11.5,
+§13.1).
+
+Per maintenance plan in `AVSS-MODEL-NOTES.md` §13.5. -/
+
+/-- **Honest-dealer correctness against a rushing randomised
+adversary** (existential-witness form).  Thin wrapper: feed
+`R.toRandomisedAdversary` into `avss_correctness_AS_existential_randomised`
+(PR #49). -/
+theorem avss_correctness_AS_existential_rushing_randomised
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : AVSSRushingRandomisedAdversary n t F corr) :
+    AlmostBoxRandomised (avssSpec (t := t) sec corr) R.toRandomisedAdversary μ₀
+      (fun s => s.dealerHonest = true →
+        ∃ (witness : Fin (t+1) → Fin (t+1) → F),
+          witness 0 0 = s.secret ∧
+            ∀ p, p ∉ s.corrupted →
+              ∀ v, (s.local_ p).output = some v →
+                v = bivEval witness (s.partyPoint p) 0) :=
+  avss_correctness_AS_existential_randomised sec corr μ₀ h_init
+    R.toRandomisedAdversary
+
+/-- **Output-determined commitment against a rushing randomised
+adversary** (corrupt-dealer existential-witness form).  Thin wrapper:
+feed `R.toRandomisedAdversary` into
+`avss_commitment_AS_corrupt_dealer_randomised` (PR #49). -/
+theorem avss_commitment_AS_corrupt_dealer_rushing_randomised
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : AVSSRushingRandomisedAdversary n t F corr) :
+    AlmostBoxRandomised (avssSpec (t := t) sec corr) R.toRandomisedAdversary μ₀
+      (fun s => honestOutputCount s ≥ t + 1 →
+        ∃ (witness : Fin (t+1) → Fin (t+1) → F),
+          ∀ p, p ∉ s.corrupted →
+            ∀ v, (s.local_ p).output = some v →
+              v = bivEval witness (s.partyPoint p) 0) :=
+  avss_commitment_AS_corrupt_dealer_randomised sec corr μ₀ h_init
+    R.toRandomisedAdversary
+
+/-- **Coord-0 grid secrecy against a rushing randomised adversary.**
+The randomised-rushing analog of the coord-0 grid form
+`avss_secrecy_AS_step_zero_grid_randomised` (PR #47).  At coordinate
+0 the projection factors through `μ₀.map (·, none)` (neither the spec
+nor the adversary appears), so the schedule restriction to the rushing
+view is trivially absorbed.
+
+The literature-faithful **step-`k` operational secrecy** randomised
+analog (mirroring deterministic `avss_secrecy_AS_view_rushing` with
+the joint coalition-view + schedule-prefix distribution at arbitrary
+`k`) is the deliverable of Phase 9.6 (PR #53), independent of this PR;
+together with this PR, MODEL_NOTES §11.5 (caveat C5) closes fully. -/
+theorem avss_secrecy_AS_step_zero_grid_rushing_randomised
+    (sec sec' : F) (corr : Finset (Fin n))
+    (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (C D : BivariateShamir.Coalition n t)
+    (R : AVSSRushingRandomisedAdversary n t F corr) :
+    (randomisedTraceDist (avssSpec (t := t) sec corr) R.toRandomisedAdversary
+        (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω 0).1) =
+      (randomisedTraceDist (avssSpec (t := t) sec' corr) R.toRandomisedAdversary
+        (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω 0).1) :=
+  avss_secrecy_AS_step_zero_grid_randomised sec sec' corr partyPoint
+    dealerHonest h_nz_pp h_F C D R.toRandomisedAdversary
+
+/-- **Step-`k` grid secrecy against a rushing randomised adversary.**
+
+The literature-faithful step-`k` operational secrecy randomised
+analog: at any coordinate `k : ℕ`, the marginal of the mixture trace
+measure projected to the `coalitionGrid C D` view is invariant in
+the secret, against any rushing randomised adversary.
+
+Generalisation of `avss_secrecy_AS_step_zero_grid_rushing_randomised`
+(coord 0) to all `k`. Closes the step-`k` operational rushing-randomised
+secrecy gap that was deferred from PRs #55 and #53 due to their
+sibling-stack independence.
+
+Thin wrapper: forwards to PR #53's step-`k` form
+`avss_secrecy_AS_randomised` via `R.toRandomisedAdversary`. -/
+theorem avss_secrecy_AS_view_rushing_randomised
+    (sec sec' : F) (corr : Finset (Fin n))
+    (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (C D : BivariateShamir.Coalition n t)
+    (R : AVSSRushingRandomisedAdversary n t F corr) (k : ℕ) :
+    (randomisedTraceDist (avssSpec (t := t) sec corr) R.toRandomisedAdversary
+        (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω k).1) =
+      (randomisedTraceDist (avssSpec (t := t) sec' corr) R.toRandomisedAdversary
+        (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω k).1) :=
+  avss_secrecy_AS_randomised sec sec' corr partyPoint dealerHonest
+    h_nz_pp h_F C D R.toRandomisedAdversary k
+
+/-- **Termination against a rushing randomised adversary.**  Thin
+wrapper: bundle `R.toRandomisedAdversary` together with the AE-trajectory
+progress witness into a `RandomisedTrajectoryFairAdversary` and forward
+to `avss_termination_AS_fair_randomised` (PR #54). -/
+theorem avss_termination_AS_fair_rushing_randomised
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : AVSSRushingRandomisedAdversary n t F corr)
+    (h_progress : FairASTCertificate.RandomisedTrajectoryFairProgress
+      (avssSpec (t := t) sec corr) avssFair μ₀ R.toRandomisedAdversary)
+    (h_U_mono : FairASTCertificate.RandomisedTrajectoryUMono
+        (avssCert (t := t) sec corr) μ₀ R.toRandomisedAdversary)
+    (h_U_strict : ∀ N : ℕ, FairASTCertificate.RandomisedTrajectoryFairStrictDecrease
+        (avssCert (t := t) sec corr) μ₀ R.toRandomisedAdversary N) :
+    AlmostDiamondRandomised (avssSpec (t := t) sec corr) R.toRandomisedAdversary μ₀
+      terminated :=
+  avss_termination_AS_fair_randomised sec corr μ₀ h_init
+    ⟨R.toRandomisedAdversary, h_progress⟩ h_U_mono h_U_strict
+
 /-! ## §19.2. Phase 7.4 — schedule prefix factors through algebraic view AE
 
 Under a `RushingAdversary` `R` for AVSS, the trace is *fully deterministic*
@@ -6217,6 +6752,30 @@ section RushingSimulation
 
 open Classical
 open scoped ProbabilityTheory
+
+/-! ### Phase 10.3 — AVSS as a `DeterministicProbActionSpec`
+
+`avssDeterministic sec corr` packages AVSS's `(init, gate, step)`
+triple as a `DeterministicProbActionSpec`.  The adapter
+`toProbActionSpec` recovers `avssSpec sec corr` definitionally, so
+the AE-bridge meta-theorem `Leslie.Prob.traceDist_AE_eq_simulateTrace`
+can be applied directly to AVSS's trace distribution.  See PRs #42, #44
+for the generic data + meta-theorem this builds on. -/
+
+/-- AVSS as a `DeterministicProbActionSpec`. The data triple
+`(init, gate, step)` matches `avssSpec`'s shape verbatim. -/
+def avssDeterministic (sec : F) (corr : Finset (Fin n)) :
+    Leslie.Prob.DeterministicProbActionSpec
+      (AVSSState n t F) (AVSSAction n F) where
+  init := initPred sec corr
+  gate := actionGate
+  step := avssStep
+
+omit [Fintype F] in
+@[simp] theorem avssDeterministic_toProbActionSpec
+    (sec : F) (corr : Finset (Fin n)) :
+    (avssDeterministic (t := t) sec corr).toProbActionSpec
+      = avssSpec (t := t) sec corr := rfl
 
 /-- Compute the next trace pair given a prior reverse-order prefix list.
 Used as the inductive step of `avssSimulateRev`.  If the prefix is
@@ -6307,364 +6866,90 @@ theorem avssSimulateRev_head_eq {corr : Finset (Fin n)}
   | nil => exact absurd h (avssSimulateRev_ne_nil R s_0 k)
   | cons x xs => simp
 
-/-- Index-form characterisation of `avssSimulateRev` reversed:
-the reverse of the reverse-order prefix list at step `k` equals
-`List.ofFn (fun i : Fin (k+1) => avssSimulateTrace R s_0 i.val)`.
+/-! ### Phase 10.3 — projection-rfls + bridge to the generic simulate machinery
 
-This is the structural identity that lets us match `FinPrefix.toList`
-(also a `List.ofFn` / `List.finRange.map`) with the simulate prefix
-when proving the inductive step in §19.2.4 below. -/
-theorem avssSimulateRev_reverse_eq_ofFn {corr : Finset (Fin n)}
+The AVSS-specific `avssSimulate*` definitions agree definitionally with
+`Leslie.Prob.simulate*` instantiated at `avssDeterministic sec corr`,
+since the bodies share the same `(gate, step, schedule)` triple.  But
+Lean's kernel `defEq` does not always unfold structure projections on
+`avssDeterministic` calls, so we provide explicit `@[simp]` projection
+lemmas plus inductive bridge equalities. -/
+
+omit [Fintype F] in
+@[simp] theorem avssDeterministic_init (sec : F) (corr : Finset (Fin n)) :
+    (avssDeterministic (t := t) sec corr).init = initPred sec corr := rfl
+
+omit [Fintype F] in
+@[simp] theorem avssDeterministic_gate (sec : F) (corr : Finset (Fin n)) :
+    (avssDeterministic (t := t) sec corr).gate = actionGate := rfl
+
+omit [Fintype F] in
+@[simp] theorem avssDeterministic_step (sec : F) (corr : Finset (Fin n)) :
+    (avssDeterministic (t := t) sec corr).step = avssStep := rfl
+
+theorem avssSimulateNext_eq_simulateNext
+    (sec : F) {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (fallback : AVSSState n t F)
+    (prev : List (AVSSState n t F × Option (AVSSAction n F))) :
+    avssSimulateNext R fallback prev =
+      Leslie.Prob.simulateNext (avssDeterministic (t := t) sec corr)
+        R.toAdversary fallback prev := by
+  unfold avssSimulateNext Leslie.Prob.simulateNext
+  simp only [avssDeterministic_gate, avssDeterministic_step]
+  rcases (RushingAdversary.toAdversary R).schedule prev.reverse with _ | i
+  · rfl
+  · rfl
+
+theorem avssSimulateRev_eq_simulateRev
+    (sec : F) {corr : Finset (Fin n)}
     (R : AVSSRushingAdversary n t F corr)
     (s_0 : AVSSState n t F) (k : ℕ) :
-    (avssSimulateRev R s_0 k).reverse =
-      List.ofFn (fun i : Fin (k+1) => avssSimulateTrace R s_0 i.val) := by
+    avssSimulateRev R s_0 k =
+      Leslie.Prob.simulateRev (avssDeterministic (t := t) sec corr)
+        R.toAdversary s_0 k := by
   induction k with
-  | zero =>
-    show ([(s_0, (none : Option (AVSSAction n F)))]).reverse =
-        List.ofFn (fun i : Fin 1 => avssSimulateTrace R s_0 i.val)
-    rw [List.reverse_singleton]
-    rw [List.ofFn_succ]
-    simp [avssSimulateTrace_zero]
+  | zero => rfl
   | succ k ih =>
-    show (avssSimulateNext R s_0 (avssSimulateRev R s_0 k) ::
-            avssSimulateRev R s_0 k).reverse =
-        List.ofFn (fun i : Fin (k+2) => avssSimulateTrace R s_0 i.val)
-    rw [List.reverse_cons, ih]
-    -- Expand the RHS via `List.ofFn_succ'` (only).
-    conv_rhs => rw [List.ofFn_succ', List.concat_eq_append]
-    -- Both sides now have shape `List.ofFn (... Fin (k+1) ...) ++ [last]`.
-    -- The two `List.ofFn` parts agree because `(Fin.castSucc i).val = i.val` is rfl.
-    have hsim_last : avssSimulateNext R s_0 (avssSimulateRev R s_0 k) =
-        avssSimulateTrace R s_0 (Fin.last (k+1)).val := by
-      show avssSimulateNext R s_0 (avssSimulateRev R s_0 k) =
-          avssSimulateTrace R s_0 (k+1)
-      exact (avssSimulateTrace_succ_eq R s_0 k).symm
-    rw [hsim_last]
+    show avssSimulateNext R s_0 (avssSimulateRev R s_0 k) ::
+          avssSimulateRev R s_0 k = _
+    rw [ih, avssSimulateNext_eq_simulateNext sec]
     rfl
+
+theorem avssSimulateTrace_eq_simulateTrace
+    (sec : F) {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (s_0 : AVSSState n t F) (k : ℕ) :
+    avssSimulateTrace R s_0 k =
+      Leslie.Prob.simulateTrace (avssDeterministic (t := t) sec corr)
+        R.toAdversary s_0 k := by
+  unfold avssSimulateTrace Leslie.Prob.simulateTrace
+  rw [avssSimulateRev_eq_simulateRev sec]
+  -- Match-on-equal-list: split on the list value to close.
+  rcases h : Leslie.Prob.simulateRev
+      (avssDeterministic (t := t) sec corr) R.toAdversary s_0 k with _ | x
+  · rfl
+  · rfl
 
 /-! ## §19.2.4. Phase 7.4 — inductive AE-bridge: trace AE-equals simulate
 
-Under a `RushingAdversary` `R`, every step's effect-PMF is a Dirac
-(`PMF.pure (avssStep i s)`) and the schedule is a deterministic
-function of the view-history.  Both branches of `stepKernel` therefore
-emit a Dirac measure, so the entire trace is AE-equal to the
-deterministic `avssSimulateTrace R (ω 0).1` driven from the initial
-state.
+Under any `Adversary A`, AVSS's trace is fully deterministic given the
+initial state: each step's effect-PMF is a Dirac (`PMF.pure (avssStep
+i s)`).  The headline `traceDist_AE_eq_avssSimulateTrace` is therefore
+an immediate instantiation of the generic meta-theorem
+`Leslie.Prob.traceDist_AE_eq_simulateTrace` (PR #44) at
+`avssDeterministic sec corr`.
 
-The inductive-step structure mirrors PR #32's per-coordinate AE
-identities (`traceDist_partyPoint_AE_eq_init`,
-`traceDist_coeffs_AE_eq_init`, `traceDist_corrupted_AE_eq_init`):
-the marginal recurrence
-`Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`
-reduces the step-`(k+1)` AE statement to a per-prefix kernel AE
-statement, which in the rushing-adversary case identifies the kernel's
-Dirac point with the simulate's `avssSimulateNext`.
+Phase 10.3 collapsed the original ~330-LOC inductive proof chain
+(`avssSpec_R_stepKernel_AE_simulate`,
+`traceDist_step_zero_pair_marginal`, `traceDist_step_zero_snd_AE`,
+`traceDist_AE_eq_avssSimulateTrace_strong`,
+`avssSimulateRev_reverse_eq_ofFn`) to a one-line application of the
+meta-theorem.  See `Leslie/Prob/DeterministicSimulate.lean` for the
+generic form. -/
 
-A strong inductive form `traceDist_AE_eq_avssSimulateTrace_strong`
-matches the entire prefix at every step (needed because
-`R.toAdversary.schedule` consults `h.toList` — the whole prefix —
-not just `h.currentState`).  The public form
-`traceDist_AE_eq_avssSimulateTrace` extracts the `i = k` instance. -/
-
-/-- Per-prefix kernel AE-bridge: under a `RushingAdversary` `R`, the
-step kernel at index `k` over a prefix `h` puts AE-mass on the
-simulate's next step at `(h ⟨0⟩).1` — provided the prefix matches the
-simulate up to step `k`.
-
-This is the per-history component of the inductive step in
-`traceDist_AE_eq_avssSimulateTrace_strong` below.  The proof branches
-on the schedule and gate exactly as in `avssSpec_stepKernel_*_AE`
-(PR #32) but identifies the Dirac point with `avssSimulateNext`. -/
-private theorem avssSpec_R_stepKernel_AE_simulate {sec : F}
-    {corr : Finset (Fin n)}
-    (R : AVSSRushingAdversary n t F corr) (k : ℕ)
-    (h : FinPrefix (AVSSState n t F) (AVSSAction n F) k) :
-    ∀ᵐ y ∂(stepKernel (avssSpec (t := t) sec corr) R.toAdversary k h),
-        (∀ i (hi : i ≤ k),
-            h ⟨i, Finset.mem_Iic.mpr hi⟩ =
-              avssSimulateTrace R
-                (h ⟨0, Finset.mem_Iic.mpr (Nat.zero_le k)⟩).1 i) →
-        y =
-          avssSimulateTrace R
-            (h ⟨0, Finset.mem_Iic.mpr (Nat.zero_le k)⟩).1 (k+1) := by
-  classical
-  set s_0 : AVSSState n t F :=
-    (h ⟨0, Finset.mem_Iic.mpr (Nat.zero_le k)⟩).1 with hs0
-  -- Under hQ (prefix matches simulate), h.toList = (simRev R s_0 k).reverse and
-  -- h.currentState = (simulateTrace R s_0 k).1.  These two equalities reduce
-  -- the kernel computation to `avssSimulateNext`.
-  have h_pred_consequences :
-      (∀ i (hi : i ≤ k),
-          h ⟨i, Finset.mem_Iic.mpr hi⟩ = avssSimulateTrace R s_0 i) →
-      h.toList = (avssSimulateRev R s_0 k).reverse ∧
-        h.currentState = (avssSimulateTrace R s_0 k).1 := by
-    intro hQ
-    refine ⟨?_, ?_⟩
-    · -- `h.toList = (List.finRange (k+1)).map _`, and
-      -- `(simRev R s_0 k).reverse = List.ofFn _`.  Match via per-index equality.
-      unfold FinPrefix.toList
-      rw [avssSimulateRev_reverse_eq_ofFn, List.ofFn_eq_map]
-      apply List.map_congr_left
-      intro i _
-      exact hQ i.val (by have := i.isLt; omega)
-    · unfold FinPrefix.currentState
-      exact congrArg Prod.fst (hQ k le_rfl)
-  -- Branch on the kernel structure.  Both branches yield a Dirac measure.
-  unfold stepKernel
-  simp only [ProbabilityTheory.Kernel.ofFunOfCountable,
-    ProbabilityTheory.Kernel.coe_mk]
-  have hPset : MeasurableSet
-      {y : AVSSState n t F × Option (AVSSAction n F) |
-        (∀ i (hi : i ≤ k),
-            h ⟨i, Finset.mem_Iic.mpr hi⟩ = avssSimulateTrace R s_0 i) →
-        y = avssSimulateTrace R s_0 (k+1)} :=
-    MeasurableSet.of_discrete
-  rcases hsched : R.toAdversary.schedule h.toList with _ | i
-  · -- Schedule says `none`: kernel = `Dirac (h.currentState, none)`.
-    rw [ae_dirac_iff hPset]
-    intro hQ
-    obtain ⟨h_toList, h_curr⟩ := h_pred_consequences hQ
-    -- Compute the simulate's (k+1)-th step.
-    rw [avssSimulateTrace_succ_eq]
-    unfold avssSimulateNext
-    -- The inner `match` evaluates using `R.toAdversary.schedule
-    -- (avssSimulateRev R s_0 k).reverse = R.toAdversary.schedule h.toList = none`.
-    have h_sched_simRev : R.toAdversary.schedule
-        (avssSimulateRev R s_0 k).reverse = none := by
-      rw [← h_toList]; exact hsched
-    rw [h_sched_simRev]
-    -- Goal: (h.currentState, none) =
-    -- (((simRev R s_0 k).head?.map Prod.fst).getD s_0, none).
-    have h_head := avssSimulateRev_head_eq R s_0 k
-    show (h.currentState, _) =
-        (((avssSimulateRev R s_0 k).head?.map Prod.fst).getD s_0, _)
-    rw [h_head, Option.getD_some, h_curr]
-  · -- Schedule says `some i`: branch on the gate at `h.currentState`.
-    by_cases hgate : ((avssSpec (t := t) sec corr).actions i).gate h.currentState
-    · -- Gate-pass: pure-Dirac kernel applies `avssStep i`.
-      simp only [hgate, dite_true]
-      rw [show ((avssSpec (t := t) sec corr).actions i).effect h.currentState hgate
-            = PMF.pure (avssStep i h.currentState) from rfl,
-          PMF.toMeasure_pure, Measure.map_dirac (by fun_prop), ae_dirac_iff hPset]
-      intro hQ
-      obtain ⟨h_toList, h_curr⟩ := h_pred_consequences hQ
-      rw [avssSimulateTrace_succ_eq]
-      unfold avssSimulateNext
-      have h_sched_simRev : R.toAdversary.schedule
-          (avssSimulateRev R s_0 k).reverse = some i := by
-        rw [← h_toList]; exact hsched
-      rw [h_sched_simRev]
-      have h_head := avssSimulateRev_head_eq R s_0 k
-      -- Compute `let s_k := head; if actionGate i s_k then ...`.
-      -- `((spec).actions i).gate = actionGate i` is definitional, so
-      -- `hgate : actionGate i h.currentState`.
-      have hgate_curr : actionGate i h.currentState := hgate
-      have hgate_simRev : actionGate i
-          (((avssSimulateRev R s_0 k).head?.map Prod.fst).getD s_0) := by
-        rw [h_head, Option.getD_some, ← h_curr]; exact hgate_curr
-      show (avssStep i h.currentState, some i) =
-          (let s_k := ((avssSimulateRev R s_0 k).head?.map Prod.fst).getD s_0
-           if actionGate i s_k then (avssStep i s_k, some i)
-           else (s_k, (none : Option (AVSSAction n F))))
-      simp only [if_pos hgate_simRev]
-      rw [h_head, Option.getD_some, ← h_curr]
-    · -- Gate-fail stutter: kernel = `Dirac (h.currentState, none)`.
-      simp only [hgate, dite_false, ae_dirac_iff hPset]
-      intro hQ
-      obtain ⟨h_toList, h_curr⟩ := h_pred_consequences hQ
-      rw [avssSimulateTrace_succ_eq]
-      unfold avssSimulateNext
-      have h_sched_simRev : R.toAdversary.schedule
-          (avssSimulateRev R s_0 k).reverse = some i := by
-        rw [← h_toList]; exact hsched
-      rw [h_sched_simRev]
-      have h_head := avssSimulateRev_head_eq R s_0 k
-      have hgate_curr : ¬ actionGate i h.currentState := hgate
-      have hgate_simRev : ¬ actionGate i
-          (((avssSimulateRev R s_0 k).head?.map Prod.fst).getD s_0) := by
-        rw [h_head, Option.getD_some, ← h_curr]; exact hgate_curr
-      show (h.currentState, _) =
-          (let s_k := ((avssSimulateRev R s_0 k).head?.map Prod.fst).getD s_0
-           if actionGate i s_k then (avssStep i s_k, some i)
-           else (s_k, (none : Option (AVSSAction n F))))
-      simp only [if_neg hgate_simRev]
-      rw [h_head, Option.getD_some, h_curr]
-
-/-- The pair-form step-0 marginal of `traceDist`: projecting the
-trace at step `0` to the full `(state, action)` pair recovers the
-initial measure paired with `none`.  Mirrors
-`traceDist_step_zero_state_marginal` (PR #32) but keeps the action
-component (always `none` at step 0). -/
-theorem traceDist_step_zero_pair_marginal
-    (sec : F) (corr : Finset (Fin n))
-    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
-    (A : Adversary (AVSSState n t F) (AVSSAction n F)) :
-    (traceDist (avssSpec (t := t) sec corr) A μ₀).map
-        (fun ω => ω 0) =
-      μ₀.map (fun s => (s, (none : Option (AVSSAction n F)))) := by
-  classical
-  unfold traceDist
-  set μ₀_full : Measure (AVSSState n t F × Option (AVSSAction n F)) :=
-    μ₀.map (fun s => (s, (none : Option (AVSSAction n F))))
-    with hμ₀_full_def
-  haveI : IsProbabilityMeasure μ₀_full :=
-    Measure.isProbabilityMeasure_map (by fun_prop)
-  -- Step-0 marginal of `Kernel.trajMeasure`.
-  unfold ProbabilityTheory.Kernel.trajMeasure
-  have hmeas_eval0 : Measurable
-      (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) => ω 0) :=
-    measurable_pi_apply 0
-  rw [Measure.map_comp _ _ hmeas_eval0]
-  have hfact : (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
-          ω 0) =
-      (fun y : Π _ : Finset.Iic 0,
-          AVSSState n t F × Option (AVSSAction n F) =>
-            y ⟨0, by simp⟩) ∘
-        (Preorder.frestrictLe 0) := by
-    funext _; rfl
-  have hmeas_pia : Measurable
-      (fun y : Π _ : Finset.Iic 0,
-            AVSSState n t F × Option (AVSSAction n F) =>
-          y ⟨0, by simp⟩) :=
-    measurable_pi_apply _
-  have hmeas_fl0 : Measurable
-      (Preorder.frestrictLe
-        (π := fun _ : ℕ => AVSSState n t F × Option (AVSSAction n F)) 0) :=
-    Preorder.measurable_frestrictLe _
-  have hmeas_fl2 : Measurable
-      (Preorder.frestrictLe₂
-        (π := fun _ : ℕ => AVSSState n t F × Option (AVSSAction n F))
-        (le_refl 0)) :=
-    Preorder.measurable_frestrictLe₂ _
-  have hcomp : Measurable
-      ((fun y : Π _ : Finset.Iic 0,
-            AVSSState n t F × Option (AVSSAction n F) =>
-          y ⟨0, by simp⟩) ∘
-        Preorder.frestrictLe₂
-          (π := fun _ : ℕ => AVSSState n t F × Option (AVSSAction n F))
-          (le_refl 0)) :=
-    hmeas_pia.comp hmeas_fl2
-  rw [hfact, ProbabilityTheory.Kernel.map_comp_right _ hmeas_fl0 hmeas_pia,
-      ProbabilityTheory.Kernel.traj_map_frestrictLe_of_le (le_refl 0)]
-  rw [ProbabilityTheory.Kernel.deterministic_map hmeas_fl2 hmeas_pia]
-  rw [Measure.deterministic_comp_eq_map hcomp]
-  rw [Measure.map_map hcomp (by fun_prop)]
-  convert Measure.map_id (μ := μ₀_full)
-
-/-- AE-base: the action component of step `0` of any `traceDist` is
-`none`.  Pulls back `traceDist_step_zero_pair_marginal` through the
-`Prod.snd` projection. -/
-theorem traceDist_step_zero_snd_AE
-    (sec : F) (corr : Finset (Fin n))
-    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
-    (A : Adversary (AVSSState n t F) (AVSSAction n F)) :
-    ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
-        (ω 0).2 = (none : Option (AVSSAction n F)) := by
-  classical
-  have hmarg := traceDist_step_zero_pair_marginal (t := t) sec corr μ₀ A
-  have hmeas_eval0 : Measurable
-      (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) => ω 0) :=
-    measurable_pi_apply 0
-  -- AE on the pair-marginal: every `(s, none)` has snd = none.
-  have hAE_full :
-      ∀ᵐ x ∂(μ₀.map (fun s : AVSSState n t F =>
-        (s, (none : Option (AVSSAction n F))))),
-        x.2 = none := by
-    rw [ae_map_iff (by fun_prop) MeasurableSet.of_discrete]
-    exact Filter.Eventually.of_forall fun _ => rfl
-  -- Pull back through the trace-marginal identity.
-  rw [← hmarg, ae_map_iff hmeas_eval0.aemeasurable
-    MeasurableSet.of_discrete] at hAE_full
-  exact hAE_full
-
-/-- Strong-form inductive AE-bridge: under a `RushingAdversary` `R`,
-the prefix `(ω 0..k)` of any `traceDist` trace AE-matches the simulate's
-prefix `avssSimulateTrace R (ω 0).1 i` for every `i ≤ k`.
-
-Strong because the schedule at every step depends on the *full*
-prefix-history (via `R.toAdversary.schedule h.toList`), so a per-step
-inductive step needs the matching to hold over the entire prefix. -/
-private theorem traceDist_AE_eq_avssSimulateTrace_strong
-    (sec : F) (corr : Finset (Fin n))
-    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
-    (R : AVSSRushingAdversary n t F corr) (k : ℕ) :
-    ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀),
-        ∀ i, i ≤ k → ω i = avssSimulateTrace R (ω 0).1 i := by
-  classical
-  induction k with
-  | zero =>
-    have h0 := traceDist_step_zero_snd_AE (t := t) sec corr μ₀ R.toAdversary
-    filter_upwards [h0] with ω hω i hi
-    interval_cases i
-    rw [avssSimulateTrace_zero]
-    exact Prod.ext rfl hω
-  | succ k ih =>
-    -- Suffices: ∀ᵐ ω, ω (k+1) = sim (k+1)  AND  IH (∀ i ≤ k, ω i = sim i).
-    -- Combine the IH AE with a single-step AE conditional on the IH.
-    suffices hone_step :
-        ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀),
-          (∀ i, i ≤ k → ω i = avssSimulateTrace R (ω 0).1 i) →
-            ω (k+1) = avssSimulateTrace R (ω 0).1 (k+1) by
-      filter_upwards [ih, hone_step] with ω h_ih h_step i hi
-      rcases Nat.lt_or_ge i (k+1) with h_lt | h_ge
-      · exact h_ih i (by omega)
-      · have hi_eq : i = k + 1 := by omega
-        subst hi_eq
-        exact h_step h_ih
-    -- Marginal recurrence: pull (frestrictLe k ω, ω (k+1)) marginal.
-    have hmeas_pair : Measurable
-        (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
-          (Preorder.frestrictLe k ω, ω (k+1))) := by fun_prop
-    haveI : IsProbabilityMeasure
-        (μ₀.map (fun s : AVSSState n t F => (s, (none : Option (AVSSAction n F))))) :=
-      Measure.isProbabilityMeasure_map (by fun_prop)
-    have hk :
-        ((traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀).map
-            (Preorder.frestrictLe k)) ⊗ₘ
-          (stepKernel (avssSpec (t := t) sec corr) R.toAdversary k) =
-        (traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀).map
-          (fun ω => (Preorder.frestrictLe k ω, ω (k+1))) := by
-      unfold traceDist
-      exact ProbabilityTheory.Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure
-    -- Per-prefix AE: under hQ, the kernel's Dirac point matches simulate.
-    have h_inner : ∀ᵐ h ∂((traceDist (avssSpec (t := t) sec corr)
-            R.toAdversary μ₀).map (Preorder.frestrictLe k)),
-        ∀ᵐ y ∂(stepKernel (avssSpec (t := t) sec corr) R.toAdversary k h),
-          (∀ i (hi : i ≤ k),
-              h ⟨i, Finset.mem_Iic.mpr hi⟩ =
-                avssSimulateTrace R
-                  (h ⟨0, Finset.mem_Iic.mpr (Nat.zero_le k)⟩).1 i) →
-          y =
-            avssSimulateTrace R
-              (h ⟨0, Finset.mem_Iic.mpr (Nat.zero_le k)⟩).1 (k+1) :=
-      Filter.Eventually.of_forall fun h =>
-        avssSpec_R_stepKernel_AE_simulate (t := t) (sec := sec) (corr := corr)
-          R k h
-    -- Lift to AE on the joint measure.
-    have hjoint :
-        ∀ᵐ x ∂(((traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀).map
-              (Preorder.frestrictLe k)) ⊗ₘ
-            (stepKernel (avssSpec (t := t) sec corr) R.toAdversary k)),
-          (∀ i (hi : i ≤ k),
-              x.1 ⟨i, Finset.mem_Iic.mpr hi⟩ =
-                avssSimulateTrace R
-                  (x.1 ⟨0, Finset.mem_Iic.mpr (Nat.zero_le k)⟩).1 i) →
-          x.2 =
-            avssSimulateTrace R
-              (x.1 ⟨0, Finset.mem_Iic.mpr (Nat.zero_le k)⟩).1 (k+1) :=
-      Measure.ae_compProd_of_ae_ae MeasurableSet.of_discrete h_inner
-    -- Transfer along hk and translate.
-    rw [hk] at hjoint
-    rw [ae_map_iff hmeas_pair.aemeasurable MeasurableSet.of_discrete] at hjoint
-    -- `(Preorder.frestrictLe k ω) ⟨i, _⟩ = ω i` is definitional.
-    filter_upwards [hjoint] with ω hω hpre
-    apply hω
-    intro i hi
-    exact hpre i hi
-
-/-- **Phase 7.4 inductive AE-bridge.** Under a `RushingAdversary` `R`,
-the trace at step `k` AE-equals `avssSimulateTrace R (ω 0).1 k` —
+/-- **Phase 7.4 inductive AE-bridge.** Under any `Adversary A`, the
+trace at step `k` AE-equals `avssSimulateTrace R (ω 0).1 k` —
 because every step's effect-PMF is a Dirac (`PMF.pure (avssStep i s)`)
 and the schedule is a deterministic function of the view-history.
 
@@ -6674,16 +6959,78 @@ algebraic-view AE invariance (in §19.2.5 below), it discharges the
 the operational-secrecy theorem
 `avss_secrecy_AS_view_rushing_via_init_invariant` (§19.4 below);
 in §19.4.5 this is composed with the row-poly secrecy lemma to give
-the fully unconditional headline `avss_secrecy_AS_view_rushing`. -/
+the fully unconditional headline `avss_secrecy_AS_view_rushing`.
+
+Phase 10.3: this is now a one-line instantiation of the generic
+meta-theorem `Leslie.Prob.traceDist_AE_eq_simulateTrace` (PR #44) at
+`avssDeterministic sec corr`.  Both `(avssDeterministic sec
+corr).toProbActionSpec = avssSpec sec corr` and `Leslie.Prob.simulateTrace
+(avssDeterministic sec corr) R.toAdversary s_0 k = avssSimulateTrace R
+s_0 k` hold definitionally (`rfl`-equal up to the irrelevant-for-trace
+`init` field), so the meta-theorem's conclusion matches the AVSS
+statement directly. -/
 theorem traceDist_AE_eq_avssSimulateTrace
     (sec : F) (corr : Finset (Fin n))
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
     (R : AVSSRushingAdversary n t F corr) (k : ℕ) :
     ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀),
         ω k = avssSimulateTrace R (ω 0).1 k := by
-  filter_upwards [traceDist_AE_eq_avssSimulateTrace_strong (t := t) sec corr μ₀ R k]
-    with ω hω
-  exact hω k le_rfl
+  have h := Leslie.Prob.traceDist_AE_eq_simulateTrace
+    (avssDeterministic (t := t) sec corr) R.toAdversary μ₀ k
+  rw [avssDeterministic_toProbActionSpec] at h
+  filter_upwards [h] with ω hω
+  rw [hω, avssSimulateTrace_eq_simulateTrace sec]
+
+/-- Strong-form inductive AE-bridge: the prefix `(ω 0..k)` of any
+`traceDist` trace AE-matches the simulate's prefix `avssSimulateTrace R
+(ω 0).1 i` for every `i ≤ k`.
+
+Strong because `R.toAdversary.schedule` at every step depends on the
+full prefix-history, so a per-step inductive step needs the matching
+to hold over the entire prefix.  Used by §19.2.5 below.
+
+Phase 10.3: derived from the public per-step
+`traceDist_AE_eq_avssSimulateTrace` by a small `Nat.rec` induction
+over the prefix range.  The inductive bulk is now in
+`Leslie.Prob.traceDist_AE_eq_simulateTrace`. -/
+private theorem traceDist_AE_eq_avssSimulateTrace_strong
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (R : AVSSRushingAdversary n t F corr) (k : ℕ) :
+    ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀),
+        ∀ i, i ≤ k → ω i = avssSimulateTrace R (ω 0).1 i := by
+  induction k with
+  | zero =>
+    filter_upwards [traceDist_AE_eq_avssSimulateTrace (t := t) sec corr μ₀ R 0]
+      with ω hω i hi
+    interval_cases i
+    exact hω
+  | succ k ih =>
+    filter_upwards [ih,
+        traceDist_AE_eq_avssSimulateTrace (t := t) sec corr μ₀ R (k+1)]
+      with ω h_ih h_step i hi
+    by_cases h : i = k + 1
+    · exact h.symm ▸ h_step
+    · exact h_ih i (by omega)
+
+/-! ### Removed in Phase 10.3
+
+The following AVSS-specific helpers were subsumed by the generic
+forms in `Leslie/Prob/DeterministicSimulate.lean` (PR #44) and have
+been deleted:
+
+  * `traceDist_step_zero_pair_marginal` — generic form available as
+    `Leslie.Prob.traceDist_step_zero_pair_marginal`.
+  * `traceDist_step_zero_snd_AE` — generic form available as
+    `Leslie.Prob.traceDist_step_zero_snd_AE`.
+  * `avssSimulateRev_reverse_eq_ofFn` — generic form available as
+    `Leslie.Prob.simulateRev_reverse_eq_ofFn`.
+  * `avssSpec_R_stepKernel_AE_simulate` — generic form is the
+    `private` `Leslie.Prob.stepKernel_AE_simulate`.
+
+If a downstream caller needs any of these by their AVSS-specific
+names, retarget to the generic forms above.  All callers within AVSS
+have already been updated. -/
 
 /-! ## §19.2.5. Phase 7.4 — joint factoring through the initial state
 
