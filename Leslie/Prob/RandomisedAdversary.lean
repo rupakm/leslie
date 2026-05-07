@@ -721,6 +721,123 @@ theorem randomisedTraceDist_map_eq_of_deterministic_at_zero
       traceDist_map_zero spec' A₀ μ₀'] at hA₀
   exact hA₀
 
+/-- **Per-history step-kernel preserves any state projection invariant
+under every gated effect.** Helper for the step-`k` map-equality lift.
+The kernel's mixture-PMF integral of branchwise preservation gives
+total AE-equality of `g (·.1)` to `g h.currentState`. -/
+private lemma randomisedStepKernel_state_proj_AE
+    {spec : ProbActionSpec σ ι} {β : Type*} {g : σ → β}
+    (h_step_inv : ∀ (i : ι) (s : σ) (hgate : (spec.actions i).gate s),
+        ∀ s' ∈ ((spec.actions i).effect s hgate).support, g s' = g s)
+    (R : RandomisedAdversary σ ι) {n : ℕ} (h : FinPrefix σ ι n) :
+    ∀ᵐ y ∂(randomisedStepKernel spec R n h), g y.1 = g h.currentState := by
+  classical
+  have hbad : MeasurableSet {y : σ × Option ι | ¬(g y.1 = g h.currentState)} :=
+    MeasurableSet.of_discrete
+  rw [ae_iff, randomisedStepKernel_apply_tsum spec R h hbad, ENNReal.tsum_eq_zero]
+  intro α
+  have h_alpha : ∀ᵐ y ∂(singleActionStep spec h α),
+      (fun s : σ => g s = g h.currentState) y.1 := by
+    refine singleActionStep_ae_of_inductive (φ := fun s => g s = g h.currentState)
+      (h_step := ?_) h α rfl
+    intro i s hgate hsφ s' hsupp
+    rw [h_step_inv i s hgate s' hsupp]; exact hsφ
+  have hzero : (singleActionStep spec h α)
+      {y | ¬(g y.1 = g h.currentState)} = 0 := by
+    rw [← ae_iff]; exact h_alpha
+  rw [hzero, mul_zero]
+
+/-- **Trace-level AE invariance of state projections under
+`randomisedTraceDist`.** If a state projection `g : σ → β` is
+preserved by every gated effect, then `g (ω k).1` AE-equals
+`g (ω 0).1` under the mixture trace measure for any `k`.
+
+Proof structure mirrors the deterministic
+`traceDist_coalitionGrid_AE_eq_init` (AVSS.lean §17.9): induction on
+`k`, with the successor step using
+`Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure` to
+reduce to the per-prefix kernel AE statement
+(`randomisedStepKernel_state_proj_AE`). -/
+private theorem randomisedTraceDist_state_proj_AE_eq_init
+    {spec : ProbActionSpec σ ι} {β : Type*} {g : σ → β}
+    (h_step_inv : ∀ (i : ι) (s : σ) (hgate : (spec.actions i).gate s),
+        ∀ s' ∈ ((spec.actions i).effect s hgate).support, g s' = g s)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (R : RandomisedAdversary σ ι) (k : ℕ) :
+    ∀ᵐ ω ∂(randomisedTraceDist spec R μ₀), g (ω k).1 = g (ω 0).1 := by
+  classical
+  induction k with
+  | zero => exact Filter.Eventually.of_forall fun _ => rfl
+  | succ k ih =>
+    suffices hone_step :
+        ∀ᵐ ω ∂(randomisedTraceDist spec R μ₀),
+          g (ω (k+1)).1 = g (ω k).1 by
+      filter_upwards [hone_step, ih] with ω h_step h_ih
+      rw [h_step, h_ih]
+    have hmeas_pair : Measurable
+        (fun ω : Trace σ ι => (Preorder.frestrictLe k ω, ω (k+1))) := by fun_prop
+    haveI : IsProbabilityMeasure (μ₀.map (fun s : σ => (s, (none : Option ι)))) :=
+      Measure.isProbabilityMeasure_map (by fun_prop)
+    have hk :
+        ((randomisedTraceDist spec R μ₀).map (Preorder.frestrictLe k)) ⊗ₘ
+          (randomisedStepKernel spec R k) =
+        (randomisedTraceDist spec R μ₀).map
+          (fun ω => (Preorder.frestrictLe k ω, ω (k+1))) := by
+      unfold randomisedTraceDist
+      exact ProbabilityTheory.Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure
+    have h_inner : ∀ᵐ h ∂((randomisedTraceDist spec R μ₀).map (Preorder.frestrictLe k)),
+        ∀ᵐ y ∂(randomisedStepKernel spec R k h), g y.1 = g h.currentState :=
+      Filter.Eventually.of_forall fun h =>
+        randomisedStepKernel_state_proj_AE h_step_inv R h
+    have hjoint :
+        ∀ᵐ x ∂(((randomisedTraceDist spec R μ₀).map (Preorder.frestrictLe k)) ⊗ₘ
+            (randomisedStepKernel spec R k)),
+          g x.2.1 = g (FinPrefix.currentState x.1) :=
+      Measure.ae_compProd_of_ae_ae MeasurableSet.of_discrete h_inner
+    rw [hk] at hjoint
+    rw [ae_map_iff hmeas_pair.aemeasurable MeasurableSet.of_discrete] at hjoint
+    exact hjoint
+
+/-- **Mixture-`Measure.map` equality lift, step-`k` form.**
+
+Generalisation of `randomisedTraceDist_map_eq_of_deterministic_at_zero`
+to coordinate `k > 0`. The lift relies on the state projection `g`
+being **preserved by every gated effect** of both specs (the
+structural fact captured by, e.g., AVSS's
+`avssStep_coalitionGrid_invariant`).
+
+Under this hypothesis, the schedule PMF integrates the per-branch
+AE-equality across `randomisedStepKernel`, propagating coord-0
+mixture equality to coord-`k` mixture equality. The deterministic
+premise `h_det` is taken at coord 0; `Measure.map_congr` plus the
+trace-level invariance lemma reduces both sides at coord `k` to
+their coord-0 forms. -/
+theorem randomisedTraceDist_map_eq_of_deterministic
+    {β : Type*} [MeasurableSpace β]
+    {spec spec' : ProbActionSpec σ ι}
+    {μ₀ μ₀' : Measure σ} [IsProbabilityMeasure μ₀] [IsProbabilityMeasure μ₀']
+    {g : σ → β} (hg : Measurable g)
+    (h_step_inv : ∀ (i : ι) (s : σ) (hgate : (spec.actions i).gate s),
+        ∀ s' ∈ ((spec.actions i).effect s hgate).support, g s' = g s)
+    (h_step_inv' : ∀ (i : ι) (s : σ) (hgate : (spec'.actions i).gate s),
+        ∀ s' ∈ ((spec'.actions i).effect s hgate).support, g s' = g s)
+    (h_det : ∀ (A : Adversary σ ι),
+       (traceDist spec A μ₀).map (fun ω => g (ω 0).1) =
+       (traceDist spec' A μ₀').map (fun ω => g (ω 0).1))
+    (R : RandomisedAdversary σ ι) (k : ℕ) :
+    (randomisedTraceDist spec R μ₀).map (fun ω => g (ω k).1) =
+      (randomisedTraceDist spec' R μ₀').map (fun ω => g (ω k).1) := by
+  classical
+  have hLHS : (randomisedTraceDist spec R μ₀).map (fun ω => g (ω k).1) =
+              (randomisedTraceDist spec R μ₀).map (fun ω => g (ω 0).1) :=
+    Measure.map_congr (randomisedTraceDist_state_proj_AE_eq_init h_step_inv μ₀ R k)
+  have hRHS : (randomisedTraceDist spec' R μ₀').map (fun ω => g (ω k).1) =
+              (randomisedTraceDist spec' R μ₀').map (fun ω => g (ω 0).1) :=
+    Measure.map_congr (randomisedTraceDist_state_proj_AE_eq_init h_step_inv' μ₀' R k)
+  rw [hLHS, hRHS]
+  exact randomisedTraceDist_map_eq_of_deterministic_at_zero
+    (f := fun x : σ × Option ι => g x.1) (hg.comp measurable_fst) h_det R
+
 /-- **Lift form for `AlmostDiamond`.** Inductive form: if eventual
 occurrence is guaranteed for every deterministic adversary by a
 "leads-to" certificate that's adversary-independent, the randomised
