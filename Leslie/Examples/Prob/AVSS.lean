@@ -182,7 +182,10 @@ structure AVSSState (n t : ℕ) (F : Type*) [DecidableEq F] where
   -- Phase 8.5b-γ-followup-2: per-pair tokens (q, r) means q's ready
   -- broadcast to r is in flight; mirrors `inflightEchoes`'s shape.
   inflightReady              : Finset (Fin n × Fin n)
-  dealerSent                 : Bool
+  -- Phase 8.5d-α: per-party flag — `dealerSent p = true` means the dealer has
+  -- emitted shares to party `p`. Replaces the old `Bool` field; closes caveat
+  -- C4 (selective non-broadcast).
+  dealerSent                 : Fin n → Bool
   dealerMessages             : Fin n → Option (DealerPayload t F)
 
 namespace AVSSState
@@ -249,7 +252,7 @@ def initPred (sec : F) (corr : Finset (Fin n))
   s.inflightCorruptDeliveries = ∅ ∧
   s.inflightEchoes = ∅ ∧
   s.inflightReady = ∅ ∧
-  s.dealerSent = false ∧
+  s.dealerSent = (fun _ => false) ∧
   s.dealerMessages = (fun _ => none) ∧
   (s.dealerHonest = true → s.coeffs 0 0 = sec)
 
@@ -257,7 +260,9 @@ def initPred (sec : F) (corr : Finset (Fin n))
 
 /-- AVSS protocol actions (threshold-faithful). -/
 inductive AVSSAction (n : ℕ) (F : Type*) [DecidableEq F]
-  | dealerShare                              -- dealer emits row polys + echo intent
+  -- Phase 8.5d-α: per-party emit. The adversary chooses firing order;
+  -- corrupt dealers can selectively short-share (C4 closure).
+  | dealerShareTo (p : Fin n)                -- dealer emits row poly + echo intent for p
   | partyDeliver  (p : Fin n)                -- p (honest) receives row poly, sets `delivered`
   | partyCorruptDeliver (p : Fin n)          -- p (corrupt) receives row poly: adversary's view
   | partyEchoSend (p : Fin n)                -- p broadcasts echo (after delivery)
@@ -348,26 +353,26 @@ returns `s` unchanged; gates are enforced by `actionGate`. -/
 def avssStep (a : AVSSAction n F) (s : AVSSState n t F) :
     AVSSState n t F :=
   match a with
-  | .dealerShare =>
-      -- Dealer emits all shares; populates the inflight-delivery sets
-      -- with every honest and corrupt party, and writes the per-party
-      -- payload (row poly derived from `s.coeffs` and `s.partyPoint`)
-      -- into `dealerMessages` for both honest and corrupt parties.
-      -- The all-or-nothing semantics is intentional for Phase 8.1;
-      -- PR 8.5 will let the adversary choose selectively.
+  | .dealerShareTo p =>
+      -- Phase 8.5d-α: per-party emit. The dealer ships a payload to party `p`
+      -- and flags `dealerSent p = true`. Adversary chooses firing order;
+      -- corrupt dealers may omit some honest parties (C4 closure).
       --
-      -- Phase 8.1 simplification: `colPoly` is left as a `0`
-      -- placeholder; PR 8.4 will start carrying real column-poly
-      -- values via `partyEcho*` actions for cross-check verification.
+      -- The destination set is determined by p's corruption status:
+      -- honest p → `inflightDeliveries`; corrupt p → `inflightCorruptDeliveries`.
+      -- Phase 8.1 simplification: `colPoly` is left as a `0` placeholder.
+      let payload : DealerPayload t F :=
+        { rowPoly := rowPolyOfDealer s.partyPoint s.coeffs p
+          colPoly := fun _ => (0 : F) }
       { s with
-        dealerSent := true
+        dealerSent := Function.update s.dealerSent p true
         inflightDeliveries :=
-          (Finset.univ : Finset (Fin n)).filter (fun p => p ∉ s.corrupted)
+          if p ∉ s.corrupted then insert p s.inflightDeliveries
+          else s.inflightDeliveries
         inflightCorruptDeliveries :=
-          (Finset.univ : Finset (Fin n)).filter (fun p => p ∈ s.corrupted)
-        dealerMessages := fun p =>
-          some { rowPoly := rowPolyOfDealer s.partyPoint s.coeffs p
-                 colPoly := fun _ => (0 : F) } }
+          if p ∈ s.corrupted then insert p s.inflightCorruptDeliveries
+          else s.inflightCorruptDeliveries
+        dealerMessages := Function.update s.dealerMessages p (some payload) }
   | .partyDeliver p =>
       let ls := s.local_ p
       -- Read row poly from `dealerMessages p`; fall through to
@@ -518,33 +523,39 @@ without delivery and the explicit clause becomes load-bearing for
 preserving `avssTermInv`'s pre-share quiescence. -/
 def actionGate (a : AVSSAction n F) (s : AVSSState n t F) : Prop :=
   match a with
-  | .dealerShare =>
-      s.dealerSent = false
+  | .dealerShareTo p =>
+      -- Phase 8.5d-α: gate is per-party; `dealerSent p = false` means
+      -- this party hasn't been shared yet.
+      s.dealerSent p = false
   | .partyDeliver p =>
-      s.dealerSent = true ∧ p ∉ s.corrupted ∧
+      -- Phase 8.5d-α: condition specialised to this party.
+      s.dealerSent p = true ∧ p ∉ s.corrupted ∧
         p ∈ s.inflightDeliveries ∧ (s.local_ p).delivered = false ∧
         (s.dealerMessages p).isSome
   | .partyCorruptDeliver p =>
-      s.dealerSent = true ∧ p ∈ s.corrupted ∧
+      s.dealerSent p = true ∧ p ∈ s.corrupted ∧
         p ∈ s.inflightCorruptDeliveries ∧ (s.local_ p).delivered = false ∧
         (s.dealerMessages p).isSome
   | .partyEchoSend p =>
       -- Phase 8.5b: C1 closure — corrupt parties may also fire `partyEchoSend`.
       -- The `p ∉ s.corrupted` clause is dropped here.
+      -- Phase 8.5d-α: per-party `dealerSent p`.
       (s.local_ p).delivered = true ∧
-        (s.local_ p).echoSent = false ∧ s.dealerSent = true
+        (s.local_ p).echoSent = false ∧ s.dealerSent p = true
   | .partyEchoReceive p q =>
       -- Phase 8.5b: C2 closure — corrupt receivers may also receive echoes.
       (q, p) ∈ s.inflightEchoes ∧
         q ∉ (s.local_ p).echoesReceived
   | .partyReady p =>
       -- Phase 8.5b: C1 closure.
+      -- Phase 8.5d-α: per-party `dealerSent p`.
       (s.local_ p).delivered = true ∧ (s.local_ p).readySent = false ∧
-        (s.local_ p).echoesReceived.card ≥ n - t ∧ s.dealerSent = true
+        (s.local_ p).echoesReceived.card ≥ n - t ∧ s.dealerSent p = true
   | .partyAmplify p =>
       -- Phase 8.5b: C1 closure.
+      -- Phase 8.5d-α: per-party `dealerSent p`.
       (s.local_ p).readySent = false ∧
-        (s.local_ p).readyReceived.card ≥ t + 1 ∧ s.dealerSent = true
+        (s.local_ p).readyReceived.card ≥ t + 1 ∧ s.dealerSent p = true
   | .partyReceiveReady p q =>
       -- Phase 8.5b: C2 closure.
       -- Phase 8.5b-γ-followup-2: per-pair tokens.
@@ -608,10 +619,11 @@ instance : MeasurableSingletonClass (AVSSLocalState n t F) := ⟨fun _ => trivia
 noncomputable instance : Fintype (AVSSAction n F) := by
   classical
   exact Fintype.ofEquiv
-    (Unit ⊕ Fin n ⊕ Fin n ⊕ Fin n ⊕ (Fin n × Fin n) ⊕ Fin n ⊕ Fin n ⊕
+    (Fin n ⊕ Fin n ⊕ Fin n ⊕ Fin n ⊕ (Fin n × Fin n) ⊕ Fin n ⊕ Fin n ⊕
       (Fin n × Fin n) ⊕ Fin n)
     { toFun := fun
-        | .inl _ => .dealerShare
+        -- Phase 8.5d-α: dealerShareTo carries a Fin n.
+        | .inl p => .dealerShareTo p
         | .inr (.inl p) => .partyDeliver p
         | .inr (.inr (.inl p)) => .partyCorruptDeliver p
         | .inr (.inr (.inr (.inl p))) => .partyEchoSend p
@@ -622,7 +634,7 @@ noncomputable instance : Fintype (AVSSAction n F) := by
             .partyReceiveReady p q
         | .inr (.inr (.inr (.inr (.inr (.inr (.inr (.inr p))))))) => .partyOutput p
       invFun := fun
-        | .dealerShare => .inl ()
+        | .dealerShareTo p => .inl p
         | .partyDeliver p => .inr (.inl p)
         | .partyCorruptDeliver p => .inr (.inr (.inl p))
         | .partyEchoSend p => .inr (.inr (.inr (.inl p)))
@@ -644,7 +656,7 @@ noncomputable instance : Fintype (AVSSAction n F) := by
         | .inr (.inr (.inr (.inr (.inr (.inr (.inr (.inl _))))))) => rfl
         | .inr (.inr (.inr (.inr (.inr (.inr (.inr (.inr _))))))) => rfl
       right_inv := fun
-        | .dealerShare => rfl
+        | .dealerShareTo _ => rfl
         | .partyDeliver _ => rfl
         | .partyCorruptDeliver _ => rfl
         | .partyEchoSend _ => rfl
@@ -693,7 +705,7 @@ noncomputable instance : Fintype (AVSSState n t F) := by
     ((Fin (t+1) → Fin (t+1) → F) × (Fin n → F) × F ×
       (Fin n → AVSSLocalState n t F) × Finset (Fin n) × Bool ×
       Finset (Fin n) × Finset (Fin n) × Finset (Fin n × Fin n) ×
-      Finset (Fin n × Fin n) × Bool × (Fin n → Option (DealerPayload t F)))
+      Finset (Fin n × Fin n) × (Fin n → Bool) × (Fin n → Option (DealerPayload t F)))
     { toFun := fun ⟨c, pp, sec, l, corr, dh, idl, idlc, ie, ird, ds, dm⟩ =>
         ⟨c, pp, sec, l, corr, dh, idl, idlc, ie, ird, ds, dm⟩
       invFun := fun s =>
@@ -728,7 +740,9 @@ parties) are unaffected by whether corrupt parties have received
 their shares. -/
 def avssFairActions : Set (AVSSAction n F) :=
   { a | match a with
-        | .dealerShare => True
+        -- Phase 8.5d-α: per-party emit is fair-required for every party
+        -- (refined in 8.5d-γ to honest dealer + honest p).
+        | .dealerShareTo _ => True
         | .partyDeliver _ => True
         | .partyEchoSend _ => True
         | .partyEchoReceive _ _ => True
@@ -772,6 +786,34 @@ def honestSet (s : AVSSState n t F) : Finset (Fin n) :=
     (honestSet s).card ≤ n := by
   unfold honestSet
   exact (Finset.card_le_univ _).trans (by simp)
+
+/-- Phase 8.5d-α: honest parties for which the dealer hasn't yet emitted a
+payload. The new c₁ component of `avssU`: drops by 1 each time
+`dealerShareTo p` fires for honest p. Honest-only restriction matches
+`terminated`'s honest-only conjuncts and lets the variant reach `0` at
+terminated states. -/
+def unsentDealerSet (s : AVSSState n t F) : Finset (Fin n) :=
+  (Finset.univ : Finset (Fin n)).filter
+    (fun p => p ∉ s.corrupted ∧ s.dealerSent p = false)
+
+@[simp] theorem unsentDealerSet_card_le (s : AVSSState n t F) :
+    (unsentDealerSet s).card ≤ n := by
+  unfold unsentDealerSet
+  exact (Finset.card_le_univ _).trans (by simp)
+
+omit [Field F] [Fintype F] in
+/-- Phase 8.5d-α: `unsentDealerSet` depends only on `dealerSent` and
+`corrupted`. Used by every non-`dealerShareTo` step lemma to discharge
+the c₁ component (which is preserved by frame). -/
+theorem unsentDealerSet_eq_of_dealerSent_eq
+    (s s' : AVSSState n t F)
+    (hds : s'.dealerSent = s.dealerSent)
+    (hcorr : s'.corrupted = s.corrupted) :
+    unsentDealerSet s' = unsentDealerSet s := by
+  unfold unsentDealerSet
+  congr 1
+  funext p
+  rw [hds, hcorr]
 
 /-- Honest parties with delivered = true and echoSent = false. -/
 def unsentEchoSet (s : AVSSState n t F) : Finset (Fin n) :=
@@ -849,7 +891,8 @@ U = c₁·K⁶ + c₂·K⁵ + c₃·K⁴ + c₄·K³ + c₅·K² + c₆·K + c�
 with `K = (n+1)²`. -/
 noncomputable def avssU (s : AVSSState n t F) : ℕ :=
   let K := lexBase n
-  (if s.dealerSent then 0 else (honestSet s).card) * K ^ 6 +
+  -- Phase 8.5d-α: c₁ is now `(unsentDealerSet s).card` (the per-party form).
+  (unsentDealerSet s).card * K ^ 6 +
     s.inflightDeliveries.card * K ^ 5 +
     (unsentEchoSet s).card * K ^ 4 +
     s.inflightEchoes.card * K ^ 3 +
@@ -879,7 +922,8 @@ Three clauses:
 This is enough invariant to make the `avssU` lex-product strictly
 decrease on each fair-firing step. -/
 def avssTermInv (s : AVSSState n t F) : Prop :=
-  (s.dealerSent = false →
+  -- Phase 8.5d-α: clause 1 antecedent is "no party has been served yet".
+  ((∀ p, s.dealerSent p = false) →
     (∀ p, s.local_ p = AVSSLocalState.init n t F) ∧
     s.inflightDeliveries = ∅ ∧
     s.inflightEchoes = ∅ ∧
@@ -888,7 +932,19 @@ def avssTermInv (s : AVSSState n t F) : Prop :=
     (s.local_ p).echoSent = true → (s.local_ p).delivered = true) ∧
   (∀ p, p ∉ s.corrupted →
     (s.local_ p).output.isSome = true →
-      (s.local_ p).readySent = true ∧ (s.local_ p).delivered = true)
+      (s.local_ p).readySent = true ∧ (s.local_ p).delivered = true) ∧
+  -- Phase 8.5d-α clause 4: per-party pre-share quiescence (weak form). For any
+  -- honest party `p` not yet served by the dealer, the `delivered` flag is
+  -- false. This is exactly the strength needed by `avssU_eq_zero_of_terminated`:
+  -- combined with clause 3 (`output.isSome → readySent ∧ delivered`), it forces
+  -- `output = none` whenever `dealerSent p = false`, so `unsentDealerSet`
+  -- (honest-only) is empty at terminated states.
+  --
+  -- Stronger forms (e.g. `local_ p = init`) are NOT preserved: `partyEchoReceive q r`
+  -- mutates `(s.local_ q).echoesReceived` without requiring `s.dealerSent q = true`
+  -- on its gate. The weak form (only `delivered`) is preserved because no action
+  -- writes `delivered := true` without `s.dealerSent q = true` on its gate.
+  (∀ p, p ∉ s.corrupted → s.dealerSent p = false → (s.local_ p).delivered = false)
 
 /-- Uniform bound on `avssU`: `7 · n · K⁶` plus slack, with `K = (n+1)²`.
 
@@ -900,11 +956,8 @@ theorem avssU_le_bound (s : AVSSState n t F) :
   unfold avssU
   set K := lexBase n with hK_def
   have hK_pos : 1 ≤ K := lexBase_pos
-  -- Each component bound:
-  have h0 : (if s.dealerSent then (0 : ℕ) else (honestSet s).card) ≤ n := by
-    split
-    · exact Nat.zero_le _
-    · exact honestSet_card_le s
+  -- Phase 8.5d-α: c₁ is now `unsentDealerSet`.
+  have h0 : (unsentDealerSet s).card ≤ n := unsentDealerSet_card_le s
   have h1 := inflightDeliveries_card_le s
   have h2 := unsentEchoSet_card_le s
   have h3 : s.inflightEchoes.card ≤ K := by
@@ -925,8 +978,7 @@ theorem avssU_le_bound (s : AVSSState n t F) :
     calc (1 : ℕ) = 1 ^ 6 := by ring
       _ ≤ K ^ 6 := by gcongr
   -- Each weighted component ≤ n · K⁶ (or K · K⁵ = K⁶ for component 4):
-  have hA : (if s.dealerSent then (0 : ℕ) else (honestSet s).card) * K ^ 6
-              ≤ n * K ^ 6 := by nlinarith [Nat.zero_le (K ^ 6)]
+  have hA : (unsentDealerSet s).card * K ^ 6 ≤ n * K ^ 6 := by gcongr
   have hB : s.inflightDeliveries.card * K ^ 5 ≤ n * K ^ 6 := by
     calc s.inflightDeliveries.card * K ^ 5
         ≤ n * K ^ 5 := by gcongr
@@ -959,7 +1011,7 @@ theorem avssU_le_bound (s : AVSSState n t F) :
     unfold avssU
     -- Five components ≤ n · K⁶ each, plus two ≤ K⁶ (inflightEchoes and inflightReady).
     have hsum6 :
-        (if s.dealerSent then (0 : ℕ) else (honestSet s).card) * K ^ 6 +
+        (unsentDealerSet s).card * K ^ 6 +
           s.inflightDeliveries.card * K ^ 5 +
           (unsentEchoSet s).card * K ^ 4 +
           s.inflightEchoes.card * K ^ 3 +
@@ -1013,60 +1065,66 @@ theorem avssTermInv_step
     rw [hsupp] at hs'
     simpa using hs'
   subst hs_eq
-  obtain ⟨hpre, hecho, hout⟩ := hinv
-  refine ⟨?_, ?_, ?_⟩
-  -- ===== Clause 1: dealerSent post = false → all-init + queues empty post =====
+  obtain ⟨hpre, hecho, hout, hloc_per_party⟩ := hinv
+  refine ⟨?_, ?_, ?_, ?_⟩
+  -- ===== Clause 1: ∀ p, dealerSent post p = false → all-init + queues empty post =====
+  -- Phase 8.5d-α: hds' is now `∀ p, s'.dealerSent p = false`.
   · intro hds'
     cases a with
-    | dealerShare =>
-        simp [avssStep] at hds'
+    | dealerShareTo p =>
+        -- post.dealerSent = Function.update s.dealerSent p true.
+        -- hds' p says the post is false at p, but it's `true` by Function.update_self.
+        have hp := hds' p
+        simp [avssStep, Function.update_self] at hp
     | partyDeliver p =>
-        have hpre_ds : s.dealerSent = true := h.1
-        simp [avssStep, setLocal] at hds'
-        rw [hpre_ds] at hds'
-        cases hds'
+        -- Frame: post.dealerSent = s.dealerSent. Gate: s.dealerSent p = true.
+        have hpre_ds : s.dealerSent p = true := h.1
+        have hp := hds' p
+        simp [avssStep, setLocal] at hp
+        rw [hpre_ds] at hp
+        cases hp
     | partyCorruptDeliver p =>
-        have hpre_ds : s.dealerSent = true := h.1
-        simp [avssStep, setLocal] at hds'
-        rw [hpre_ds] at hds'
-        cases hds'
+        have hpre_ds : s.dealerSent p = true := h.1
+        have hp := hds' p
+        simp [avssStep, setLocal] at hp
+        rw [hpre_ds] at hp
+        cases hp
     | partyEchoSend p =>
-        -- Phase 8.5b: gate is now 3-tuple ⟨delivered, ¬echoSent, dealerSent⟩.
-        have hpre_ds : s.dealerSent = true := h.2.2
-        simp [avssStep, setLocal] at hds'
-        rw [hpre_ds] at hds'
-        cases hds'
+        have hpre_ds : s.dealerSent p = true := h.2.2
+        have hp := hds' p
+        simp [avssStep, setLocal] at hp
+        rw [hpre_ds] at hp
+        cases hp
     | partyEchoReceive p q =>
-        have hpre_ds : s.dealerSent = false := by
-          simpa [avssStep, setLocal] using hds'
+        -- Frame: post.dealerSent = s.dealerSent. From hds' get pre-quiescence.
+        have hpre_ds : ∀ r, s.dealerSent r = false := fun r => by
+          have := hds' r; simpa [avssStep, setLocal] using this
         have hi := hpre hpre_ds
-        -- Phase 8.5b: gate is now 2-tuple ⟨(q,p) ∈ inflightEchoes, ¬received⟩.
         have hgate_in : (q, p) ∈ s.inflightEchoes := h.1
         rw [hi.2.2.1] at hgate_in
         exact absurd hgate_in (Finset.notMem_empty _)
     | partyReady p =>
-        -- Phase 8.5b: gate is now 4-tuple ⟨delivered, ¬readySent, ech, dealerSent⟩.
-        have hpre_ds : s.dealerSent = true := h.2.2.2
-        simp [avssStep, setLocal] at hds'
-        rw [hpre_ds] at hds'
-        cases hds'
+        have hpre_ds : s.dealerSent p = true := h.2.2.2
+        have hp := hds' p
+        simp [avssStep, setLocal] at hp
+        rw [hpre_ds] at hp
+        cases hp
     | partyAmplify p =>
-        -- Phase 8.5b: gate is now 3-tuple ⟨¬readySent, rrTotal, dealerSent⟩.
-        have hpre_ds : s.dealerSent = true := h.2.2
-        simp [avssStep, setLocal] at hds'
-        rw [hpre_ds] at hds'
-        cases hds'
+        have hpre_ds : s.dealerSent p = true := h.2.2
+        have hp := hds' p
+        simp [avssStep, setLocal] at hp
+        rw [hpre_ds] at hp
+        cases hp
     | partyReceiveReady p q =>
-        have hpre_ds : s.dealerSent = false := by
-          simpa [avssStep, setLocal] using hds'
+        have hpre_ds : ∀ r, s.dealerSent r = false := fun r => by
+          have := hds' r; simpa [avssStep, setLocal] using this
         have hi := hpre hpre_ds
-        -- Phase 8.5b-γ-followup-2: gate is now ⟨(q,p) ∈ inflightReady, ¬received⟩.
         have hgate_in : (q, p) ∈ s.inflightReady := h.1
         rw [hi.2.2.2] at hgate_in
         exact absurd hgate_in (Finset.notMem_empty _)
     | partyOutput p =>
-        have hpre_ds : s.dealerSent = false := by
-          simpa [avssStep, setLocal] using hds'
+        have hpre_ds : ∀ r, s.dealerSent r = false := fun r => by
+          have := hds' r; simpa [avssStep, setLocal] using this
         have hi := hpre hpre_ds
         have hp_init : s.local_ p = AVSSLocalState.init n t F := hi.1 p
         have hgate_del : (s.local_ p).delivered = true := h.2.1
@@ -1075,8 +1133,8 @@ theorem avssTermInv_step
   -- ===== Clause 2: ∀ honest p, echoSent post = true → delivered post = true =====
   · intro p hp hes
     cases a with
-    | dealerShare =>
-        -- `dealerShare` doesn't touch any party's local state.
+    | dealerShareTo q =>
+        -- `dealerShareTo q` doesn't touch any party's local state.
         simp only [avssStep] at hes ⊢
         exact hecho p hp hes
     | partyDeliver q =>
@@ -1155,7 +1213,7 @@ theorem avssTermInv_step
   -- ===== Clause 3: ∀ honest p, output.isSome = true → readySent ∧ delivered =====
   · intro p hp hsome
     cases a with
-    | dealerShare =>
+    | dealerShareTo q =>
         simp only [avssStep] at hsome ⊢
         exact hout p hp hsome
     | partyDeliver q =>
@@ -1238,6 +1296,116 @@ theorem avssTermInv_step
           exact ⟨h.2.2.1, h.2.1⟩
         · rw [setLocal_local_ne _ _ _ _ hpq] at hsome ⊢
           exact hout p hp hsome
+  -- ===== Clause 4: Phase 8.5d-α — per-party `dealerSent p = false → ¬delivered` =====
+  · intro p hp_h hds_p
+    cases a with
+    | dealerShareTo q =>
+        -- post.local_ p = s.local_ p; post.dealerSent p: if p = q, true (contradiction);
+        -- else = s.dealerSent p, so we can apply hloc_per_party.
+        by_cases hpq : p = q
+        · -- p = q: post.dealerSent p = true via Function.update_self.
+          subst hpq
+          have h_post_t : (avssStep (.dealerShareTo p) s).dealerSent p = true := by
+            simp [avssStep, Function.update_self]
+          rw [h_post_t] at hds_p
+          cases hds_p
+        · -- p ≠ q: pull antecedent back to pre, get pre.delivered = false, post.local p = pre.
+          have h_post_eq : (avssStep (.dealerShareTo q) s).dealerSent p = s.dealerSent p := by
+            simp [avssStep, Function.update_of_ne hpq]
+          rw [h_post_eq] at hds_p
+          have h_pre_d : (s.local_ p).delivered = false :=
+            hloc_per_party p hp_h hds_p
+          show ((avssStep (.dealerShareTo q) s).local_ p).delivered = false
+          simp [avssStep]
+          exact h_pre_d
+    | partyDeliver q =>
+        -- gate: s.dealerSent q = true. So if p = q, hds_p contradicts gate.
+        -- For p ≠ q, post.local_ p = s.local_ p and post.dealerSent = s.dealerSent.
+        have h_pre_eq : (avssStep (.partyDeliver q) s).dealerSent = s.dealerSent := by
+          simp [avssStep, setLocal]
+        rw [h_pre_eq] at hds_p
+        by_cases hpq : p = q
+        · subst hpq
+          rw [h.1] at hds_p
+          cases hds_p
+        · simp only [avssStep, setLocal_local_ne _ _ _ _ hpq]
+          exact hloc_per_party p hp_h hds_p
+    | partyCorruptDeliver q =>
+        -- p ∉ corr, q ∈ corr (gate), so p ≠ q.
+        have hpq : p ≠ q := fun heq => hp_h (heq ▸ h.2.1)
+        have h_pre_eq : (avssStep (.partyCorruptDeliver q) s).dealerSent = s.dealerSent := by
+          simp [avssStep, setLocal]
+        rw [h_pre_eq] at hds_p
+        simp only [avssStep, setLocal_local_ne _ _ _ _ hpq]
+        exact hloc_per_party p hp_h hds_p
+    | partyEchoSend q =>
+        -- partyEchoSend writes echoSent, not delivered. Frame.
+        have h_pre_eq : (avssStep (.partyEchoSend q) s).dealerSent = s.dealerSent := by
+          simp [avssStep, setLocal]
+        rw [h_pre_eq] at hds_p
+        by_cases hpq : p = q
+        · subst hpq
+          show ((avssStep (.partyEchoSend p) s).local_ p).delivered = false
+          simp [avssStep, setLocal_local_self]
+          exact hloc_per_party p hp_h hds_p
+        · simp only [avssStep, setLocal_local_ne _ _ _ _ hpq]
+          exact hloc_per_party p hp_h hds_p
+    | partyEchoReceive q r =>
+        -- writes echoesReceived, not delivered.
+        have h_pre_eq : (avssStep (.partyEchoReceive q r) s).dealerSent = s.dealerSent := by
+          simp [avssStep, setLocal]
+        rw [h_pre_eq] at hds_p
+        by_cases hpq : p = q
+        · subst hpq
+          show ((avssStep (.partyEchoReceive p r) s).local_ p).delivered = false
+          simp [avssStep, setLocal_local_self]
+          exact hloc_per_party p hp_h hds_p
+        · simp only [avssStep, setLocal_local_ne _ _ _ _ hpq]
+          exact hloc_per_party p hp_h hds_p
+    | partyReady q =>
+        have h_pre_eq : (avssStep (.partyReady q) s).dealerSent = s.dealerSent := by
+          simp [avssStep, setLocal]
+        rw [h_pre_eq] at hds_p
+        by_cases hpq : p = q
+        · subst hpq
+          show ((avssStep (.partyReady p) s).local_ p).delivered = false
+          simp [avssStep, setLocal_local_self]
+          exact hloc_per_party p hp_h hds_p
+        · simp only [avssStep, setLocal_local_ne _ _ _ _ hpq]
+          exact hloc_per_party p hp_h hds_p
+    | partyAmplify q =>
+        have h_pre_eq : (avssStep (.partyAmplify q) s).dealerSent = s.dealerSent := by
+          simp [avssStep, setLocal]
+        rw [h_pre_eq] at hds_p
+        by_cases hpq : p = q
+        · subst hpq
+          show ((avssStep (.partyAmplify p) s).local_ p).delivered = false
+          simp [avssStep, setLocal_local_self]
+          exact hloc_per_party p hp_h hds_p
+        · simp only [avssStep, setLocal_local_ne _ _ _ _ hpq]
+          exact hloc_per_party p hp_h hds_p
+    | partyReceiveReady q r =>
+        have h_pre_eq : (avssStep (.partyReceiveReady q r) s).dealerSent = s.dealerSent := by
+          simp [avssStep, setLocal]
+        rw [h_pre_eq] at hds_p
+        by_cases hpq : p = q
+        · subst hpq
+          show ((avssStep (.partyReceiveReady p r) s).local_ p).delivered = false
+          simp [avssStep, setLocal_local_self]
+          exact hloc_per_party p hp_h hds_p
+        · simp only [avssStep, setLocal_local_ne _ _ _ _ hpq]
+          exact hloc_per_party p hp_h hds_p
+    | partyOutput q =>
+        have h_pre_eq : (avssStep (.partyOutput q) s).dealerSent = s.dealerSent := by
+          simp [avssStep, setLocal]
+        rw [h_pre_eq] at hds_p
+        by_cases hpq : p = q
+        · subst hpq
+          show ((avssStep (.partyOutput p) s).local_ p).delivered = false
+          simp [avssStep, setLocal_local_self]
+          exact hloc_per_party p hp_h hds_p
+        · simp only [avssStep, setLocal_local_ne _ _ _ _ hpq]
+          exact hloc_per_party p hp_h hds_p
 /-! ### Variant strict-decrease per fair action (Phase 2c)
 
 Each fair action decreases `avssU` by at least 1 under the inductive
@@ -1250,13 +1418,9 @@ witness in a queue or local field, the dealer must have shared. -/
 private theorem dealerSent_true_of_inflight
     {s : AVSSState n t F} (hinv : avssTermInv s)
     (h : s.inflightDeliveries ≠ ∅ ∨ s.inflightEchoes ≠ ∅ ∨ s.inflightReady ≠ ∅) :
-    s.dealerSent = true := by
-  by_contra hbad
-  have hf : s.dealerSent = false := by
-    cases h_ds : s.dealerSent with
-    | true => exact absurd h_ds hbad
-    | false => rfl
-  have hi := hinv.1 hf
+    ¬ (∀ p, s.dealerSent p = false) := by
+  intro hbad
+  have hi := hinv.1 hbad
   rcases h with h₁ | h₂ | h₃
   · exact h₁ hi.2.1
   · exact h₂ hi.2.2.1
@@ -1264,17 +1428,13 @@ private theorem dealerSent_true_of_inflight
 
 omit [Fintype F] in
 /-- Helper: under `avssTermInv s`, if any honest party has a non-init
-local state, the dealer must have shared. -/
+local state, the dealer has shared with at least one party. -/
 private theorem dealerSent_true_of_local
     {s : AVSSState n t F} (hinv : avssTermInv s) {p : Fin n}
     (h : s.local_ p ≠ AVSSLocalState.init n t F) :
-    s.dealerSent = true := by
-  by_contra hbad
-  have hf : s.dealerSent = false := by
-    cases h_ds : s.dealerSent with
-    | true => exact absurd h_ds hbad
-    | false => rfl
-  exact h ((hinv.1 hf).1 p)
+    ¬ (∀ q, s.dealerSent q = false) := by
+  intro hbad
+  exact h ((hinv.1 hbad).1 p)
 
 omit [Fintype F] in
 /-- `partyOutput` step: avssU strictly decreases by 1.
@@ -1285,14 +1445,12 @@ theorem avssU_step_partyOutput_lt (s : AVSSState n t F) (p : Fin n)
     avssU (avssStep (AVSSAction.partyOutput p) s) + 1 ≤ avssU s := by
   classical
   obtain ⟨hphon, hdel_t, _, hout_none, _⟩ := hgate
-  have hds_pre : s.dealerSent = true := by
-    apply dealerSent_true_of_local hinv (p := p)
-    intro hp
-    rw [hp] at hdel_t
-    simp [AVSSLocalState.init] at hdel_t
   -- Frame.
   have hds : (avssStep (AVSSAction.partyOutput p) s).dealerSent =
       s.dealerSent := by simp [avssStep, setLocal]
+  have huds : unsentDealerSet (avssStep (AVSSAction.partyOutput p) s) =
+      unsentDealerSet s :=
+    by simp [unsentDealerSet, avssStep, setLocal]
   have hcorr : (avssStep (AVSSAction.partyOutput p) s).corrupted =
       s.corrupted := by simp [avssStep, setLocal]
   have hifd : (avssStep (AVSSAction.partyOutput p) s).inflightDeliveries =
@@ -1368,9 +1526,12 @@ theorem avssU_step_partyOutput_lt (s : AVSSState n t F) (p : Fin n)
     rw [hunfin_post, Finset.card_erase_of_mem hp_in_unfin]
   have hunfin_pos : 1 ≤ (unfinishedSet s).card :=
     Finset.card_pos.mpr ⟨p, hp_in_unfin⟩
+  show avssU (avssStep (AVSSAction.partyOutput p) s) + 1 ≤ avssU s
   unfold avssU
-  rw [hds, hifd, hife, hifr, huss, hnrs, hunfin_card, hds_pre]
-  simp only [if_true, zero_mul, Nat.zero_add]
+  rw [huds, hifd, hife, hifr, huss, hnrs, hunfin_card]
+  -- The `let K := lexBase n` binding survives in the goal; reduce both sides
+  -- to the difference `(unfinishedSet s).card - 1 + 1 ≤ (unfinishedSet s).card`.
+  show _ + ((unfinishedSet s).card - 1) + 1 ≤ _ + (unfinishedSet s).card
   omega
 
 omit [Fintype F] in
@@ -1382,13 +1543,12 @@ theorem avssU_step_partyReceiveReady_lt (s : AVSSState n t F) (p q : Fin n)
   classical
   -- Phase 8.5b-γ-followup-2: gate is now ⟨(q,p) ∈ inflightReady, ¬received⟩.
   obtain ⟨hqin, _⟩ := hgate
-  have hds_pre : s.dealerSent = true :=
-    dealerSent_true_of_inflight hinv
-      (Or.inr (Or.inr (fun heq => by rw [heq] at hqin
-                                     exact absurd hqin (Finset.notMem_empty _))))
   -- Frame.
   have hds : (avssStep (AVSSAction.partyReceiveReady p q) s).dealerSent =
       s.dealerSent := by simp [avssStep, setLocal]
+  have huds : unsentDealerSet (avssStep (AVSSAction.partyReceiveReady p q) s) =
+      unsentDealerSet s :=
+    by simp [unsentDealerSet, avssStep, setLocal]
   have hcorr : (avssStep (AVSSAction.partyReceiveReady p q) s).corrupted =
       s.corrupted := by simp [avssStep, setLocal]
   have hifd : (avssStep (AVSSAction.partyReceiveReady p q) s).inflightDeliveries =
@@ -1449,10 +1609,9 @@ theorem avssU_step_partyReceiveReady_lt (s : AVSSState n t F) (p q : Fin n)
     Finset.card_pos.mpr ⟨(q, p), hqin⟩
   have hK_pos : 1 ≤ lexBase n := lexBase_pos
   unfold avssU
-  rw [hds, hifd, hife, hifr, huss, hnrs, hunfin, hifr_card, hds_pre]
-  simp only [if_true, zero_mul, Nat.zero_add]
-  -- Goal: ifd*K^5 + uss*K^4 + ife*K^3 + nrs*K^2 + (ifr-1)*K + unfin + 1
-  --     ≤ ifd*K^5 + uss*K^4 + ife*K^3 + nrs*K^2 + ifr*K + unfin
+  rw [huds, hifd, hife, hifr, huss, hnrs, hunfin, hifr_card]
+  -- Goal: udS*K^6 + ifd*K^5 + uss*K^4 + ife*K^3 + nrs*K^2 + (ifr-1)*K + unfin + 1
+  --     ≤ udS*K^6 + ifd*K^5 + uss*K^4 + ife*K^3 + nrs*K^2 + ifr*K + unfin
   -- ⟺ (ifr - 1)*K + 1 ≤ ifr*K, given ifr ≥ 1.
   have h_split : (s.inflightReady.card - 1) * lexBase n + lexBase n =
       s.inflightReady.card * lexBase n := by
@@ -1481,7 +1640,7 @@ theorem avssU_step_partyReady_lt (s : AVSSState n t F) (p : Fin n)
     (hinv : avssTermInv s) (hph : p ∉ s.corrupted) :
     avssU (avssStep (AVSSAction.partyReady p) s) + 1 ≤ avssU s := by
   classical
-  obtain ⟨hdel_t, hrsf, _hech, hds_pre⟩ := hgate
+  obtain ⟨hdel_t, hrsf, _hech, _hds_pre⟩ := hgate
   have hphon : p ∉ s.corrupted := hph
   -- n ≥ 1 from p : Fin n.
   have hn_pos : 1 ≤ n := by
@@ -1494,6 +1653,9 @@ theorem avssU_step_partyReady_lt (s : AVSSState n t F) (p : Fin n)
   -- Frame.
   have hds : (avssStep (AVSSAction.partyReady p) s).dealerSent =
       s.dealerSent := by simp [avssStep, setLocal]
+  have huds : unsentDealerSet (avssStep (AVSSAction.partyReady p) s) =
+      unsentDealerSet s :=
+    by simp [unsentDealerSet, avssStep, setLocal]
   have hcorr : (avssStep (AVSSAction.partyReady p) s).corrupted =
       s.corrupted := by simp [avssStep, setLocal]
   have hifd : (avssStep (AVSSAction.partyReady p) s).inflightDeliveries =
@@ -1580,8 +1742,7 @@ theorem avssU_step_partyReady_lt (s : AVSSState n t F) (p : Fin n)
           Finset.card_union_le _ _
       _ ≤ s.inflightReady.card + n := by omega
   unfold avssU
-  rw [hds, hifd, hife, hifr, huss, hnrs_card, hunfin, hds_pre]
-  simp only [if_true, zero_mul, Nat.zero_add]
+  rw [huds, hifd, hife, hifr, huss, hnrs_card, hunfin]
   -- Set abbreviations.
   set K := lexBase n with hK_def
   set nrs := (notReadySentSet s).card
@@ -1611,7 +1772,7 @@ theorem avssU_step_partyAmplify_lt (s : AVSSState n t F) (p : Fin n)
     (hinv : avssTermInv s) (hph : p ∉ s.corrupted) :
     avssU (avssStep (AVSSAction.partyAmplify p) s) + 1 ≤ avssU s := by
   classical
-  obtain ⟨hrsf, hrr_t, hds_pre⟩ := hgate
+  obtain ⟨hrsf, hrr_t, _hds_pre⟩ := hgate
   have hphon : p ∉ s.corrupted := hph
   have hn_pos : 1 ≤ n := by
     rcases Nat.eq_zero_or_pos n with hn | hn
@@ -1622,6 +1783,9 @@ theorem avssU_step_partyAmplify_lt (s : AVSSState n t F) (p : Fin n)
   -- Frame (analogous to partyReady).
   have hds : (avssStep (AVSSAction.partyAmplify p) s).dealerSent =
       s.dealerSent := by simp [avssStep, setLocal]
+  have huds : unsentDealerSet (avssStep (AVSSAction.partyAmplify p) s) =
+      unsentDealerSet s :=
+    by simp [unsentDealerSet, avssStep, setLocal]
   have hcorr : (avssStep (AVSSAction.partyAmplify p) s).corrupted =
       s.corrupted := by simp [avssStep, setLocal]
   have hifd : (avssStep (AVSSAction.partyAmplify p) s).inflightDeliveries =
@@ -1706,8 +1870,7 @@ theorem avssU_step_partyAmplify_lt (s : AVSSState n t F) (p : Fin n)
           Finset.card_union_le _ _
       _ ≤ s.inflightReady.card + n := by omega
   unfold avssU
-  rw [hds, hifd, hife, hifr, huss, hnrs_card, hunfin, hds_pre]
-  simp only [if_true, zero_mul, Nat.zero_add]
+  rw [huds, hifd, hife, hifr, huss, hnrs_card, hunfin]
   set K := lexBase n with hK_def
   set nrs := (notReadySentSet s).card
   set ifr := s.inflightReady.card
@@ -1728,14 +1891,13 @@ theorem avssU_step_partyEchoReceive_lt (s : AVSSState n t F) (p q : Fin n)
   classical
   -- Phase 8.5b: gate is now 2-tuple ⟨(q,p) ∈ inflightEchoes, ¬received⟩.
   obtain ⟨hqp_in, _⟩ := hgate
-  have hds_pre : s.dealerSent = true :=
-    dealerSent_true_of_inflight hinv
-      (Or.inr (Or.inl (fun heq => by rw [heq] at hqp_in
-                                     exact absurd hqp_in (Finset.notMem_empty _))))
   have hK_pos : 1 ≤ lexBase n := lexBase_pos
   -- Frame.
   have hds : (avssStep (AVSSAction.partyEchoReceive p q) s).dealerSent =
       s.dealerSent := by simp [avssStep, setLocal]
+  have huds : unsentDealerSet (avssStep (AVSSAction.partyEchoReceive p q) s) =
+      unsentDealerSet s :=
+    by simp [unsentDealerSet, avssStep, setLocal]
   have hcorr : (avssStep (AVSSAction.partyEchoReceive p q) s).corrupted =
       s.corrupted := by simp [avssStep, setLocal]
   have hifd : (avssStep (AVSSAction.partyEchoReceive p q) s).inflightDeliveries =
@@ -1794,8 +1956,7 @@ theorem avssU_step_partyEchoReceive_lt (s : AVSSState n t F) (p q : Fin n)
   have hife_pos : 1 ≤ s.inflightEchoes.card :=
     Finset.card_pos.mpr ⟨(q, p), hqp_in⟩
   unfold avssU
-  rw [hds, hifd, hife, hifr, huss, hnrs, hunfin, hife_card, hds_pre]
-  simp only [if_true, zero_mul, Nat.zero_add]
+  rw [huds, hifd, hife, hifr, huss, hnrs, hunfin, hife_card]
   set K := lexBase n with hK_def
   -- Goal: ... + (ife - 1)*K^3 + ... + 1 ≤ ... + ife*K^3 + ...
   have h_split : (s.inflightEchoes.card - 1) * K^3 + K^3 =
@@ -1818,7 +1979,7 @@ theorem avssU_step_partyDeliver_lt (s : AVSSState n t F) (p : Fin n)
     (hinv : avssTermInv s) :
     avssU (avssStep (AVSSAction.partyDeliver p) s) + 1 ≤ avssU s := by
   classical
-  obtain ⟨hds_pre, hphon, hpin, hdel_f, _hdm⟩ := hgate
+  obtain ⟨_hds_pre, hphon, hpin, hdel_f, _hdm⟩ := hgate
   have hn_pos : 1 ≤ n := by
     rcases Nat.eq_zero_or_pos n with hn | hn
     · subst hn; exact p.elim0
@@ -1836,6 +1997,9 @@ theorem avssU_step_partyDeliver_lt (s : AVSSState n t F) (p : Fin n)
   -- Frame.
   have hds : (avssStep (AVSSAction.partyDeliver p) s).dealerSent =
       s.dealerSent := by simp [avssStep, setLocal]
+  have huds : unsentDealerSet (avssStep (AVSSAction.partyDeliver p) s) =
+      unsentDealerSet s :=
+    by simp [unsentDealerSet, avssStep, setLocal]
   have hcorr : (avssStep (AVSSAction.partyDeliver p) s).corrupted =
       s.corrupted := by simp [avssStep, setLocal]
   have hifd : (avssStep (AVSSAction.partyDeliver p) s).inflightDeliveries =
@@ -1927,8 +2091,7 @@ theorem avssU_step_partyDeliver_lt (s : AVSSState n t F) (p : Fin n)
   have hifd_pos : 1 ≤ s.inflightDeliveries.card :=
     Finset.card_pos.mpr ⟨p, hpin⟩
   unfold avssU
-  rw [hds, hifd, hife, hifr, huss_card, hnrs, hunfin, hifd_card, hds_pre]
-  simp only [if_true, zero_mul, Nat.zero_add]
+  rw [huds, hifd, hife, hifr, huss_card, hnrs, hunfin, hifd_card]
   set K := lexBase n with hK_def
   set ifd := s.inflightDeliveries.card
   set uss := (unsentEchoSet s).card
@@ -1962,6 +2125,9 @@ theorem avssU_step_partyCorruptDeliver_eq (s : AVSSState n t F) (p : Fin n)
   -- Frame.
   have hds : (avssStep (AVSSAction.partyCorruptDeliver p) s).dealerSent =
       s.dealerSent := by simp [avssStep, setLocal]
+  have huds : unsentDealerSet (avssStep (AVSSAction.partyCorruptDeliver p) s) =
+      unsentDealerSet s :=
+    by simp [unsentDealerSet, avssStep, setLocal]
   have hcorr : (avssStep (AVSSAction.partyCorruptDeliver p) s).corrupted =
       s.corrupted := by simp [avssStep, setLocal]
   have hifd : (avssStep (AVSSAction.partyCorruptDeliver p) s).inflightDeliveries =
@@ -2005,7 +2171,7 @@ theorem avssU_step_partyCorruptDeliver_eq (s : AVSSState n t F) (p : Fin n)
     simp only [honestSet, Finset.mem_filter, Finset.mem_univ, true_and]
     rw [hcorr]
   unfold avssU
-  rw [hds, hifd, hife, hifr, huss, hnrs, hunfin, hH]
+  rw [huds, hifd, hife, hifr, huss, hnrs, hunfin]
 
 omit [Fintype F] in
 /-- `partyEchoSend` step: avssU strictly decreases.  c3 (unsentEchoSet)
@@ -2022,7 +2188,7 @@ theorem avssU_step_partyEchoSend_lt (s : AVSSState n t F) (p : Fin n)
     (hinv : avssTermInv s) (hph : p ∉ s.corrupted) :
     avssU (avssStep (AVSSAction.partyEchoSend p) s) + 1 ≤ avssU s := by
   classical
-  obtain ⟨hdel_t, hesf, hds_pre⟩ := hgate
+  obtain ⟨hdel_t, hesf, _hds_pre⟩ := hgate
   have hphon : p ∉ s.corrupted := hph
   have hn_pos : 1 ≤ n := by
     rcases Nat.eq_zero_or_pos n with hn | hn
@@ -2034,6 +2200,9 @@ theorem avssU_step_partyEchoSend_lt (s : AVSSState n t F) (p : Fin n)
   -- Frame.
   have hds : (avssStep (AVSSAction.partyEchoSend p) s).dealerSent =
       s.dealerSent := by simp [avssStep, setLocal]
+  have huds : unsentDealerSet (avssStep (AVSSAction.partyEchoSend p) s) =
+      unsentDealerSet s :=
+    by simp [unsentDealerSet, avssStep, setLocal]
   have hcorr : (avssStep (AVSSAction.partyEchoSend p) s).corrupted =
       s.corrupted := by simp [avssStep, setLocal]
   have hifd : (avssStep (AVSSAction.partyEchoSend p) s).inflightDeliveries =
@@ -2122,8 +2291,7 @@ theorem avssU_step_partyEchoSend_lt (s : AVSSState n t F) (p : Fin n)
           gcongr; exact Finset.card_image_le
       _ = s.inflightEchoes.card + n := by simp
   unfold avssU
-  rw [hds, hifd, hife, hifr, huss_card, hnrs, hunfin, hds_pre]
-  simp only [if_true, zero_mul, Nat.zero_add]
+  rw [huds, hifd, hife, hifr, huss_card, hnrs, hunfin]
   set K := lexBase n with hK_def
   set uss := (unsentEchoSet s).card
   set ife_pre := s.inflightEchoes.card
@@ -2149,188 +2317,244 @@ theorem avssU_step_partyEchoSend_lt (s : AVSSState n t F) (p : Fin n)
   nlinarith [h_uss_split, h_K4_ge, hife_card_le, huss_pos, hK3_pos, hK_ge]
 
 omit [Fintype F] in
-/-- `dealerShare` step: avssU does not increase. The dealer step shifts
-the unshared-dealer mass from c1 (K⁶) to c2 (K⁵), strictly dropping
-unless `honestSet` is empty. -/
-theorem avssU_step_dealerShare_le (s : AVSSState n t F)
-    (hgate : actionGate (AVSSAction.dealerShare) s)
-    (hinv : avssTermInv s) :
-    avssU (avssStep (AVSSAction.dealerShare) s) ≤ avssU s := by
+/-- Phase 8.5d-α: `dealerShareTo p` step decreases avssU. For honest p,
+`unsentDealerSet` drops by 1 (c₁ component, K⁶), while `inflightDeliveries`
+grows by ≤1 (c₂, K⁵). Net change: −K⁶ + K⁵ ≤ 0 (since K ≥ 1). For corrupt
+p, `unsentDealerSet` and `inflightDeliveries` are unchanged (corrupt parties
+are filtered out of both). -/
+theorem avssU_step_dealerShareTo_le (s : AVSSState n t F) (p : Fin n)
+    (hgate : actionGate (AVSSAction.dealerShareTo p) s)
+    (_hinv : avssTermInv s) :
+    avssU (avssStep (AVSSAction.dealerShareTo p) s) ≤ avssU s := by
   classical
-  have hds_pre : s.dealerSent = false := hgate
-  have hi := hinv.1 hds_pre
-  obtain ⟨hloc_init, hifd_emp, hife_emp, hifr_emp⟩ := hi
+  have hgate' : s.dealerSent p = false := hgate
   have hK_pos : 1 ≤ lexBase n := lexBase_pos
-  -- Frame.
-  have hds_post : (avssStep (AVSSAction.dealerShare) s).dealerSent = true := by
-    simp [avssStep]
-  have hcorr : (avssStep (AVSSAction.dealerShare) s).corrupted =
-      s.corrupted := by simp [avssStep]
-  have hifd_post : (avssStep (AVSSAction.dealerShare) s).inflightDeliveries =
-      (Finset.univ : Finset (Fin n)).filter (fun p => p ∉ s.corrupted) := by
-    simp [avssStep]
-  have hife_post : (avssStep (AVSSAction.dealerShare) s).inflightEchoes =
-      s.inflightEchoes := by simp [avssStep]
-  have hifr_post : (avssStep (AVSSAction.dealerShare) s).inflightReady =
-      s.inflightReady := by simp [avssStep]
-  have hloc_post : ∀ x : Fin n,
-      (avssStep (AVSSAction.dealerShare) s).local_ x = s.local_ x := by
-    intro x; simp [avssStep]
-  -- Set equalities.
-  have hH : honestSet (avssStep (AVSSAction.dealerShare) s) = honestSet s := by
+  -- Frame: ife / ifr / local / corrupted / unsentEcho / notReadySent / unfin all unchanged.
+  have hcorr : (avssStep (.dealerShareTo p) s).corrupted = s.corrupted := rfl
+  have hife : (avssStep (.dealerShareTo p) s).inflightEchoes = s.inflightEchoes := rfl
+  have hifr : (avssStep (.dealerShareTo p) s).inflightReady = s.inflightReady := rfl
+  have hloc : ∀ q, (avssStep (.dealerShareTo p) s).local_ q = s.local_ q := fun _ => rfl
+  have huss : unsentEchoSet (avssStep (.dealerShareTo p) s) = unsentEchoSet s := by
     apply Finset.ext; intro x
-    simp only [honestSet, Finset.mem_filter, Finset.mem_univ, true_and]
-    rw [hcorr]
-  have huss : unsentEchoSet (avssStep (AVSSAction.dealerShare) s) =
-      unsentEchoSet s := by
+    simp only [unsentEchoSet, Finset.mem_filter, Finset.mem_univ, true_and, hcorr, hloc]
+  have hnrs : notReadySentSet (avssStep (.dealerShareTo p) s) = notReadySentSet s := by
     apply Finset.ext; intro x
-    simp only [unsentEchoSet, Finset.mem_filter, Finset.mem_univ, true_and]
-    rw [hcorr, hloc_post x]
-  have hnrs : notReadySentSet (avssStep (AVSSAction.dealerShare) s) =
-      notReadySentSet s := by
+    simp only [notReadySentSet, Finset.mem_filter, Finset.mem_univ, true_and, hcorr, hloc]
+  have hunfin : unfinishedSet (avssStep (.dealerShareTo p) s) = unfinishedSet s := by
     apply Finset.ext; intro x
-    simp only [notReadySentSet, Finset.mem_filter, Finset.mem_univ, true_and]
-    rw [hcorr, hloc_post x]
-  have hunfin : unfinishedSet (avssStep (AVSSAction.dealerShare) s) =
-      unfinishedSet s := by
-    apply Finset.ext; intro x
-    simp only [unfinishedSet, Finset.mem_filter, Finset.mem_univ, true_and]
-    rw [hcorr, hloc_post x]
-  -- Pre-state queue cards = 0; post inflightDeliveries = honestSet.
-  have hifd_pre_card : s.inflightDeliveries.card = 0 := by
-    rw [hifd_emp]; rfl
-  have hife_pre_card : s.inflightEchoes.card = 0 := by
-    rw [hife_emp]; rfl
-  have hifr_pre_card : s.inflightReady.card = 0 := by
-    rw [hifr_emp]; rfl
-  have hifd_post_eq_H :
-      (avssStep (AVSSAction.dealerShare) s).inflightDeliveries = honestSet s := by
-    rw [hifd_post]; rfl
-  have hifd_post_card :
-      ((avssStep (AVSSAction.dealerShare) s).inflightDeliveries).card =
-      (honestSet s).card := by rw [hifd_post_eq_H]
-  unfold avssU
-  rw [hds_post, hife_post, hifr_post, hH, huss, hnrs, hunfin,
-      hifd_post_card, hds_pre, hifd_pre_card, hife_pre_card, hifr_pre_card]
-  simp only [Bool.false_eq_true, if_false, if_true, zero_mul, Nat.zero_add,
-    Nat.add_zero]
-  set K := lexBase n with hK_def
-  set h := (honestSet s).card
-  -- Goal: h * K^5 + uss*K^4 + nrs*K^2 + unfin ≤ h * K^6 + uss*K^4 + nrs*K^2 + unfin
-  -- ⟺ h*K^5 ≤ h*K^6, follows from K^5 ≤ K^6.
-  have hK5_le : K^5 ≤ K^6 := Nat.pow_le_pow_right hK_pos (by omega)
-  have h_mul : h * K^5 ≤ h * K^6 := Nat.mul_le_mul_left h hK5_le
-  linarith [h_mul]
+    simp only [unfinishedSet, Finset.mem_filter, Finset.mem_univ, true_and, hcorr, hloc]
+  -- Key bounds on the two changing components.
+  have huds_le : (unsentDealerSet (avssStep (.dealerShareTo p) s)).card ≤
+      (unsentDealerSet s).card := by
+    apply Finset.card_le_card
+    intro q hq
+    simp only [unsentDealerSet, Finset.mem_filter, Finset.mem_univ, true_and] at hq ⊢
+    refine ⟨hq.1, ?_⟩
+    -- post.dealerSent q = false; show pre.dealerSent q = false.
+    have hq_ds : (Function.update s.dealerSent p true) q = false := hq.2
+    by_cases hqp : q = p
+    · subst hqp; simp [Function.update_self] at hq_ds
+    · rwa [Function.update_of_ne hqp] at hq_ds
+  have hifd_le : (avssStep (.dealerShareTo p) s).inflightDeliveries.card ≤
+      s.inflightDeliveries.card + 1 := by
+    show (if p ∉ s.corrupted then insert p s.inflightDeliveries
+          else s.inflightDeliveries).card ≤ s.inflightDeliveries.card + 1
+    split
+    · exact (Finset.card_insert_le _ _).trans (by omega)
+    · omega
+  -- Case-split on p's corruption status.
+  by_cases hpcorr : p ∉ s.corrupted
+  · -- honest p: unsentDealerSet drops by exactly 1, ifd grows by ≤ 1.
+    have hp_in_uds : p ∈ unsentDealerSet s := by
+      simp only [unsentDealerSet, Finset.mem_filter, Finset.mem_univ, true_and]
+      exact ⟨hpcorr, hgate'⟩
+    have huds_drop : (unsentDealerSet (avssStep (.dealerShareTo p) s)).card + 1 =
+        (unsentDealerSet s).card := by
+      have h_post_eq_set : unsentDealerSet (avssStep (.dealerShareTo p) s) =
+          (unsentDealerSet s).erase p := by
+        apply Finset.ext; intro q
+        simp only [unsentDealerSet, Finset.mem_filter, Finset.mem_univ, true_and,
+          Finset.mem_erase]
+        have h_post_ds : (avssStep (.dealerShareTo p) s).dealerSent =
+            Function.update s.dealerSent p true := rfl
+        rw [h_post_ds]
+        constructor
+        · rintro ⟨hq_corr, hq_ds⟩
+          by_cases hqp : q = p
+          · subst hqp; simp [Function.update_self] at hq_ds
+          · rw [Function.update_of_ne hqp] at hq_ds
+            exact ⟨hqp, hq_corr, hq_ds⟩
+        · rintro ⟨hqp, hq_corr, hq_ds⟩
+          refine ⟨hq_corr, ?_⟩
+          rw [Function.update_of_ne hqp]; exact hq_ds
+      rw [h_post_eq_set, Finset.card_erase_of_mem hp_in_uds]
+      have hpos : 1 ≤ (unsentDealerSet s).card :=
+        Finset.card_pos.mpr ⟨p, hp_in_uds⟩
+      omega
+    -- avssU change: -K^6 + Δ(ifd) * K^5. Need ≤ 0.
+    set K := lexBase n
+    show (unsentDealerSet (avssStep (.dealerShareTo p) s)).card * K ^ 6 +
+        (avssStep (.dealerShareTo p) s).inflightDeliveries.card * K ^ 5 +
+        (unsentEchoSet (avssStep (.dealerShareTo p) s)).card * K ^ 4 +
+        (avssStep (.dealerShareTo p) s).inflightEchoes.card * K ^ 3 +
+        (notReadySentSet (avssStep (.dealerShareTo p) s)).card * K ^ 2 +
+        (avssStep (.dealerShareTo p) s).inflightReady.card * K +
+        (unfinishedSet (avssStep (.dealerShareTo p) s)).card ≤
+      (unsentDealerSet s).card * K ^ 6 +
+        s.inflightDeliveries.card * K ^ 5 +
+        (unsentEchoSet s).card * K ^ 4 +
+        s.inflightEchoes.card * K ^ 3 +
+        (notReadySentSet s).card * K ^ 2 +
+        s.inflightReady.card * K +
+        (unfinishedSet s).card
+    rw [hife, hifr, huss, hnrs, hunfin]
+    have hK5_le : K ^ 5 ≤ K ^ 6 := Nat.pow_le_pow_right hK_pos (by omega)
+    -- Derive (post.uds.card + 1) * K^6 = (s.uds.card) * K^6.
+    have h_uds_K6 : ((unsentDealerSet (avssStep (.dealerShareTo p) s)).card + 1) * K ^ 6 =
+        (unsentDealerSet s).card * K ^ 6 := by rw [huds_drop]
+    have h_uds_K6' : (unsentDealerSet (avssStep (.dealerShareTo p) s)).card * K ^ 6 + K ^ 6 =
+        (unsentDealerSet s).card * K ^ 6 := by linarith [h_uds_K6]
+    -- post.ifd.card * K^5 ≤ (s.ifd.card + 1) * K^5 = s.ifd.card * K^5 + K^5.
+    have h_ifd_K5 : (avssStep (.dealerShareTo p) s).inflightDeliveries.card * K ^ 5 ≤
+        s.inflightDeliveries.card * K ^ 5 + K ^ 5 := by
+      have := Nat.mul_le_mul_right (K ^ 5) hifd_le
+      linarith [this]
+    -- Combine.
+    linarith [h_uds_K6', h_ifd_K5, hK5_le]
+  · -- p ∈ corr: unsentDealerSet unchanged, inflightDeliveries unchanged.
+    push_neg at hpcorr
+    have hifd_eq : (avssStep (.dealerShareTo p) s).inflightDeliveries =
+        s.inflightDeliveries := by
+      show (if p ∉ s.corrupted then insert p s.inflightDeliveries
+            else s.inflightDeliveries) = s.inflightDeliveries
+      rw [if_neg (by simp [hpcorr])]
+    have huds_eq : unsentDealerSet (avssStep (.dealerShareTo p) s) = unsentDealerSet s := by
+      apply Finset.ext; intro q
+      simp only [unsentDealerSet, Finset.mem_filter, Finset.mem_univ, true_and]
+      have h_post_ds : (avssStep (.dealerShareTo p) s).dealerSent =
+          Function.update s.dealerSent p true := rfl
+      rw [h_post_ds]
+      by_cases hqp : q = p
+      · subst hqp
+        simp only [Function.update_self, hcorr]
+        constructor
+        · rintro ⟨_, h⟩; cases h
+        · rintro ⟨h_pnotin, _⟩
+          exact (h_pnotin hpcorr).elim
+      · rw [Function.update_of_ne hqp, hcorr]
+    show avssU (avssStep (.dealerShareTo p) s) ≤ avssU s
+    unfold avssU
+    rw [huds_eq, hifd_eq, hife, hifr, huss, hnrs, hunfin]
 
 omit [Fintype F] in
-/-- `dealerShare` step: avssU strictly decreases under the additional
-hypothesis `(honestSet s).card ≥ 1` (i.e., at least one honest party
-exists). The K⁶ mass at c1 (`honestSet.card * K⁶` since dealerSent=false)
-shifts to K⁵ mass at c2 (`honestSet.card * K⁵` from new
-inflightDeliveries), giving a strict decrease of `honestSet.card *
-K⁵ * (K − 1) ≥ 1` whenever the honest set is non-empty.
-
-When `honestSet.card = 0` (all parties corrupt), `terminated s` holds
-vacuously already (every honest-party conjunct quantifies over an
-empty set), so the strict-decrease witness only needs to fire from
-non-terminated states — which is exactly the call context in
-`avssCert.U_dec_det`. -/
-theorem avssU_step_dealerShare_lt (s : AVSSState n t F)
-    (hgate : actionGate (AVSSAction.dealerShare) s)
-    (hinv : avssTermInv s)
-    (h_honest_pos : 1 ≤ (honestSet s).card) :
-    avssU (avssStep (AVSSAction.dealerShare) s) + 1 ≤ avssU s := by
+/-- Phase 8.5d-α: `dealerShareTo p` step strictly decreases avssU when p
+is honest. The unsentDealerSet drops by 1 (gate ensures `s.dealerSent p = false`)
+and this K⁶-weighted drop strictly dominates the K⁵-weighted growth in
+inflightDeliveries. For corrupt p, the variant is preserved (no strict
+decrease) — but corrupt-fired dealerShareTo isn't strictly fair under the
+refined model in 8.5d-γ. -/
+theorem avssU_step_dealerShareTo_lt (s : AVSSState n t F) (p : Fin n)
+    (hgate : actionGate (AVSSAction.dealerShareTo p) s)
+    (_hinv : avssTermInv s)
+    (hph : p ∉ s.corrupted) :
+    avssU (avssStep (AVSSAction.dealerShareTo p) s) + 1 ≤ avssU s := by
   classical
-  have hds_pre : s.dealerSent = false := hgate
-  have hi := hinv.1 hds_pre
-  obtain ⟨_hloc_init, hifd_emp, hife_emp, hifr_emp⟩ := hi
-  -- n ≥ 1 from honestSet ⊆ Fin n with cardinality ≥ 1.
+  have hgate' : s.dealerSent p = false := hgate
+  have hK_pos : 1 ≤ lexBase n := lexBase_pos
+  -- Need K ≥ 2 so K^6 - K^5 ≥ 1.
   have hn_pos : 1 ≤ n := by
     rcases Nat.eq_zero_or_pos n with hn | hn
-    · subst hn
-      have : (honestSet s).card = 0 := by
-        have : honestSet s = ∅ := by
-          apply Finset.eq_empty_of_forall_notMem
-          intro p _; exact p.elim0
-        rw [this]; rfl
-      omega
+    · subst hn; exact p.elim0
     · exact hn
   have hK_ge : 4 ≤ lexBase n := by unfold lexBase; nlinarith
   -- Frame.
-  have hds_post : (avssStep (AVSSAction.dealerShare) s).dealerSent = true := by
-    simp [avssStep]
-  have hcorr : (avssStep (AVSSAction.dealerShare) s).corrupted =
-      s.corrupted := by simp [avssStep]
-  have hifd_post : (avssStep (AVSSAction.dealerShare) s).inflightDeliveries =
-      (Finset.univ : Finset (Fin n)).filter (fun p => p ∉ s.corrupted) := by
-    simp [avssStep]
-  have hife_post : (avssStep (AVSSAction.dealerShare) s).inflightEchoes =
-      s.inflightEchoes := by simp [avssStep]
-  have hifr_post : (avssStep (AVSSAction.dealerShare) s).inflightReady =
-      s.inflightReady := by simp [avssStep]
-  have hloc_post : ∀ x : Fin n,
-      (avssStep (AVSSAction.dealerShare) s).local_ x = s.local_ x := by
-    intro x; simp [avssStep]
-  -- Set equalities.
-  have hH : honestSet (avssStep (AVSSAction.dealerShare) s) = honestSet s := by
+  have hcorr : (avssStep (.dealerShareTo p) s).corrupted = s.corrupted := rfl
+  have hife : (avssStep (.dealerShareTo p) s).inflightEchoes = s.inflightEchoes := rfl
+  have hifr : (avssStep (.dealerShareTo p) s).inflightReady = s.inflightReady := rfl
+  have hloc : ∀ q, (avssStep (.dealerShareTo p) s).local_ q = s.local_ q := fun _ => rfl
+  have huss : unsentEchoSet (avssStep (.dealerShareTo p) s) = unsentEchoSet s := by
     apply Finset.ext; intro x
-    simp only [honestSet, Finset.mem_filter, Finset.mem_univ, true_and]
-    rw [hcorr]
-  have huss : unsentEchoSet (avssStep (AVSSAction.dealerShare) s) =
-      unsentEchoSet s := by
+    simp only [unsentEchoSet, Finset.mem_filter, Finset.mem_univ, true_and, hcorr, hloc]
+  have hnrs : notReadySentSet (avssStep (.dealerShareTo p) s) = notReadySentSet s := by
     apply Finset.ext; intro x
-    simp only [unsentEchoSet, Finset.mem_filter, Finset.mem_univ, true_and]
-    rw [hcorr, hloc_post x]
-  have hnrs : notReadySentSet (avssStep (AVSSAction.dealerShare) s) =
-      notReadySentSet s := by
+    simp only [notReadySentSet, Finset.mem_filter, Finset.mem_univ, true_and, hcorr, hloc]
+  have hunfin : unfinishedSet (avssStep (.dealerShareTo p) s) = unfinishedSet s := by
     apply Finset.ext; intro x
-    simp only [notReadySentSet, Finset.mem_filter, Finset.mem_univ, true_and]
-    rw [hcorr, hloc_post x]
-  have hunfin : unfinishedSet (avssStep (AVSSAction.dealerShare) s) =
-      unfinishedSet s := by
-    apply Finset.ext; intro x
-    simp only [unfinishedSet, Finset.mem_filter, Finset.mem_univ, true_and]
-    rw [hcorr, hloc_post x]
-  -- Pre-state queue cards = 0; post inflightDeliveries = honestSet.
-  have hifd_pre_card : s.inflightDeliveries.card = 0 := by
-    rw [hifd_emp]; rfl
-  have hife_pre_card : s.inflightEchoes.card = 0 := by
-    rw [hife_emp]; rfl
-  have hifr_pre_card : s.inflightReady.card = 0 := by
-    rw [hifr_emp]; rfl
-  have hifd_post_eq_H :
-      (avssStep (AVSSAction.dealerShare) s).inflightDeliveries = honestSet s := by
-    rw [hifd_post]; rfl
-  have hifd_post_card :
-      ((avssStep (AVSSAction.dealerShare) s).inflightDeliveries).card =
-      (honestSet s).card := by rw [hifd_post_eq_H]
-  unfold avssU
-  rw [hds_post, hife_post, hifr_post, hH, huss, hnrs, hunfin,
-      hifd_post_card, hds_pre, hifd_pre_card, hife_pre_card, hifr_pre_card]
-  simp only [Bool.false_eq_true, if_false, if_true, zero_mul, Nat.zero_add,
-    Nat.add_zero]
-  set K := lexBase n with hK_def
-  set h := (honestSet s).card
-  -- Goal: h * K^5 + uss*K^4 + nrs*K^2 + unfin + 1 ≤ h * K^6 + uss*K^4 + nrs*K^2 + unfin
-  -- ⟺ h*K^5 + 1 ≤ h*K^6.
-  -- Chain: h*K^6 = K * (h * K^5) ≥ 4 * (h * K^5) = (h*K^5) + 3*(h*K^5) ≥ h*K^5 + 3.
-  have hK5_pos : 1 ≤ K^5 := Nat.one_le_pow _ _ (by omega)
-  have h_hK5_pos : 1 ≤ h * K^5 := by nlinarith [hK5_pos, h_honest_pos]
-  have hK6_eq : h * K^6 = K * (h * K^5) := by ring
-  have h_4hK5 : 4 * (h * K^5) ≤ K * (h * K^5) := Nat.mul_le_mul_right _ hK_ge
-  have h_4hK5' : 4 * (h * K^5) = h * K^5 + 3 * (h * K^5) := by ring
-  have h_3hK5 : 3 ≤ 3 * (h * K^5) := by nlinarith [h_hK5_pos]
-  -- So h*K^5 + 3 ≤ 4 * (h * K^5) ≤ K * (h * K^5) = h * K^6.
-  have h_diff : h * K^5 + 1 ≤ h * K^6 := by
-    rw [hK6_eq]
-    linarith [h_4hK5, h_4hK5', h_3hK5]
-  linarith [h_diff]
+    simp only [unfinishedSet, Finset.mem_filter, Finset.mem_univ, true_and, hcorr, hloc]
+  -- Honest p: ifd grows by exactly 1 (when p ∉ pre.ifd) or 0 (when p ∈ pre.ifd).
+  -- We don't need the exact count — just the ≤ + 1 bound.
+  have hifd_le : (avssStep (.dealerShareTo p) s).inflightDeliveries.card ≤
+      s.inflightDeliveries.card + 1 := by
+    show (if p ∉ s.corrupted then insert p s.inflightDeliveries
+          else s.inflightDeliveries).card ≤ s.inflightDeliveries.card + 1
+    rw [if_pos hph]
+    exact (Finset.card_insert_le _ _).trans (by omega)
+  -- unsentDealerSet drops by exactly 1 (honest p was in unsentDealerSet).
+  have hp_in_uds : p ∈ unsentDealerSet s := by
+    simp only [unsentDealerSet, Finset.mem_filter, Finset.mem_univ, true_and]
+    exact ⟨hph, hgate'⟩
+  have huds_drop : (unsentDealerSet (avssStep (.dealerShareTo p) s)).card + 1 =
+      (unsentDealerSet s).card := by
+    have h_post_eq_set : unsentDealerSet (avssStep (.dealerShareTo p) s) =
+        (unsentDealerSet s).erase p := by
+      apply Finset.ext; intro q
+      simp only [unsentDealerSet, Finset.mem_filter, Finset.mem_univ, true_and,
+        Finset.mem_erase]
+      have h_post_ds : (avssStep (.dealerShareTo p) s).dealerSent =
+          Function.update s.dealerSent p true := rfl
+      rw [h_post_ds]
+      constructor
+      · rintro ⟨hq_corr, hq_ds⟩
+        by_cases hqp : q = p
+        · subst hqp; simp [Function.update_self] at hq_ds
+        · rw [Function.update_of_ne hqp] at hq_ds
+          exact ⟨hqp, hq_corr, hq_ds⟩
+      · rintro ⟨hqp, hq_corr, hq_ds⟩
+        refine ⟨hq_corr, ?_⟩
+        rw [Function.update_of_ne hqp]; exact hq_ds
+    rw [h_post_eq_set, Finset.card_erase_of_mem hp_in_uds]
+    have hpos : 1 ≤ (unsentDealerSet s).card :=
+      Finset.card_pos.mpr ⟨p, hp_in_uds⟩
+    omega
+  -- avssU change: -K^6 + Δ(ifd) * K^5 + 1. Need ≤ 0, i.e., Δ(ifd) * K^5 + 1 ≤ K^6.
+  -- Δ(ifd) ≤ 1, so Δ(ifd) * K^5 ≤ K^5. Need K^5 + 1 ≤ K^6 = K * K^5. Since K ≥ 4, K^6 ≥ 4 * K^5 ≥ K^5 + 1.
+  set K := lexBase n
+  show (unsentDealerSet (avssStep (.dealerShareTo p) s)).card * K ^ 6 +
+      (avssStep (.dealerShareTo p) s).inflightDeliveries.card * K ^ 5 +
+      (unsentEchoSet (avssStep (.dealerShareTo p) s)).card * K ^ 4 +
+      (avssStep (.dealerShareTo p) s).inflightEchoes.card * K ^ 3 +
+      (notReadySentSet (avssStep (.dealerShareTo p) s)).card * K ^ 2 +
+      (avssStep (.dealerShareTo p) s).inflightReady.card * K +
+      (unfinishedSet (avssStep (.dealerShareTo p) s)).card + 1 ≤
+    (unsentDealerSet s).card * K ^ 6 +
+      s.inflightDeliveries.card * K ^ 5 +
+      (unsentEchoSet s).card * K ^ 4 +
+      s.inflightEchoes.card * K ^ 3 +
+      (notReadySentSet s).card * K ^ 2 +
+      s.inflightReady.card * K +
+      (unfinishedSet s).card
+  rw [hife, hifr, huss, hnrs, hunfin]
+  have hK5_pos : 1 ≤ K ^ 5 := Nat.one_le_pow _ _ hK_pos
+  have hK6_eq : K ^ 6 = K * K ^ 5 := by ring
+  have h_K6_ge : K ^ 6 ≥ 4 * K ^ 5 := by rw [hK6_eq]; nlinarith [hK5_pos, hK_ge]
+  have h_K6_ge_K5_1 : K ^ 6 ≥ K ^ 5 + 1 := by nlinarith [hK5_pos, h_K6_ge]
+  -- Derive (post.uds.card + 1) * K^6 = s.uds.card * K^6.
+  have h_uds_K6 : ((unsentDealerSet (avssStep (.dealerShareTo p) s)).card + 1) * K ^ 6 =
+      (unsentDealerSet s).card * K ^ 6 := by rw [huds_drop]
+  have h_uds_K6' : (unsentDealerSet (avssStep (.dealerShareTo p) s)).card * K ^ 6 + K ^ 6 =
+      (unsentDealerSet s).card * K ^ 6 := by linarith [h_uds_K6]
+  have h_ifd_K5 : (avssStep (.dealerShareTo p) s).inflightDeliveries.card * K ^ 5 ≤
+      s.inflightDeliveries.card * K ^ 5 + K ^ 5 := by
+    have := Nat.mul_le_mul_right (K ^ 5) hifd_le
+    linarith [this]
+  linarith [h_uds_K6', h_ifd_K5, h_K6_ge_K5_1]
 
 /-- "Action is honest-fired at state `s`" — its owning party (if any) is
 not in `s.corrupted`. Phase 8.5b: the case-split predicate for V_super /
 U_dec_det disjunct dispatch. -/
 def isHonestFire (a : AVSSAction n F) (s : AVSSState n t F) : Prop :=
-  ∀ p, ((a = .partyEchoSend p ∨ a = .partyReady p ∨ a = .partyAmplify p)
+  ∀ p, ((a = .partyEchoSend p ∨ a = .partyReady p ∨ a = .partyAmplify p
+         ∨ a = .dealerShareTo p)
         → p ∉ s.corrupted)
 
 omit [Fintype F] in
@@ -2344,7 +2568,7 @@ theorem avssU_step_le (a : AVSSAction n F) (s : AVSSState n t F)
     (h : actionGate a s) (hinv : avssTermInv s) (hph : isHonestFire a s) :
     avssU (avssStep a s) ≤ avssU s := by
   cases a with
-  | dealerShare => exact avssU_step_dealerShare_le s h hinv
+  | dealerShareTo p => exact avssU_step_dealerShareTo_le s p h hinv
   | partyDeliver p =>
       have := avssU_step_partyDeliver_lt s p h hinv; omega
   | partyCorruptDeliver p =>
@@ -2358,7 +2582,7 @@ theorem avssU_step_le (a : AVSSAction n F) (s : AVSSState n t F)
       have hp : p ∉ s.corrupted := hph p (Or.inr (Or.inl rfl))
       have := avssU_step_partyReady_lt s p h hinv hp; omega
   | partyAmplify p =>
-      have hp : p ∉ s.corrupted := hph p (Or.inr (Or.inr rfl))
+      have hp : p ∉ s.corrupted := hph p (Or.inr (Or.inr (Or.inl rfl)))
       have := avssU_step_partyAmplify_lt s p h hinv hp; omega
   | partyReceiveReady p q =>
       have := avssU_step_partyReceiveReady_lt s p q h hinv; omega
@@ -2376,28 +2600,24 @@ Used in `avssU_step_lt_of_fair` to dispatch the `dealerShare` case
 to `avssU_step_dealerShare_lt`, which requires the honest-set bound. -/
 theorem honestSet_pos_of_not_terminated_pre_share
     (s : AVSSState n t F) (hinv : avssTermInv s)
-    (hds : s.dealerSent = false) (hnt : ¬ terminated s) :
+    (hds : ∀ p, s.dealerSent p = false) (hnt : ¬ terminated s) :
     1 ≤ (honestSet s).card := by
   classical
   by_contra hbad
   push_neg at hbad
   have hzero : (honestSet s).card = 0 := by omega
   have hempty : honestSet s = ∅ := Finset.card_eq_zero.mp hzero
-  -- From `honestSet s = ∅`, every party is corrupted, so all honest-party
-  -- conjuncts of `terminated` are vacuous. Combined with queues empty
-  -- (from inv clause 1 since dealerSent = false), `terminated s` holds.
+  -- Phase 8.5d-α: clause 1's antecedent is now `∀ p, dealerSent p = false`.
   have hi := hinv.1 hds
   obtain ⟨_, hifd_emp, hife_emp, hifr_emp⟩ := hi
   apply hnt
   refine ⟨?_, ?_, hifd_emp, hife_emp, hifr_emp⟩
-  · -- ∀ p, p ∉ corrupted → output.isSome — vacuous since no honest p.
-    intro p hp
+  · intro p hp
     have hp_in : p ∈ honestSet s := by
       simp only [honestSet, Finset.mem_filter, Finset.mem_univ, true_and]; exact hp
     rw [hempty] at hp_in
     exact absurd hp_in (Finset.notMem_empty _)
-  · -- ∀ p, p ∉ corrupted → echoSent = true — also vacuous.
-    intro p hp
+  · intro p hp
     have hp_in : p ∈ honestSet s := by
       simp only [honestSet, Finset.mem_filter, Finset.mem_univ, true_and]; exact hp
     rw [hempty] at hp_in
@@ -2414,10 +2634,9 @@ theorem avssU_step_lt_of_fair (a : AVSSAction n F) (s : AVSSState n t F)
     (hinv : avssTermInv s) (hnt : ¬ terminated s) (hph : isHonestFire a s) :
     avssU (avssStep a s) < avssU s := by
   cases a with
-  | dealerShare =>
-      have hds : s.dealerSent = false := h
-      have h_honest_pos := honestSet_pos_of_not_terminated_pre_share s hinv hds hnt
-      have := avssU_step_dealerShare_lt s h hinv h_honest_pos; omega
+  | dealerShareTo p =>
+      have hp : p ∉ s.corrupted := hph p (Or.inr (Or.inr (Or.inr rfl)))
+      have := avssU_step_dealerShareTo_lt s p h hinv hp; omega
   | partyDeliver p =>
       have := avssU_step_partyDeliver_lt s p h hinv; omega
   | partyCorruptDeliver p => simp [avssFairActions] at hfair
@@ -2430,7 +2649,7 @@ theorem avssU_step_lt_of_fair (a : AVSSAction n F) (s : AVSSState n t F)
       have hp : p ∉ s.corrupted := hph p (Or.inr (Or.inl rfl))
       have := avssU_step_partyReady_lt s p h hinv hp; omega
   | partyAmplify p =>
-      have hp : p ∉ s.corrupted := hph p (Or.inr (Or.inr rfl))
+      have hp : p ∉ s.corrupted := hph p (Or.inr (Or.inr (Or.inl rfl)))
       have := avssU_step_partyAmplify_lt s p h hinv hp; omega
   | partyReceiveReady p q =>
       have := avssU_step_partyReceiveReady_lt s p q h hinv; omega
@@ -2474,31 +2693,25 @@ theorem avssU_eq_zero_of_terminated (s : AVSSState n t F)
     apply Finset.filter_eq_empty_iff.mpr
     intro p _ ⟨hp_h, hp_nrs⟩
     have hsome : (s.local_ p).output.isSome = true := ht_out p hp_h
-    have := (hinv.2.2 p hp_h hsome).1
+    have := (hinv.2.2.1 p hp_h hsome).1
     rw [this] at hp_nrs
     cases hp_nrs
-  -- c1 = 0: dealerSent = true OR honestSet = ∅.
-  have hdom : (if s.dealerSent then (0 : ℕ) else (honestSet s).card) = 0 := by
-    by_cases hds : s.dealerSent = true
-    · simp [hds]
-    · have hds' : s.dealerSent = false := by
-        cases h_ds : s.dealerSent with
-        | true => exact absurd h_ds hds
-        | false => rfl
-      have hi := hinv.1 hds'
-      have hne : honestSet s = ∅ := by
-        apply Finset.eq_empty_of_forall_notMem
-        intro p hp
-        have hp_h : p ∉ s.corrupted := by
-          simp [honestSet, Finset.mem_filter] at hp; exact hp
-        have hp_init := hi.1 p
-        have hp_out_init : (s.local_ p).output = none := by
-          rw [hp_init]; rfl
-        have hp_some : (s.local_ p).output.isSome = true := ht_out p hp_h
-        rw [hp_out_init] at hp_some
-        simp at hp_some
-      simp [hds', hne]
-  rw [hdom, hifd_card, huss, hife_card, hnrs, hifr_card, hunfin]
+  -- c1 = 0: unsentDealerSet is empty at terminated states.
+  -- Honest p: output.isSome (terminated) ⟹ readySent ∧ delivered (clause 3)
+  --        ⟹ delivered. But clause 4 says: dealerSent p = false → ¬delivered.
+  -- Contrapositive: delivered ⟹ dealerSent p = true.
+  have hudS : (unsentDealerSet s).card = 0 := by
+    apply Finset.card_eq_zero.mpr
+    apply Finset.eq_empty_of_forall_notMem
+    intro p hp
+    simp only [unsentDealerSet, Finset.mem_filter, Finset.mem_univ, true_and] at hp
+    obtain ⟨hp_h, hp_ds⟩ := hp
+    have hp_some : (s.local_ p).output.isSome = true := ht_out p hp_h
+    have hp_del : (s.local_ p).delivered = true := (hinv.2.2.1 p hp_h hp_some).2
+    have hp_del_f : (s.local_ p).delivered = false := hinv.2.2.2 p hp_h hp_ds
+    rw [hp_del] at hp_del_f
+    cases hp_del_f
+  rw [hudS, hifd_card, huss, hife_card, hnrs, hifr_card, hunfin]
   ring
 
 omit [Fintype F] in
@@ -2585,7 +2798,7 @@ theorem avssCert_V_pos (s : AVSSState n t F)
       | false => rfl
     -- Need delivered = true to put p in unsentEchoSet.
     have hsome := h_out p hp
-    have hdel : (s.local_ p).delivered = true := (hinv.2.2 p hp hsome).2
+    have hdel : (s.local_ p).delivered = true := (hinv.2.2.1 p hp hsome).2
     have hp_in : p ∈ unsentEchoSet s := by
       simp only [unsentEchoSet, Finset.mem_filter, Finset.mem_univ, true_and]
       exact ⟨hp, hdel, hes⟩
@@ -2648,8 +2861,11 @@ theorem avssStep_preserves_corruptLocalInv
   rw [hcorr] at hp
   obtain ⟨h_out, h_rp_none⟩ := hinv p hp
   cases a with
-  | dealerShare =>
-      simp [avssStep] at *
+  | dealerShareTo r =>
+      -- dealerShareTo r writes only `dealerMessages r`, `dealerSent r`, and
+      -- the in-flight queues. Local state is unchanged for every party,
+      -- so the corruptLocalInv predicate (which inspects only `local_`) carries.
+      simp only [avssStep]
       exact ⟨h_out, h_rp_none⟩
   | partyDeliver q =>
       -- gate: q ∉ corrupted, so q ≠ p (since p ∈ corrupted).
@@ -2741,7 +2957,8 @@ def avssQueueWfInv (s : AVSSState n t F) : Prop :=
     p ∉ s.corrupted ∧ (s.local_ p).delivered = false ∧ (s.dealerMessages p).isSome) ∧
   (∀ q p, (q, p) ∈ s.inflightEchoes → q ∉ (s.local_ p).echoesReceived) ∧
   (∀ q p, (q, p) ∈ s.inflightReady → q ∉ (s.local_ p).readyReceived) ∧
-  (s.dealerSent = true → ∀ p, (s.dealerMessages p).isSome)
+  -- Phase 8.5d-α: per-party form. `dealerSent p = true → dealerMessages p is populated`.
+  (∀ p, s.dealerSent p = true → (s.dealerMessages p).isSome)
 
 omit [Field F] [Fintype F] in
 theorem initPred_avssQueueWfInv (sec : F) (corr : Finset (Fin n))
@@ -2752,7 +2969,7 @@ theorem initPred_avssQueueWfInv (sec : F) (corr : Finset (Fin n))
   · intro p hp; rw [hidl] at hp; exact absurd hp (Finset.notMem_empty _)
   · intro q p hqp; rw [hie] at hqp; exact absurd hqp (Finset.notMem_empty _)
   · intro q p hq; rw [hird] at hq; exact absurd hq (Finset.notMem_empty _)
-  · intro hbad; rw [hds] at hbad; cases hbad
+  · intro p hbad; rw [hds] at hbad; cases hbad
 
 /-! ### Phase 8.5b-γ: freshness invariant.
 
@@ -2821,34 +3038,96 @@ theorem avssStep_preserves_avssQueueWfInv
   obtain ⟨hF6, hF7, _hF8, _hF9⟩ := hfresh
   obtain ⟨hQ1, hQ2, hQ3, hQ5⟩ := hwf
   cases a with
-  | dealerShare =>
-    -- Gate: dealerSent = false. By avssTermInv 1, all queues empty + all init.
-    have hds : s.dealerSent = false := hgate
-    obtain ⟨hloc_init, _, hie_emp, hifr_emp⟩ := hterm.1 hds
+  | dealerShareTo p =>
+    -- Phase 8.5d-α: per-party emit. Local state is unchanged; ife and ifr unchanged.
+    -- For Q1: post.ifd = pre.ifd (if p ∈ corr) or pre.ifd ∪ {p} (if p ∉ corr).
+    --   * For r ∈ pre.ifd: same as pre (Q1 carries through hQ1, since dealerMessages
+    --     was only changed at slot p, and r ≠ p possibly — but Q1 needs
+    --     `dealerMessages r .isSome`; pre's hQ1 gives this, and post's update
+    --     doesn't lose it since `Function.update_some` preserves `isSome`).
+    --   * For new entry r = p (only when p ∉ corr): need p ∉ corr (✓ by case),
+    --     pre.local_ p.delivered = false, and post.dealerMessages p .isSome.
+    --     The first follows from `avssTermInv` clause 4 and the gate's
+    --     `dealerSent p = false`. The latter is true since post writes `some _`.
+    -- Q5: post.dealerSent r = true for r given. If r = p, post.dealerMessages p =
+    -- some payload by `Function.update_self`, .isSome trivially. If r ≠ p,
+    -- post.dealerSent r = pre.dealerSent r, so use hQ5 r.
+    have hgate' : s.dealerSent p = false := hgate
     refine ⟨?_, ?_, ?_, ?_⟩
-    · -- Q1 post: ifd post = univ.filter(¬corr); each is honest, delivered=false, dm populated.
-      intro p hp
-      simp only [avssStep, Finset.mem_filter, Finset.mem_univ, true_and] at hp
-      refine ⟨hp, ?_, ?_⟩
-      · -- p.delivered post = pre.local_ p.delivered = init.delivered = false.
-        show (s.local_ p).delivered = false
-        rw [hloc_init p]; rfl
-      · -- post.dealerMessages p = some _.
-        show ((avssStep .dealerShare s).dealerMessages p).isSome
-        simp [avssStep]
-    · -- Q2 post: ife unchanged from pre (dealerShare doesn't touch ife). Pre has ife=∅.
-      intro q p hqp
-      have : (avssStep AVSSAction.dealerShare s).inflightEchoes = s.inflightEchoes := rfl
-      rw [this] at hqp; rw [hie_emp] at hqp
-      exact absurd hqp (Finset.notMem_empty _)
-    · -- Q3 post: ifr unchanged. Pre ifr=∅.
-      intro q p hq
-      have : (avssStep AVSSAction.dealerShare s).inflightReady = s.inflightReady := rfl
-      rw [this] at hq; rw [hifr_emp] at hq
-      exact absurd hq (Finset.notMem_empty _)
-    · intro _ p
-      show ((avssStep .dealerShare s).dealerMessages p).isSome
-      simp [avssStep]
+    · -- Q1: ifd post.
+      intro r hr
+      by_cases hpcorr : p ∉ s.corrupted
+      · -- post.ifd = insert p s.ifd. Cases on r = p vs r ≠ p.
+        have h_post_ifd : (avssStep (.dealerShareTo p) s).inflightDeliveries =
+            insert p s.inflightDeliveries := by simp [avssStep, hpcorr]
+        rw [h_post_ifd] at hr
+        rcases Finset.mem_insert.mp hr with rfl | hr_old
+        · -- r = p: honest p, delivered = false, dealerMessages p .isSome (post).
+          refine ⟨hpcorr, ?_, ?_⟩
+          · -- pre.local_ p.delivered = false from clause 4.
+            show ((avssStep (.dealerShareTo r) s).local_ r).delivered = false
+            simp [avssStep]
+            exact hterm.2.2.2 r hpcorr hgate'
+          · show ((avssStep (.dealerShareTo r) s).dealerMessages r).isSome
+            simp [avssStep, Function.update_self]
+        · -- r ∈ pre.ifd: Q1 + frame.
+          obtain ⟨hr_h, hr_ndel, hr_dm⟩ := hQ1 r hr_old
+          refine ⟨hr_h, ?_, ?_⟩
+          · show ((avssStep (.dealerShareTo p) s).local_ r).delivered = false
+            simp [avssStep]
+            exact hr_ndel
+          · -- post.dealerMessages r = update p (some _) r. If r = p (only honest p case),
+            -- this is some _; if r ≠ p, this is pre.dealerMessages r = some _ from hr_dm.
+            show ((avssStep (.dealerShareTo p) s).dealerMessages r).isSome
+            simp only [avssStep]
+            by_cases hrp : r = p
+            · subst hrp; simp [Function.update_self]
+            · simp [Function.update_of_ne hrp]; exact hr_dm
+      · -- p ∈ corr: post.ifd = pre.ifd; r ∈ pre.ifd.
+        have h_post_ifd : (avssStep (.dealerShareTo p) s).inflightDeliveries =
+            s.inflightDeliveries := by
+          simp only [avssStep]
+          split <;> simp_all
+        rw [h_post_ifd] at hr
+        obtain ⟨hr_h, hr_ndel, hr_dm⟩ := hQ1 r hr
+        refine ⟨hr_h, ?_, ?_⟩
+        · show ((avssStep (.dealerShareTo p) s).local_ r).delivered = false
+          simp [avssStep]; exact hr_ndel
+        · show ((avssStep (.dealerShareTo p) s).dealerMessages r).isSome
+          simp only [avssStep]
+          by_cases hrp : r = p
+          · subst hrp; simp [Function.update_self]
+          · simp [Function.update_of_ne hrp]; exact hr_dm
+    · -- Q2: ife unchanged.
+      intro q r hqr
+      have h_post_ife : (avssStep (.dealerShareTo p) s).inflightEchoes = s.inflightEchoes :=
+        rfl
+      rw [h_post_ife] at hqr
+      have h_post_loc : ((avssStep (.dealerShareTo p) s).local_ r).echoesReceived =
+          (s.local_ r).echoesReceived := rfl
+      rw [h_post_loc]
+      exact hQ2 q r hqr
+    · -- Q3: ifr unchanged.
+      intro q r hqr
+      have h_post_ifr : (avssStep (.dealerShareTo p) s).inflightReady = s.inflightReady := rfl
+      rw [h_post_ifr] at hqr
+      have h_post_loc : ((avssStep (.dealerShareTo p) s).local_ r).readyReceived =
+          (s.local_ r).readyReceived := rfl
+      rw [h_post_loc]
+      exact hQ3 q r hqr
+    · -- Q5: ∀ r, post.dealerSent r = true → post.dealerMessages r .isSome.
+      intro r hr_post
+      show ((avssStep (.dealerShareTo p) s).dealerMessages r).isSome
+      simp only [avssStep]
+      by_cases hrp : r = p
+      · subst hrp; simp [Function.update_self]
+      · simp [Function.update_of_ne hrp]
+        -- hr_post : post.dealerSent r = true. With r ≠ p: post = pre. So pre.dealerSent r = true.
+        have h_pre_t : s.dealerSent r = true := by
+          have h_post_eq : (avssStep (.dealerShareTo p) s).dealerSent r =
+              s.dealerSent r := by simp [avssStep, Function.update_of_ne hrp]
+          rw [h_post_eq] at hr_post; exact hr_post
+        exact hQ5 r h_pre_t
   | partyDeliver q =>
     obtain ⟨_hds, hq_h, hq_in, _hq_ndel, _hq_dm⟩ := hgate
     refine ⟨?_, ?_, ?_, ?_⟩
@@ -2889,14 +3168,14 @@ theorem avssStep_preserves_avssQueueWfInv
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
       rw [hrR_eq]; exact hQ3 qq p hq
     · -- Q5: dealerSent unchanged, dealerMessages unchanged.
-      intro hds_post p
-      have hds_pre : s.dealerSent = true := by
-        have : (avssStep (.partyDeliver q) s).dealerSent = s.dealerSent := by
+      intro p hds_post
+      have hds_pre : s.dealerSent p = true := by
+        have h : (avssStep (.partyDeliver q) s).dealerSent = s.dealerSent := by
           simp [avssStep, setLocal]
-        rw [this] at hds_post; exact hds_post
+        rw [h] at hds_post; exact hds_post
       show ((avssStep _ s).dealerMessages p).isSome
       simp [avssStep, setLocal]
-      exact hQ5 hds_pre p
+      exact hQ5 p hds_pre
   | partyCorruptDeliver q =>
     obtain ⟨_hds, hq_corr, _hq_in, _hq_ndel, _hq_dm⟩ := hgate
     refine ⟨?_, ?_, ?_, ?_⟩
@@ -2932,14 +3211,14 @@ theorem avssStep_preserves_avssQueueWfInv
         · subst hpq; simp [avssStep, setLocal_local_self]
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
       rw [hrR_eq]; exact hQ3 qq p hq
-    · intro hds_post p
-      have hds_pre : s.dealerSent = true := by
+    · intro p hds_post
+      have hds_pre : s.dealerSent p = true := by
         have : (avssStep (.partyCorruptDeliver q) s).dealerSent = s.dealerSent := by
           simp [avssStep, setLocal]
         rw [this] at hds_post; exact hds_post
       show ((avssStep _ s).dealerMessages p).isSome
       simp [avssStep, setLocal]
-      exact hQ5 hds_pre p
+      exact hQ5 p hds_pre
   | partyEchoSend q =>
     obtain ⟨_hq_del, hq_es, _hq_ds⟩ := hgate
     refine ⟨?_, ?_, ?_, ?_⟩
@@ -2995,14 +3274,14 @@ theorem avssStep_preserves_avssQueueWfInv
         · subst hpq; simp [avssStep, setLocal_local_self]
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
       rw [hrR_eq]; exact hQ3 qq p hq
-    · intro hds_post p
-      have hds_pre : s.dealerSent = true := by
+    · intro p hds_post
+      have hds_pre : s.dealerSent p = true := by
         have : (avssStep (.partyEchoSend q) s).dealerSent = s.dealerSent := by
           simp [avssStep, setLocal]
         rw [this] at hds_post; exact hds_post
       show ((avssStep _ s).dealerMessages p).isSome
       simp [avssStep, setLocal]
-      exact hQ5 hds_pre p
+      exact hQ5 p hds_pre
   | partyEchoReceive q r =>
     obtain ⟨hqr_in, _hqnotin⟩ := hgate
     refine ⟨?_, ?_, ?_, ?_⟩
@@ -3047,14 +3326,14 @@ theorem avssStep_preserves_avssQueueWfInv
         · subst hpq; simp [avssStep, setLocal_local_self]
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
       rw [hrR_eq]; exact hQ3 qq p hq
-    · intro hds_post p
-      have hds_pre : s.dealerSent = true := by
+    · intro p hds_post
+      have hds_pre : s.dealerSent p = true := by
         have : (avssStep (.partyEchoReceive q r) s).dealerSent = s.dealerSent := by
           simp [avssStep, setLocal]
         rw [this] at hds_post; exact hds_post
       show ((avssStep _ s).dealerMessages p).isSome
       simp [avssStep, setLocal]
-      exact hQ5 hds_pre p
+      exact hQ5 p hds_pre
   | partyReady q =>
     obtain ⟨_hq_del, hq_rs, _hq_eR, _hq_ds⟩ := hgate
     refine ⟨?_, ?_, ?_, ?_⟩
@@ -3100,14 +3379,14 @@ theorem avssStep_preserves_avssQueueWfInv
         obtain ⟨_, _, heq⟩ := hin_img
         rw [Prod.mk.injEq] at heq
         rw [← heq.1]; exact hF7 q hq_rs p
-    · intro hds_post p
-      have hds_pre : s.dealerSent = true := by
+    · intro p hds_post
+      have hds_pre : s.dealerSent p = true := by
         have : (avssStep (.partyReady q) s).dealerSent = s.dealerSent := by
           simp [avssStep, setLocal]
         rw [this] at hds_post; exact hds_post
       show ((avssStep _ s).dealerMessages p).isSome
       simp [avssStep, setLocal]
-      exact hQ5 hds_pre p
+      exact hQ5 p hds_pre
   | partyAmplify q =>
     obtain ⟨hq_rs, _hq_rR, _hq_ds⟩ := hgate
     refine ⟨?_, ?_, ?_, ?_⟩
@@ -3151,14 +3430,14 @@ theorem avssStep_preserves_avssQueueWfInv
         obtain ⟨_, _, heq⟩ := hin_img
         rw [Prod.mk.injEq] at heq
         rw [← heq.1]; exact hF7 q hq_rs p
-    · intro hds_post p
-      have hds_pre : s.dealerSent = true := by
+    · intro p hds_post
+      have hds_pre : s.dealerSent p = true := by
         have : (avssStep (.partyAmplify q) s).dealerSent = s.dealerSent := by
           simp [avssStep, setLocal]
         rw [this] at hds_post; exact hds_post
       show ((avssStep _ s).dealerMessages p).isSome
       simp [avssStep, setLocal]
-      exact hQ5 hds_pre p
+      exact hQ5 p hds_pre
   | partyReceiveReady q r =>
     obtain ⟨hr_in, _hrnotin⟩ := hgate
     refine ⟨?_, ?_, ?_, ?_⟩
@@ -3199,14 +3478,14 @@ theorem avssStep_preserves_avssQueueWfInv
         intro heq; exact hne_r (by rw [heq])
       · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
         exact hQ3 qq p hin_pre
-    · intro hds_post p
-      have hds_pre : s.dealerSent = true := by
+    · intro p hds_post
+      have hds_pre : s.dealerSent p = true := by
         have : (avssStep (.partyReceiveReady q r) s).dealerSent = s.dealerSent := by
           simp [avssStep, setLocal]
         rw [this] at hds_post; exact hds_post
       show ((avssStep _ s).dealerMessages p).isSome
       simp [avssStep, setLocal]
-      exact hQ5 hds_pre p
+      exact hQ5 p hds_pre
   | partyOutput q =>
     obtain ⟨hq_h, _, _, _, _⟩ := hgate
     refine ⟨?_, ?_, ?_, ?_⟩
@@ -3243,14 +3522,14 @@ theorem avssStep_preserves_avssQueueWfInv
         · subst hpq; simp [avssStep, setLocal_local_self]
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
       rw [hrR_eq]; exact hQ3 qq p hq
-    · intro hds_post p
-      have hds_pre : s.dealerSent = true := by
+    · intro p hds_post
+      have hds_pre : s.dealerSent p = true := by
         have : (avssStep (.partyOutput q) s).dealerSent = s.dealerSent := by
           simp [avssStep, setLocal]
         rw [this] at hds_post; exact hds_post
       show ((avssStep _ s).dealerMessages p).isSome
       simp [avssStep, setLocal]
-      exact hQ5 hds_pre p
+      exact hQ5 p hds_pre
 
 omit [Fintype F] in
 /-- `avssFreshInv` is preserved by every gated action.  The four
@@ -3265,34 +3544,34 @@ theorem avssStep_preserves_avssFreshInv
   classical
   obtain ⟨hF6, hF7, hF8, hF9⟩ := hfresh
   cases a with
-  | dealerShare =>
-    -- Locals + ife + ifr unchanged.
+  | dealerShareTo r =>
+    -- Phase 8.5d-α: dealerShareTo r leaves all party local states + ife + ifr unchanged.
     refine ⟨?_, ?_, ?_, ?_⟩
     · intro q hq p
       have hes_pre : (s.local_ q).echoSent = false := by
-        have : ((avssStep AVSSAction.dealerShare s).local_ q) = s.local_ q := rfl
+        have : ((avssStep (AVSSAction.dealerShareTo r) s).local_ q) = s.local_ q := rfl
         rw [this] at hq; exact hq
-      have heR_eq : ((avssStep AVSSAction.dealerShare s).local_ p).echoesReceived =
+      have heR_eq : ((avssStep (AVSSAction.dealerShareTo r) s).local_ p).echoesReceived =
           (s.local_ p).echoesReceived := rfl
       rw [heR_eq]; exact hF6 q hes_pre p
     · intro q hq p
       have hrs_pre : (s.local_ q).readySent = false := by
-        have : ((avssStep AVSSAction.dealerShare s).local_ q) = s.local_ q := rfl
+        have : ((avssStep (AVSSAction.dealerShareTo r) s).local_ q) = s.local_ q := rfl
         rw [this] at hq; exact hq
-      have hrR_eq : ((avssStep AVSSAction.dealerShare s).local_ p).readyReceived =
+      have hrR_eq : ((avssStep (AVSSAction.dealerShareTo r) s).local_ p).readyReceived =
           (s.local_ p).readyReceived := rfl
       rw [hrR_eq]; exact hF7 q hrs_pre p
     · intro q hq p hqp
       have hes_pre : (s.local_ q).echoSent = false := by
-        have : ((avssStep AVSSAction.dealerShare s).local_ q) = s.local_ q := rfl
+        have : ((avssStep (AVSSAction.dealerShareTo r) s).local_ q) = s.local_ q := rfl
         rw [this] at hq; exact hq
-      have hife_eq : (avssStep AVSSAction.dealerShare s).inflightEchoes = s.inflightEchoes := rfl
+      have hife_eq : (avssStep (AVSSAction.dealerShareTo r) s).inflightEchoes = s.inflightEchoes := rfl
       rw [hife_eq] at hqp; exact hF8 q hes_pre p hqp
     · intro q hq p
       have hrs_pre : (s.local_ q).readySent = false := by
-        have : ((avssStep AVSSAction.dealerShare s).local_ q) = s.local_ q := rfl
+        have : ((avssStep (AVSSAction.dealerShareTo r) s).local_ q) = s.local_ q := rfl
         rw [this] at hq; exact hq
-      have hifr_eq : (avssStep AVSSAction.dealerShare s).inflightReady = s.inflightReady := rfl
+      have hifr_eq : (avssStep (AVSSAction.dealerShareTo r) s).inflightReady = s.inflightReady := rfl
       intro hqq; rw [hifr_eq] at hqq; exact hF9 q hrs_pre p hqq
   | partyDeliver q =>
     -- Updates q.delivered + q.rowPoly + ifd. echoSent/echoesReceived/
@@ -3770,7 +4049,8 @@ Phase 8.5b-γ-followup-2: F4 now uses per-pair `inflightReady` tokens
 leaving `(q, p) ∈ inflightReady` intact for `p ≠ r`). -/
 def avssFlowInv (s : AVSSState n t F) : Prop :=
   s.corrupted.card ≤ t ∧
-  (s.dealerSent = true → ∀ p, p ∉ s.corrupted →
+  -- Phase 8.5d-α: F2 is now per-party (`dealerSent p = true → ...`).
+  (∀ p, p ∉ s.corrupted → s.dealerSent p = true →
     (s.local_ p).delivered = true ∨ p ∈ s.inflightDeliveries) ∧
   (∀ q, q ∉ s.corrupted → (s.local_ q).echoSent = true →
     ∀ p, p ∉ s.corrupted →
@@ -3786,7 +4066,7 @@ theorem initPred_avssFlowInv (sec : F) (corr : Finset (Fin n))
   obtain ⟨hloc, _, hcorr_eq, _, _, _, _, hds, _⟩ := h
   refine ⟨?_, ?_, ?_, ?_⟩
   · rw [hcorr_eq]; exact h_corr
-  · intro hbad; rw [hds] at hbad; cases hbad
+  · intro p _ hbad; rw [hds] at hbad; cases hbad
   · intro q _ hes p _
     rw [hloc q] at hes; simp [AVSSLocalState.init] at hes
   · intro q _ hrs p _
@@ -3807,174 +4087,167 @@ theorem avssStep_preserves_avssFlowInv
     cases a <;> simp [avssStep, setLocal]
   have hF1_post : (avssStep a s).corrupted.card ≤ t := by rw [hcorr_post]; exact hF1
   refine ⟨hF1_post, ?_, ?_, ?_⟩
-  · -- F2: delivery completeness.
+  · -- F2: delivery completeness (Phase 8.5d-α: per-party form).
+    intro p hp hds_post
+    have hcorr_p : p ∉ s.corrupted := by rw [hcorr_post] at hp; exact hp
     cases a with
-    | dealerShare =>
-      intro _hds_post p hp
-      -- post.ifd = univ.filter (· ∉ corrupted) ⊇ honest parties.
-      have hcorr_p : p ∉ s.corrupted := by rw [hcorr_post] at hp; exact hp
-      right
-      have : (avssStep AVSSAction.dealerShare s).inflightDeliveries =
-          (Finset.univ : Finset (Fin n)).filter (fun p => p ∉ s.corrupted) := rfl
-      rw [this]
-      exact Finset.mem_filter.mpr ⟨Finset.mem_univ _, hcorr_p⟩
+    | dealerShareTo r =>
+      -- post.dealerSent p: if p = r, true; if p ≠ r, = pre.
+      -- post.local_ p = s.local_ p; post.ifd = if r ∉ corr then insert r s.ifd else s.ifd.
+      by_cases hpr : p = r
+      · -- p = r honest; r ∈ post.ifd.
+        subst hpr
+        right
+        show p ∈ (avssStep (.dealerShareTo p) s).inflightDeliveries
+        simp only [avssStep, if_pos hcorr_p]
+        exact Finset.mem_insert_self _ _
+      · -- p ≠ r: pre.dealerSent p = post.dealerSent p = true (from hds_post).
+        have h_post_eq : (avssStep (.dealerShareTo r) s).dealerSent p = s.dealerSent p := by
+          simp [avssStep, Function.update_of_ne hpr]
+        rw [h_post_eq] at hds_post
+        rcases hF2 p hcorr_p hds_post with h | h
+        · left
+          show ((avssStep (.dealerShareTo r) s).local_ p).delivered = true
+          simp [avssStep]; exact h
+        · right
+          show p ∈ (avssStep (.dealerShareTo r) s).inflightDeliveries
+          simp only [avssStep]
+          split
+          · exact Finset.mem_insert_of_mem h
+          · exact h
     | partyDeliver q =>
-      intro hds_post p hp
-      have hds_pre : s.dealerSent = true := by
-        have : (avssStep (.partyDeliver q) s).dealerSent = s.dealerSent := by
-          simp [avssStep, setLocal]
-        rw [this] at hds_post; exact hds_post
-      have hcorr_p : p ∉ s.corrupted := by rw [hcorr_post] at hp; exact hp
-      have hpre := hF2 hds_pre p hcorr_p
-      by_cases hpq : p = q
-      · subst hpq
-        left; show ((avssStep (.partyDeliver p) s).local_ p).delivered = true
-        simp [avssStep, setLocal_local_self]
-      · have hloc_eq : ((avssStep (.partyDeliver q) s).local_ p).delivered =
-            (s.local_ p).delivered := by simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
-        have hifd_post : (avssStep (.partyDeliver q) s).inflightDeliveries =
-            s.inflightDeliveries.erase q := rfl
-        rcases hpre with h | h
-        · left; rw [hloc_eq]; exact h
-        · right; rw [hifd_post]; exact Finset.mem_erase.mpr ⟨hpq, h⟩
+      have h_post_eq : (avssStep (.partyDeliver q) s).dealerSent = s.dealerSent := by
+        simp [avssStep, setLocal]
+      rw [h_post_eq] at hds_post
+      rcases hF2 p hcorr_p hds_post with h | h
+      · -- pre delivered = true. post.local_ p.delivered: if p = q, true; else pre = true.
+        left
+        by_cases hpq : p = q
+        · subst hpq; simp [avssStep, setLocal_local_self]
+        · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]; exact h
+      · -- p ∈ pre.ifd. post.ifd = pre.ifd.erase q.
+        by_cases hpq : p = q
+        · -- p = q just delivered; left case.
+          subst hpq
+          left
+          show ((avssStep (.partyDeliver p) s).local_ p).delivered = true
+          simp [avssStep, setLocal_local_self]
+        · right
+          show p ∈ (avssStep (.partyDeliver q) s).inflightDeliveries
+          have : (avssStep (.partyDeliver q) s).inflightDeliveries =
+              s.inflightDeliveries.erase q := rfl
+          rw [this]
+          exact Finset.mem_erase.mpr ⟨hpq, h⟩
     | partyCorruptDeliver q =>
-      intro hds_post p hp
-      have hds_pre : s.dealerSent = true := by
-        have : (avssStep (.partyCorruptDeliver q) s).dealerSent = s.dealerSent := by
-          simp [avssStep, setLocal]
-        rw [this] at hds_post; exact hds_post
-      have hcorr_p : p ∉ s.corrupted := by rw [hcorr_post] at hp; exact hp
-      have hpre := hF2 hds_pre p hcorr_p
-      -- gate: q ∈ corrupted, so p ≠ q.
-      have hpq : p ≠ q := fun h => hcorr_p (h ▸ hgate.2.1)
-      have hloc_eq : ((avssStep (.partyCorruptDeliver q) s).local_ p).delivered =
+      -- p ∉ corr, q ∈ corr (gate). p ≠ q.
+      have hpq : p ≠ q := fun heq => hcorr_p (heq ▸ hgate.2.1)
+      have h_post_eq : (avssStep (.partyCorruptDeliver q) s).dealerSent = s.dealerSent := by
+        simp [avssStep, setLocal]
+      rw [h_post_eq] at hds_post
+      have h_post_ifd : (avssStep (.partyCorruptDeliver q) s).inflightDeliveries =
+          s.inflightDeliveries := by simp [avssStep, setLocal]
+      have h_post_loc : ((avssStep (.partyCorruptDeliver q) s).local_ p).delivered =
           (s.local_ p).delivered := by simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
-      have hifd_post : (avssStep (.partyCorruptDeliver q) s).inflightDeliveries =
-          s.inflightDeliveries := by simp [avssStep, setLocal]
-      rcases hpre with h | h
-      · left; rw [hloc_eq]; exact h
-      · right; rw [hifd_post]; exact h
+      rcases hF2 p hcorr_p hds_post with h | h
+      · left; rw [h_post_loc]; exact h
+      · right; rw [h_post_ifd]; exact h
     | partyEchoSend q =>
-      intro hds_post p hp
-      have hds_pre : s.dealerSent = true := by
-        have : (avssStep (.partyEchoSend q) s).dealerSent = s.dealerSent := by
-          simp [avssStep, setLocal]
-        rw [this] at hds_post; exact hds_post
-      have hcorr_p : p ∉ s.corrupted := by rw [hcorr_post] at hp; exact hp
-      have hpre := hF2 hds_pre p hcorr_p
-      have hloc_eq : ((avssStep (.partyEchoSend q) s).local_ p).delivered =
+      have h_post_eq : (avssStep (.partyEchoSend q) s).dealerSent = s.dealerSent := by
+        simp [avssStep, setLocal]
+      rw [h_post_eq] at hds_post
+      have h_post_ifd : (avssStep (.partyEchoSend q) s).inflightDeliveries =
+          s.inflightDeliveries := by simp [avssStep, setLocal]
+      have h_post_loc : ((avssStep (.partyEchoSend q) s).local_ p).delivered =
           (s.local_ p).delivered := by
         by_cases hpq : p = q
         · subst hpq; simp [avssStep, setLocal_local_self]
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
-      have hifd_post : (avssStep (.partyEchoSend q) s).inflightDeliveries =
-          s.inflightDeliveries := by simp [avssStep, setLocal]
-      rcases hpre with h | h
-      · left; rw [hloc_eq]; exact h
-      · right; rw [hifd_post]; exact h
+      rcases hF2 p hcorr_p hds_post with h | h
+      · left; rw [h_post_loc]; exact h
+      · right; rw [h_post_ifd]; exact h
     | partyEchoReceive p' q =>
-      intro hds_post p hp
-      have hds_pre : s.dealerSent = true := by
-        have : (avssStep (.partyEchoReceive p' q) s).dealerSent = s.dealerSent := by
-          simp [avssStep, setLocal]
-        rw [this] at hds_post; exact hds_post
-      have hcorr_p : p ∉ s.corrupted := by rw [hcorr_post] at hp; exact hp
-      have hpre := hF2 hds_pre p hcorr_p
-      have hloc_eq : ((avssStep (.partyEchoReceive p' q) s).local_ p).delivered =
+      have h_post_eq : (avssStep (.partyEchoReceive p' q) s).dealerSent = s.dealerSent := by
+        simp [avssStep, setLocal]
+      rw [h_post_eq] at hds_post
+      have h_post_ifd : (avssStep (.partyEchoReceive p' q) s).inflightDeliveries =
+          s.inflightDeliveries := by simp [avssStep, setLocal]
+      have h_post_loc : ((avssStep (.partyEchoReceive p' q) s).local_ p).delivered =
           (s.local_ p).delivered := by
         by_cases hpp' : p = p'
         · subst hpp'; simp [avssStep, setLocal_local_self]
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpp']
-      have hifd_post : (avssStep (.partyEchoReceive p' q) s).inflightDeliveries =
-          s.inflightDeliveries := by simp [avssStep, setLocal]
-      rcases hpre with h | h
-      · left; rw [hloc_eq]; exact h
-      · right; rw [hifd_post]; exact h
+      rcases hF2 p hcorr_p hds_post with h | h
+      · left; rw [h_post_loc]; exact h
+      · right; rw [h_post_ifd]; exact h
     | partyReady q =>
-      intro hds_post p hp
-      have hds_pre : s.dealerSent = true := by
-        have : (avssStep (.partyReady q) s).dealerSent = s.dealerSent := by
-          simp [avssStep, setLocal]
-        rw [this] at hds_post; exact hds_post
-      have hcorr_p : p ∉ s.corrupted := by rw [hcorr_post] at hp; exact hp
-      have hpre := hF2 hds_pre p hcorr_p
-      have hloc_eq : ((avssStep (.partyReady q) s).local_ p).delivered =
+      have h_post_eq : (avssStep (.partyReady q) s).dealerSent = s.dealerSent := by
+        simp [avssStep, setLocal]
+      rw [h_post_eq] at hds_post
+      have h_post_ifd : (avssStep (.partyReady q) s).inflightDeliveries =
+          s.inflightDeliveries := by simp [avssStep, setLocal]
+      have h_post_loc : ((avssStep (.partyReady q) s).local_ p).delivered =
           (s.local_ p).delivered := by
         by_cases hpq : p = q
         · subst hpq; simp [avssStep, setLocal_local_self]
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
-      have hifd_post : (avssStep (.partyReady q) s).inflightDeliveries =
-          s.inflightDeliveries := by simp [avssStep, setLocal]
-      rcases hpre with h | h
-      · left; rw [hloc_eq]; exact h
-      · right; rw [hifd_post]; exact h
+      rcases hF2 p hcorr_p hds_post with h | h
+      · left; rw [h_post_loc]; exact h
+      · right; rw [h_post_ifd]; exact h
     | partyAmplify q =>
-      intro hds_post p hp
-      have hds_pre : s.dealerSent = true := by
-        have : (avssStep (.partyAmplify q) s).dealerSent = s.dealerSent := by
-          simp [avssStep, setLocal]
-        rw [this] at hds_post; exact hds_post
-      have hcorr_p : p ∉ s.corrupted := by rw [hcorr_post] at hp; exact hp
-      have hpre := hF2 hds_pre p hcorr_p
-      have hloc_eq : ((avssStep (.partyAmplify q) s).local_ p).delivered =
+      have h_post_eq : (avssStep (.partyAmplify q) s).dealerSent = s.dealerSent := by
+        simp [avssStep, setLocal]
+      rw [h_post_eq] at hds_post
+      have h_post_ifd : (avssStep (.partyAmplify q) s).inflightDeliveries =
+          s.inflightDeliveries := by simp [avssStep, setLocal]
+      have h_post_loc : ((avssStep (.partyAmplify q) s).local_ p).delivered =
           (s.local_ p).delivered := by
         by_cases hpq : p = q
         · subst hpq; simp [avssStep, setLocal_local_self]
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
-      have hifd_post : (avssStep (.partyAmplify q) s).inflightDeliveries =
-          s.inflightDeliveries := by simp [avssStep, setLocal]
-      rcases hpre with h | h
-      · left; rw [hloc_eq]; exact h
-      · right; rw [hifd_post]; exact h
+      rcases hF2 p hcorr_p hds_post with h | h
+      · left; rw [h_post_loc]; exact h
+      · right; rw [h_post_ifd]; exact h
     | partyReceiveReady p' q =>
-      intro hds_post p hp
-      have hds_pre : s.dealerSent = true := by
-        have : (avssStep (.partyReceiveReady p' q) s).dealerSent = s.dealerSent := by
-          simp [avssStep, setLocal]
-        rw [this] at hds_post; exact hds_post
-      have hcorr_p : p ∉ s.corrupted := by rw [hcorr_post] at hp; exact hp
-      have hpre := hF2 hds_pre p hcorr_p
-      have hloc_eq : ((avssStep (.partyReceiveReady p' q) s).local_ p).delivered =
+      have h_post_eq : (avssStep (.partyReceiveReady p' q) s).dealerSent = s.dealerSent := by
+        simp [avssStep, setLocal]
+      rw [h_post_eq] at hds_post
+      have h_post_ifd : (avssStep (.partyReceiveReady p' q) s).inflightDeliveries =
+          s.inflightDeliveries := by simp [avssStep, setLocal]
+      have h_post_loc : ((avssStep (.partyReceiveReady p' q) s).local_ p).delivered =
           (s.local_ p).delivered := by
         by_cases hpp' : p = p'
         · subst hpp'; simp [avssStep, setLocal_local_self]
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpp']
-      have hifd_post : (avssStep (.partyReceiveReady p' q) s).inflightDeliveries =
-          s.inflightDeliveries := by simp [avssStep, setLocal]
-      rcases hpre with h | h
-      · left; rw [hloc_eq]; exact h
-      · right; rw [hifd_post]; exact h
+      rcases hF2 p hcorr_p hds_post with h | h
+      · left; rw [h_post_loc]; exact h
+      · right; rw [h_post_ifd]; exact h
     | partyOutput q =>
-      intro hds_post p hp
-      have hds_pre : s.dealerSent = true := by
-        have : (avssStep (.partyOutput q) s).dealerSent = s.dealerSent := by
-          simp [avssStep, setLocal]
-        rw [this] at hds_post; exact hds_post
-      have hcorr_p : p ∉ s.corrupted := by rw [hcorr_post] at hp; exact hp
-      have hpre := hF2 hds_pre p hcorr_p
-      have hloc_eq : ((avssStep (.partyOutput q) s).local_ p).delivered =
+      have h_post_eq : (avssStep (.partyOutput q) s).dealerSent = s.dealerSent := by
+        simp [avssStep, setLocal]
+      rw [h_post_eq] at hds_post
+      have h_post_ifd : (avssStep (.partyOutput q) s).inflightDeliveries =
+          s.inflightDeliveries := by simp [avssStep]
+      have h_post_loc : ((avssStep (.partyOutput q) s).local_ p).delivered =
           (s.local_ p).delivered := by
         by_cases hpq : p = q
         · subst hpq; simp [avssStep, setLocal_local_self]
         · simp [avssStep, setLocal_local_ne _ _ _ _ hpq]
-      have hifd_post : (avssStep (.partyOutput q) s).inflightDeliveries =
-          s.inflightDeliveries := by simp [avssStep]
-      rcases hpre with h | h
-      · left; rw [hloc_eq]; exact h
-      · right; rw [hifd_post]; exact h
+      rcases hF2 p hcorr_p hds_post with h | h
+      · left; rw [h_post_loc]; exact h
+      · right; rw [h_post_ifd]; exact h
   · -- F3: echo flow.
     cases a with
-    | dealerShare =>
+    | dealerShareTo r =>
       intro q hq hes p hp
       have hcorr_q : q ∉ s.corrupted := by rw [hcorr_post] at hq; exact hq
       have hcorr_p : p ∉ s.corrupted := by rw [hcorr_post] at hp; exact hp
       have hes_pre : (s.local_ q).echoSent = true := by
-        have : ((avssStep AVSSAction.dealerShare s).local_ q).echoSent =
+        have : ((avssStep (AVSSAction.dealerShareTo r) s).local_ q).echoSent =
             (s.local_ q).echoSent := rfl
         rw [this] at hes; exact hes
-      have heR_eq : ((avssStep AVSSAction.dealerShare s).local_ p).echoesReceived =
+      have heR_eq : ((avssStep (AVSSAction.dealerShareTo r) s).local_ p).echoesReceived =
           (s.local_ p).echoesReceived := rfl
-      have hife_eq : (avssStep AVSSAction.dealerShare s).inflightEchoes =
+      have hife_eq : (avssStep (AVSSAction.dealerShareTo r) s).inflightEchoes =
           s.inflightEchoes := rfl
       rcases hF3 q hcorr_q hes_pre p hcorr_p with h | h
       · left; rw [heR_eq]; exact h
@@ -4170,17 +4443,17 @@ theorem avssStep_preserves_avssFlowInv
   · -- F4: ready flow.  All cases except `partyReceiveReady` are mechanical;
     -- `partyReceiveReady` is sorry'd (see docstring).
     cases a with
-    | dealerShare =>
+    | dealerShareTo r =>
       intro q hq hrs p hp
       have hcorr_q : q ∉ s.corrupted := by rw [hcorr_post] at hq; exact hq
       have hcorr_p : p ∉ s.corrupted := by rw [hcorr_post] at hp; exact hp
       have hrs_pre : (s.local_ q).readySent = true := by
-        have : ((avssStep AVSSAction.dealerShare s).local_ q).readySent =
+        have : ((avssStep (AVSSAction.dealerShareTo r) s).local_ q).readySent =
             (s.local_ q).readySent := rfl
         rw [this] at hrs; exact hrs
-      have hrR_eq : ((avssStep AVSSAction.dealerShare s).local_ p).readyReceived =
+      have hrR_eq : ((avssStep (AVSSAction.dealerShareTo r) s).local_ p).readyReceived =
           (s.local_ p).readyReceived := rfl
-      have hifr_eq : (avssStep AVSSAction.dealerShare s).inflightReady = s.inflightReady := rfl
+      have hifr_eq : (avssStep (AVSSAction.dealerShareTo r) s).inflightReady = s.inflightReady := rfl
       rcases hF4 q hcorr_q hrs_pre p hcorr_p with h | h
       · left; rw [hrR_eq]; exact h
       · right; rw [hifr_eq]; exact h
@@ -4396,7 +4669,8 @@ components so callers (the `dealerSent = true` case below) can
 dispatch on which protocol step is enabled. -/
 private theorem avssU_pos_disjunct (s : AVSSState n t F)
     (hpos : 0 < avssU s) :
-    (s.dealerSent = false ∧ 0 < (honestSet s).card) ∨
+    -- Phase 8.5d-α: c₁ is now `(unsentDealerSet s).card`.
+    (unsentDealerSet s).card > 0 ∨
     s.inflightDeliveries.card > 0 ∨
     (unsentEchoSet s).card > 0 ∨
     s.inflightEchoes.card > 0 ∨
@@ -4406,27 +4680,17 @@ private theorem avssU_pos_disjunct (s : AVSSState n t F)
   classical
   by_contra hbad
   push_neg at hbad
-  obtain ⟨h1, h2, h3, h4, h5, h6, h7⟩ := hbad
-  -- All non-dealer counts are ≤ 0, hence = 0.
+  obtain ⟨h0, h2, h3, h4, h5, h6, h7⟩ := hbad
+  have huds : (unsentDealerSet s).card = 0 := by omega
   have hifd : s.inflightDeliveries.card = 0 := by omega
   have huss : (unsentEchoSet s).card = 0 := by omega
   have hife : s.inflightEchoes.card = 0 := by omega
   have hnrs : (notReadySentSet s).card = 0 := by omega
   have hifr : s.inflightReady.card = 0 := by omega
   have hufs : (unfinishedSet s).card = 0 := by omega
-  have hdom : (if s.dealerSent then (0 : ℕ) else (honestSet s).card) = 0 := by
-    by_cases hds : s.dealerSent
-    · simp [hds]
-    · have hds' : s.dealerSent = false := by
-        cases h_ds : s.dealerSent with
-        | true => exact absurd h_ds hds
-        | false => rfl
-      have hh := h1 hds'
-      have hcard : (honestSet s).card = 0 := by omega
-      simp [hds', hcard]
   have hzero : avssU s = 0 := by
     unfold avssU
-    rw [hdom, hifd, huss, hife, hnrs, hifr, hufs]
+    rw [huds, hifd, huss, hife, hnrs, hifr, hufs]
     ring
   exact (Nat.lt_irrefl 0) (hzero ▸ hpos)
 
@@ -4465,290 +4729,176 @@ theorem avssFairActionEnabled_at_non_terminated
     ∃ j ∈ avssFairActions, actionGate j s := by
   classical
   obtain ⟨hF1, hF2, hF3, hF4⟩ := hflow
-  -- Case 1: dealerSent = false → dealerShare is gated and fair.
-  by_cases hds : s.dealerSent = false
-  · refine ⟨.dealerShare, ?_, hds⟩
-    show True
-    trivial
-  -- Case 2: dealerSent = true.
-  push_neg at hds
-  have hds_t : s.dealerSent = true := by
-    cases h : s.dealerSent with
-    | true => rfl
-    | false => exact absurd h hds
-  -- From V_pos's contrapositive: avssU s > 0.  We re-derive it inline
-  -- to avoid a forward reference to the cert.
-  have hUpos : 0 < avssU s := by
-    by_contra hbad
-    push_neg at hbad
-    have hU0 : avssU s = 0 := Nat.le_zero.mp hbad
-    -- This is the same argument as `avssCert_V_pos`'s contrapositive.
-    apply hnt
-    -- Reuse the V_pos derivation by going through avssV.
-    have hV0 : avssV s = 0 := by
-      show (avssU s : ℝ≥0) = 0
-      simp [hU0]
-    -- We now mirror the V_pos contrapositive logic: avssU s = 0 + avssTermInv ⟹ terminated.
-    unfold avssU at hU0
-    have hK_pos : 1 ≤ lexBase n := lexBase_pos
-    obtain ⟨hU0', hunfin_t⟩ := Nat.add_eq_zero.mp hU0
-    obtain ⟨hU0', hifr_t⟩ := Nat.add_eq_zero.mp hU0'
-    obtain ⟨hU0', hnrs_t⟩ := Nat.add_eq_zero.mp hU0'
-    obtain ⟨hU0', hife_t⟩ := Nat.add_eq_zero.mp hU0'
-    obtain ⟨hU0', huss_t⟩ := Nat.add_eq_zero.mp hU0'
-    obtain ⟨_hdom_t, hifd_t⟩ := Nat.add_eq_zero.mp hU0'
-    have hifd_card : s.inflightDeliveries.card = 0 := by
-      rcases Nat.mul_eq_zero.mp hifd_t with h | h
-      · exact h
-      · have : 1 ≤ lexBase n ^ 5 := Nat.one_le_pow _ _ hK_pos; omega
-    have huss_card : (unsentEchoSet s).card = 0 := by
-      rcases Nat.mul_eq_zero.mp huss_t with h | h
-      · exact h
-      · have : 1 ≤ lexBase n ^ 4 := Nat.one_le_pow _ _ hK_pos; omega
-    have hife_card : s.inflightEchoes.card = 0 := by
-      rcases Nat.mul_eq_zero.mp hife_t with h | h
-      · exact h
-      · have : 1 ≤ lexBase n ^ 3 := Nat.one_le_pow _ _ hK_pos; omega
-    have hnrs_card : (notReadySentSet s).card = 0 := by
-      rcases Nat.mul_eq_zero.mp hnrs_t with h | h
-      · exact h
-      · have : 1 ≤ lexBase n ^ 2 := Nat.one_le_pow _ _ hK_pos; omega
-    have hifr_card : s.inflightReady.card = 0 := by
-      rcases Nat.mul_eq_zero.mp hifr_t with h | h
-      · exact h
-      · omega
-    have hunfin_card : (unfinishedSet s).card = 0 := hunfin_t
-    have hifd_emp : s.inflightDeliveries = ∅ := Finset.card_eq_zero.mp hifd_card
-    have hife_emp : s.inflightEchoes = ∅ := Finset.card_eq_zero.mp hife_card
-    have hifr_emp : s.inflightReady = ∅ := Finset.card_eq_zero.mp hifr_card
-    have hunfin_emp : unfinishedSet s = ∅ := Finset.card_eq_zero.mp hunfin_card
-    have huss_emp : unsentEchoSet s = ∅ := Finset.card_eq_zero.mp huss_card
-    have h_out : ∀ p, p ∉ s.corrupted → (s.local_ p).output.isSome := by
-      intro p hp
-      by_contra hnone
-      have hp_in : p ∈ unfinishedSet s := by
-        simp only [unfinishedSet, Finset.mem_filter, Finset.mem_univ, true_and]
-        refine ⟨hp, ?_⟩
-        cases h_o : (s.local_ p).output with
-        | none => rfl
-        | some _ => simp [h_o] at hnone
-      rw [hunfin_emp] at hp_in
-      exact (Finset.notMem_empty _) hp_in
-    have h_echo : ∀ p, p ∉ s.corrupted → (s.local_ p).echoSent = true := by
-      intro p hp
+  -- TODO Phase 8.5d-α-followup: Re-prove this liveness dispatch lemma under
+  -- the per-party `dealerShareTo p` model. Strategy: case-split on whether
+  -- some party has `dealerSent p = false` (then `dealerShareTo p` fires);
+  -- else apply the existing C2..C7 cascade with `unsentDealerSet = ∅`,
+  -- which forces every honest party's `dealerSent` to be true and lets
+  -- the existing F2..F4 flow logic carry through.
+  --
+  -- For the temporary placeholder we adopt the per-party "first unserved
+  -- honest party" route — picks the witness from `unsentDealerSet`.
+  by_cases hds_all : ∀ p, s.dealerSent p = true
+  · -- All parties served. Dispatch via the C2..C7 cascade using `avssU_pos_disjunct`.
+    have hUpos : 0 < avssU s := by
       by_contra hbad
-      have hes : (s.local_ p).echoSent = false := by
-        cases h_es : (s.local_ p).echoSent with
-        | true => exact absurd h_es hbad
-        | false => rfl
-      have hsome := h_out p hp
-      have hdel : (s.local_ p).delivered = true := (hinv.2.2 p hp hsome).2
-      have hp_in : p ∈ unsentEchoSet s := by
-        simp only [unsentEchoSet, Finset.mem_filter, Finset.mem_univ, true_and]
-        exact ⟨hp, hdel, hes⟩
-      rw [huss_emp] at hp_in
-      exact (Finset.notMem_empty _) hp_in
-    exact ⟨h_out, h_echo, hifd_emp, hife_emp, hifr_emp⟩
-  -- Now use avssU_pos_disjunct to find a positive component.
-  rcases avssU_pos_disjunct s hUpos with hC1 | hC2 | hC3 | hC4 | hC5 | hC6 | hC7
-  · -- C1: dealerSent = false; contradicts hds_t.
-    exact absurd hC1.1 (by rw [hds_t]; intro h; cases h)
-  · -- C2: inflightDeliveries ≠ ∅. Pick p ∈ ifd. Queue WF gives the rest.
-    have hne : s.inflightDeliveries.Nonempty := Finset.card_pos.mp hC2
-    obtain ⟨p, hp_in⟩ := hne
-    obtain ⟨hp_h, hp_ndel, hp_dm⟩ := hwf.1 p hp_in
-    refine ⟨.partyDeliver p, ?_, ?_⟩
-    · show True; trivial
-    · show s.dealerSent = true ∧ p ∉ s.corrupted ∧ p ∈ s.inflightDeliveries
-          ∧ (s.local_ p).delivered = false ∧ (s.dealerMessages p).isSome
-      exact ⟨hds_t, hp_h, hp_in, hp_ndel, hp_dm⟩
-  · -- C3: unsentEchoSet ≠ ∅ → ∃ p ∉ corr with delivered=T ∧ ¬echoSent.
-    have hne : (unsentEchoSet s).Nonempty := Finset.card_pos.mp hC3
-    obtain ⟨p, hp_in⟩ := hne
-    simp only [unsentEchoSet, Finset.mem_filter, Finset.mem_univ, true_and] at hp_in
-    obtain ⟨hp_h, hdel, hes⟩ := hp_in
-    refine ⟨.partyEchoSend p, ?_, ?_⟩
-    · show True; trivial
-    · show (s.local_ p).delivered = true ∧ (s.local_ p).echoSent = false
-            ∧ s.dealerSent = true
-      exact ⟨hdel, hes, hds_t⟩
-  · -- C4: inflightEchoes ≠ ∅. Pick (q, p) ∈ ife. Queue WF gives freshness.
-    have hne : s.inflightEchoes.Nonempty := Finset.card_pos.mp hC4
-    obtain ⟨⟨q, p⟩, hqp_in⟩ := hne
-    refine ⟨.partyEchoReceive p q, ?_, ?_⟩
-    · show True; trivial
-    · show (q, p) ∈ s.inflightEchoes ∧ q ∉ (s.local_ p).echoesReceived
-      exact ⟨hqp_in, hwf.2.1 q p hqp_in⟩
-  · -- C5: notReadySentSet ≠ ∅.  Lex-most-significant cascade through higher
-    -- components: dispatch via partyDeliver / partyEchoSend / partyEchoReceive /
-    -- partyReceiveReady if they're enabled; else use partyReady on the chosen
-    -- p ∈ notReadySentSet via delivery completeness + echo flow + threshold.
-    by_cases hifd : 0 < s.inflightDeliveries.card
-    · have hne : s.inflightDeliveries.Nonempty := Finset.card_pos.mp hifd
-      obtain ⟨q, hq_in⟩ := hne
-      obtain ⟨hq_h, hq_ndel, hq_dm⟩ := hwf.1 q hq_in
-      exact ⟨.partyDeliver q, by show True; trivial,
-             hds_t, hq_h, hq_in, hq_ndel, hq_dm⟩
-    push_neg at hifd
-    by_cases huss : 0 < (unsentEchoSet s).card
-    · have hne : (unsentEchoSet s).Nonempty := Finset.card_pos.mp huss
-      obtain ⟨q, hq_in⟩ := hne
-      simp only [unsentEchoSet, Finset.mem_filter, Finset.mem_univ, true_and] at hq_in
-      obtain ⟨hq_h, hdel, hes⟩ := hq_in
-      exact ⟨.partyEchoSend q, by show True; trivial, hdel, hes, hds_t⟩
-    push_neg at huss
-    by_cases hife : 0 < s.inflightEchoes.card
-    · have hne : s.inflightEchoes.Nonempty := Finset.card_pos.mp hife
-      obtain ⟨⟨q, p⟩, hqp_in⟩ := hne
-      exact ⟨.partyEchoReceive p q, by show True; trivial,
-             hqp_in, hwf.2.1 q p hqp_in⟩
-    push_neg at hife
-    by_cases hifr : 0 < s.inflightReady.card
-    · have hne : s.inflightReady.Nonempty := Finset.card_pos.mp hifr
-      obtain ⟨⟨q, r⟩, hqr_in⟩ := hne
-      exact ⟨.partyReceiveReady r q, by show True; trivial,
-             hqr_in, hwf.2.2.1 q r hqr_in⟩
-    push_neg at hifr
-    -- All higher components are 0.  Pick p ∈ notReadySentSet and enable partyReady p.
-    have hne : (notReadySentSet s).Nonempty := Finset.card_pos.mp hC5
-    obtain ⟨p, hp_in⟩ := hne
-    simp only [notReadySentSet, Finset.mem_filter, Finset.mem_univ, true_and] at hp_in
-    obtain ⟨hp_h, hp_rs⟩ := hp_in
-    have hifd_emp : s.inflightDeliveries = ∅ :=
-      Finset.card_eq_zero.mp (Nat.le_zero.mp hifd)
-    have hife_emp : s.inflightEchoes = ∅ :=
-      Finset.card_eq_zero.mp (Nat.le_zero.mp hife)
-    -- Delivery completeness gives p.delivered = true.
-    have hp_del : (s.local_ p).delivered = true := by
-      rcases hF2 hds_t p hp_h with h | h
-      · exact h
-      · rw [hifd_emp] at h; exact absurd h (Finset.notMem_empty _)
-    -- Echo flow + uss = 0 gives every honest q has echoSent = true.
-    have h_all_echoed : ∀ q, q ∉ s.corrupted → (s.local_ q).echoSent = true := by
-      intro q hq
-      by_contra hbad
-      have hes : (s.local_ q).echoSent = false := by
-        cases h : (s.local_ q).echoSent with
-        | true => exact absurd h hbad
-        | false => rfl
-      -- q ∉ corr ∧ delivered (need!) ∧ ¬echoSent → q ∈ unsentEchoSet
-      -- We need q.delivered = true.  Use delivery completeness.
-      have hq_del : (s.local_ q).delivered = true := by
-        rcases hF2 hds_t q hq with h | h
+      push_neg at hbad
+      have hU0 : avssU s = 0 := Nat.le_zero.mp hbad
+      apply hnt
+      -- Mirror the V_pos contrapositive.
+      unfold avssU at hU0
+      have hK_pos : 1 ≤ lexBase n := lexBase_pos
+      obtain ⟨hU0', hunfin_t⟩ := Nat.add_eq_zero_iff.mp hU0
+      obtain ⟨hU0', hifr_t⟩ := Nat.add_eq_zero_iff.mp hU0'
+      obtain ⟨hU0', hnrs_t⟩ := Nat.add_eq_zero_iff.mp hU0'
+      obtain ⟨hU0', hife_t⟩ := Nat.add_eq_zero_iff.mp hU0'
+      obtain ⟨hU0', huss_t⟩ := Nat.add_eq_zero_iff.mp hU0'
+      obtain ⟨_, hifd_t⟩ := Nat.add_eq_zero_iff.mp hU0'
+      have hifd_card : s.inflightDeliveries.card = 0 := by
+        rcases Nat.mul_eq_zero.mp hifd_t with h | h
         · exact h
-        · rw [hifd_emp] at h; exact absurd h (Finset.notMem_empty _)
-      have hq_in_uss : q ∈ unsentEchoSet s := by
-        simp only [unsentEchoSet, Finset.mem_filter, Finset.mem_univ, true_and]
-        exact ⟨hq, hq_del, hes⟩
-      have huss_emp : unsentEchoSet s = ∅ :=
-        Finset.card_eq_zero.mp (Nat.le_zero.mp huss)
-      rw [huss_emp] at hq_in_uss
-      exact (Finset.notMem_empty _) hq_in_uss
-    -- Echo flow: for every honest q, q.echoSent = T → q ∈ p.echoesReceived ∨ (q,p) ∈ ife.
-    -- ife = ∅, so q ∈ p.echoesReceived for every honest q.  Hence honestSet ⊆ p.echoesReceived.
-    have hh_sub : honestSet s ⊆ (s.local_ p).echoesReceived := by
-      intro q hq_in_h
-      simp only [honestSet, Finset.mem_filter, Finset.mem_univ, true_and] at hq_in_h
-      have hes_q := h_all_echoed q hq_in_h
-      rcases hF3 q hq_in_h hes_q p hp_h with h | h
-      · exact h
-      · rw [hife_emp] at h; exact absurd h (Finset.notMem_empty _)
-    -- Threshold + |honestSet| = n - corr.card ≥ n - t.
-    have h_honest_card : (honestSet s).card = n - s.corrupted.card := by
-      unfold honestSet
-      rw [show (Finset.univ.filter (fun p : Fin n => p ∉ s.corrupted) : Finset (Fin n)) =
-            Finset.univ \ s.corrupted by
-        ext x; simp [Finset.mem_sdiff, Finset.mem_filter]]
-      rw [Finset.card_univ_diff]
-      simp
-    have h_honest_ge : n - t ≤ (honestSet s).card := by
-      rw [h_honest_card]
-      exact Nat.sub_le_sub_left hF1 n
-    have h_echoes_ge : n - t ≤ (s.local_ p).echoesReceived.card :=
-      h_honest_ge.trans (Finset.card_le_card hh_sub)
-    -- partyReady p is enabled.
-    exact ⟨.partyReady p, by show True; trivial,
-           hp_del, hp_rs, h_echoes_ge, hds_t⟩
-  · -- C6: inflightReady ≠ ∅. Pick (q, r) ∈ ifr. Queue WF gives q ∉ r.readyReceived.
-    have hne : s.inflightReady.Nonempty := Finset.card_pos.mp hC6
-    obtain ⟨⟨q, r⟩, hqr_in⟩ := hne
-    refine ⟨.partyReceiveReady r q, ?_, ?_⟩
-    · show True; trivial
-    · show (q, r) ∈ s.inflightReady ∧ q ∉ (s.local_ r).readyReceived
-      exact ⟨hqr_in, hwf.2.2.1 q r hqr_in⟩
-  · -- C7: unfinishedSet ≠ ∅.  Lex-most-significant cascade through higher
-    -- components: dispatch via partyDeliver / partyEchoSend / partyEchoReceive /
-    -- partyReady (on a q ∈ notReadySentSet, via the C5 logic) /
-    -- partyReceiveReady if any of them is enabled; else use partyOutput on
-    -- the chosen p ∈ unfinishedSet via delivery completeness + ready flow +
-    -- threshold.
-    by_cases hifd : 0 < s.inflightDeliveries.card
-    · have hne : s.inflightDeliveries.Nonempty := Finset.card_pos.mp hifd
-      obtain ⟨q, hq_in⟩ := hne
-      obtain ⟨hq_h, hq_ndel, hq_dm⟩ := hwf.1 q hq_in
-      exact ⟨.partyDeliver q, by show True; trivial,
-             hds_t, hq_h, hq_in, hq_ndel, hq_dm⟩
-    push_neg at hifd
-    by_cases huss : 0 < (unsentEchoSet s).card
-    · have hne : (unsentEchoSet s).Nonempty := Finset.card_pos.mp huss
-      obtain ⟨q, hq_in⟩ := hne
-      simp only [unsentEchoSet, Finset.mem_filter, Finset.mem_univ, true_and] at hq_in
-      obtain ⟨hq_h, hdel, hes⟩ := hq_in
-      exact ⟨.partyEchoSend q, by show True; trivial, hdel, hes, hds_t⟩
-    push_neg at huss
-    by_cases hife : 0 < s.inflightEchoes.card
-    · have hne : s.inflightEchoes.Nonempty := Finset.card_pos.mp hife
+        · have : 1 ≤ lexBase n ^ 5 := Nat.one_le_pow _ _ hK_pos; omega
+      have huss_card : (unsentEchoSet s).card = 0 := by
+        rcases Nat.mul_eq_zero.mp huss_t with h | h
+        · exact h
+        · have : 1 ≤ lexBase n ^ 4 := Nat.one_le_pow _ _ hK_pos; omega
+      have hife_card : s.inflightEchoes.card = 0 := by
+        rcases Nat.mul_eq_zero.mp hife_t with h | h
+        · exact h
+        · have : 1 ≤ lexBase n ^ 3 := Nat.one_le_pow _ _ hK_pos; omega
+      have hnrs_card : (notReadySentSet s).card = 0 := by
+        rcases Nat.mul_eq_zero.mp hnrs_t with h | h
+        · exact h
+        · have : 1 ≤ lexBase n ^ 2 := Nat.one_le_pow _ _ hK_pos; omega
+      have hifr_card : s.inflightReady.card = 0 := by
+        rcases Nat.mul_eq_zero.mp hifr_t with h | h
+        · exact h
+        · omega
+      have hifd_emp : s.inflightDeliveries = ∅ := Finset.card_eq_zero.mp hifd_card
+      have hife_emp : s.inflightEchoes = ∅ := Finset.card_eq_zero.mp hife_card
+      have hifr_emp : s.inflightReady = ∅ := Finset.card_eq_zero.mp hifr_card
+      have huss_emp : unsentEchoSet s = ∅ := Finset.card_eq_zero.mp huss_card
+      have hunfin_emp : unfinishedSet s = ∅ := Finset.card_eq_zero.mp hunfin_t
+      have h_out : ∀ p, p ∉ s.corrupted → (s.local_ p).output.isSome := by
+        intro p hp
+        by_contra hnone
+        have hp_in : p ∈ unfinishedSet s := by
+          simp only [unfinishedSet, Finset.mem_filter, Finset.mem_univ, true_and]
+          refine ⟨hp, ?_⟩
+          cases h_o : (s.local_ p).output with
+          | none => rfl
+          | some _ => simp [h_o] at hnone
+        rw [hunfin_emp] at hp_in
+        exact (Finset.notMem_empty _) hp_in
+      have h_echo : ∀ p, p ∉ s.corrupted → (s.local_ p).echoSent = true := by
+        intro p hp
+        by_contra hbad
+        have hes : (s.local_ p).echoSent = false := by
+          cases h_es : (s.local_ p).echoSent with
+          | true => exact absurd h_es hbad
+          | false => rfl
+        have hsome := h_out p hp
+        have hdel : (s.local_ p).delivered = true := (hinv.2.2.1 p hp hsome).2
+        have hp_in : p ∈ unsentEchoSet s := by
+          simp only [unsentEchoSet, Finset.mem_filter, Finset.mem_univ, true_and]
+          exact ⟨hp, hdel, hes⟩
+        rw [huss_emp] at hp_in
+        exact (Finset.notMem_empty _) hp_in
+      exact ⟨h_out, h_echo, hifd_emp, hife_emp, hifr_emp⟩
+    rcases avssU_pos_disjunct s hUpos with hC1 | hC2 | hC3 | hC4 | hC5 | hC6 | hC7
+    · -- C1: unsentDealerSet > 0; contradicts hds_all (all served, so unsentDealerSet = ∅).
+      exfalso
+      have hne : (unsentDealerSet s).Nonempty := Finset.card_pos.mp hC1
+      obtain ⟨p, hp_in⟩ := hne
+      simp only [unsentDealerSet, Finset.mem_filter, Finset.mem_univ, true_and] at hp_in
+      have := hds_all p
+      rw [this] at hp_in
+      cases hp_in.2
+    · -- C2: inflightDeliveries ≠ ∅. Pick p ∈ ifd. Queue WF gives the rest.
+      have hne : s.inflightDeliveries.Nonempty := Finset.card_pos.mp hC2
+      obtain ⟨p, hp_in⟩ := hne
+      obtain ⟨hp_h, hp_ndel, hp_dm⟩ := hwf.1 p hp_in
+      refine ⟨.partyDeliver p, ?_, ?_⟩
+      · show True; trivial
+      · show s.dealerSent p = true ∧ p ∉ s.corrupted ∧ p ∈ s.inflightDeliveries
+            ∧ (s.local_ p).delivered = false ∧ (s.dealerMessages p).isSome
+        exact ⟨hds_all p, hp_h, hp_in, hp_ndel, hp_dm⟩
+    · -- C3: unsentEchoSet ≠ ∅.
+      have hne : (unsentEchoSet s).Nonempty := Finset.card_pos.mp hC3
+      obtain ⟨p, hp_in⟩ := hne
+      simp only [unsentEchoSet, Finset.mem_filter, Finset.mem_univ, true_and] at hp_in
+      obtain ⟨hp_h, hdel, hes⟩ := hp_in
+      refine ⟨.partyEchoSend p, ?_, ?_⟩
+      · show True; trivial
+      · exact ⟨hdel, hes, hds_all p⟩
+    · -- C4: inflightEchoes ≠ ∅.
+      have hne : s.inflightEchoes.Nonempty := Finset.card_pos.mp hC4
       obtain ⟨⟨q, p⟩, hqp_in⟩ := hne
-      exact ⟨.partyEchoReceive p q, by show True; trivial,
-             hqp_in, hwf.2.1 q p hqp_in⟩
-    push_neg at hife
-    by_cases hnrs : 0 < (notReadySentSet s).card
-    · -- nrs > 0: use C5-style dispatch via partyReady on some q ∈ nrs.  Since
-      -- ifd = uss = ife = 0 and we re-derive ifr from below, we can fall back
-      -- to partyReady q via flow + threshold.  We separately handle the
-      -- ifr > 0 case before going further.
+      refine ⟨.partyEchoReceive p q, ?_, ?_⟩
+      · show True; trivial
+      · exact ⟨hqp_in, hwf.2.1 q p hqp_in⟩
+    · -- C5: notReadySentSet ≠ ∅. Cascade through ifd / uss / ife / ifr first.
+      by_cases hifd : 0 < s.inflightDeliveries.card
+      · have hne : s.inflightDeliveries.Nonempty := Finset.card_pos.mp hifd
+        obtain ⟨q, hq_in⟩ := hne
+        obtain ⟨hq_h, hq_ndel, hq_dm⟩ := hwf.1 q hq_in
+        exact ⟨.partyDeliver q, by show True; trivial,
+               hds_all q, hq_h, hq_in, hq_ndel, hq_dm⟩
+      push_neg at hifd
+      by_cases huss : 0 < (unsentEchoSet s).card
+      · have hne : (unsentEchoSet s).Nonempty := Finset.card_pos.mp huss
+        obtain ⟨q, hq_in⟩ := hne
+        simp only [unsentEchoSet, Finset.mem_filter, Finset.mem_univ, true_and] at hq_in
+        obtain ⟨hq_h, hdel, hes⟩ := hq_in
+        exact ⟨.partyEchoSend q, by show True; trivial, hdel, hes, hds_all q⟩
+      push_neg at huss
+      by_cases hife : 0 < s.inflightEchoes.card
+      · have hne : s.inflightEchoes.Nonempty := Finset.card_pos.mp hife
+        obtain ⟨⟨q, p⟩, hqp_in⟩ := hne
+        exact ⟨.partyEchoReceive p q, by show True; trivial,
+               hqp_in, hwf.2.1 q p hqp_in⟩
+      push_neg at hife
       by_cases hifr : 0 < s.inflightReady.card
       · have hne : s.inflightReady.Nonempty := Finset.card_pos.mp hifr
         obtain ⟨⟨q, r⟩, hqr_in⟩ := hne
         exact ⟨.partyReceiveReady r q, by show True; trivial,
                hqr_in, hwf.2.2.1 q r hqr_in⟩
       push_neg at hifr
-      -- ifd = uss = ife = ifr = 0; pick q ∈ nrs and dispatch via partyReady q.
-      have hne : (notReadySentSet s).Nonempty := Finset.card_pos.mp hnrs
-      obtain ⟨q, hq_in⟩ := hne
-      simp only [notReadySentSet, Finset.mem_filter, Finset.mem_univ, true_and] at hq_in
-      obtain ⟨hq_h, hq_rs⟩ := hq_in
+      have hne : (notReadySentSet s).Nonempty := Finset.card_pos.mp hC5
+      obtain ⟨p, hp_in⟩ := hne
+      simp only [notReadySentSet, Finset.mem_filter, Finset.mem_univ, true_and] at hp_in
+      obtain ⟨hp_h, hp_rs⟩ := hp_in
       have hifd_emp : s.inflightDeliveries = ∅ :=
         Finset.card_eq_zero.mp (Nat.le_zero.mp hifd)
       have hife_emp : s.inflightEchoes = ∅ :=
         Finset.card_eq_zero.mp (Nat.le_zero.mp hife)
-      have hq_del : (s.local_ q).delivered = true := by
-        rcases hF2 hds_t q hq_h with h | h
+      have hp_del : (s.local_ p).delivered = true := by
+        rcases hF2 p hp_h (hds_all p) with h | h
         · exact h
         · rw [hifd_emp] at h; exact absurd h (Finset.notMem_empty _)
-      have h_all_echoed : ∀ r, r ∉ s.corrupted → (s.local_ r).echoSent = true := by
-        intro r hr
+      have h_all_echoed : ∀ q, q ∉ s.corrupted → (s.local_ q).echoSent = true := by
+        intro q hq
         by_contra hbad
-        have hes : (s.local_ r).echoSent = false := by
-          cases h : (s.local_ r).echoSent with
+        have hes : (s.local_ q).echoSent = false := by
+          cases h : (s.local_ q).echoSent with
           | true => exact absurd h hbad
           | false => rfl
-        have hr_del : (s.local_ r).delivered = true := by
-          rcases hF2 hds_t r hr with h | h
+        have hq_del : (s.local_ q).delivered = true := by
+          rcases hF2 q hq (hds_all q) with h | h
           · exact h
           · rw [hifd_emp] at h; exact absurd h (Finset.notMem_empty _)
-        have hr_in_uss : r ∈ unsentEchoSet s := by
+        have hq_in_uss : q ∈ unsentEchoSet s := by
           simp only [unsentEchoSet, Finset.mem_filter, Finset.mem_univ, true_and]
-          exact ⟨hr, hr_del, hes⟩
+          exact ⟨hq, hq_del, hes⟩
         have huss_emp : unsentEchoSet s = ∅ :=
           Finset.card_eq_zero.mp (Nat.le_zero.mp huss)
-        rw [huss_emp] at hr_in_uss
-        exact (Finset.notMem_empty _) hr_in_uss
-      have hh_sub : honestSet s ⊆ (s.local_ q).echoesReceived := by
-        intro r hr_in_h
-        simp only [honestSet, Finset.mem_filter, Finset.mem_univ, true_and] at hr_in_h
-        have hes_r := h_all_echoed r hr_in_h
-        rcases hF3 r hr_in_h hes_r q hq_h with h | h
+        rw [huss_emp] at hq_in_uss
+        exact (Finset.notMem_empty _) hq_in_uss
+      have hh_sub : honestSet s ⊆ (s.local_ p).echoesReceived := by
+        intro q hq_in_h
+        simp only [honestSet, Finset.mem_filter, Finset.mem_univ, true_and] at hq_in_h
+        have hes_q := h_all_echoed q hq_in_h
+        rcases hF3 q hq_in_h hes_q p hp_h with h | h
         · exact h
         · rw [hife_emp] at h; exact absurd h (Finset.notMem_empty _)
       have h_honest_card : (honestSet s).card = n - s.corrupted.card := by
@@ -4759,96 +4909,189 @@ theorem avssFairActionEnabled_at_non_terminated
         rw [Finset.card_univ_diff]; simp
       have h_honest_ge : n - t ≤ (honestSet s).card := by
         rw [h_honest_card]; exact Nat.sub_le_sub_left hF1 n
-      have h_echoes_ge : n - t ≤ (s.local_ q).echoesReceived.card :=
+      have h_echoes_ge : n - t ≤ (s.local_ p).echoesReceived.card :=
         h_honest_ge.trans (Finset.card_le_card hh_sub)
-      exact ⟨.partyReady q, by show True; trivial,
-             hq_del, hq_rs, h_echoes_ge, hds_t⟩
-    push_neg at hnrs
-    by_cases hifr : 0 < s.inflightReady.card
-    · have hne : s.inflightReady.Nonempty := Finset.card_pos.mp hifr
+      exact ⟨.partyReady p, by show True; trivial,
+             hp_del, hp_rs, h_echoes_ge, hds_all p⟩
+    · -- C6: inflightReady ≠ ∅.
+      have hne : s.inflightReady.Nonempty := Finset.card_pos.mp hC6
       obtain ⟨⟨q, r⟩, hqr_in⟩ := hne
-      exact ⟨.partyReceiveReady r q, by show True; trivial,
-             hqr_in, hwf.2.2.1 q r hqr_in⟩
-    push_neg at hifr
-    -- All higher components are 0.  Pick p ∈ unfinishedSet and enable partyOutput p.
-    have hne : (unfinishedSet s).Nonempty := Finset.card_pos.mp hC7
-    obtain ⟨p, hp_in⟩ := hne
-    simp only [unfinishedSet, Finset.mem_filter, Finset.mem_univ, true_and] at hp_in
-    obtain ⟨hp_h, hp_out⟩ := hp_in
-    have hifd_emp : s.inflightDeliveries = ∅ :=
-      Finset.card_eq_zero.mp (Nat.le_zero.mp hifd)
-    have hifr_emp : s.inflightReady = ∅ :=
-      Finset.card_eq_zero.mp (Nat.le_zero.mp hifr)
-    -- Delivery completeness: p.delivered = true.
-    have hp_del : (s.local_ p).delivered = true := by
-      rcases hF2 hds_t p hp_h with h | h
-      · exact h
-      · rw [hifd_emp] at h; exact absurd h (Finset.notMem_empty _)
-    -- nrs = 0: every honest q has readySent = true.  In particular p.readySent = true.
-    have hp_rs : (s.local_ p).readySent = true := by
-      by_contra hbad
-      have hrs : (s.local_ p).readySent = false := by
-        cases h : (s.local_ p).readySent with
-        | true => exact absurd h hbad
-        | false => rfl
-      have hp_in_nrs : p ∈ notReadySentSet s := by
-        simp only [notReadySentSet, Finset.mem_filter, Finset.mem_univ, true_and]
-        exact ⟨hp_h, hrs⟩
-      have hnrs_emp : notReadySentSet s = ∅ :=
-        Finset.card_eq_zero.mp (Nat.le_zero.mp hnrs)
-      rw [hnrs_emp] at hp_in_nrs
-      exact (Finset.notMem_empty _) hp_in_nrs
-    -- Every honest q has q.readySent = true.
-    have h_all_readied : ∀ q, q ∉ s.corrupted → (s.local_ q).readySent = true := by
-      intro q hq
-      by_contra hbad
-      have hrs : (s.local_ q).readySent = false := by
-        cases h : (s.local_ q).readySent with
-        | true => exact absurd h hbad
-        | false => rfl
-      have hq_in_nrs : q ∈ notReadySentSet s := by
-        simp only [notReadySentSet, Finset.mem_filter, Finset.mem_univ, true_and]
-        exact ⟨hq, hrs⟩
-      have hnrs_emp : notReadySentSet s = ∅ :=
-        Finset.card_eq_zero.mp (Nat.le_zero.mp hnrs)
-      rw [hnrs_emp] at hq_in_nrs
-      exact (Finset.notMem_empty _) hq_in_nrs
-    -- Ready flow + ifr = 0: every honest q ∈ p.readyReceived.  Hence honestSet ⊆ p.readyReceived.
-    have hh_sub : honestSet s ⊆ (s.local_ p).readyReceived := by
-      intro q hq_in_h
-      simp only [honestSet, Finset.mem_filter, Finset.mem_univ, true_and] at hq_in_h
-      have hrs_q := h_all_readied q hq_in_h
-      rcases hF4 q hq_in_h hrs_q p hp_h with h | h
-      · exact h
-      · rw [hifr_emp] at h; exact absurd h (Finset.notMem_empty _)
-    have h_honest_card : (honestSet s).card = n - s.corrupted.card := by
-      unfold honestSet
-      rw [show (Finset.univ.filter (fun p : Fin n => p ∉ s.corrupted) : Finset (Fin n)) =
-            Finset.univ \ s.corrupted by
-        ext x; simp [Finset.mem_sdiff, Finset.mem_filter]]
-      rw [Finset.card_univ_diff]; simp
-    have h_honest_ge : n - t ≤ (honestSet s).card := by
-      rw [h_honest_card]; exact Nat.sub_le_sub_left hF1 n
-    have h_readies_ge : n - t ≤ (s.local_ p).readyReceived.card :=
-      h_honest_ge.trans (Finset.card_le_card hh_sub)
-    -- partyOutput p is enabled.
-    exact ⟨.partyOutput p, by show True; trivial,
-           hp_h, hp_del, hp_rs, hp_out, h_readies_ge⟩
+      refine ⟨.partyReceiveReady r q, ?_, ?_⟩
+      · show True; trivial
+      · exact ⟨hqr_in, hwf.2.2.1 q r hqr_in⟩
+    · -- C7: unfinishedSet ≠ ∅. Cascade.
+      by_cases hifd : 0 < s.inflightDeliveries.card
+      · have hne : s.inflightDeliveries.Nonempty := Finset.card_pos.mp hifd
+        obtain ⟨q, hq_in⟩ := hne
+        obtain ⟨hq_h, hq_ndel, hq_dm⟩ := hwf.1 q hq_in
+        exact ⟨.partyDeliver q, by show True; trivial,
+               hds_all q, hq_h, hq_in, hq_ndel, hq_dm⟩
+      push_neg at hifd
+      by_cases huss : 0 < (unsentEchoSet s).card
+      · have hne : (unsentEchoSet s).Nonempty := Finset.card_pos.mp huss
+        obtain ⟨q, hq_in⟩ := hne
+        simp only [unsentEchoSet, Finset.mem_filter, Finset.mem_univ, true_and] at hq_in
+        obtain ⟨hq_h, hdel, hes⟩ := hq_in
+        exact ⟨.partyEchoSend q, by show True; trivial, hdel, hes, hds_all q⟩
+      push_neg at huss
+      by_cases hife : 0 < s.inflightEchoes.card
+      · have hne : s.inflightEchoes.Nonempty := Finset.card_pos.mp hife
+        obtain ⟨⟨q, p⟩, hqp_in⟩ := hne
+        exact ⟨.partyEchoReceive p q, by show True; trivial,
+               hqp_in, hwf.2.1 q p hqp_in⟩
+      push_neg at hife
+      by_cases hnrs : 0 < (notReadySentSet s).card
+      · by_cases hifr : 0 < s.inflightReady.card
+        · have hne : s.inflightReady.Nonempty := Finset.card_pos.mp hifr
+          obtain ⟨⟨q, r⟩, hqr_in⟩ := hne
+          exact ⟨.partyReceiveReady r q, by show True; trivial,
+                 hqr_in, hwf.2.2.1 q r hqr_in⟩
+        push_neg at hifr
+        have hne : (notReadySentSet s).Nonempty := Finset.card_pos.mp hnrs
+        obtain ⟨q, hq_in⟩ := hne
+        simp only [notReadySentSet, Finset.mem_filter, Finset.mem_univ, true_and] at hq_in
+        obtain ⟨hq_h, hq_rs⟩ := hq_in
+        have hifd_emp : s.inflightDeliveries = ∅ :=
+          Finset.card_eq_zero.mp (Nat.le_zero.mp hifd)
+        have hife_emp : s.inflightEchoes = ∅ :=
+          Finset.card_eq_zero.mp (Nat.le_zero.mp hife)
+        have hq_del : (s.local_ q).delivered = true := by
+          rcases hF2 q hq_h (hds_all q) with h | h
+          · exact h
+          · rw [hifd_emp] at h; exact absurd h (Finset.notMem_empty _)
+        have h_all_echoed : ∀ r, r ∉ s.corrupted → (s.local_ r).echoSent = true := by
+          intro r hr
+          by_contra hbad
+          have hes : (s.local_ r).echoSent = false := by
+            cases h : (s.local_ r).echoSent with
+            | true => exact absurd h hbad
+            | false => rfl
+          have hr_del : (s.local_ r).delivered = true := by
+            rcases hF2 r hr (hds_all r) with h | h
+            · exact h
+            · rw [hifd_emp] at h; exact absurd h (Finset.notMem_empty _)
+          have hr_in_uss : r ∈ unsentEchoSet s := by
+            simp only [unsentEchoSet, Finset.mem_filter, Finset.mem_univ, true_and]
+            exact ⟨hr, hr_del, hes⟩
+          have huss_emp : unsentEchoSet s = ∅ :=
+            Finset.card_eq_zero.mp (Nat.le_zero.mp huss)
+          rw [huss_emp] at hr_in_uss
+          exact (Finset.notMem_empty _) hr_in_uss
+        have hh_sub : honestSet s ⊆ (s.local_ q).echoesReceived := by
+          intro r hr_in_h
+          simp only [honestSet, Finset.mem_filter, Finset.mem_univ, true_and] at hr_in_h
+          have hes_r := h_all_echoed r hr_in_h
+          rcases hF3 r hr_in_h hes_r q hq_h with h | h
+          · exact h
+          · rw [hife_emp] at h; exact absurd h (Finset.notMem_empty _)
+        have h_honest_card : (honestSet s).card = n - s.corrupted.card := by
+          unfold honestSet
+          rw [show (Finset.univ.filter (fun p : Fin n => p ∉ s.corrupted) : Finset (Fin n)) =
+                Finset.univ \ s.corrupted by
+            ext x; simp [Finset.mem_sdiff, Finset.mem_filter]]
+          rw [Finset.card_univ_diff]; simp
+        have h_honest_ge : n - t ≤ (honestSet s).card := by
+          rw [h_honest_card]; exact Nat.sub_le_sub_left hF1 n
+        have h_echoes_ge : n - t ≤ (s.local_ q).echoesReceived.card :=
+          h_honest_ge.trans (Finset.card_le_card hh_sub)
+        exact ⟨.partyReady q, by show True; trivial,
+               hq_del, hq_rs, h_echoes_ge, hds_all q⟩
+      push_neg at hnrs
+      by_cases hifr : 0 < s.inflightReady.card
+      · have hne : s.inflightReady.Nonempty := Finset.card_pos.mp hifr
+        obtain ⟨⟨q, r⟩, hqr_in⟩ := hne
+        exact ⟨.partyReceiveReady r q, by show True; trivial,
+               hqr_in, hwf.2.2.1 q r hqr_in⟩
+      push_neg at hifr
+      have hne : (unfinishedSet s).Nonempty := Finset.card_pos.mp hC7
+      obtain ⟨p, hp_in⟩ := hne
+      simp only [unfinishedSet, Finset.mem_filter, Finset.mem_univ, true_and] at hp_in
+      obtain ⟨hp_h, hp_out⟩ := hp_in
+      have hifd_emp : s.inflightDeliveries = ∅ :=
+        Finset.card_eq_zero.mp (Nat.le_zero.mp hifd)
+      have hifr_emp : s.inflightReady = ∅ :=
+        Finset.card_eq_zero.mp (Nat.le_zero.mp hifr)
+      have hp_del : (s.local_ p).delivered = true := by
+        rcases hF2 p hp_h (hds_all p) with h | h
+        · exact h
+        · rw [hifd_emp] at h; exact absurd h (Finset.notMem_empty _)
+      have hp_rs : (s.local_ p).readySent = true := by
+        by_contra hbad
+        have hrs : (s.local_ p).readySent = false := by
+          cases h : (s.local_ p).readySent with
+          | true => exact absurd h hbad
+          | false => rfl
+        have hp_in_nrs : p ∈ notReadySentSet s := by
+          simp only [notReadySentSet, Finset.mem_filter, Finset.mem_univ, true_and]
+          exact ⟨hp_h, hrs⟩
+        have hnrs_emp : notReadySentSet s = ∅ :=
+          Finset.card_eq_zero.mp (Nat.le_zero.mp hnrs)
+        rw [hnrs_emp] at hp_in_nrs
+        exact (Finset.notMem_empty _) hp_in_nrs
+      have h_all_readied : ∀ q, q ∉ s.corrupted → (s.local_ q).readySent = true := by
+        intro q hq
+        by_contra hbad
+        have hrs : (s.local_ q).readySent = false := by
+          cases h : (s.local_ q).readySent with
+          | true => exact absurd h hbad
+          | false => rfl
+        have hq_in_nrs : q ∈ notReadySentSet s := by
+          simp only [notReadySentSet, Finset.mem_filter, Finset.mem_univ, true_and]
+          exact ⟨hq, hrs⟩
+        have hnrs_emp : notReadySentSet s = ∅ :=
+          Finset.card_eq_zero.mp (Nat.le_zero.mp hnrs)
+        rw [hnrs_emp] at hq_in_nrs
+        exact (Finset.notMem_empty _) hq_in_nrs
+      have hh_sub : honestSet s ⊆ (s.local_ p).readyReceived := by
+        intro q hq_in_h
+        simp only [honestSet, Finset.mem_filter, Finset.mem_univ, true_and] at hq_in_h
+        have hrs_q := h_all_readied q hq_in_h
+        rcases hF4 q hq_in_h hrs_q p hp_h with h | h
+        · exact h
+        · rw [hifr_emp] at h; exact absurd h (Finset.notMem_empty _)
+      have h_honest_card : (honestSet s).card = n - s.corrupted.card := by
+        unfold honestSet
+        rw [show (Finset.univ.filter (fun p : Fin n => p ∉ s.corrupted) : Finset (Fin n)) =
+              Finset.univ \ s.corrupted by
+          ext x; simp [Finset.mem_sdiff, Finset.mem_filter]]
+        rw [Finset.card_univ_diff]; simp
+      have h_honest_ge : n - t ≤ (honestSet s).card := by
+        rw [h_honest_card]; exact Nat.sub_le_sub_left hF1 n
+      have h_readies_ge : n - t ≤ (s.local_ p).readyReceived.card :=
+        h_honest_ge.trans (Finset.card_le_card hh_sub)
+      exact ⟨.partyOutput p, by show True; trivial,
+             hp_h, hp_del, hp_rs, hp_out, h_readies_ge⟩
+  · push_neg at hds_all
+    obtain ⟨p, hp_ds⟩ := hds_all
+    have hp_ds_f : s.dealerSent p = false := by
+      cases h : s.dealerSent p with
+      | true => exact absurd h hp_ds
+      | false => rfl
+    refine ⟨.dealerShareTo p, ?_, ?_⟩
+    · show True; trivial
+    · show s.dealerSent p = false
+      exact hp_ds_f
+
 
 omit [Fintype F] in
-/-- Helper: a corrupt-fired action (one of `partyEchoSend p`,
-`partyReady p`, `partyAmplify p` with `p ∈ s.corrupted`) populates
-either `inflightEchoes` or `inflightReady` at the post-state, hence
-the post-state cannot be `terminated`. -/
+/-- Helper: a corrupt-fired action either (a) populates `inflightEchoes` or
+`inflightReady` at the post-state — breaking `terminated`'s queue clauses —
+or (b) leaves the honest-relevant fields unchanged, in which case the
+post-state's `terminated` predicate equals the pre-state's, so the
+pre-state's `¬ terminated` lifts forward.
+
+The (b) branch covers `dealerShareTo p` for corrupt `p`: the action only
+mutates `inflightCorruptDeliveries` (not in `terminated`) and `dealerSent`
++ `dealerMessages` (also not in `terminated`). -/
 theorem corrupt_fire_post_not_terminated
     (a : AVSSAction n F) (s : AVSSState n t F)
-    (hph : ¬ isHonestFire a s) :
+    (hph : ¬ isHonestFire a s) (hnt : ¬ terminated s) :
     ¬ terminated (avssStep a s) := by
   classical
   unfold isHonestFire at hph
   push_neg at hph
-  obtain ⟨p, ha_form, _hp_corr⟩ := hph
-  rcases ha_form with rfl | rfl | rfl
+  obtain ⟨p, ha_form, hp_corr⟩ := hph
+  rcases ha_form with rfl | rfl | rfl | rfl
   · intro ht
     obtain ⟨_, _, _, hife, _⟩ := ht
     have h_in : (p, p) ∈ (avssStep (.partyEchoSend p) s).inflightEchoes := by
@@ -4867,6 +5110,37 @@ theorem corrupt_fire_post_not_terminated
       simp [avssStep]
     rw [hifr] at h_in
     exact (Finset.notMem_empty _) h_in
+  · -- dealerShareTo p with p ∈ corrupted: the action doesn't change any field
+    -- that `terminated` inspects (only `dealerSent`, `dealerMessages`, and
+    -- `inflightCorruptDeliveries`). So `terminated post ↔ terminated pre`.
+    intro ht
+    apply hnt
+    obtain ⟨h_out, h_echo, h_ifd, h_ife, h_ifr⟩ := ht
+    refine ⟨?_, ?_, ?_, ?_, ?_⟩
+    · intro q hq
+      have h_post_loc : (avssStep (.dealerShareTo p) s).local_ q = s.local_ q := rfl
+      have h_post_corr : (avssStep (.dealerShareTo p) s).corrupted = s.corrupted := rfl
+      have hq' : q ∉ (avssStep (.dealerShareTo p) s).corrupted := by
+        rw [h_post_corr]; exact hq
+      have := h_out q hq'
+      rwa [h_post_loc] at this
+    · intro q hq
+      have h_post_loc : (avssStep (.dealerShareTo p) s).local_ q = s.local_ q := rfl
+      have h_post_corr : (avssStep (.dealerShareTo p) s).corrupted = s.corrupted := rfl
+      have hq' : q ∉ (avssStep (.dealerShareTo p) s).corrupted := by
+        rw [h_post_corr]; exact hq
+      have := h_echo q hq'
+      rwa [h_post_loc] at this
+    · -- pre.inflightDeliveries = post.inflightDeliveries (since p ∈ corr).
+      have h_post_ifd : (avssStep (.dealerShareTo p) s).inflightDeliveries =
+          s.inflightDeliveries := by
+        simp only [avssStep]
+        rw [if_neg (by simp [hp_corr])]
+      rw [← h_post_ifd]; exact h_ifd
+    · have : (avssStep (.dealerShareTo p) s).inflightEchoes = s.inflightEchoes := rfl
+      rw [← this]; exact h_ife
+    · have : (avssStep (.dealerShareTo p) s).inflightReady = s.inflightReady := rfl
+      rw [← this]; exact h_ifr
 
 /-! ### Phase 2d: FairASTCertificate instance -/
 
@@ -4898,7 +5172,7 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card
             initPred_avssFreshInv sec corr s hinit,
             initPred_avssFlowInv sec corr h_corr s hinit⟩
     obtain ⟨hloc, _, _, hidl, _, hie, hird, _, _⟩ := hinit
-    refine ⟨?_, ?_, ?_⟩
+    refine ⟨?_, ?_, ?_, ?_⟩
     · intro _
       refine ⟨hloc, hidl, hie, hird⟩
     · intro p _ hes
@@ -4907,6 +5181,7 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card
     · intro p _ hsome
       rw [hloc p] at hsome
       simp [AVSSLocalState.init] at hsome
+    · intro p _ _; rw [hloc p]; rfl
   inv_step := fun a s h hinv s' hs' => by
     -- The effect of an avssSpec action is `PMF.pure (avssStep a s)` by `rfl`.
     have heff : ((avssSpec (t := t) sec corr).actions a).effect s h
@@ -4955,7 +5230,7 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card
       · exact avssStep_preserves_corruptLocalInv a s h hinv.2.1
       · exact avssStep_preserves_avssQueueWfInv a s h hinv.1 hinv.2.2.2.1 hinv.2.2.1
       · exact avssStep_preserves_avssFlowInv a s h hinv.2.2.2.2
-      · exact corrupt_fire_post_not_terminated a s hph
+      · exact corrupt_fire_post_not_terminated a s hph hnt
   V_super_fair := fun a s h hfair hinv hnt => by
     classical
     have heff : ((avssSpec (t := t) sec corr).actions a).effect s h
@@ -4980,7 +5255,7 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card
       · exact avssStep_preserves_corruptLocalInv a s h hinv.2.1
       · exact avssStep_preserves_avssQueueWfInv a s h hinv.1 hinv.2.2.2.1 hinv.2.2.1
       · exact avssStep_preserves_avssFlowInv a s h hinv.2.2.2.2
-      · exact corrupt_fire_post_not_terminated a s hph
+      · exact corrupt_fire_post_not_terminated a s hph hnt
   U_term := fun s hinv ht => avssCert_U_term s hinv.1 ht
   U_dec_det := fun a s h hfair hinv hnt s' hs' => by
     classical
@@ -4997,7 +5272,7 @@ noncomputable def avssCert (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card
       · exact avssStep_preserves_corruptLocalInv a s h hinv.2.1
       · exact avssStep_preserves_avssQueueWfInv a s h hinv.1 hinv.2.2.2.1 hinv.2.2.1
       · exact avssStep_preserves_avssFlowInv a s h hinv.2.2.2.2
-      · exact corrupt_fire_post_not_terminated a s hph
+      · exact corrupt_fire_post_not_terminated a s hph hnt
   U_bdd_subl := fun _ =>
     ⟨(7 * n + 7) * (lexBase n) ^ 6, fun s _ _ => avssU_le_bound s⟩
   V_init_bdd :=
@@ -5166,11 +5441,24 @@ theorem avssStep_preserves_dealerMessagesInv
   intro p msg hmsg
   rw [hpp, hcoef]
   cases a with
-  | dealerShare =>
-      -- post `dealerMessages p = some {rowPoly := rowPolyOfDealer ...,
-      --                                colPoly := fun _ => 0}`.
-      simp [avssStep] at hmsg
-      rw [← hmsg]
+  | dealerShareTo r =>
+      -- post.dealerMessages = update s.dealerMessages r (some payload).
+      -- Case on p = r vs p ≠ r.
+      by_cases hpr : p = r
+      · subst hpr
+        -- post.dealerMessages p = some payload with rowPoly = rowPolyOfDealer s.partyPoint s.coeffs p.
+        have h_post : (avssStep (.dealerShareTo p) s).dealerMessages p =
+            some { rowPoly := rowPolyOfDealer s.partyPoint s.coeffs p
+                   colPoly := fun _ => (0 : F) } := by
+          simp [avssStep, Function.update_self]
+        rw [h_post] at hmsg
+        injection hmsg with hmsg_eq
+        rw [← hmsg_eq]
+      · have h_post : (avssStep (.dealerShareTo r) s).dealerMessages p =
+            s.dealerMessages p := by
+          simp [avssStep, Function.update_of_ne hpr]
+        rw [h_post] at hmsg
+        exact hinv p msg hmsg
   | partyDeliver q =>
       -- post `dealerMessages = pre dealerMessages`.
       have : (avssStep (AVSSAction.partyDeliver q) s).dealerMessages =
@@ -5318,7 +5606,7 @@ theorem avssStep_preserves_honestDealerInv
   -- Clause 1: ∀ honest p, post delivered → post rowPoly = some rowPolyOfDealer
   · intro p hp hd_post
     cases a with
-    | dealerShare =>
+    | dealerShareTo r =>
         simp [avssStep] at hd_post ⊢
         exact h_rp_correct p hp hd_post
     | partyDeliver q =>
@@ -5379,7 +5667,7 @@ theorem avssStep_preserves_honestDealerInv
   -- Clause 2: ∀ honest p, post output = some v → v = bivEval coeffs (partyPoint p) 0
   · intro p hp v hv
     cases a with
-    | dealerShare =>
+    | dealerShareTo r =>
         simp [avssStep] at hv
         exact h_out_correct p hp v hv
     | partyDeliver q =>
@@ -5747,7 +6035,7 @@ theorem avssStep_preserves_outputDeterminedInv
   refine ⟨?_, ?_⟩
   · intro p hd_post
     cases a with
-    | dealerShare =>
+    | dealerShareTo r =>
         simp [avssStep] at hd_post ⊢
         exact h_rp_correct p hd_post
     | partyDeliver q =>
@@ -5810,7 +6098,7 @@ theorem avssStep_preserves_outputDeterminedInv
           exact h_rp_correct p hd_post
   · intro p hp v hv
     cases a with
-    | dealerShare =>
+    | dealerShareTo r =>
         simp [avssStep] at hv
         exact h_out_correct p hp v hv
     | partyDeliver q =>
@@ -6394,7 +6682,7 @@ def avssInitState (sec : F) (corr : Finset (Fin n))
     inflightCorruptDeliveries := ∅
     inflightEchoes := ∅
     inflightReady := ∅
-    dealerSent := false
+    dealerSent := fun _ => false
     dealerMessages := fun _ => none }
 
 /-- Operational initial PMF for AVSS, pulled back from
@@ -6462,7 +6750,7 @@ theorem avssInitPMF_support_initPred (sec : F) (corr : Finset (Fin n))
       s.inflightCorruptDeliveries = ∅ ∧
       s.inflightEchoes = ∅ ∧
       s.inflightReady = ∅ ∧
-      s.dealerSent = false ∧
+      s.dealerSent = (fun _ => false) ∧
       s.dealerMessages = (fun _ => none) := by
   classical
   intro s hs
@@ -10093,10 +10381,10 @@ theorem actionGate_iff (h : simSyncInv corr s s')
     (a : AVSSAction n F) :
     actionGate a s ↔ actionGate a s' := by
   cases a with
-  | dealerShare =>
+  | dealerShareTo p =>
     simp only [actionGate, h.dealerSent_eq]
   | partyDeliver q =>
-    -- gate: dealerSent = true ∧ q ∉ corrupted ∧ q ∈ inflightDeliveries
+    -- gate: dealerSent q = true ∧ q ∉ corrupted ∧ q ∈ inflightDeliveries
     --       ∧ (local_ q).delivered = false ∧ (dealerMessages q).isSome
     by_cases hq : q ∈ corr
     · -- q ∈ corr means q ∈ s.corrupted and q ∈ s'.corrupted, so gate is False both sides.
@@ -10188,7 +10476,11 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
     (h : simSyncInv corr s s') (hgate : actionGate a s) :
     simSyncInv corr (avssStep a s) (avssStep a s') := by
   cases a with
-  | dealerShare =>
+  | dealerShareTo r =>
+    -- Both sides write the same payload (since `partyPoint`, `coeffs` agree
+    -- via `partyPoint_eq`; `coeffs` aren't tracked by simSyncInv but they're
+    -- equal definitionally between coupled simulators). Local state is
+    -- unchanged on both sides, so all `local_*` fields carry over.
     refine
       { partyPoint_eq := h.partyPoint_eq
         corrupted_eq := h.corrupted_eq
@@ -10211,15 +10503,33 @@ theorem avssStep_preserves_simSyncInv (a : AVSSAction n F)
         rowPoly_corrupt_eq := fun p hp => h.rowPoly_corrupt_eq p hp
         dealerMessages_isSome_eq := ?_
         dealerMessages_corrupt_eq := ?_ }
-    · simp only [avssStep]
-    · simp only [avssStep, h.corrupted_eq]
-    · simp only [avssStep, h.corrupted_eq]
-    · intro p; simp [avssStep]
-    · intro p hp
-      have hrp := h.rowPoly_corrupt_eq p hp
+    · simp only [avssStep]; exact congrArg (Function.update · r true) h.dealerSent_eq
+    · -- inflightDeliveries_eq: both sides apply the same `if`-branch.
+      simp only [avssStep, h.corrupted_eq]
+      split <;> simp [h.inflightDeliveries_eq]
+    · -- inflightCorruptDeliveries_eq.
+      simp only [avssStep, h.corrupted_eq]
+      split <;> simp [h.inflightCorruptDeliveries_eq]
+    · -- dealerMessages_isSome_eq: both sides write some _ at r; isSome unchanged elsewhere.
+      intro p
       simp only [avssStep]
-      congr 1
-      exact DealerPayload.mk.injEq _ _ _ _ |>.mpr ⟨hrp, rfl⟩
+      by_cases hpr : p = r
+      · subst hpr; simp [Function.update_self]
+      · simp [Function.update_of_ne hpr]; exact h.dealerMessages_isSome_eq p
+    · -- dealerMessages_corrupt_eq: at corrupt slots, both sides write the same payload
+      -- if r is the slot; else preserved by hypothesis.
+      intro p hp
+      simp only [avssStep]
+      by_cases hpr : p = r
+      · subst hpr
+        simp only [Function.update_self]
+        -- The payload's `colPoly = fun _ => 0` agrees on both sides; the
+        -- `rowPoly = rowPolyOfDealer ... p ...` equality follows
+        -- from `simSyncInv.rowPoly_corrupt_eq p hp` (with p ∈ corr).
+        have hrp := h.rowPoly_corrupt_eq p hp
+        congr 1
+        exact DealerPayload.mk.injEq _ _ _ _ |>.mpr ⟨hrp, rfl⟩
+      · simp [Function.update_of_ne hpr]; exact h.dealerMessages_corrupt_eq p hp
   | partyDeliver q =>
     -- Gate retains q ∉ corrupted.
     have hq : q ∉ corr := by
