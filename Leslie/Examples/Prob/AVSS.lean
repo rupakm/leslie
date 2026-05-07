@@ -6222,6 +6222,60 @@ theorem avss_secrecy_AS_step_zero_grid_randomised
     (fun A => avss_secrecy_AS_init sec sec' corr partyPoint dealerHonest
       h_nz_pp h_F C D A) R
 
+/-- **Step-`k` general grid secrecy against a randomised adversary.**
+
+The randomised analog of `avss_secrecy_AS` (§17.9): the marginal of
+the mixture trace measure projected to the `coalitionGrid C D` view
+at any coordinate `k` is invariant in the secret, for *any*
+randomised adversary.
+
+Generalisation of `avss_secrecy_AS_step_zero_grid_randomised` (PR #47)
+from coord 0 to all `k : ℕ`. Closes the step-`k` form of caveat C5
+for secrecy.
+
+Proof: factor through `randomisedTraceDist_map_eq_of_deterministic`
+(PR #N, this PR) — the generic step-`k` lift — supplying:
+
+  * the structural state-projection invariance hypothesis discharged
+    by `avssStep_coalitionGrid_invariant` (every gated `avssStep`
+    branch preserves `coalitionGrid C D`); and
+  * the deterministic premise `avss_secrecy_AS_init` (= the coord-0
+    grid secrecy for any deterministic adversary, PR #43).
+
+The schedule PMF integrates the per-branch AE-equality across
+`randomisedStepKernel` to lift from coord 0 to coord `k`. -/
+theorem avss_secrecy_AS_randomised
+    (sec sec' : F) (corr : Finset (Fin n))
+    (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (C D : BivariateShamir.Coalition n t)
+    (R : RandomisedAdversary (AVSSState n t F) (AVSSAction n F)) (k : ℕ) :
+    (randomisedTraceDist (avssSpec (t := t) sec corr) R
+        (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω k).1) =
+      (randomisedTraceDist (avssSpec (t := t) sec' corr) R
+        (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω k).1) := by
+  classical
+  have hmeas : Measurable (coalitionGrid (n := n) (t := t) (F := F) C D) :=
+    measurable_of_countable _
+  have h_step : ∀ (s : F) (a : AVSSAction n F) (st : AVSSState n t F)
+      (hgate : ((avssSpec (t := t) s corr).actions a).gate st),
+      ∀ st' ∈ ((avssSpec (t := t) s corr).actions a).effect st hgate |>.support,
+        coalitionGrid C D st' = coalitionGrid C D st := by
+    intro s a st hgate st' hsupp
+    rw [show ((avssSpec (t := t) s corr).actions a).effect st hgate
+          = PMF.pure (avssStep a st) from rfl,
+        PMF.support_pure, Set.mem_singleton_iff] at hsupp
+    subst hsupp
+    exact avssStep_coalitionGrid_invariant a st C D
+  exact randomisedTraceDist_map_eq_of_deterministic
+    (g := coalitionGrid (n := n) (t := t) (F := F) C D)
+    hmeas (h_step sec) (h_step sec')
+    (fun A => avss_secrecy_AS_init sec sec' corr partyPoint dealerHonest
+      h_nz_pp h_F C D A) R k
+
 /-! ## §19.1.6 Phase 9.3 follow-up — existential-witness `_randomised` analogs
 
 The `_randomised` lifts in §19.1.5 above target the older
@@ -6491,6 +6545,36 @@ theorem avss_secrecy_AS_step_zero_grid_rushing_randomised
         (fun ω => coalitionGrid C D (ω 0).1) :=
   avss_secrecy_AS_step_zero_grid_randomised sec sec' corr partyPoint
     dealerHonest h_nz_pp h_F C D R.toRandomisedAdversary
+
+/-- **Step-`k` grid secrecy against a rushing randomised adversary.**
+
+The literature-faithful step-`k` operational secrecy randomised
+analog: at any coordinate `k : ℕ`, the marginal of the mixture trace
+measure projected to the `coalitionGrid C D` view is invariant in
+the secret, against any rushing randomised adversary.
+
+Generalisation of `avss_secrecy_AS_step_zero_grid_rushing_randomised`
+(coord 0) to all `k`. Closes the step-`k` operational rushing-randomised
+secrecy gap that was deferred from PRs #55 and #53 due to their
+sibling-stack independence.
+
+Thin wrapper: forwards to PR #53's step-`k` form
+`avss_secrecy_AS_randomised` via `R.toRandomisedAdversary`. -/
+theorem avss_secrecy_AS_view_rushing_randomised
+    (sec sec' : F) (corr : Finset (Fin n))
+    (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (C D : BivariateShamir.Coalition n t)
+    (R : AVSSRushingRandomisedAdversary n t F corr) (k : ℕ) :
+    (randomisedTraceDist (avssSpec (t := t) sec corr) R.toRandomisedAdversary
+        (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω k).1) =
+      (randomisedTraceDist (avssSpec (t := t) sec' corr) R.toRandomisedAdversary
+        (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)).map
+        (fun ω => coalitionGrid C D (ω k).1) :=
+  avss_secrecy_AS_randomised sec sec' corr partyPoint dealerHonest
+    h_nz_pp h_F C D R.toRandomisedAdversary k
 
 /-- **Termination against a rushing randomised adversary.**  Thin
 wrapper: bundle `R.toRandomisedAdversary` together with the AE-trajectory

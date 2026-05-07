@@ -806,6 +806,123 @@ theorem randomisedTraceDist_map_eq_of_deterministic_at_zero
       traceDist_map_zero spec' A₀ μ₀'] at hA₀
   exact hA₀
 
+/-- **Per-history step-kernel preserves any state projection invariant
+under every gated effect.** Helper for the step-`k` map-equality lift.
+The kernel's mixture-PMF integral of branchwise preservation gives
+total AE-equality of `g (·.1)` to `g h.currentState`. -/
+private lemma randomisedStepKernel_state_proj_AE
+    {spec : ProbActionSpec σ ι} {β : Type*} {g : σ → β}
+    (h_step_inv : ∀ (i : ι) (s : σ) (hgate : (spec.actions i).gate s),
+        ∀ s' ∈ ((spec.actions i).effect s hgate).support, g s' = g s)
+    (R : RandomisedAdversary σ ι) {n : ℕ} (h : FinPrefix σ ι n) :
+    ∀ᵐ y ∂(randomisedStepKernel spec R n h), g y.1 = g h.currentState := by
+  classical
+  have hbad : MeasurableSet {y : σ × Option ι | ¬(g y.1 = g h.currentState)} :=
+    MeasurableSet.of_discrete
+  rw [ae_iff, randomisedStepKernel_apply_tsum spec R h hbad, ENNReal.tsum_eq_zero]
+  intro α
+  have h_alpha : ∀ᵐ y ∂(singleActionStep spec h α),
+      (fun s : σ => g s = g h.currentState) y.1 := by
+    refine singleActionStep_ae_of_inductive (φ := fun s => g s = g h.currentState)
+      (h_step := ?_) h α rfl
+    intro i s hgate hsφ s' hsupp
+    rw [h_step_inv i s hgate s' hsupp]; exact hsφ
+  have hzero : (singleActionStep spec h α)
+      {y | ¬(g y.1 = g h.currentState)} = 0 := by
+    rw [← ae_iff]; exact h_alpha
+  rw [hzero, mul_zero]
+
+/-- **Trace-level AE invariance of state projections under
+`randomisedTraceDist`.** If a state projection `g : σ → β` is
+preserved by every gated effect, then `g (ω k).1` AE-equals
+`g (ω 0).1` under the mixture trace measure for any `k`.
+
+Proof structure mirrors the deterministic
+`traceDist_coalitionGrid_AE_eq_init` (AVSS.lean §17.9): induction on
+`k`, with the successor step using
+`Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure` to
+reduce to the per-prefix kernel AE statement
+(`randomisedStepKernel_state_proj_AE`). -/
+private theorem randomisedTraceDist_state_proj_AE_eq_init
+    {spec : ProbActionSpec σ ι} {β : Type*} {g : σ → β}
+    (h_step_inv : ∀ (i : ι) (s : σ) (hgate : (spec.actions i).gate s),
+        ∀ s' ∈ ((spec.actions i).effect s hgate).support, g s' = g s)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (R : RandomisedAdversary σ ι) (k : ℕ) :
+    ∀ᵐ ω ∂(randomisedTraceDist spec R μ₀), g (ω k).1 = g (ω 0).1 := by
+  classical
+  induction k with
+  | zero => exact Filter.Eventually.of_forall fun _ => rfl
+  | succ k ih =>
+    suffices hone_step :
+        ∀ᵐ ω ∂(randomisedTraceDist spec R μ₀),
+          g (ω (k+1)).1 = g (ω k).1 by
+      filter_upwards [hone_step, ih] with ω h_step h_ih
+      rw [h_step, h_ih]
+    have hmeas_pair : Measurable
+        (fun ω : Trace σ ι => (Preorder.frestrictLe k ω, ω (k+1))) := by fun_prop
+    haveI : IsProbabilityMeasure (μ₀.map (fun s : σ => (s, (none : Option ι)))) :=
+      Measure.isProbabilityMeasure_map (by fun_prop)
+    have hk :
+        ((randomisedTraceDist spec R μ₀).map (Preorder.frestrictLe k)) ⊗ₘ
+          (randomisedStepKernel spec R k) =
+        (randomisedTraceDist spec R μ₀).map
+          (fun ω => (Preorder.frestrictLe k ω, ω (k+1))) := by
+      unfold randomisedTraceDist
+      exact ProbabilityTheory.Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure
+    have h_inner : ∀ᵐ h ∂((randomisedTraceDist spec R μ₀).map (Preorder.frestrictLe k)),
+        ∀ᵐ y ∂(randomisedStepKernel spec R k h), g y.1 = g h.currentState :=
+      Filter.Eventually.of_forall fun h =>
+        randomisedStepKernel_state_proj_AE h_step_inv R h
+    have hjoint :
+        ∀ᵐ x ∂(((randomisedTraceDist spec R μ₀).map (Preorder.frestrictLe k)) ⊗ₘ
+            (randomisedStepKernel spec R k)),
+          g x.2.1 = g (FinPrefix.currentState x.1) :=
+      Measure.ae_compProd_of_ae_ae MeasurableSet.of_discrete h_inner
+    rw [hk] at hjoint
+    rw [ae_map_iff hmeas_pair.aemeasurable MeasurableSet.of_discrete] at hjoint
+    exact hjoint
+
+/-- **Mixture-`Measure.map` equality lift, step-`k` form.**
+
+Generalisation of `randomisedTraceDist_map_eq_of_deterministic_at_zero`
+to coordinate `k > 0`. The lift relies on the state projection `g`
+being **preserved by every gated effect** of both specs (the
+structural fact captured by, e.g., AVSS's
+`avssStep_coalitionGrid_invariant`).
+
+Under this hypothesis, the schedule PMF integrates the per-branch
+AE-equality across `randomisedStepKernel`, propagating coord-0
+mixture equality to coord-`k` mixture equality. The deterministic
+premise `h_det` is taken at coord 0; `Measure.map_congr` plus the
+trace-level invariance lemma reduces both sides at coord `k` to
+their coord-0 forms. -/
+theorem randomisedTraceDist_map_eq_of_deterministic
+    {β : Type*} [MeasurableSpace β]
+    {spec spec' : ProbActionSpec σ ι}
+    {μ₀ μ₀' : Measure σ} [IsProbabilityMeasure μ₀] [IsProbabilityMeasure μ₀']
+    {g : σ → β} (hg : Measurable g)
+    (h_step_inv : ∀ (i : ι) (s : σ) (hgate : (spec.actions i).gate s),
+        ∀ s' ∈ ((spec.actions i).effect s hgate).support, g s' = g s)
+    (h_step_inv' : ∀ (i : ι) (s : σ) (hgate : (spec'.actions i).gate s),
+        ∀ s' ∈ ((spec'.actions i).effect s hgate).support, g s' = g s)
+    (h_det : ∀ (A : Adversary σ ι),
+       (traceDist spec A μ₀).map (fun ω => g (ω 0).1) =
+       (traceDist spec' A μ₀').map (fun ω => g (ω 0).1))
+    (R : RandomisedAdversary σ ι) (k : ℕ) :
+    (randomisedTraceDist spec R μ₀).map (fun ω => g (ω k).1) =
+      (randomisedTraceDist spec' R μ₀').map (fun ω => g (ω k).1) := by
+  classical
+  have hLHS : (randomisedTraceDist spec R μ₀).map (fun ω => g (ω k).1) =
+              (randomisedTraceDist spec R μ₀).map (fun ω => g (ω 0).1) :=
+    Measure.map_congr (randomisedTraceDist_state_proj_AE_eq_init h_step_inv μ₀ R k)
+  have hRHS : (randomisedTraceDist spec' R μ₀').map (fun ω => g (ω k).1) =
+              (randomisedTraceDist spec' R μ₀').map (fun ω => g (ω 0).1) :=
+    Measure.map_congr (randomisedTraceDist_state_proj_AE_eq_init h_step_inv' μ₀' R k)
+  rw [hLHS, hRHS]
+  exact randomisedTraceDist_map_eq_of_deterministic_at_zero
+    (f := fun x : σ × Option ι => g x.1) (hg.comp measurable_fst) h_det R
+
 /-- **Lift form for `AlmostDiamond`.** Inductive form: if eventual
 occurrence is guaranteed for every deterministic adversary by a
 "leads-to" certificate that's adversary-independent, the randomised
@@ -987,6 +1104,303 @@ theorem sound {spec : ProbActionSpec σ ι} {F : FairnessAssumptions σ ι}
     h_U_mono h_U_strict
 
 end RandomisedFairASTCertificate
+
+/-! ### Bridge constructor: uniform-`ε` schedule mass → trajectory-fair adversary
+
+The deterministic side supplies `TrajectoryFairAdversary.progress` from
+per-protocol fairness reasoning.  In the randomised setting, the
+canonical structural bound is a **uniform-`ε` lower bound on the schedule
+PMF for gated fair actions**: at every history, the total probability
+mass that the schedule assigns to fair-required actions whose gate is
+satisfied is at least `ε > 0`.
+
+Under that bound, the events "a gated fair action fires at step `k`"
+are history-conditioned Bernoulli trials with success probability
+`≥ ε`.  By a direct iterative bound (the kernel-level analog of
+Borel-Cantelli II for a sequence of Bernoulli trials with a uniform
+positive lower bound on the conditional probabilities), gated fair
+actions fire infinitely often almost surely.
+
+The implementation below proves the iterative bound directly via the
+`Kernel.trajMeasure` marginal recurrence — bypassing the conditional
+Borel-Cantelli machinery in `MeasureTheory.Martingale.BorelCantelli`,
+whose connection to `Kernel.trajMeasure` requires non-trivial
+infrastructure for converting kernel mass at a history-prefix into a
+conditional expectation w.r.t. the natural filtration on `Trace σ ι`. -/
+
+section UniformEpsilonBridge
+
+open Classical
+
+variable {σ ι : Type*}
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+
+/-- The (state, label) pairs at which a fair-required action fires. -/
+private def fairFireSet (F : FairnessAssumptions σ ι) : Set (σ × Option ι) :=
+  {y | ∃ i ∈ F.fair_actions, y.2 = some i}
+
+omit [MeasurableSpace ι] [MeasurableSingletonClass ι] in
+private lemma measurableSet_fairFireSet (F : FairnessAssumptions σ ι) :
+    MeasurableSet (fairFireSet F) := MeasurableSet.of_discrete
+
+/-- Per-step lower bound: under the uniform-ε hypothesis, the
+randomised step kernel assigns mass `≥ ε` to the set of (state, label)
+pairs at which a fair-required action fires. -/
+private lemma randomisedStepKernel_fairFireSet_ge
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
+    (F : FairnessAssumptions σ ι) (ε : ENNReal)
+    (h_uniform : ∀ {n : ℕ} (h : FinPrefix σ ι n),
+        ε ≤ ∑' i : ι, if i ∈ F.fair_actions ∧ (spec.actions i).gate h.currentState
+                      then R.strategy h.toList (some i) else 0)
+    {n : ℕ} (h : FinPrefix σ ι n) :
+    ε ≤ randomisedStepKernel spec R n h (fairFireSet F) := by
+  refine (h_uniform h).trans ?_
+  rw [randomisedStepKernel_apply_tsum spec R h (measurableSet_fairFireSet F)]
+  have h_inj : Function.Injective (some : ι → Option ι) := Option.some_injective ι
+  -- Step 1: term-wise, the LHS at index `i` is bounded by
+  -- `R.strategy(some i) * sas(some i, fairFireSet F)`.
+  have hterm : ∀ i : ι,
+      (if i ∈ F.fair_actions ∧ (spec.actions i).gate h.currentState
+        then R.strategy h.toList (some i) else 0) ≤
+      R.strategy h.toList (some i) *
+        singleActionStep spec h (some i) (fairFireSet F) := by
+    intro i
+    by_cases hcond : i ∈ F.fair_actions ∧ (spec.actions i).gate h.currentState
+    · rcases hcond with ⟨hfair, hgate⟩
+      rw [if_pos ⟨hfair, hgate⟩]
+      have hfun : Measurable (fun s : σ => (s, some i)) := by fun_prop
+      have hsas : singleActionStep spec h (some i) (fairFireSet F) = 1 := by
+        simp only [singleActionStep, hgate, dite_true]
+        rw [Measure.map_apply hfun (measurableSet_fairFireSet F)]
+        have hpre : (fun s : σ => (s, some i)) ⁻¹' fairFireSet F = Set.univ := by
+          ext s
+          simp [fairFireSet, hfair]
+        rw [hpre]
+        exact measure_univ
+      rw [hsas, mul_one]
+    · rw [if_neg hcond]
+      exact zero_le _
+  -- Step 2: sum-over-`ι` of the RHS dominates summing over `Option ι`
+  -- via injection of `some`.
+  refine (ENNReal.tsum_le_tsum hterm).trans ?_
+  exact ENNReal.tsum_comp_le_tsum_of_injective h_inj
+    (fun α => R.strategy h.toList α * singleActionStep spec h α (fairFireSet F))
+
+/-- Per-step upper bound: the kernel mass on the complement of
+`fairFireSet F` is at most `1 - ε`. -/
+private lemma randomisedStepKernel_fairFireSet_compl_le
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
+    (F : FairnessAssumptions σ ι) (ε : ENNReal)
+    (h_uniform : ∀ {n : ℕ} (h : FinPrefix σ ι n),
+        ε ≤ ∑' i : ι, if i ∈ F.fair_actions ∧ (spec.actions i).gate h.currentState
+                      then R.strategy h.toList (some i) else 0)
+    {n : ℕ} (h : FinPrefix σ ι n) :
+    randomisedStepKernel spec R n h (fairFireSet F)ᶜ ≤ 1 - ε := by
+  have hge : ε ≤ randomisedStepKernel spec R n h (fairFireSet F) :=
+    randomisedStepKernel_fairFireSet_ge spec R F ε h_uniform h
+  have hkernel_univ : randomisedStepKernel spec R n h Set.univ = 1 := measure_univ
+  have h_le_one : randomisedStepKernel spec R n h (fairFireSet F) ≤ 1 := by
+    rw [← hkernel_univ]; exact measure_mono (Set.subset_univ _)
+  have h_eps_le : ε ≤ 1 := hge.trans h_le_one
+  have h_eps_ne_top : ε ≠ ⊤ := ne_top_of_le_ne_top ENNReal.one_ne_top h_eps_le
+  rw [ENNReal.le_sub_iff_add_le_right h_eps_ne_top h_eps_le]
+  calc randomisedStepKernel spec R n h (fairFireSet F)ᶜ + ε
+      ≤ randomisedStepKernel spec R n h (fairFireSet F)ᶜ +
+          randomisedStepKernel spec R n h (fairFireSet F) := by gcongr
+    _ = 1 := by
+        rw [add_comm,
+          ← measure_union (Disjoint.symm disjoint_compl_left)
+            (measurableSet_fairFireSet F).compl,
+          Set.union_compl_self, hkernel_univ]
+
+/-- The "no fair fire in the next `m` steps starting from index `N`"
+event on traces. Defined as a finite intersection over `Finset.range m`
+so that measurability is trivial. -/
+private def noFairFireWindow (F : FairnessAssumptions σ ι) (N m : ℕ) :
+    Set (Trace σ ι) :=
+  ⋂ k ∈ Finset.range m,
+    {ω : Trace σ ι | ω (N + k + 1) ∈ (fairFireSet F)ᶜ}
+
+omit [MeasurableSpace ι] [MeasurableSingletonClass ι] in
+private lemma measurableSet_noFairFireWindow
+    (F : FairnessAssumptions σ ι) (N m : ℕ) :
+    MeasurableSet (noFairFireWindow F N m) :=
+  Finset.measurableSet_biInter _ fun _ _ =>
+    (measurableSet_fairFireSet F).compl.preimage (measurable_pi_apply _)
+
+omit [Countable σ] [Countable ι] [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι] in
+private lemma mem_noFairFireWindow_iff
+    (F : FairnessAssumptions σ ι) (N m : ℕ) (ω : Trace σ ι) :
+    ω ∈ noFairFireWindow F N m ↔
+      ∀ k : ℕ, k < m → ω (N + k + 1) ∈ (fairFireSet F)ᶜ := by
+  unfold noFairFireWindow
+  simp [Finset.mem_range]
+
+/-- Inductive bound: `ν(noFairFireWindow N m) ≤ (1 - ε)^m`. -/
+private lemma randomisedTraceDist_noFairFireWindow_le
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
+    (F : FairnessAssumptions σ ι) (ε : ENNReal)
+    (h_uniform : ∀ {n : ℕ} (h : FinPrefix σ ι n),
+        ε ≤ ∑' i : ι, if i ∈ F.fair_actions ∧ (spec.actions i).gate h.currentState
+                      then R.strategy h.toList (some i) else 0)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀] (N m : ℕ) :
+    randomisedTraceDist spec R μ₀ (noFairFireWindow F N m) ≤ (1 - ε) ^ m := by
+  classical
+  haveI hμ₀_full : IsProbabilityMeasure
+      (μ₀.map (fun s : σ ↦ (s, (none : Option ι)))) :=
+    Measure.isProbabilityMeasure_map (by fun_prop)
+  induction m with
+  | zero =>
+    simp only [pow_zero]
+    refine (measure_mono (Set.subset_univ _)).trans ?_
+    rw [measure_univ]
+  | succ m ih =>
+    -- Coercion of indices into Finset.Iic (N + m).
+    have hcoerce : ∀ k : ℕ, k < m → N + k + 1 ∈ Finset.Iic (N + m) :=
+      fun k hk => Finset.mem_Iic.mpr (by omega)
+    -- Splitter map.
+    let splitter : Trace σ ι → FinPrefix σ ι (N + m) × (σ × Option ι) :=
+      fun x => (Preorder.frestrictLe (π := fun _ : ℕ => σ × Option ι) (N + m) x,
+                x (N + m + 1))
+    have hmeas_split : Measurable splitter := by
+      refine Measurable.prodMk ?_ ?_
+      · exact Preorder.measurable_frestrictLe _
+      · exact measurable_pi_apply _
+    -- Restrict-prefix subset describing the first `m` no-fair conditions.
+    let S : Set (FinPrefix σ ι (N + m)) :=
+      {h | ∀ k (hk : k < m), h ⟨N + k + 1, hcoerce k hk⟩ ∈ (fairFireSet F)ᶜ}
+    have hS_meas : MeasurableSet S := MeasurableSet.of_discrete
+    -- noFairFireWindow F N (m+1) = splitter ⁻¹' (S ×ˢ (fairFireSet F)ᶜ).
+    have hsplit_eq : noFairFireWindow F N (m + 1) =
+        splitter ⁻¹' (S ×ˢ (fairFireSet F)ᶜ) := by
+      ext ω
+      rw [mem_noFairFireWindow_iff]
+      simp only [splitter, S, Set.mem_preimage, Set.mem_prod, Set.mem_setOf_eq,
+        Preorder.frestrictLe]
+      constructor
+      · intro hω
+        refine ⟨fun k hk => hω k (by omega), hω m (by omega)⟩
+      · intro ⟨h1, h2⟩ k hk
+        rcases lt_or_eq_of_le (Nat.lt_succ_iff.mp hk) with hlt | heq
+        · exact h1 k hlt
+        · subst heq; exact h2
+    rw [hsplit_eq]
+    rw [show randomisedTraceDist spec R μ₀ (splitter ⁻¹' (S ×ˢ (fairFireSet F)ᶜ)) =
+        ((randomisedTraceDist spec R μ₀).map splitter) (S ×ˢ (fairFireSet F)ᶜ) from
+      (Measure.map_apply hmeas_split
+        (hS_meas.prod (measurableSet_fairFireSet F).compl)).symm]
+    -- Marginal recurrence.
+    have hmarg :
+        (randomisedTraceDist spec R μ₀).map splitter =
+        (randomisedTraceDist spec R μ₀).map
+            (Preorder.frestrictLe (π := fun _ : ℕ => σ × Option ι) (N + m)) ⊗ₘ
+          randomisedStepKernel spec R (N + m) := by
+      unfold randomisedTraceDist
+      exact (ProbabilityTheory.Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure
+        (a := N + m)).symm
+    rw [hmarg, Measure.compProd_apply_prod hS_meas (measurableSet_fairFireSet F).compl]
+    -- Bound the integral.
+    calc ∫⁻ h in S, randomisedStepKernel spec R (N + m) h (fairFireSet F)ᶜ
+              ∂((randomisedTraceDist spec R μ₀).map
+                  (Preorder.frestrictLe (π := fun _ : ℕ => σ × Option ι) (N + m)))
+        ≤ ∫⁻ _h in S, (1 - ε)
+              ∂((randomisedTraceDist spec R μ₀).map
+                  (Preorder.frestrictLe (π := fun _ : ℕ => σ × Option ι) (N + m))) := by
+          refine setLIntegral_mono (by fun_prop) (fun h _ => ?_)
+          exact randomisedStepKernel_fairFireSet_compl_le spec R F ε h_uniform h
+      _ = (1 - ε) * ((randomisedTraceDist spec R μ₀).map
+              (Preorder.frestrictLe (π := fun _ : ℕ => σ × Option ι) (N + m))) S := by
+          rw [setLIntegral_const, mul_comm]
+      _ = (1 - ε) * randomisedTraceDist spec R μ₀ (noFairFireWindow F N m) := by
+          rw [Measure.map_apply (Preorder.measurable_frestrictLe _) hS_meas]
+          have hset : (Preorder.frestrictLe (π := fun _ : ℕ => σ × Option ι) (N + m))
+              ⁻¹' S = noFairFireWindow F N m := by
+            ext ω
+            rw [mem_noFairFireWindow_iff]
+            simp only [S, Set.mem_preimage, Set.mem_setOf_eq, Preorder.frestrictLe_apply]
+          rw [hset]
+      _ ≤ (1 - ε) * (1 - ε) ^ m := by gcongr
+      _ = (1 - ε) ^ (m + 1) := by ring
+
+/-- **Bridge constructor.** Build a `RandomisedTrajectoryFairAdversary`
+from a uniform-`ε > 0` lower bound on the schedule PMF mass at gated
+fair actions.
+
+If at every history `h`, the total probability mass that the schedule
+assigns to fair-required actions whose gate is satisfied is at least
+`ε`, then by an iterative kernel-level argument (the analog of
+Borel-Cantelli II for history-conditioned Bernoulli trials with a
+uniform positive lower bound), gated fair actions fire infinitely
+often almost surely under the mixture trace measure.
+
+The hypothesis is phrased on `FinPrefix σ ι n` rather than raw `List`
+prefixes so that `currentState` is well-defined and the gate predicate
+is meaningful.
+
+This closes the optional follow-up flagged by Phase 9.4: the
+trajectory-form fairness witness consumed by
+`RandomisedFairASTCertificate.sound` can now be derived from the
+structurally-cleanest scheduler-side hypothesis. -/
+noncomputable def RandomisedTrajectoryFairAdversary.of_uniform_epsilon_bound
+    (spec : ProbActionSpec σ ι) (F : FairnessAssumptions σ ι)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (R : RandomisedAdversary σ ι)
+    (ε : ENNReal) (hε_pos : 0 < ε)
+    (h_uniform : ∀ {n : ℕ} (h : FinPrefix σ ι n),
+        ε ≤ ∑' i : ι, if i ∈ F.fair_actions ∧ (spec.actions i).gate h.currentState
+                      then R.strategy h.toList (some i) else 0) :
+    RandomisedTrajectoryFairAdversary spec F μ₀ where
+  toRandomised := R
+  progress := by
+    classical
+    unfold FairASTCertificate.RandomisedTrajectoryFairProgress
+    rw [MeasureTheory.ae_iff]
+    -- Rewrite the complement event as a countable union over `N`.
+    have hcompl : {ω : Trace σ ι | ¬ ∀ N : ℕ, ∃ n ≥ N,
+            ∃ i ∈ F.fair_actions, (ω (n + 1)).2 = some i} =
+        ⋃ N : ℕ, {ω | ∀ n ≥ N, ω (n + 1) ∈ (fairFireSet F)ᶜ} := by
+      ext ω
+      simp only [Set.mem_setOf_eq, Set.mem_iUnion, not_forall, not_exists, not_and,
+        fairFireSet, Set.mem_compl_iff]
+    rw [hcompl]
+    have hbound : (randomisedTraceDist spec R μ₀)
+        (⋃ N : ℕ, {ω | ∀ n ≥ N, ω (n + 1) ∈ (fairFireSet F)ᶜ}) ≤
+        ∑' N : ℕ, (randomisedTraceDist spec R μ₀)
+          {ω | ∀ n ≥ N, ω (n + 1) ∈ (fairFireSet F)ᶜ} :=
+      measure_iUnion_le _
+    -- Each term is 0: `(1-ε)^m → 0` and the tail event is contained in every window.
+    have hzero : ∀ N : ℕ, (randomisedTraceDist spec R μ₀)
+        {ω | ∀ n ≥ N, ω (n + 1) ∈ (fairFireSet F)ᶜ} = 0 := by
+      intro N
+      have hsub : ∀ m : ℕ, {ω : Trace σ ι | ∀ n ≥ N, ω (n + 1) ∈ (fairFireSet F)ᶜ} ⊆
+          noFairFireWindow F N m := by
+        intro m ω hω
+        rw [mem_noFairFireWindow_iff]
+        intro k _hk
+        exact hω (N + k) (by omega)
+      have hle_pow : ∀ m : ℕ,
+          (randomisedTraceDist spec R μ₀)
+            {ω | ∀ n ≥ N, ω (n + 1) ∈ (fairFireSet F)ᶜ} ≤ (1 - ε) ^ m := by
+        intro m
+        refine le_trans (measure_mono (hsub m)) ?_
+        exact randomisedTraceDist_noFairFireWindow_le spec R F ε h_uniform μ₀ N m
+      refine le_antisymm ?_ (zero_le _)
+      have h1eps_lt : 1 - ε < 1 := by
+        rcases le_or_gt ε 1 with hle | hgt
+        · exact ENNReal.sub_lt_self ENNReal.one_ne_top one_ne_zero hε_pos.ne'
+        · rw [tsub_eq_zero_of_le hgt.le]
+          exact zero_lt_one
+      have h_tendsto : Filter.Tendsto (fun m : ℕ => (1 - ε) ^ m) Filter.atTop (nhds 0) :=
+        ENNReal.tendsto_pow_atTop_nhds_zero_of_lt_one h1eps_lt
+      exact ge_of_tendsto h_tendsto (Filter.eventually_atTop.mpr ⟨0, fun m _ => hle_pow m⟩)
+    refine le_antisymm ?_ (zero_le _)
+    refine hbound.trans ?_
+    simp only [hzero, tsum_zero, le_refl]
+
+end UniformEpsilonBridge
 
 end RandomisedFairAST
 
