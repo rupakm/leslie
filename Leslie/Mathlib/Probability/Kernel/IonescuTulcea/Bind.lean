@@ -24,27 +24,26 @@ per-step kernel itself depends on an outer parameter `b : β`.
   exists in mathlib): the latter slices over the *initial-state* parameter,
   while we slice over an outer kernel-family parameter.
 
-* `ProbabilityTheory.Kernel.trajMeasure_bind_kernel` — the **Fubini /
-  Ionescu–Tulcea identity**: when the per-step kernel is itself a measure-bind
-  over a parameter measure `ν`, the trajectory measure factors as a `Measure.bind`
-  of the parameter-fixed deterministic trajectory measures.
-
-  ⚠️ **Statement is FALSE as currently written.** See the docstring of
-  `trajMeasure_bind_kernel` for an explicit two-coordinate counterexample.
-  The identity holds only when `(ν, κ)` carries an *independence-across-levels*
-  structure (e.g. `ν` is a `Measure.pi` over query points and `κ b n h`
-  depends on `b` only through `n`-specific coordinates). The original sorry is
-  preserved for API compatibility while callers migrate to the corrected
-  variant `trajMeasure_bind_kernel_of_partial`, which takes the
-  trajectory-level bind identity directly as a hypothesis (and is closed
-  axiom-clean).
-
 * `ProbabilityTheory.Kernel.trajMeasure_bind_kernel_of_partial` — the
-  *corrected* trajectory-level Fubini identity. Same conclusion as above, but
-  the per-step `h_kappa_bind` is replaced by the strictly stronger
-  `h_partialTraj_bind` hypothesis (the bind identity on every finite
-  truncation `partialTraj κ 0 n`). Plus joint measurability witnesses for
-  `b ↦ trajMeasure μ₀ (κ b)` and `(b, x₀) ↦ partialTraj (κ b) 0 n x₀ S`.
+  trajectory-level Fubini identity: when the per-step kernel is itself a
+  measure-bind over a parameter measure `ν`, the trajectory measure factors
+  as a `Measure.bind` of the parameter-fixed deterministic trajectory
+  measures, *provided* the trajectory-level bind identity holds at every
+  finite truncation `partialTraj κ 0 n`.
+
+  Historical note: a previous version of this file exposed an unconditional
+  variant `trajMeasure_bind_kernel` whose hypotheses were only the per-level
+  bind identity. PR #96 discovered that this is **false in general** — see
+  the explicit two-coordinate Bernoulli counterexample below — and exposed
+  this corrected `_of_partial` variant alongside it. PR #97 (this PR)
+  migrated the single caller (`Leslie.Prob.RandomisedAdversary`) to consume
+  the corrected variant and *deleted* the false original. The corrected
+  variant is the canonical exposed Fubini identity going forward; in typical
+  applications (e.g. randomised adversaries where `ν` is a
+  `Measure.infinitePi` indexed by query points) the trajectory-level
+  hypothesis is derivable from the per-level identity plus the product
+  structure of `ν`. -- See the docstring of `trajMeasure_bind_kernel_of_partial`
+  for the precise statement and the counterexample to the unconditional form.
 
 Both results are textbook (Kallenberg, *Foundations of Modern Probability*,
 §6.16; Bauer, *Probability Theory*, §35.5) but, as of the current `mathlib`,
@@ -482,89 +481,33 @@ section BindKernel
 variable {μ₀ : Measure (X 0)} [IsProbabilityMeasure μ₀]
 variable {ν : Measure β} [IsProbabilityMeasure ν]
 
-/-- **Fubini / Ionescu–Tulcea identity for `trajMeasure`** *(STATEMENT IS FALSE
-AS WRITTEN — see the analysis below; preserved here for API compatibility while
-the user-site is migrated to a stronger formulation).*
+/-- **Fubini / Ionescu–Tulcea identity for `trajMeasure` (trajectory-level
+hypothesis form).**
 
 Suppose `κ : β → ∀ n, Kernel ..` is a measurable family of Markov kernels in `b`
-and `κAvg : ∀ n, Kernel ..` is the *per-level averaged* kernel family obtained
-by integrating each `κ b n` over the parameter measure `ν`:
-
-    `κAvg n h s = ∫⁻ b, (κ b n h) s ∂ν` for measurable `s`.
-
-The current statement claims:
+and `κAvg : ∀ n, Kernel ..` is the *per-level averaged* kernel family. If we
+have the *trajectory-level* bind identity at every finite truncation
+`partialTraj κ 0 n` (plus joint measurability witnesses for the trajectory
+and partial-trajectory parameters), then:
 
     `trajMeasure μ₀ κAvg = ν.bind (fun b ↦ trajMeasure μ₀ (κ b))`.
 
-**Counterexample.** Take `X n := Bool` for all `n`, `μ₀ := dirac false`,
-`β := Bool`, `ν := (dirac false + dirac true) / 2`, and
-`κ b n h := dirac b` (deterministic, ignoring state). Then
-`κAvg n h = (dirac false + dirac true) / 2`, so under `trajMeasure μ₀ κAvg`
-the coordinates `x_1, x_2, …` are i.i.d. Bernoulli(1/2); the cylinder
-`{x_1 = false ∧ x_2 = true}` has mass `1/4`. On the right, `ν.bind` first
-samples `b ~ ν` once, then applies `κ b` at every level — so all coordinates
-are equal to `b`, and the same cylinder has mass `0`. The two measures are
-distinct.
+In typical applications (e.g. randomised adversaries where `ν` is a
+`Measure.infinitePi` indexed by query points) this trajectory-level hypothesis
+is derivable from a per-level bind identity plus the product structure of `ν`.
 
-**What the theorem really requires.** The identity does hold in the special
-case where `κ b n h` depends on `b` only through some `n`-specific
-"coordinate projection" `b ↦ b_n` and `ν` is a product measure
-`Measure.pi (fun n ↦ ν_n)`. Equivalently, one needs the trajectory-level
-identity (a *strictly stronger* hypothesis than the per-level
-`h_kappa_bind`):
-
-    `partialTraj κAvg 0 n x₀ S = ∫⁻ b, partialTraj (κ b) 0 n x₀ S ∂ν`
-    for every `n`, every `x₀ : Π i : Iic 0, X i`, and every measurable
-    `S ⊆ Π i : Iic n, X i`.
-
-Given that hypothesis, the conclusion follows from
-`eq_of_frestrictLe_eq` + Fubini on the initial-state integral; the helpers
-`trajMeasure_map_frestrictLe`, `map_bind_eq_bind_map`, `kappa_avg_eq_bind`,
-and `kappa_avg_lintegral` (in the `trajMeasure_bind_kernel_helpers` section
-above) handle the remaining bookkeeping cleanly.
-
-**Status.** The single named sorry below is preserved to keep the existing
-caller (`Leslie.Prob.RandomisedAdversary`) compiling while we migrate it to
-the corrected API. It is *not* fixable as a function of the current
-hypotheses; closing it requires either (i) strengthening the hypotheses to
-the trajectory-level identity above, or (ii) adding a "schedule independence"
-hypothesis on `(ν, κ)` that makes the per-level and trajectory-level mixings
-coincide. See the parallel commit's PR description for the migration plan. -/
-theorem trajMeasure_bind_kernel
-    (κ : β → (n : ℕ) → Kernel (Π i : Iic n, X i) (X (n + 1)))
-    [hMarkov : ∀ b n, IsMarkovKernel (κ b n)]
-    (h_meas : ∀ (n : ℕ) (h : Π i : Iic n, X i) {s : Set (X (n + 1))},
-        MeasurableSet s → Measurable (fun b ↦ (κ b n) h s))
-    (κAvg : (n : ℕ) → Kernel (Π i : Iic n, X i) (X (n + 1)))
-    [hMarkov_avg : ∀ n, IsMarkovKernel (κAvg n)]
-    (h_kappa_bind : ∀ (n : ℕ) (h : Π i : Iic n, X i) {s : Set (X (n + 1))},
-        MeasurableSet s →
-        κAvg n h s = ∫⁻ b, (κ b n) h s ∂ν) :
-    trajMeasure μ₀ κAvg =
-      ν.bind (fun b ↦ trajMeasure μ₀ (κ b)) := by
-  -- Both sides are probability measures on `Π n, X n` (LHS by the
-  -- `IsProbabilityMeasure (trajMeasure ..)` instance; RHS by `Measure.bind` of
-  -- a measurable family of probability measures over a probability measure).
-  --
-  -- By `IsProjectiveLimit.unique` (mathlib: `isProjectiveLimit_trajFun`),
-  -- it suffices to show the `frestrictLe n` marginals agree for every `n`. By
-  -- induction on `n`, this reduces to the per-step bind identity
-  -- `h_kappa_bind` plus standard `Measure.bind`-Fubini on finite kernel
-  -- compositions.
-  --
-  -- See the docstring above for the full outline. We leave this as a single
-  -- named sorry pending an upstream PR; see the file docstring for context.
-  sorry
-
-/-- **Corrected Fubini / Ionescu–Tulcea identity for `trajMeasure`.**
-
-Replacement for `trajMeasure_bind_kernel` whose original per-level hypothesis is
-insufficient (see the counterexample in the docstring of `trajMeasure_bind_kernel`).
-
-This version takes as a hypothesis the *trajectory-level* bind identity at every
-finite truncation `n`. In typical applications (e.g. randomised adversaries
-where `ν` is a `Measure.infinitePi` indexed by query points) this hypothesis is
-derivable from the per-level identity plus the product structure of `ν`. -/
+**Counterexample to the unconditional per-level form.** Without the
+trajectory-level hypothesis (i.e. with only the *per-level* bind identity
+`κAvg n h s = ∫⁻ b, (κ b n h) s ∂ν`), the conclusion is *false in general*.
+Take `X n := Bool` for all `n`, `μ₀ := dirac false`, `β := Bool`,
+`ν := (dirac false + dirac true) / 2`, and `κ b n h := dirac b` (deterministic,
+ignoring state). Then `κAvg n h = (dirac false + dirac true) / 2`, so under
+`trajMeasure μ₀ κAvg` the coordinates `x_1, x_2, …` are i.i.d. Bernoulli(1/2);
+the cylinder `{x_1 = false ∧ x_2 = true}` has mass `1/4`. On the right,
+`ν.bind` first samples `b ~ ν` once, then applies `κ b` at every level — so
+all coordinates are equal to `b`, and the same cylinder has mass `0`. The two
+measures are distinct. (This counterexample was discovered in PR #96 and
+motivated the strictly stronger trajectory-level hypothesis used here.) -/
 theorem trajMeasure_bind_kernel_of_partial
     (κ : β → (n : ℕ) → Kernel (Π i : Iic n, X i) (X (n + 1)))
     [hMarkov : ∀ b n, IsMarkovKernel (κ b n)]
