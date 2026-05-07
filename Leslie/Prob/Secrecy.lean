@@ -43,6 +43,7 @@ Per implementation plan v2.2 §M3 W4 + design plan v2.2
 import Leslie.Prob.Trace
 import Leslie.Prob.Adversary
 import Leslie.Prob.RandomisedAdversary
+import Mathlib.Probability.ProductMeasure
 
 namespace Leslie.Prob
 
@@ -306,18 +307,23 @@ This proof structure is **load-bearing for the sorry-handoff
 chain**: each named sorry is a self-contained measure-theoretic
 sub-claim that a subsequent worker can attack independently.
 
-**Sorry inventory** (Phase 11-β-followup-1, this PR):
+**Sorry inventory** (after Phase 11-β-followup-2, Worker 2):
 
-  * `Phase 11-β-followup-2` — `ScheduleSpace` & its measure: the
-    Kolmogorov/Ionescu-Tulcea construction of a probability measure
-    on the function space of schedule-assignments from R's per-history
-    PMFs.
-  * `Phase 11-β-followup-3` — `randomisedTraceDist_eq_integral_traceDist`:
+  * `Phase 11-β-followup-2` — ✅ closed (Worker 2). `scheduleSpaceMeasure`
+    + its `IsProbabilityMeasure` instance now use mathlib's
+    `MeasureTheory.Measure.infinitePi` over the (arbitrary) history
+    index set with per-fiber `PMF.toMeasure`.  Note that mathlib's
+    `infinitePi` does not require a `Countable` index, so the file-
+    level `[Countable σ] [Countable ι]` are not threaded into the
+    definition itself (they remain useful for the rest of the
+    development, e.g. measurability of discrete projections).
+  * `Phase 11-β-followup-3` — ⏳ open. `randomisedTraceDist_eq_integral_traceDist`:
     the Fubini factorisation that the mixture trace measure equals
     the integral of deterministic trace measures over the schedule-
     space measure.
-  * `Phase 11-β-followup-4` — `Secrecy.toRandomised` itself: assemble
-    the factorisation + apply `h` under the integral + conclude.
+  * `Phase 11-β-followup-4` — ⏳ open. `Secrecy.toRandomised` itself:
+    assemble the factorisation + apply `h` under the integral +
+    conclude.
 
 Each of these is a clean handoff target; subsequent PRs in the chain
 can address them independently. -/
@@ -365,39 +371,33 @@ private instance instMeasurableSpaceScheduleAssignment :
 
 For each history `h`, R's strategy produces a PMF on `Option ι`.
 The schedule-space measure is the Kolmogorov product of these
-per-history marginals over the countable index set of all histories
-`List (σ × Option ι)`.
+per-history marginals over the (arbitrary, countable in our typical
+use, but mathlib's `Measure.infinitePi` works on any index type) set
+of all histories `List (σ × Option ι)`.
 
-TODO Phase 11-β-followup-2: construct this measure rigorously via
-`MeasureTheory.Measure.pi` over the countable history index set.
-The construction is standard but requires threading `PMF.toMeasure`
-+ `Measure.pi` + the existing typeclass `Countable (List (σ × Option ι))`
-(derivable from `Countable σ` and `Countable ι` via
-`List.instCountable`). -/
+Closed in Phase 11-β-followup-2 (Worker 2): the Kolmogorov product of
+`(R.strategy h).toMeasure` indexed over `h : List (σ × Option ι)`
+via `MeasureTheory.Measure.infinitePi`. Each fiber is a probability
+measure (`PMF.toMeasure.isProbabilityMeasure`), and `infinitePi`
+extends across arbitrary index types (Carathéodory + projective
+limit), so no `Countable` constraint on the index set is required —
+the file-level `[Countable σ] [Countable ι]` typeclasses suffice for
+the rest of the development. -/
 private noncomputable def scheduleSpaceMeasure
     (R : RandomisedAdversary σ ι) :
     Measure (ScheduleAssignment σ ι) :=
-  -- The Kolmogorov product of `(R.strategy h).toMeasure` indexed
-  -- over `h : List (σ × Option ι)`.  Mathlib's `Measure.pi` requires
-  -- a `Fintype` index set; for the countable index set used here we
-  -- need `MeasureTheory.Measure.infinitePi` or an equivalent.
-  -- Phase 11-β-followup-2 supplies the construction.
-  sorry  -- TODO Phase 11-β-followup-2: Kolmogorov product over countable history index
+  Measure.infinitePi
+    (fun h : List (σ × Option ι) => (R.strategy h).toMeasure)
 
-/-- The schedule-space measure is a probability measure (the
-countable product of probability measures is a probability
-measure).
-
-TODO Phase 11-β-followup-2 (companion): once `scheduleSpaceMeasure`
-is constructed via `MeasureTheory.Measure.infinitePi`, this
-instance follows from `Measure.pi.instIsProbabilityMeasure` (or
-the `infinitePi` analog). -/
+/-- The schedule-space measure is a probability measure: the
+Kolmogorov product of probability measures (`PMF.toMeasure` is
+always a probability measure) is itself a probability measure, by
+mathlib's `infinitePi` instance. -/
 private instance instIsProbabilityMeasure_scheduleSpaceMeasure
     (R : RandomisedAdversary σ ι) :
     IsProbabilityMeasure (scheduleSpaceMeasure R) := by
-  -- Will follow from the underlying `Measure.pi` / `infinitePi` once
-  -- Phase 11-β-followup-2 closes.
-  sorry  -- TODO Phase 11-β-followup-2 (companion): probability measure status
+  unfold scheduleSpaceMeasure
+  infer_instance
 
 /-- **Fubini factorisation of the mixture trace measure** (the heart
 of `Secrecy.toRandomised`).
