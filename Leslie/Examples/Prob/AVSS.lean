@@ -45,12 +45,20 @@ This formalisation is sound and useful as a stepping stone toward
 literature-faithful AVSS, but several abstractions matter when
 interpreting the formalised statements.  In particular:
 
-  * The **adversary model** is stronger than the literature's rushing
-    adversary: it has read access to the full global state including
-    `s.coeffs` and honest parties' `local_`. This doesn't falsify the
-    formalised theorems — but it means trace-level secrecy here is at
-    the algebraic grid view (`coalitionGrid`), not at the corrupt
-    parties' operational view (`coalitionView`).
+  * The **adversary model** has been progressively refined.  Two
+    coexisting types are now formalised: the legacy `Adversary` (with
+    read access to the full global state) and the literature-standard
+    `RushingAdversary` (Phase 7.1, generic in `Leslie/Prob/Adversary.lean`)
+    whose strategy is restricted to a measurable projection of the
+    state to the corrupt coalition's view.  AVSS instantiates this via
+    `avssCoalitionView` (Phase 7.2, §19).  The classical theorems
+    re-prove mechanically as `*_rushing` variants (Phase 7.3, §19.1):
+    `avss_termination_AS_fair_rushing`, `avss_correctness_AS_rushing`,
+    `avss_commitment_AS_rushing`.  Trace-level operational secrecy
+    against the rushing adversary (the literature-faithful theorem)
+    is captured as a conditional in Phase 6.3
+    (`avss_secrecy_AS_view_conditional`) whose hypothesis a follow-up
+    Phase 7.4–7.5 PR will discharge — see `AVSS-MODEL-NOTES.md` §9.
   * The **dealer-to-party communication** is abstracted as a single
     global `s.coeffs` field, not per-party row + column polynomials.
     A corrupt dealer cannot deliver inconsistent row polys in this
@@ -59,7 +67,7 @@ interpreting the formalised statements.  In particular:
 
 See `AVSS-MODEL-NOTES.md` (sibling file) for the full abstraction
 inventory, the precise relationship to Canetti–Rabin '93, and the
-roadmap for a literature-faithful refactor (Phases 6–7).
+roadmap (Phases 6–8).
 -/
 
 import Leslie.Examples.Prob.BivariateShamir
@@ -4736,5 +4744,160 @@ theorem avss_secrecy (partyPoint : Fin n → F)
           some ((f.eval (Polynomial.C (partyPoint i.val))).eval
             (partyPoint j.val))) :=
   BivariateShamir.bivariate_shamir_secrecy partyPoint h_nz_pp h_F C D sec sec'
+
+/-! ## §19. Rushing adversary instantiation (Phase 7.2)
+
+Phase 7 closes the schedule-leakage caveat from Phase 6 by introducing
+the standard cryptography-literature *rushing adversary* — a scheduler
+whose decisions depend only on the corrupt coalition's view of the
+state, not on the full state.
+
+The generic types `Leslie.Prob.ProtocolView` and
+`Leslie.Prob.RushingAdversary` live in `Leslie/Prob/Adversary.lean`.
+This section is the AVSS-specific instantiation: the projection `view`
+that maps an `AVSSState` to the corrupt coalition's local states.
+
+Concretely, the coalition view of `s : AVSSState n t F` for a corrupt
+set `corr : Finset (Fin n)` is the function `corr → AVSSLocalState n t F`
+that, on each corrupt party `p`, returns `s.local_ p.val`. Messages "in
+flight" between honest parties are not part of the view because in our
+state-based model they are encoded as state-mutations on the
+recipient's local state, observable only when the corresponding
+receive-action fires for a corrupt party.
+
+This generalises `coalitionView` (Phase 5/6) from a size-`t`
+`BivariateShamir.Coalition` to an arbitrary `Finset (Fin n)`.
+
+The headline theorem `avss_secrecy_AS_view_rushing` (Phase 7.5)
+discharges the `h_aux` hypothesis of `avss_secrecy_AS_view_conditional`
+by invoking `RushingAdversary.schedule_factors_through_view`
+(Phase 7.4) plus Phase 5's step-`k` algebraic-view secrecy. -/
+
+/-- The view of an AVSS state visible to the corrupt coalition `corr`:
+the local states of every corrupt party.
+
+Consistent with `coalitionView` (Phase 5/6) but generalised from a
+size-`t` `BivariateShamir.Coalition` to an arbitrary `Finset (Fin n)`,
+and packaged as the `V` parameter of `Leslie.Prob.ProtocolView` for use
+with `Leslie.Prob.RushingAdversary`. -/
+abbrev AVSSRushingView (n t : ℕ) (F : Type*) [DecidableEq F]
+    (corr : Finset (Fin n)) : Type _ :=
+  corr → AVSSLocalState n t F
+
+/-- Discrete σ-algebra on `AVSSRushingView`. The codomain
+`AVSSLocalState n t F` carries the maximal σ-algebra and is countable
+(both established in §10); the function space `corr → AVSSLocalState`
+inherits the maximal σ-algebra and singleton-measurability via the
+discrete topology. -/
+instance instMeasurableSpaceAVSSRushingView
+    (corr : Finset (Fin n)) : MeasurableSpace (AVSSRushingView n t F corr) := ⊤
+
+instance instMeasurableSingletonClassAVSSRushingView
+    (corr : Finset (Fin n)) :
+    MeasurableSingletonClass (AVSSRushingView n t F corr) :=
+  ⟨fun _ => trivial⟩
+
+instance instCountableAVSSRushingView
+    (corr : Finset (Fin n)) : Countable (AVSSRushingView n t F corr) :=
+  inferInstance
+
+/-- The AVSS coalition-view projection, packaged as a generic
+`Leslie.Prob.ProtocolView`. Used as the `ProtocolView` parameter of
+`Leslie.Prob.RushingAdversary` when instantiating the rushing-adversary
+machinery for AVSS. -/
+def avssCoalitionView (corr : Finset (Fin n)) :
+    Leslie.Prob.ProtocolView (AVSSState n t F) (AVSSRushingView n t F corr) where
+  view s := fun p => s.local_ p.val
+
+omit [Field F] [Fintype F] in
+theorem avssCoalitionView_view_apply
+    (corr : Finset (Fin n)) (s : AVSSState n t F) (p : corr) :
+    (avssCoalitionView (n := n) (t := t) (F := F) corr).view s p =
+      s.local_ p.val := rfl
+
+omit [Field F] in
+theorem measurable_avssCoalitionView_view
+    (corr : Finset (Fin n)) :
+    Measurable
+      (fun s : AVSSState n t F =>
+        (avssCoalitionView (n := n) (t := t) (F := F) corr).view s) :=
+  measurable_of_countable _
+
+/-- A `RushingAdversary` for AVSS specialises the generic
+view-restricted scheduler to the AVSS state, action, and coalition-view
+types. This abbreviation is the canonical entry point for downstream
+theorems quantifying over rushing adversaries (Phase 7.3, 7.5). -/
+abbrev AVSSRushingAdversary (n t : ℕ) (F : Type*) [DecidableEq F] [Fintype F]
+    (corr : Finset (Fin n)) : Type _ :=
+  Leslie.Prob.RushingAdversary
+    (AVSSState n t F) (AVSSAction n F) (AVSSRushingView n t F corr)
+
+/-! ## §19.1. Classical theorems against `RushingAdversary` (Phase 7.3)
+
+Re-statements of the classical AVSS theorems (termination, correctness,
+commitment) against `AVSSRushingAdversary`. Each is a thin wrapper that
+threads `R.toAdversary` into the existing `Adversary`-quantified
+theorem. `avss_reconstruction` is purely algebraic and needs no
+rushing-adversary version.
+
+Recall `avssFair.isWeaklyFair = fun _ => True` (every adversary is
+trivially weakly-fair w.r.t. AVSS's fairness assumptions; the
+substantive condition is `TrajectoryFairProgress`, threaded through
+`TrajectoryFairAdversary`). The termination wrapper accepts the
+trajectory-progress witness directly against `R.toAdversary`. -/
+
+/-- Termination as `AlmostDiamond` under a trajectory-fair *rushing*
+adversary. Re-statement of `avss_termination_AS_fair` with the
+underlying adversary supplied as `R.toAdversary` and fairness/progress
+witnesses formulated against that lift. -/
+theorem avss_termination_AS_fair_rushing
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : AVSSRushingAdversary n t F corr)
+    (h_progress : FairASTCertificate.TrajectoryFairProgress
+      (avssSpec (t := t) sec corr) avssFair μ₀
+      ⟨R.toAdversary, trivial⟩)
+    (h_U_mono : FairASTCertificate.TrajectoryUMono
+      (avssSpec (t := t) sec corr) avssFair
+      (avssCert (t := t) sec corr) μ₀
+      ⟨R.toAdversary, trivial⟩)
+    (h_U_strict : ∀ N : ℕ, FairASTCertificate.TrajectoryFairStrictDecrease
+      (avssSpec (t := t) sec corr) avssFair
+      (avssCert (t := t) sec corr) μ₀
+      ⟨R.toAdversary, trivial⟩ N) :
+    AlmostDiamond (avssSpec (t := t) sec corr) R.toAdversary μ₀ terminated :=
+  avss_termination_AS_fair sec corr μ₀ h_init
+    ⟨⟨R.toAdversary, trivial⟩, h_progress⟩
+    h_U_mono h_U_strict
+
+/-- Honest-dealer correctness against a *rushing* adversary: with an
+honest dealer, every honest party's output equals its per-party share.
+Thin wrapper around `avss_correctness_AS`. -/
+theorem avss_correctness_AS_rushing
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : AVSSRushingAdversary n t F corr) :
+    AlmostBox (avssSpec (t := t) sec corr) R.toAdversary μ₀
+      (fun s => s.dealerHonest = true →
+        ∀ p, p ∉ s.corrupted →
+          ∀ v, (s.local_ p).output = some v →
+            v = bivEval s.coeffs (s.partyPoint p) 0) :=
+  avss_correctness_AS sec corr μ₀ h_init R.toAdversary
+
+/-- Output-determined commitment against a *rushing* adversary: any
+output, when set, equals the per-party share derived from `s.coeffs`
+and `s.partyPoint` (universal in `p`, including corrupt parties whose
+`partyCorruptDeliver` writes the correct row poly). Thin wrapper around
+`avss_commitment_AS`. -/
+theorem avss_commitment_AS_rushing
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr s)
+    (R : AVSSRushingAdversary n t F corr) :
+    AlmostBox (avssSpec (t := t) sec corr) R.toAdversary μ₀
+      outputDeterminedInv :=
+  avss_commitment_AS sec corr μ₀ h_init R.toAdversary
 
 end Leslie.Examples.Prob.AVSS

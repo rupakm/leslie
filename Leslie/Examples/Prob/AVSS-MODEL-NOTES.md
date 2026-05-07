@@ -15,7 +15,7 @@ literature or when AVSS is used as a primitive for downstream protocols.
 
 | Aspect | Canetti–Rabin literature | This formalisation |
 |---|---|---|
-| Adversary information | Rushing — sees corrupt-coalition view + in-flight messages | Has read access to the full global state including `s.coeffs` |
+| Adversary information | Rushing — sees corrupt-coalition view + in-flight messages | **Two adversary types coexist**: plain `Adversary` (full-state access; legacy) and `RushingAdversary` (view-restricted; Phase 7.1, generic in `Adversary.lean`). The classical AVSS theorems are restated against both (Phase 7.3) |
 | Static vs. adaptive corruption | Both treated; usually adaptive | Static (`corrupted` fixed at `μ₀` time) |
 | Dealer-to-party communication | Per-party row + column polys, possibly inconsistent under corrupt dealer | Single global `s.coeffs` field; consistent by construction |
 | Dealer's distribution choice | Honest = uniform with `f(0,0) = sec`; corrupt = adversarial | Both honest and corrupt dealer get uniform `coeffs` from `μ₀` |
@@ -51,36 +51,62 @@ admissible adversary.
 
 ### This formalisation
 
-`Adversary σ ι` (`Leslie/Prob/Adversary.lean`) is a strategy that picks the
-next action conditioned on the current full global state `s : σ`.  Two
-practical consequences:
+Two adversary types are now formalised side-by-side in
+`Leslie/Prob/Adversary.lean`:
 
-1. **The adversary type has read access to the full state.**  This means the
-   adversary's strategy can, in principle, branch on `s.coeffs` and on
-   honest parties' `local_` fields (e.g., `(s.local_ p).rowPoly` for honest
-   `p`).  Operational secrecy is not falsified by this only because the
-   adversary's *output* (the chosen action) doesn't directly leak `s.coeffs`
-   to the trace projection — but it can encode information about `s.coeffs`
-   via *which actions it chooses to fire and in what order*.
+  * `Adversary σ ι` (legacy): a strategy
+    `List (σ × Option ι) → Option ι` whose decision is conditioned on the
+    full state-history.  This is the type the original M2/M3 theorems and
+    PRs #25–#33 are written against, and it persists for backwards
+    compatibility.
 
-   The salvage: our `coalitionView` and `coalitionGrid` projections only see
-   corrupt parties' local states (or, for `coalitionGrid`, a derived
-   algebraic content of `s.coeffs`).  So the adversary's free access to
-   honest state is masked away by the projection, *provided that the
-   projection itself doesn't leak the adversary's choices*.  In our
-   formulation it doesn't: the projection is `fun ω => coalitionView (ω k).1`
-   — only the state, not the action history.
+  * `RushingAdversary σ ι V` (**Phase 7.1**, generic): bundles a
+    `ProtocolView σ V` (i.e. a projection `view : σ → V`) with a
+    *view-restricted* schedule `List (V × Option ι) → Option ι` and a
+    static corruption set.  An adapter `RushingAdversary.toAdversary`
+    lifts every rushing adversary back to a plain `Adversary σ ι`,
+    consulting `view` on the state-component of each history entry
+    before invoking the rushing schedule.  Equivalently:
+    `R.toAdversary.schedule h = R.schedule (h.map (R.view × id))`
+    (rfl-simp lemma `toAdversary_schedule` in `Adversary.lean`).
 
-   But: a downstream consumer that wants to reason about *what corrupt
-   parties learn* must include the schedule (the action history) in the
-   projection — and then they have to re-prove that the adversary's schedule
-   choices don't leak information about `sec`.  In our model, since the
-   adversary's strategy is allowed to branch on `s.coeffs`, this *fails*.
+The AVSS instantiation (`avssCoalitionView corr`, **Phase 7.2**, in
+`AVSS.lean §19`) takes `V := corr → AVSSLocalState n t F` — the corrupt
+coalition's per-party local-state projection, generalising the existing
+`coalitionView` (Phase 5/6) from a size-`t` `BivariateShamir.Coalition`
+to an arbitrary `Finset (Fin n)`.
 
-2. **Static corruption only.**  `corr : Finset (Fin n)` is part of the initial
-   state and never changes.  The standard literature reduction "static ⇒
-   adaptive" applies, so adaptive variants follow but require additional
-   model machinery (corruption events).
+Two practical consequences for downstream reasoning:
+
+1. **Plain `Adversary` still has read access to the full state.**  This
+   was already true before Phase 7 and is unchanged: the adversary's
+   strategy can, in principle, branch on `s.coeffs` and on honest
+   parties' `local_` fields.  Operational secrecy in the
+   plain-adversary world is therefore caveated — see Phase 6's
+   `avss_secrecy_AS_view` (PR #33) and its joint marginalisation with
+   the schedule.
+
+2. **`RushingAdversary` strictly restricts adversary information.**
+   Under a `RushingAdversary R`, the adversary's strategy is — by
+   construction — a function only of the view-history
+   `(R.view of state, action)`-pairs.  It *cannot* branch on
+   `s.coeffs`, on honest parties' internal state outside the view, or
+   on anything else outside `corr → AVSSLocalState`.  This is the
+   literature-standard rushing adversary.
+
+3. **The classical AVSS theorems re-prove against `RushingAdversary`.**
+   `avss_termination_AS_fair_rushing`, `avss_correctness_AS_rushing`,
+   `avss_commitment_AS_rushing` (**Phase 7.3**) are thin wrappers that
+   invoke their plain-`Adversary` counterparts on `R.toAdversary`.
+   Termination requires a `TrajectoryFairAdversary` witness for
+   `R.toAdversary`, threaded explicitly; correctness and commitment are
+   universal in the adversary so the wrapping is purely mechanical.
+
+4. **Static corruption only.**  Unchanged from before Phase 7:
+   `corr : Finset (Fin n)` is part of the initial state and never
+   changes.  The standard literature reduction "static ⇒ adaptive"
+   applies, so adaptive variants follow but require additional model
+   machinery (corruption events).
 
 ### Implication for the formalised secrecy theorem
 
@@ -93,17 +119,29 @@ This is sound because `coalitionGrid` is a function of `s.coeffs` and
 exercise the adversary's strategy at all — it's effectively the polynomial-
 level secrecy `bivariate_shamir_secrecy` lifted through `μ₀`.
 
-A literature-faithful operational secrecy theorem (Phase 6 + Phase 7, see
-"Future directions" below) would require:
+A literature-faithful operational secrecy theorem (Phases 6–7, see
+"Future directions" below) requires four pieces:
 
-- A new `RushingAdversary` type whose strategy is a function of *only* the
-  corrupt-coalition view + in-flight messages (not the full state).
-- Replacing `s.coeffs` with per-party dealer messages so the dealer's
-  inputs are scheduling-time data, not background state.
-- Re-proving termination/correctness/commitment/reconstruction against the
-  new adversary type (mostly mechanical).
-- Then proving secrecy against the new adversary type — that's the genuine
-  cryptographic statement.
+- ✅ A new `RushingAdversary` type whose strategy is a function of *only* the
+  corrupt-coalition view (Phase 7.1, **landed**).
+- ✅ AVSS instantiation `avssCoalitionView` projecting onto corrupt
+  parties' `local_` (Phase 7.2, **landed**).
+- ✅ Re-proving termination / correctness / commitment against the new
+  adversary type (Phase 7.3, **landed** — `*_rushing` variants of the
+  classical theorems).
+- ⏳ A *cryptographic-core* lemma "schedule prefix factors through the
+  coalition's algebraic view" (Phase 7.4, **deferred**) and the
+  composition `avss_secrecy_AS_view_rushing` (Phase 7.5, **deferred**)
+  that closes the schedule-leakage caveat from Phase 6 by discharging
+  the `h_aux` hypothesis of `avss_secrecy_AS_view_conditional`.  The
+  proof is an inductive argument on `k` showing that, under the rushing
+  adversary, the schedule at step `k+1` is a deterministic function of
+  the corrupt-coalition view at steps `0..k`.  See **§9. Phase 7.4–7.5
+  deferral** below for the precise statement and architectural
+  rationale.
+- ⏳ Replacing `s.coeffs` with per-party dealer messages (separate
+  refactor; cf. §2 below) so the dealer's inputs are
+  scheduling-time data, not background state (Phase 8 territory).
 
 ## 2. Dealer-to-party communication
 
@@ -327,71 +365,206 @@ Lest the above read as a litany of caveats, here's what the formalisation
   `avssStep_coalitionGrid_invariant`.  This is the key structural fact that
   enables the step-`k` lift.
 
+## 9. Phase 7.4–7.5 deferral — schedule-leakage closing theorem
+
+### What's deferred
+
+Phase 7 (this PR-set) delivers the rushing-adversary *type machinery* and
+the classical-theorem wrappers (Phases 7.1–7.3, **landed**), plus the
+docs update (Phase 7.6, this section).  The two cryptographic-core
+deliverables originally scoped for Phase 7 — Phase 7.4 (a generic
+`RushingAdversary.schedule_factors_through_view` lemma) and Phase 7.5
+(the headline `avss_secrecy_AS_view_rushing` that composes 7.4 with
+PR #33's conditional theorem) — are **deferred to a follow-up PR**.
+
+### Precise statement of the gap
+
+PR #33's `avss_secrecy_AS_view_conditional` (Phase 6.3) discharges the
+operational view-secrecy theorem *given* a hypothesis
+
+```
+h_aux :
+  (traceDist sec).map (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k)) =
+  (traceDist sec').map (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k))
+```
+
+i.e. the joint marginal of (algebraic-coalition view, schedule prefix)
+at step `k` is invariant in the secret.  Under a plain `Adversary`,
+`h_aux` is **not unconditionally true** — the adversary's strategy may
+branch on `s.coeffs` and thereby leak `sec`-bits via its scheduling
+decisions, so the joint marginal can differ between `sec` and `sec'`.
+
+Under a `RushingAdversary R` with `R.toAdversary` plugged into
+`traceDist`, the schedule is by construction a deterministic function
+of the corrupt-coalition view-history.  Combined with Phase 6.2's
+bridge (corrupt local states factor through `algebraicView`) and
+Phase 5 step-`k` algebraic-view secrecy, this forces `h_aux` to hold.
+The theorem `avss_secrecy_AS_view_rushing` should then follow by
+`apply avss_secrecy_AS_view_conditional`.
+
+### Why the proof is non-trivial
+
+The composition outlined above looks short, but the underlying
+factoring lemma "the schedule prefix at step `k` AE-equals a
+deterministic function of the algebraic-coalition view at step `k`"
+(Phase 7.4's substantive form) is a genuine inductive argument on `k`
+threaded through the Ionescu–Tulcea trace-measure construction.
+Concretely:
+
+  * At each step `i < k` the action that fires is
+    `R.toAdversary.schedule (history)` gated by
+    `(spec.actions ·).gate (state at step i)`.
+  * The rushing-restricted schedule depends only on view = corrupt
+    local states (Phase 7.1's structural lemma).
+  * Phase 6.2's bridge (`coalitionView_corrupt_factors_AE`) shows
+    corrupt local states are determined by the algebraic view AE.
+  * AVSS gates (after inspection) do *not* depend on `s.coeffs` —
+    they read state-flags (`delivered`, `echoSent`, `dealerSent`,
+    etc.) plus `partyPoint` / `dealerHonest` / `corrupted`, all
+    invariant under sec.  Thus gate evaluation factors through the
+    non-secret state evolution, which itself factors through schedule
+    history.
+
+Putting these together via the Phase 5 inductive template (the
+`Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`
+recurrence used in `traceDist_coalitionGrid_AE_eq_init`) yields the
+desired AE-factoring.  Conservatively this is ~300–500 LOC of
+inductive proof plus auxiliary measurability and state-evolution
+plumbing.
+
+### Path forward
+
+The deferred work is well-defined: the proof outline above identifies
+all the structural ingredients, every one of which is already
+formalised in the current branch.  The remaining work is *only*
+inductive-proof engineering, with no new cryptographic content to
+discover.  A follow-up PR should:
+
+  1. Define `nonSecretState` (the state projection excluding
+     `s.coeffs`) and an induction-friendly evolution lemma.
+  2. State `RushingAdversary.schedulePrefix_factors_through_view_AE`
+     in `AVSS.lean` (or a new `Leslie/Prob/RushingAdversary.lean`
+     file) using the algebraic-view type.
+  3. Prove by induction on `k` using the Phase 5 template.
+  4. Compose with PR #33's `avss_secrecy_AS_view_conditional` to
+     deliver `avss_secrecy_AS_view_rushing` — the literature-faithful
+     operational secrecy theorem.
+
+This unblocks the headline operational-secrecy theorem; once landed,
+the only remaining gap (relative to a literature-faithful AVSS) is
+per-party dealer messages (§2 above) — the classical "row + column
+secrecy" formulation which `BivariateShamir`'s deferred +200 LOC
+polynomial-manipulation work will eventually supply.
+
 ## Future directions
 
 The honest path to a literature-faithful AVSS — what we'd call a "Phase B+"
 trajectory — has four components, each shippable as a separate PR:
 
-1. **Phase 6: Operational view secrecy in the current adversary model.**
+1. ✅ **Phase 6: Operational view secrecy in the current adversary model.**
    Replace `coalitionGrid` with `coalitionView` (corrupt parties' actual
    `local_`).  Prove `coalitionView` factors through `coalitionGrid +
    schedule + invariants`.  Result: a theorem that says the corrupt
    parties' state distribution is invariant in `sec`, *under the existing
-   strong adversary*.  Caveat: still doesn't address adversary information
-   leakage via scheduling decisions.
+   strong adversary, jointly with the schedule prefix*.  Caveat: still
+   doesn't address adversary information leakage via scheduling
+   decisions (handled by Phase 7).  **Landed in PR #33.**
 
-2. **Phase 7a: Define `RushingAdversary`.**  New adversary type whose
-   strategy is a function of (corrupt-coalition view + in-flight messages
-   seen so far).  Show every `Adversary` implementing the rushing-adversary
-   structure exists; provide adapter to the existing `Adversary`.
+2. ✅ **Phase 7.1: Define `RushingAdversary`.**  New generic adversary
+   type in `Leslie/Prob/Adversary.lean` whose strategy is a function of
+   the view-history (via a `ProtocolView σ V` projection).  Adapter
+   `toAdversary` lifts back to plain `Adversary σ ι`.  Sanity lemma:
+   `R.toAdversary.schedule h = R.schedule (R.viewHistory h)` (rfl).
+   **Landed in this PR.**
 
-3. **Phase 7b: Re-prove existing classical theorems against `RushingAdversary`.**
-   Most should be mechanical (termination/correctness/commitment hold
-   against any admissible adversary).  Re-export with the stronger
-   adversary type.
+3. ✅ **Phase 7.2: AVSS instantiation.**  `avssCoalitionView corr` —
+   the corrupt coalition's local-state projection, packaged as a
+   generic `ProtocolView`.  `AVSSRushingAdversary corr` abbreviation
+   for the canonical rushing-adversary type for AVSS.  **Landed in
+   this PR.**
 
-4. **Phase 7c: Per-party dealer messages.**  Replace `s.coeffs` with
+4. ✅ **Phase 7.3: Re-prove existing classical theorems against
+   `RushingAdversary`.**  `avss_termination_AS_fair_rushing`,
+   `avss_correctness_AS_rushing`, `avss_commitment_AS_rushing` — thin
+   wrappers around the classical theorems via `R.toAdversary`.
+   `avss_reconstruction` is purely algebraic, no rushing version
+   needed.  **Landed in this PR.**
+
+5. ⏳ **Phase 7.4 + 7.5: schedule-leakage-closing theorem.**  See
+   §9 above — the cryptographic-core composition that produces the
+   unconditional `avss_secrecy_AS_view_rushing`.  Deferred to a
+   follow-up PR.
+
+6. ⏳ **Phase 8: Per-party dealer messages.**  Replace `s.coeffs` with
    per-party messages `dealerMessages : Fin n → (RowPoly × ColPoly)`.
    Honest dealer = consistent assignment; corrupt dealer = adversarial
-   choice subject to verifiability.  Re-prove commitment as the genuine
-   "joint consistency" theorem.  Re-prove secrecy at `coalitionView`
-   against `RushingAdversary` — *this* is the literature-faithful AVSS
-   secrecy.
+   choice subject to verifiability.  Re-prove commitment as the
+   genuine "joint consistency" theorem.  This is the
+   literature-faithful AVSS modulo cryptographic content already in
+   `BivariateShamir`'s deferred row-poly secrecy.
 
-Estimated cost: Phase 6 ≈ 600 LOC; Phase 7a ≈ 200 LOC; Phase 7b ≈ 300 LOC;
-Phase 7c ≈ 600–1000 LOC.  The bulk of the cryptographic content is already
-in the formalisation; what's missing is largely *adversary-information
-plumbing*, which is real engineering work but conceptually well-understood.
+Estimated cost: Phase 6 ≈ 600 LOC (landed); Phase 7.1 ≈ 130 LOC
+(landed); Phase 7.2 ≈ 90 LOC (landed); Phase 7.3 ≈ 70 LOC (landed);
+Phase 7.4+7.5 ≈ 300–500 LOC (deferred); Phase 8 ≈ 600–1000 LOC.  The
+bulk of the cryptographic content is already in the formalisation;
+what remains is largely *adversary-information plumbing*, which is
+real engineering work but conceptually well-understood.
 
 ## How to read the formalised theorems
 
 If you're using AVSS as a black box for downstream protocol verification:
 
-- Use `avss_termination_AS_fair`, `avss_correctness_AS`, `avss_reconstruction`,
-  and `avss_secrecy` (polynomial-level) directly.  These have the literature-
-  expected meaning.
+- Use `avss_termination_AS_fair`, `avss_correctness_AS`,
+  `avss_reconstruction`, and `avss_secrecy` (polynomial-level) directly.
+  These have the literature-expected meaning.
 
-- For `avss_commitment_AS`, internalize that "in our model" means under the
-  abstraction in §2 above; the theorem is a useful abstraction for
-  downstream work but doesn't capture corrupt-dealer adversarial choice.
+- For consumers wanting the rushing-adversary (literature-standard)
+  formulation of termination / correctness / commitment, use the
+  `*_rushing` variants (`avss_termination_AS_fair_rushing`,
+  `avss_correctness_AS_rushing`, `avss_commitment_AS_rushing`) that
+  quantify over `R : AVSSRushingAdversary corr` — the
+  view-restricted adversary defined in `Leslie/Prob/Adversary.lean`.
 
-- For `avss_secrecy_AS` (trace-level grid form), read as: "the algebraic
-  ideal grid view distribution is invariant in `sec` along any trace".  The
-  *operational* meaning ("corrupt parties learn nothing about `sec`") is not
-  yet proved against the rushing adversary; consult §1, §4 above.
+- For `avss_commitment_AS` (and `_rushing`), internalize that "in our
+  model" means under the abstraction in §2 above; the theorem is a
+  useful abstraction for downstream work but doesn't capture
+  corrupt-dealer adversarial choice (Phase 8 territory).
+
+- For `avss_secrecy_AS` (trace-level grid form), read as: "the
+  algebraic ideal grid view distribution is invariant in `sec` along
+  any trace".  Phase 6 (PR #33) extended this to the operational view
+  jointly with the schedule prefix (`avss_secrecy_AS_view`), and
+  Phase 6.3 added the conditional theorem
+  `avss_secrecy_AS_view_conditional` whose `h_aux` hypothesis
+  Phase 7.4–7.5 will discharge against `RushingAdversary` (deferred —
+  see §9 above).  An *unconditional* operational secrecy theorem
+  ("corrupt parties learn nothing about `sec` along any trace") is
+  therefore *not yet* a single named theorem in this branch; consult
+  §1, §4, §9 above.
 
 ## Citing this formalisation
 
 When citing the formalisation in a paper or report, the precise claim is:
 
-> Leslie's AVSS module proves the four classical Canetti–Rabin properties —
-> termination, correctness, commitment, secrecy — plus reconstruction, all
-> axiom-clean, against an adversary model that has read-access to the full
-> protocol state (a strict over-approximation of the literature's rushing
-> adversary).  The polynomial-level secrecy is unconditional and matches
-> the literature; the trace-level secrecy is at the algebraic grid view
-> rather than the corrupt parties' operational view.  The dealer's
-> bivariate polynomial is modeled as a single global field rather than per-
-> party messages, so the formalised commitment theorem is in an abstracted
-> form.  See `Leslie/Examples/Prob/AVSS-MODEL-NOTES.md` for the full
-> abstraction inventory and pointers to a literature-faithful refactor.
+> Leslie's AVSS module proves the four classical Canetti–Rabin properties
+> — termination, correctness, commitment, secrecy — plus reconstruction,
+> all axiom-clean, against two coexisting adversary models: a legacy
+> `Adversary` with read-access to the full protocol state (a strict
+> over-approximation of the literature's rushing adversary), and a
+> `RushingAdversary` whose strategy is restricted to a measurable
+> projection of the state to the corrupt coalition's view.  The classical
+> theorems re-prove mechanically against the rushing adversary
+> (`avss_termination_AS_fair_rushing`, `avss_correctness_AS_rushing`,
+> `avss_commitment_AS_rushing`).  The polynomial-level secrecy is
+> unconditional and matches the literature; the trace-level secrecy is
+> at the algebraic grid view, with Phase 6 lifting it to the
+> corrupt parties' operational view jointly with the schedule prefix and
+> Phase 6.3 producing a conditional headline theorem
+> `avss_secrecy_AS_view_conditional` whose schedule-leakage hypothesis a
+> follow-up Phase 7.4–7.5 PR will discharge against the rushing
+> adversary, completing the literature-faithful operational secrecy
+> theorem.  The dealer's bivariate polynomial is modeled as a single
+> global field rather than per-party messages, so the formalised
+> commitment theorem is in an abstracted form.  See
+> `Leslie/Examples/Prob/AVSS-MODEL-NOTES.md` for the full abstraction
+> inventory and pointers to the remaining literature-faithful refactor.
