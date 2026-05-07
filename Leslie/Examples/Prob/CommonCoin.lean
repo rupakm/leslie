@@ -397,7 +397,7 @@ noncomputable def ccCert (n : ℕ) :
                 h_nonneg hi_mem
       omega
     exact_mod_cast hpos
-  V_super := fun i s hgate _ _ => by
+  V_super := fun i s hgate _ _ => Or.inl <| by
     -- Both actions strictly decrease V by exactly 1 pointwise on the
     -- support, so the expectation bound `≤ V s` follows trivially.
     cases i with
@@ -457,7 +457,7 @@ noncomputable def ccCert (n : ℕ) :
         exact_mod_cast Nat.add_le_add_left this _
       · intro b hb
         rw [PMF.pure_apply, if_neg hb, zero_mul]
-  V_super_fair := fun i s hgate _ _ _ => by
+  V_super_fair := fun i s hgate _ _ _ => Or.inl <| by
     -- Strict decrease on every fair-required action. Both toss and
     -- aggregate strictly decrease ccU by 1 pointwise on the support,
     -- so the expectation drops by exactly 1.
@@ -599,69 +599,6 @@ noncomputable def ccCert (n : ℕ) :
       rw [htosses]
       omega
   U_bdd_subl := fun _ => ⟨2 * n, fun s _ _ => ccU_le_two_n s⟩
-  U_dec_prob := fun _ => by
-    refine ⟨1, by norm_num, fun i s hgate _ _ _ _ => ?_⟩
-    cases i with
-    | toss j =>
-      simp only [ccSpec]
-      have hgate_t : s.tosses j = none := hgate
-      have h_one : ∀ s' : CCState n, ((PMF.uniform Bool).map
-          (fun b => tossLocal s j b)) s' *
-            (if ccU s' < ccU s then 1 else 0) =
-          ((PMF.uniform Bool).map
-            (fun b => tossLocal s j b)) s' * 1 := by
-        intro s'
-        by_cases hsupp : s' ∈ ((PMF.uniform Bool).map
-            (fun b => tossLocal s j b)).support
-        · rw [PMF.mem_support_map_iff] at hsupp
-          obtain ⟨b, _, hsb⟩ := hsupp
-          have hUlt : ccU s' < ccU s := by
-            rw [← hsb]
-            unfold ccU
-            have hdec : countNone (tossLocal s j b).tosses + 1 =
-                countNone s.tosses := by
-              show countNone (setOpt s.tosses j (some b)) + 1 =
-                  countNone s.tosses
-              exact countNone_setOpt_some s.tosses j b hgate_t
-            have hout : (tossLocal s j b).outputs = s.outputs := rfl
-            rw [hout]
-            omega
-          rw [if_pos hUlt]
-        · have hzero : ((PMF.uniform Bool).map
-              (fun b => tossLocal s j b)) s' = 0 := by
-            rw [PMF.apply_eq_zero_iff]; exact hsupp
-          simp [hzero]
-      have heq : (1 : ℝ≥0∞) = ∑' s' : CCState n, ((PMF.uniform Bool).map
-            (fun b => tossLocal s j b)) s' *
-            (if ccU s' < ccU s then 1 else 0) := by
-        calc (1 : ℝ≥0∞)
-            = ∑' s' : CCState n, ((PMF.uniform Bool).map
-                (fun b => tossLocal s j b)) s' := (PMF.tsum_coe _).symm
-          _ = ∑' s' : CCState n, ((PMF.uniform Bool).map
-                (fun b => tossLocal s j b)) s' * 1 := by
-              apply tsum_congr; intro; rw [mul_one]
-          _ = ∑' s' : CCState n, ((PMF.uniform Bool).map
-                (fun b => tossLocal s j b)) s' *
-                (if ccU s' < ccU s then 1 else 0) := by
-              apply tsum_congr; intro s'; rw [h_one]
-      exact le_of_eq heq
-    | aggregate j =>
-      simp only [ccSpec]
-      rw [tsum_eq_single (aggregateLocal s j)]
-      · rw [PMF.pure_apply, if_pos rfl, one_mul]
-        have hdec : ccU (aggregateLocal s j) < ccU s := by
-          unfold ccU
-          obtain ⟨_, hout⟩ := hgate
-          have hdec' : countNone (aggregateLocal s j).outputs + 1 =
-              countNone s.outputs :=
-            countNone_setOpt_some s.outputs j (aggBit s.tosses) hout
-          have htosses : (aggregateLocal s j).tosses = s.tosses := rfl
-          rw [htosses]
-          omega
-        rw [if_pos hdec]
-        exact_mod_cast le_refl (1 : ℝ≥0∞)
-      · intro b hb
-        rw [PMF.pure_apply, if_neg hb, zero_mul]
   V_init_bdd := ⟨(2 * n : ℕ), fun s _ => by
     show ((ccU s : ℝ≥0)) ≤ ((2 * n : ℕ) : ℝ≥0)
     exact_mod_cast ccU_le_two_n s⟩
