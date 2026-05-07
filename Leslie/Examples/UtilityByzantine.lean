@@ -43,7 +43,9 @@ theorem filter_length_mono {α : Type} (P Q : α → Bool) (l : List α)
   | nil => simp
   | cons a t ih =>
     simp only [List.filter_cons]
-    cases hpa : P a <;> cases hqa : Q a <;> simp_all <;> omega
+    cases hpa : P a <;> cases hqa : Q a <;>
+      (try exact absurd (h a hpa) (by rw [hqa]; decide)) <;>
+      (simp +decide only [ite_true, ite_false, List.length_cons]; omega)
 
 /-- The number of elements of `finRange n` that belong to a list `l`
     is at most `l.length`. Commonly used to bound
@@ -145,6 +147,20 @@ theorem filter_or_le {α : Type} (P Q : α → Bool) (l : List α) :
     simp only [List.filter_cons]
     cases P a <;> cases Q a <;> simp <;> omega
 
+/-- Three-way partition: if P, Q, R are mutually exclusive (at most one true
+    per element), then |filter P| + |filter Q| + |filter R| ≤ |l|. -/
+theorem three_way_filter_le {α : Type} (P Q R : α → Bool) (l : List α)
+    (hdisj : ∀ x, (P x && Q x) = false)
+    (hdisj2 : ∀ x, (P x && R x) = false)
+    (hdisj3 : ∀ x, (Q x && R x) = false) :
+    (l.filter P).length + (l.filter Q).length + (l.filter R).length ≤ l.length := by
+  induction l with
+  | nil => simp
+  | cons a t ih =>
+    simp only [List.filter_cons, List.length_cons]
+    have := hdisj a; have := hdisj2 a; have := hdisj3 a
+    cases hpa : P a <;> cases hqa : Q a <;> cases hra : R a <;> simp [*] at * <;> omega
+
 /-- If `P src = false`, adding the disjunct `q = src` to the filter
     predicate increases the filtered length by exactly one.
     Useful when a Boolean field is set for one new key. -/
@@ -197,7 +213,8 @@ theorem filter_length_strict_mono {n : Nat} (P Q : Fin n → Bool)
       ((List.finRange n).filter P).length := by
     congr 1 ; apply List.filter_congr
     intro y _
-    cases hpy : P y <;> cases hqy : Q y <;> simp_all
+    cases hpy : P y <;> cases hqy : Q y <;>
+      (try exact absurd (hmono y hpy) (by rw [hqy]; decide)) <;> simp +decide
   have hge : ((List.finRange n).filter (fun x => Q x && !P x)).length ≥ 1 := by
     have : x ∈ (List.finRange n).filter (fun y => Q y && !P y) := by
       simp [List.mem_filter, hP, hQ]
@@ -295,8 +312,14 @@ theorem echo_quorum_intersection {n f : Nat} {α : Type} [DecidableEq α]
     | nil => simp
     | cons a t ih =>
       simp only [List.filter_cons, List.length_cons]
-      split <;> split <;> split <;> simp_all
-      all_goals first | omega
+      split <;> split <;> split <;>
+        (rename_i h1 h2 h3; simp only [Bool.and_eq_true, decide_eq_true_eq] at h1 h2 h3;
+         first
+           | (obtain ⟨hna, _⟩ := h1; exact absurd h3 hna)
+           | (obtain ⟨hna, _⟩ := h2; exact absurd h3 hna)
+           | (have := h1.2.symm.trans h2.2; simp at this; exact absurd this hvw)
+           | (simp only [List.length_cons]; omega)
+           | omega)
   have h3way := h3 (List.finRange n)
   have hlen : (List.finRange n).length = n := List.length_finRange
   have hcv_add : n ≤ ((List.finRange n).filter (fun r =>
