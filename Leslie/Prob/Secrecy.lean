@@ -1,33 +1,48 @@
 /-
-M3 W4 (Phase 11-α) — Secrecy framework abstraction.
+M3 W4 (Phase 11-α + 11-β) — Secrecy framework abstraction.
 
-`Secrecy spec μ₀ proj` says: under any deterministic adversary, the
-projected trace distribution doesn't depend on the secret. This is
-the protocol-independent notion of operational view-secrecy.
+Phase 11-α (PR #71) introduced two predicates over deterministic
+adversaries:
 
-`SecrecyRushing` is the view-restricted (rushing) variant: the
-adversary's schedule depends only on a `ProtocolView` projection
-of the state, not on the full state-history. Mirrors the standard
-cryptography-literature notion (Canetti–Rabin '93, Goldwasser–
-Lindell '02).
+  * `Secrecy spec μ₀ proj` — under any deterministic adversary, the
+    projected trace distribution doesn't depend on the secret. The
+    protocol-independent notion of operational view-secrecy.
+  * `SecrecyRushing` — view-restricted variant: the adversary's
+    schedule depends only on a `ProtocolView` projection. Mirrors
+    Canetti–Rabin '93 / Goldwasser–Lindell '02.
+
+Phase 11-β (this PR) adds the **randomised** counterparts, mirroring
+the deterministic stack against `RandomisedAdversary` and
+`RushingRandomisedAdversary`:
+
+  * `SecrecyRandomised spec μ₀ proj` — universal over randomised
+    schedules, on the mixture trace measure (`randomisedTraceDist`).
+  * `SecrecyRushingRandomised` — view-restricted randomised variant.
+
+The "easy" direction `SecrecyRandomised → Secrecy` (specialise
+through `Adversary.toRandomised`) is proven inline.  The converse
+`Secrecy → SecrecyRandomised` requires a Fubini-over-deterministic-
+schedules argument (the randomised mixture trace measure decomposes
+into an integral over deterministic schedules induced by `R`).
+That direction is queued for a future PR (likely Phase 12-prereq);
+its absence is not a soundness gap — protocols generally prove
+either the deterministic or the randomised form directly without
+relying on the cross-implication.
 
 Each example protocol (AVSS, BivariateShamir, ...) instantiates
-`Secrecy` or `SecrecyRushing` with its specific projection. This
-file is purely abstract; protocol-specific theorems live in
+`Secrecy` / `SecrecyRushing` / `SecrecyRandomised` /
+`SecrecyRushingRandomised` with its specific projection. This file
+is purely abstract; protocol-specific theorems live in
 `Leslie/Examples/Prob/`.
 
-The two definitions intentionally mirror the existing AVSS-side
-shape `(traceDist ... A μ₀ sec).map proj = (traceDist ... A μ₀ sec').map proj`
-so that AVSS's headline `avss_secrecy_AS_view_rushing` can be
-restated as a one-line `instance : SecrecyRushing avssSpec ... ...`
-in Phase 11-γ.
-
 Per implementation plan v2.2 §M3 W4 + design plan v2.2
-§"Secrecy framework abstraction", Phase 11-α (PR #71's §14 plan).
+§"Secrecy framework abstraction", Phase 11-α (PR #71) + Phase 11-β
+(this PR).
 -/
 
 import Leslie.Prob.Trace
 import Leslie.Prob.Adversary
+import Leslie.Prob.RandomisedAdversary
 
 namespace Leslie.Prob
 
@@ -138,5 +153,121 @@ theorem Secrecy.toRushing
     SecrecyRushing spec μ₀ view proj := by
   intro sec sec' R _hR
   exact h sec sec' R.toAdversary
+
+/-! ## Phase 11-β — Randomised counterparts -/
+
+/-- **Randomised operational secrecy.**  Under any *randomised*
+adversary `R : RandomisedAdversary σ ι` (kernel-mixture schedule),
+the projected mixture trace distribution doesn't depend on the
+secret.
+
+This is the literature-standard threat model for AVSS-style
+secrecy claims (Canetti–Rabin '93, Backes-Pfitzmann-Waidner): the
+adversary may flip coins to choose the schedule, but the corrupt
+coalition's view distribution is identical across secrets.
+
+Defined identically to `Secrecy` but with `randomisedTraceDist` in
+place of `traceDist`. -/
+def SecrecyRandomised
+    (spec : ProbActionSpec σ ι)
+    {Sec : Type*}
+    {V : Type*} [MeasurableSpace V]
+    (μ₀ : Sec → Measure σ) [∀ s, IsProbabilityMeasure (μ₀ s)]
+    (proj : Trace σ ι → V) : Prop :=
+  ∀ (sec sec' : Sec) (R : RandomisedAdversary σ ι),
+    (randomisedTraceDist spec R (μ₀ sec)).map proj =
+    (randomisedTraceDist spec R (μ₀ sec')).map proj
+
+/-- **Randomised rushing operational secrecy.**  View-restricted
+randomised analog of `SecrecyRushing`: quantifies over
+`RushingRandomisedAdversary σ ι W` (PMF-valued schedules on view-
+histories).  The adversary's randomised schedule sees only the
+`ProtocolView W` projection of the state-history.
+
+This is the most literature-faithful threat model in the framework:
+randomised + rushing combines the two literature-standard adversarial
+powers.  It is strictly weaker than `SecrecyRandomised`, which
+quantifies over the full universal class of randomised schedulers
+(state-history visible). -/
+def SecrecyRushingRandomised
+    (spec : ProbActionSpec σ ι)
+    {Sec : Type*}
+    {V W : Type*} [MeasurableSpace V]
+    (μ₀ : Sec → Measure σ) [∀ s, IsProbabilityMeasure (μ₀ s)]
+    (view : ProtocolView σ W)
+    (proj : Trace σ ι → V) : Prop :=
+  ∀ (sec sec' : Sec) (R : RushingRandomisedAdversary σ ι W),
+    R.toProtocolView = view →
+    (randomisedTraceDist spec R.toRandomisedAdversary (μ₀ sec)).map proj =
+    (randomisedTraceDist spec R.toRandomisedAdversary (μ₀ sec')).map proj
+
+/-- `SecrecyRandomised` is monotone in the projection, mirroring
+`Secrecy.mono_proj`. -/
+theorem SecrecyRandomised.mono_proj
+    {spec : ProbActionSpec σ ι}
+    {Sec V₁ V₂ : Type*}
+    [MeasurableSpace V₁] [MeasurableSpace V₂]
+    {μ₀ : Sec → Measure σ} [∀ s, IsProbabilityMeasure (μ₀ s)]
+    {proj₁ : Trace σ ι → V₁} (hproj₁ : Measurable proj₁)
+    (f : V₁ → V₂) (hf : Measurable f)
+    (h : SecrecyRandomised spec μ₀ proj₁) :
+    SecrecyRandomised spec μ₀ (f ∘ proj₁) := by
+  intro sec sec' R
+  rw [← Measure.map_map hf hproj₁, ← Measure.map_map hf hproj₁, h sec sec' R]
+
+/-- `SecrecyRushingRandomised` is monotone in the projection,
+mirroring `SecrecyRushing.mono_proj`. -/
+theorem SecrecyRushingRandomised.mono_proj
+    {spec : ProbActionSpec σ ι}
+    {Sec V₁ V₂ W : Type*}
+    [MeasurableSpace V₁] [MeasurableSpace V₂]
+    {μ₀ : Sec → Measure σ} [∀ s, IsProbabilityMeasure (μ₀ s)]
+    {view : ProtocolView σ W}
+    {proj₁ : Trace σ ι → V₁} (hproj₁ : Measurable proj₁)
+    (f : V₁ → V₂) (hf : Measurable f)
+    (h : SecrecyRushingRandomised spec μ₀ view proj₁) :
+    SecrecyRushingRandomised spec μ₀ view (f ∘ proj₁) := by
+  intro sec sec' R hR
+  rw [← Measure.map_map hf hproj₁, ← Measure.map_map hf hproj₁, h sec sec' R hR]
+
+/-- Randomised secrecy implies plain (deterministic) secrecy: the
+universal claim over `RandomisedAdversary` specialises to the image
+of `Adversary.toRandomised`, and `randomisedTraceDist_toRandomised`
+shows the mixture trace at a deterministic-lift adversary equals
+the deterministic trace.
+
+This is the **easy direction** of the
+`Secrecy ↔ SecrecyRandomised` correspondence; the converse requires
+Fubini over deterministic schedules and is queued for a follow-up
+PR (see file docstring). -/
+theorem SecrecyRandomised.toSecrecy
+    {spec : ProbActionSpec σ ι}
+    {Sec V : Type*} [MeasurableSpace V]
+    {μ₀ : Sec → Measure σ} [∀ s, IsProbabilityMeasure (μ₀ s)]
+    {proj : Trace σ ι → V}
+    (h : SecrecyRandomised spec μ₀ proj) :
+    Secrecy spec μ₀ proj := by
+  intro sec sec' A
+  have hsec  := h sec sec' A.toRandomised
+  rw [randomisedTraceDist_toRandomised, randomisedTraceDist_toRandomised] at hsec
+  exact hsec
+
+/-- Randomised secrecy implies rushing-randomised secrecy (for any
+view).  The universal claim over `RandomisedAdversary` specialises
+to the image of `RushingRandomisedAdversary.toRandomisedAdversary`,
+so any `R : RushingRandomisedAdversary σ ι W` plugs in directly.
+
+The view hypothesis is irrelevant on this side, mirroring
+`Secrecy.toRushing`. -/
+theorem SecrecyRandomised.toRushingRandomised
+    {spec : ProbActionSpec σ ι}
+    {Sec V W : Type*} [MeasurableSpace V]
+    {μ₀ : Sec → Measure σ} [∀ s, IsProbabilityMeasure (μ₀ s)]
+    {proj : Trace σ ι → V}
+    (view : ProtocolView σ W)
+    (h : SecrecyRandomised spec μ₀ proj) :
+    SecrecyRushingRandomised spec μ₀ view proj := by
+  intro sec sec' R _hR
+  exact h sec sec' R.toRandomisedAdversary
 
 end Leslie.Prob
