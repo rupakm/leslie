@@ -21,13 +21,20 @@ the deterministic stack against `RandomisedAdversary` and
 
 The "easy" direction `SecrecyRandomised → Secrecy` (specialise
 through `Adversary.toRandomised`) is proven inline.  The converse
-`Secrecy → SecrecyRandomised` requires a Fubini-over-deterministic-
-schedules argument (the randomised mixture trace measure decomposes
-into an integral over deterministic schedules induced by `R`).
-That direction is queued for a future PR (likely Phase 12-prereq);
-its absence is not a soundness gap — protocols generally prove
-either the deterministic or the randomised form directly without
-relying on the cross-implication.
+`Secrecy → SecrecyRandomised` is the **hard direction** —
+established in `Secrecy.toRandomised` via Fubini over deterministic
+schedules: the randomised mixture trace measure decomposes into an
+integral over deterministic schedules induced by `R`, the
+deterministic `Secrecy` hypothesis applies pointwise, and the
+projected equality lifts under the integral.
+
+After Phase 11-β-followup-7 (Worker 7), the chain is **closed**:
+`Secrecy.toRandomised` is sorry-free in this file, and the entire
+`Secrecy ↔ SecrecyRandomised` correspondence reduces to a single
+named framework sorry in `Leslie.Prob.RandomisedAdversary`
+(`randomisedTraceDist_eq_bind_traceDist`), which captures the
+parameterised Ionescu–Tulcea cylinder-uniqueness content that
+mathlib does not currently expose.
 
 Each example protocol (AVSS, BivariateShamir, ...) instantiates
 `Secrecy` / `SecrecyRushing` / `SecrecyRandomised` /
@@ -43,6 +50,7 @@ Per implementation plan v2.2 §M3 W4 + design plan v2.2
 import Leslie.Prob.Trace
 import Leslie.Prob.Adversary
 import Leslie.Prob.RandomisedAdversary
+import Mathlib.Probability.ProductMeasure
 
 namespace Leslie.Prob
 
@@ -269,5 +277,195 @@ theorem SecrecyRandomised.toRushingRandomised
     SecrecyRushingRandomised spec μ₀ view proj := by
   intro sec sec' R _hR
   exact h sec sec' R.toRandomisedAdversary
+
+/-! ## Phase 11-β-followup — `Secrecy → SecrecyRandomised`
+
+The **hard direction** of the `Secrecy ↔ SecrecyRandomised`
+correspondence: deterministic secrecy implies randomised secrecy.
+
+**Mathematical content.**  Given a randomised adversary
+`R : RandomisedAdversary σ ι`, the mixture trace measure
+`randomisedTraceDist spec R μ` decomposes as a Fubini integral of
+deterministic trace measures over a probability measure on
+deterministic schedules.  Concretely, R's per-history PMFs
+`R.strategy : List (σ × Option ι) → PMF (Option ι)` induce a
+probability measure on the function space
+`List (σ × Option ι) → Option ι` of "schedule assignments" via the
+Kolmogorov / Ionescu-Tulcea construction.  Each such assignment
+defines a deterministic `Adversary σ ι`; the mixture trace measure
+is then the integral of deterministic trace measures over this
+schedule-assignment measure.
+
+Once the factorisation is established, the deterministic `Secrecy`
+hypothesis applies pointwise under the integral, swapping the secret
+and yielding the randomised conclusion via congruence of integrals.
+
+**Sorry inventory (Phase 11-β-followup-7, Worker 7 — chain finale).**
+
+  * `Phase 11-β-followup-2` — ✅ closed (Worker 2). `scheduleSpaceMeasure`
+    + its `IsProbabilityMeasure` instance use mathlib's
+    `MeasureTheory.Measure.infinitePi`.
+  * `Phase 11-β-followup-3` — ✅ closed (Worker 3). Per-step
+    factorisation + schedule-space marginal.
+  * `Phase 11-β-followup-4` — ✅ closed (Worker 4). `Secrecy.toRandomised`
+    fully proved modulo the trajectory-level Fubini sub-claim.
+  * `Phase 11-β-followup-6` — ✅ closed (Worker 6). Chain split into
+    two independent helpers `_traj_aeMeasurable` / `_traj_bind_eq`.
+  * `Phase 11-β-followup-7` — ✅ closed (Worker 7, this PR).
+    The schedule-space machinery (`ScheduleAssignment`,
+    `scheduleSpaceMeasure`) and the framework lemma
+    `randomisedTraceDist_eq_bind_traceDist` were promoted from this
+    file to `Leslie.Prob.RandomisedAdversary` so that the chain has a
+    *single* named framework sorry. Both `_traj_aeMeasurable` and
+    `_traj_bind_eq` in this file are now trivial projections of the
+    framework lemma, eliminating every sorry from `Secrecy.lean`.
+
+The single remaining `sorryAx` is in
+`Leslie.Prob.randomisedTraceDist_eq_bind_traceDist`, capturing the
+parameterised Ionescu–Tulcea cylinder-uniqueness content that mathlib
+does not expose. See its docstring for the proof outline. -/
+
+/-! ### Schedule-space machinery
+
+Re-exported from `Leslie.Prob.RandomisedAdversary` for legibility.
+The `ScheduleAssignment σ ι` type, `scheduleSpaceMeasure`, and the
+framework lemma `randomisedTraceDist_eq_bind_traceDist` all live in
+that file (Phase 11-β-followup-7 promotion). -/
+
+set_option linter.unusedSectionVars false in
+/-- **Phase 11-β-followup-3a-i (closed, Worker 7).**
+AEMeasurability of the trajectory-distribution integrand
+`sched ↦ traceDist spec (sched.toAdversary R.corrupt) μ` w.r.t. the
+schedule-space measure.
+
+A trivial `.1` projection of the framework lemma
+`randomisedTraceDist_eq_bind_traceDist` (in
+`Leslie.Prob.RandomisedAdversary`). -/
+private lemma randomisedTraceDist_eq_integral_traceDist_traj_aeMeasurable
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
+    (μ : Measure σ) [IsProbabilityMeasure μ] :
+    AEMeasurable
+        (fun sched : ScheduleAssignment σ ι =>
+          traceDist spec (sched.toAdversary R.corrupt) μ)
+        (scheduleSpaceMeasure R) :=
+  (randomisedTraceDist_eq_bind_traceDist spec R μ).1
+
+set_option linter.unusedSectionVars false in
+/-- **Phase 11-β-followup-3a-ii (closed, Worker 7).** Bind equality
+for the trajectory-level Fubini factorisation.
+
+The randomised mixture trace measure equals the `Measure.bind` of
+the deterministic trace measures over the schedule-space measure.
+
+A trivial `.2` projection of the framework lemma
+`randomisedTraceDist_eq_bind_traceDist` (in
+`Leslie.Prob.RandomisedAdversary`). -/
+private lemma randomisedTraceDist_eq_integral_traceDist_traj_bind_eq
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
+    (μ : Measure σ) [IsProbabilityMeasure μ] :
+    randomisedTraceDist spec R μ =
+      Measure.bind (scheduleSpaceMeasure R) fun sched =>
+        traceDist spec (sched.toAdversary R.corrupt) μ :=
+  (randomisedTraceDist_eq_bind_traceDist spec R μ).2
+
+set_option linter.unusedSectionVars false in
+/-- Trajectory-level Fubini for the mixture trace measure: the
+conjunction of AEMeasurability of the integrand (`-3a-i`) and the
+bind equality (`-3a-ii`). Re-export of the framework lemma. -/
+private theorem randomisedTraceDist_eq_integral_traceDist_traj
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
+    (μ : Measure σ) [IsProbabilityMeasure μ] :
+    AEMeasurable
+        (fun sched : ScheduleAssignment σ ι =>
+          traceDist spec (sched.toAdversary R.corrupt) μ)
+        (scheduleSpaceMeasure R)
+      ∧ randomisedTraceDist spec R μ =
+        Measure.bind (scheduleSpaceMeasure R) fun sched =>
+          traceDist spec (sched.toAdversary R.corrupt) μ :=
+  randomisedTraceDist_eq_bind_traceDist spec R μ
+
+/-- **Fubini factorisation of the mixture trace measure** (the heart
+of `Secrecy.toRandomised`).
+
+The randomised mixture trace measure equals the *integral* of
+deterministic trace measures over the schedule-space measure.
+
+For our `Secrecy` use-case, the integrand `g` is the indicator of a
+`Measure.map proj`-measurable set — Fubini moves the projection
+outside the integral and leaves the deterministic equality to
+discharge.
+
+**Phase 11-β-followup-7 status.** This is now a one-liner forwarding
+to the framework lemma `randomisedTraceDist_eq_bind_traceDist` in
+`Leslie.Prob.RandomisedAdversary`. The conclusion bundles the bind
+equality with an `AEMeasurable` witness for the inner family — both
+are needed by `Secrecy.toRandomised` to push `Measure.map proj` past
+the bind via `bind_apply`. -/
+private theorem randomisedTraceDist_eq_integral_traceDist
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
+    (μ : Measure σ) [IsProbabilityMeasure μ] :
+    AEMeasurable
+        (fun sched : ScheduleAssignment σ ι =>
+          traceDist spec (sched.toAdversary R.corrupt) μ)
+        (scheduleSpaceMeasure R)
+      ∧ randomisedTraceDist spec R μ =
+        Measure.bind (scheduleSpaceMeasure R) fun sched =>
+          traceDist spec (sched.toAdversary R.corrupt) μ :=
+  randomisedTraceDist_eq_bind_traceDist spec R μ
+
+/-- **Hard direction** of the `Secrecy ↔ SecrecyRandomised`
+correspondence: deterministic secrecy implies randomised secrecy.
+
+Proof outline (Fubini over deterministic schedules).  Given
+`R : RandomisedAdversary σ ι`, the randomised mixture trace measure
+`randomisedTraceDist spec R μ` equals the integral, over the
+schedule-space measure, of the deterministic trace measure for the
+schedule sampled.  Applying `Secrecy` under the integral yields the
+conclusion.
+
+Concretely:
+  * factor both sides via `randomisedTraceDist_eq_integral_traceDist`,
+  * push `Measure.map proj` inside the bind by reducing to set-equality
+    via `Measure.bind_apply` + `Measure.map_apply`,
+  * apply the deterministic hypothesis `h sec sec' (sched.toAdversary R.corrupt)`
+    pointwise inside the integral,
+  * conclude by `lintegral_congr`.
+
+The hypothesis `Measurable proj` (mirroring `mono_proj`) is necessary
+to push `Measure.map proj` past the `Measure.bind`. It is satisfied in
+all standard caller contexts: framework projections are typically
+discrete (coalition views, schedule prefixes) where measurability is
+automatic from `MeasurableSpace`-discreteness of the codomain. -/
+theorem Secrecy.toRandomised
+    {spec : ProbActionSpec σ ι}
+    {Sec V : Type*} [MeasurableSpace V]
+    {μ₀ : Sec → Measure σ} [∀ s, IsProbabilityMeasure (μ₀ s)]
+    {proj : Trace σ ι → V} (hproj : Measurable proj)
+    (h : Secrecy spec μ₀ proj) :
+    SecrecyRandomised spec μ₀ proj := by
+  intro sec sec' R
+  -- Step 1: extract the factorisation + AEMeasurable witnesses for
+  -- both secrets.
+  obtain ⟨hAE_sec,  heq_sec⟩  :=
+    randomisedTraceDist_eq_integral_traceDist spec R (μ₀ sec)
+  obtain ⟨hAE_sec', heq_sec'⟩ :=
+    randomisedTraceDist_eq_integral_traceDist spec R (μ₀ sec')
+  -- Step 2: substitute the bind form into the goal.
+  rw [heq_sec, heq_sec']
+  -- Step 3: reduce to set-equality and unfold both `map` and `bind`.
+  ext t ht
+  have ht' : MeasurableSet (proj ⁻¹' t) := hproj ht
+  rw [Measure.map_apply hproj ht, Measure.map_apply hproj ht,
+      Measure.bind_apply ht' hAE_sec, Measure.bind_apply ht' hAE_sec']
+  -- Step 4: pointwise equality under the integral via `h`.
+  refine lintegral_congr fun sched => ?_
+  -- For each fixed deterministic schedule, `h` gives the projected
+  -- trace measures equal — apply at preimage `proj ⁻¹' t`.
+  have hpoint :=
+    congrArg (fun ν : Measure V => ν t)
+      (h sec sec' (sched.toAdversary R.corrupt))
+  -- `Measure.map_apply` on each side reduces `(traceDist ...).map proj t`
+  -- to `traceDist ... (proj ⁻¹' t)`.
+  simpa [Measure.map_apply hproj ht] using hpoint
 
 end Leslie.Prob
