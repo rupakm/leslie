@@ -794,6 +794,36 @@ this section.
 
 ### 11.1. C1 — Corrupt parties cannot send echoes/readys/amplify
 
+✅ **Resolved by the Phase 8.5b chain** (PRs #57 / #59 / #60 / #61 /
+#62 / #63 / #64 / #65 / #66).  The honest gates on
+`partyEchoSend` / `partyReady` / `partyAmplify` were dropped, the
+`partyEchoSend` broadcast filter was widened to all parties, and
+`corruptLocalInv` was weakened to its sustainable two-clause form
+(`output = none`, `(delivered = false → rowPoly = none)`).  The
+`avssCert` `V_super` / `V_super_fair` / `U_dec_det` disjuncts now
+dispatch via `Or.inr` for corrupt-fired actions through the new
+liveness lemma `avssFairActionEnabled_at_non_terminated`, and the
+soundness route of `avss_termination_AS_fair` was switched from
+`pi_n_AST_fair_with_progress_det` (requires `TrajectoryUMono`,
+false under C1+C2) to the BC running-min route
+`pi_n_AST_fair_with_progress_bc_of_running_min_drops`.
+
+**Resolution status (citation).**
+
+| PR | Role |
+|---|---|
+| **#57** (8.5a) | `s.dealerSent = true` gate strengthening on send actions (variant prep). |
+| **#59** (8.5b-framework) | `V_super` disjunct in `FairASTCertificate`. |
+| **#60** (8.5b-α) | C1+C2 model surgery + `corruptLocalInv` weakening + cert sorries. |
+| **#61** (8.5b-β) | `avssFairActionEnabled_at_non_terminated` cert dispatch. |
+| **#62** (8.5b-γ) | `avssFreshInv` + `actionGate_iff` + `simSyncInv` re-derivation. |
+| **#63** (8.5b-γ-followup) | C5/C7 stuck-cases via `avssFlowInv` joint invariant + `(h_corr : corr.card ≤ t)`. |
+| **#64** (8.5b-γ-followup-2) | F4 ready-flow preservation via per-pair `inflightReady : Finset (Fin n × Fin n)`. |
+| **#65** (8.5b-δ) | BC running-min termination route switch. |
+| **#66** (8.5c) | `coalitionView_corrupt_factors_AE` weakening (drop schedule-dependent clauses). |
+
+**(Pre-resolution history kept below for context.)**
+
 Every send-action's gate has `p ∉ s.corrupted` (see
 `Leslie/Examples/Prob/AVSS.lean`):
 
@@ -887,6 +917,31 @@ subdivision.
 C1 closure properly lands when 8.5b-i + 8.5b-ii are bundled.
 
 ### 11.2. C2 — Honest echoes/readys are addressed only to honest receivers
+
+✅ **Resolved by the Phase 8.5b chain** (PRs #60 / #62 / #66).  The
+`partyEchoReceive` and `partyReceiveReady` honest-receiver gates were
+dropped jointly with the C1 surgery (PR #60), and the
+`coalitionView_corrupt_factors_AE` statement was weakened (PR #66) to
+drop the four schedule-dependent clauses (`echoSent`,
+`echoesReceived`, `readySent`, `readyReceived`), retaining only the
+`coeffs`-content clauses (`output = none`,
+`delivered = false → rowPoly = none`,
+`delivered = true → rowPoly = some (rowPolyOfDealer …)`).  The
+`coalitionTraceView_eq_reconstruct_AE` consumer chain (PRs #62, #66)
+was rebuilt under the wider corrupt-local view; the cTV bridge now
+fires uniformly via `coalitionRowPolyAlignedInv` (a structural,
+honest-dealer-INDEPENDENT alignment invariant introduced in
+8.5d-β-followup-7).
+
+**Resolution status (citation).**
+
+| PR | Role |
+|---|---|
+| **#60** (8.5b-α) | Drop `partyEchoReceive` / `partyReceiveReady` honest-receiver gates; widen `partyEchoSend` broadcast filter to all parties. |
+| **#62** (8.5b-γ) | `simSyncInv` re-derivation under wider broadcast image. |
+| **#66** (8.5c) | `coalitionView_corrupt_factors_AE` weakening; secrecy-chain consumer cascade. |
+
+**(Pre-resolution history kept below for context.)**
 
 `partyEchoSend p`'s effect (around line 348 of `AVSS.lean`) populates
 `inflightEchoes` only with `(p, q)` for `q ∉ s.corrupted` (the
@@ -1004,8 +1059,11 @@ schedule).
 
 #### Phase B fix landed
 
-✅ **Resolved.** Phase B (this PR) folds `dealerShare` into
-`avssFairActions` (Option B2 from the original plan).  The new
+✅ **Resolved (pre-Phase-8 historical fix).** Phase B folded
+`dealerShare` into `avssFairActions` (Option B2 from the original
+plan).  Phase 8.5d-α subsequently replaced `dealerShare` with the
+per-party `dealerShareTo`, retaining the same fairness assumption
+for `(honest dealer ∧ honest p)` pairs (see §11.4).  The new
 strict-decrease witness `avssU_step_dealerShare_lt` requires
 `(honestSet s).card ≥ 1`; the helper
 `honestSet_pos_of_not_terminated_pre_share` derives this from
@@ -1048,14 +1106,43 @@ Phase B commit chose Option B2 (fold `dealerShare` into
 
 ### 11.4. C4 — Selective non-broadcast and the load-bearing role of Bracha amplification
 
-✅ **Resolved by Phase 8.5d (PRs #68 / #69 / 8.5d-γ).** The
-per-party `dealerShareTo` action surgery (Phase 8.5d-α) plus
-`s.coeffs` migration to μ₀ (Phase 8.5d-β) plus termination
-re-scoping to take `h_consistent_quorum` (Phase 8.5d-γ) jointly
-formalise CR's conditional-termination semantics.  See
+✅ **Resolved by the Phase 8.5d chain** (PRs #68 / #69 / #70).  The
+per-party `dealerShareTo` action surgery (Phase 8.5d-α, PR #68) plus
+`s.coeffs` migration to μ₀ (Phase 8.5d-β, PR #69) plus termination
+re-scoping to take `h_consistent_quorum` (Phase 8.5d-γ, PR #70)
+jointly formalise CR's conditional-termination semantics.  See
 `AVSS.consistent_quorum_AE` for the runtime hypothesis form, and
 `AVSS.consistent_quorum_AE_of_all_honest_delivered` for a sanity
 check confirming honest-dealer schedules satisfy it trivially.
+
+**Resolution status (citation).**
+
+| PR | Role |
+|---|---|
+| **#68** (8.5d-α) | `dealerShare` → `dealerShareTo (p : Fin n)`; `s.dealerSent : Fin n → Bool`; per-party `actionGate`/`avssStep`/variant updates. |
+| **#69** (8.5d-β) | `s.coeffs` removed from `AVSSState`; `coeffs` parameter threaded through `initPred`, `avssSpec`, `avssCert`, all theorem statements; `dealerCommit : Fin n → DealerPayload t F` field carries per-party commitments. |
+| **#70** (8.5d-γ) | Termination re-scoped: `avss_termination_AS_fair` (and `_traj`/`_rushing`) take `h_consistent_quorum : consistent_quorum_AE sec corr coeffs μ₀ A`; sanity-check `consistent_quorum_AE_of_all_honest_delivered`. |
+
+**New theorem statement (post-Phase-8.5d-γ).**
+
+```lean
+theorem avss_termination_AS_fair
+    (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card ≤ t)
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (A : Adversary _ _) (h_fair : avssFair A)
+    (h_consistent_quorum :
+      consistent_quorum_AE sec corr coeffs avssInitMeasure A)
+    (h_drop_io : ...) :
+    AlmostDiamond
+      (traceDist (avssSpec sec corr coeffs) A avssInitMeasure)
+      terminated
+```
+
+The `consistent_quorum_AE` hypothesis encodes CR '93's structural
+runtime requirement (≥ n − t honest parties have both
+`dealerSent p = true` and `dealerMessages p ≠ none` along the
+trace, AE-eventually) — the conditional-CR statement that was
+previously bypassed by Phase B's unconditional-fairness route.
 
 ⚠ **Closely related to §2 (Dealer-to-party communication) but worth
 spelling out separately**: in CR '93, a corrupt dealer's adversarial
@@ -1216,6 +1303,19 @@ through the Phase 9.2 lifting meta-theorems
 `randomisedTraceDist_map_eq_of_deterministic_at_zero`) plus the
 randomised `FairASTCertificate.sound` core, and the rushing
 wrappers are one-liners through `R.toRandomisedAdversary`.
+
+**⚠ Cross-branch reconciliation caveat (post-Phase-8.5d).**  The
+Phase 9 chain (PRs #41–#56) typed its `_randomised` corollaries
+against the pre-Phase-8.5d-γ unconditional termination form.
+Phase 8.5d-γ (PR #70) re-scoped `avss_termination_AS_fair` to take
+a `consistent_quorum_AE` hypothesis (closing caveat C4).  Phase 9's
+`avss_termination_AS_fair_randomised` and `_rushing_randomised`
+corollaries therefore need a small statement-level update at
+merge time to thread the new hypothesis through.  The reconciliation
+is mechanical (no cryptographic content) and is queued as a
+followup PR; it does not affect any of the load-bearing
+`avss_correctness_AS_*` / `avss_commitment_AS_*` / `avss_secrecy_AS_*`
+randomised forms, which are already aligned.
 
 The historical context below is retained for completeness; readers
 of new code should reach for the `_randomised` and
@@ -1398,64 +1498,179 @@ in-flight to ✅ landed.
 
 ### 12.1. Status tracker
 
-| PR | Title | Scope | LOC | Status |
-|---|---|---|---|---|
-| **8.1** | DealerPayload + state surgery (A-lite) | Foundational refactor: introduce `DealerPayload` type and `dealerMessages : Fin n → Option (DealerPayload t F)` field; keep `coeffs` alongside; migrate `dealerShare`/`partyDeliver`/`partyCorruptDeliver` to read from `dealerMessages`; add consistency invariant. **No theorem semantics change.** | ~200 (actual: 442/-82) | ✅ landed (PR #39) |
-| **8.2** | Honest-dealer consistency invariant + correctness re-verification | Define `honestDealerConsistencyInv`: for honest dealer, ∃ witness coeffs such that every honest party's payload matches `rowPolyOfDealer`/`colPolyOfDealer`. Re-prove `avss_correctness_AS` against the new model with existential witness. Also adds bookkeeping `coeffsSecretInv` and `avss_correctness_AS_existential` (+ `_rushing` variant). Witness in current projection := `s.coeffs`; PR 8.5 will route the witness through μ₀'s sample. | ~250 (actual: 201/-0) | ✅ landed (PR #43) |
-| **8.3** | Corrupt-dealer commitment (the genuine theorem) | The headline literature-faithful theorem `joinedConsistencyInv`: ≥ t+1 honest outputs ⇒ ∃ coeffs witnessing all of them.  Adds `consistentPayload` (per-payload consistency predicate, reusable by 8.4), `honestOutputCount`, `joinedConsistencyInv`, and the `AlmostBox` form `avss_commitment_AS_corrupt_dealer` (+ `_rushing` variant).  In the Phase 8.3 model the witness is supplied by `s.coeffs` and the cryptographic content (Bracha quorum + Vandermonde uniqueness) becomes load-bearing only after PRs 8.4 and 8.5 let the adversary deviate from `s.coeffs`; the *statement* — Canetti–Rabin's existential-witness commitment form — is unchanged across the migration. | ~300 (actual: 198/-0) | ✅ landed (PR #45) |
-| **8.4** | Corrupt-dealer commitment via Vandermonde witness (cryptographic content) | Re-prove `avssStep_preserves_joinedConsistencyInv` with a genuine Lagrange-interpolation / Vandermonde-uniqueness argument: the witness is constructed from the observable honest output values and shown to satisfy the spec for all honest outputs via `Lagrange.eq_interpolate_of_eval_eq`. Adds `partyPointInjInv` (Shamir/Vandermonde precondition: distinct evaluation points) as a new joint-invariant clause. The proof no longer takes a shortcut through `s.coeffs` as the witness — `s.coeffs` is used only via `outputDeterminedInv` to bound output values. **Statement of `avss_commitment_AS_corrupt_dealer` unchanged** (still the Canetti–Rabin existential-witness form), but the proof is now Vandermonde-based and ready for the Phase 8.5 `s.coeffs`-out-of-state migration. **Scope deferred:** corrupt-party send actions (C1) and corrupt-receiver reception (C2) are left for Phase 8.5+ — their state-machine surgery would force weakening `corruptLocalInv` (echoesReceived = ∅ at corrupt parties), which is load-bearing for Phase 6/7 secrecy proofs and merits its own PR. | ~250 (actual: 268/-99) | ✅ landed (PR #48) |
-| **8.5** | Corrupt-party send actions (C1) + reception (C2) + selective non-broadcast (C4) — **subdivided into 8.5a–8.5d** during Phase 8.5 implementation; row preserved as a tracking parent | (See subdivision below — the original ~400 LOC estimate was confirmed accurate during a Phase 8.5 attempt, but the depth of cascade through the secrecy chain (`coalitionView_corrupt_factors_AE` → `coalitionTraceView_eq_reconstruct_AE` → `avss_secrecy_AS_view_conditional` → `_via_aux` → `_via_init_invariant` → `simAlgebraicView`/`simSchedulePrefix`) and through the variant analysis (per-action `avssU_step_*_lt` lemmas + `unsentEchoSet`/`notReadySentSet` membership) makes a single PR practically infeasible: re-routing every gate-unpacking in dozens of preservation proofs is mechanical but voluminous, and the secrecy bridge needs an additional `coalitionTrivialView` factoring layer that propagates through 6+ headline-secrecy callers. PR is broken into the four sub-rows below.) | (sum of 8.5a-d) | ⏳ pending (subdivided) |
-| **8.5a** | `dealerSent` gate strengthening (Phase 8.5b precursor) | Add `s.dealerSent = true` to gates of `partyEchoSend`/`partyReady`/`partyAmplify` (under the current model this is implied by the existing local-state preconditions plus `avssTermInv` clause 1; the explicit clause is added in preparation for 8.5b's gate weakening, where corrupt parties may fire without delivery and the explicit clause becomes load-bearing for preserving `avssTermInv`'s pre-share quiescence). Cosmetic refactor: no semantic change. The cascade is mechanical — the three `avssU_step_*_lt` lemmas now extract `hds_pre` directly from the gate (replacing the `dealerSent_true_of_local hinv` derivation), and the `simSyncInv` action-gate equivalence picks up `h.dealerSent_eq` for the new clause. | ~50 (actual: 33/-51) | ✅ landed (PR #57) |
-| **8.5b-framework** | `V_super` disjunct in `FairASTCertificate` (path (c) per §12.1 row 8.5b dilemma) | Resolves the V_super dilemma at the framework level. Diagnostic: `V_super` and `V_super_fair` are *structural-only* fields of `FairASTCertificate` — declared but not consumed by any soundness proof body in `Leslie/Prob/Liveness.lean` (the `pi_n_AST_fair_with_progress_det` deterministic-descent route takes its non-increase witness via the AE-trajectory `TrajectoryUMono`, never `V_super` directly). Weakening the structural fields to a disjunct (`expected V non-increase ∨ ∀ s' ∈ post-state support, ∃ j ∈ F.fair_actions, gate j s'`) is therefore safe — no proof body changes, no AE-trajectory plumbing is touched. Existing `FairASTCertificate` instances (AVSS, BenOrAsync, CommonCoin, AVSSAbstract) compile via `Or.inl` insertion at each cert-construction site. Mirrors the disjunct shape already used by `U_dec_det` (Liveness.lean line 253). Unblocks Phase 8.5b's C1+C2 model surgery: post-surgery, corrupt-fired `partyEchoSend`/`partyReady`/`partyAmplify` actions bump the honest-only `unsentEchoSet`/`notReadySentSet` variant components, but a fair action remains enabled at every reachable post-state (some honest party still has work pending), so the `Or.inr` branch discharges the new cases AVSS-side. Note: `TrajectoryUMono` (the AE-trajectory hypothesis to `pi_n_AST_fair_with_progress_det`) is *not* weakened in this PR — it remains load-bearing for the deterministic-descent proof body. AVSS-side post-8.5b will need a separate AE-trajectory adaptation (e.g., switch to the BC running-min route via `pi_n_AST_fair_with_progress_bc_of_running_min_drops`, already present in the framework). | ~80 | 🚧 in-flight (this PR) |
-| **8.5b** | C1 + C2 closure (state-machine surgery) + `corruptLocalInv` weakening + cert update + secrecy-chain re-statement — **subdivided into 8.5b-i / 8.5b-ii / 8.5b-iii** during the Phase 8.5b PROPER attempt (2026-05-06) when the cascade depth was empirically validated; row preserved as a tracking parent | (See subdivision below — empirical scope ~600–1000 LOC, exceeding the original ~200 LOC estimate by 3–5×. The cascade has three distinct stages: (i) model surgery + per-action `_lt` lemma adaptations + dispatcher rename (~250 LOC, builds green by itself **iff** the cert is updated); (ii) `avssCert` `V_super`/`V_super_fair`/`U_dec_det` dispatch via `Or.inr` for corrupt-fired actions, which requires a new ~150 LOC "fair action enabled at any non-terminated post-state with `avssTermInv`" lemma (the AVSS-side liveness witness); (iii) `coalitionView_corrupt_factors_AE` statement weakening to drop the `{echoSent, echoesReceived, readySent, readyReceived} = ∅` clauses, plus cascade through ~6+ secrecy-chain consumers that destructure the old 6-tuple conclusion. Stages (i) and (ii) must land together because the dropped honest gate breaks the per-action `_lt` lemmas, which in turn break the cert's `V_super`/`U_dec_det`. Stage (iii) is the secrecy-chain re-statement formerly attributed to 8.5c; carving it out as 8.5b-iii lets 8.5c focus on the deeper secrecy-chain re-proof through `coalitionTrivialView`.) | (sum of 8.5b-i/ii/iii) | ⏳ pending (subdivided 2026-05-06) |
-| **8.5b-i** | Model surgery: gate drops + `corruptLocalInv` weakening + per-action `_lt` lemma adaptations | Drop `p ∉ s.corrupted` from gates of `partyEchoSend`/`partyReady`/`partyAmplify` (C1) and from `partyEchoReceive`/`partyReceiveReady` (C2). Widen `partyEchoSend`'s broadcast filter from `(univ).filter (· ∉ corrupted)` to plain `Finset.univ` (C2 closure on the receiver side). Weaken `corruptLocalInv` to retain only `output = none ∧ (delivered = false → rowPoly = none)` — the only fields *genuinely* pinned (`output` because `partyOutput` retains the honest gate; the `(delivered, rowPoly)` pair because they are written *together* by `partyCorruptDeliver`). Re-prove `avssStep_preserves_corruptLocalInv` (mechanical: 6 fields → 2 fields). Re-prove the per-action variant strict-decrease lemmas under the new gates: `avssU_step_partyEchoReceive_lt` and `avssU_step_partyReceiveReady_lt` only need `obtain` pattern shifts (gate becomes 2-tuple), but `avssU_step_partyEchoSend_lt`/`partyReady_lt`/`partyAmplify_lt` need an explicit `(hph : p ∉ s.corrupted)` premise (because `unsentEchoSet`/`notReadySentSet` remain honest-only — Option A from the §12.1 row 8.5b dilemma analysis). Add an `isHonestFire : AVSSAction → AVSSState → Prop` predicate and rename the dispatcher `avssU_step_lt_of_fair` to take `hph : isHonestFire a s`. Update the `partyEchoSend_lt` `inflightEchoes` card bound to use the new broader broadcast image. **Build is RED at the end of this stage**: `avssCert`'s `V_super`/`V_super_fair`/`U_dec_det` (which call into the renamed dispatcher) and `coalitionView_corrupt_factors_AE`'s rcases of the old 6-tuple `corruptLocalInv` are broken until 8.5b-ii and 8.5b-iii land. Estimated ~250 LOC. **WIP diff captured at `/tmp/AVSS-phase8-5b-WIP.patch` (2026-05-06).** | ~250 | ⏳ pending (WIP diagnostic captured; needs to land bundled with 8.5b-ii to be build-green) |
-| **8.5b-ii** | Cert `Or.inr` dispatch + AVSS-side liveness lemma | Update `avssCert`'s three disjunct fields (`V_super`, `V_super_fair`, `U_dec_det`) to dispatch on `isHonestFire a s`: honest fires use the existing `Or.inl` proof via the renamed strict-decrease lemma; corrupt fires use `Or.inr` providing `∃ j ∈ avssFairActions, actionGate j (avssStep a s)`. The `Or.inr` witness requires a **new AVSS-side liveness lemma** ~`avssFairActionEnabled_at_non_terminated`: at any state `s'` satisfying `avssTermInv s' ∧ ¬ terminated s'` (and reached as a post-state of a corrupt-fired C1+C2 action from a similarly invariant pre-state), some fair action's gate is satisfied. The argument: ¬ terminated unfolds to one of five disjuncts (∃ honest q with `output = none`, ∃ honest q with `echoSent = false`, queues non-empty for delivery/echo/ready); each disjunct yields a fair action with its gate satisfied at `s'` (key lemma: at a corrupt-fired `partyEchoSend p`'s post-state, the broadcast added `(p, q)` for every `q`, and since `p` had `echoSent = false` pre-state, no honest `q` had previously received p's echo — so `partyEchoReceive q p` is enabled). Estimated ~150 LOC for the lemma + ~50 LOC for the cert dispatch. Must land bundled with 8.5b-i to be build-green. | ~200 | 🚧 partial (PR #60 = 8.5b-α landed model surgery + cert sorries; PR #61 = 8.5b-β lands cert dispatch + lemma + queue WF scaffolding; PR #62 = 8.5b-γ closes 9 of 13 sorries via `avssFreshInv` + `actionGate_iff` corrupt-q branches + `simSyncInv` re-derivation; PR #63 = 8.5b-γ-followup closes the 2 remaining `avssFairActionEnabled_at_non_terminated` C5/C7 stuck cases via a new `avssFlowInv` joint invariant (threshold + delivery completeness + echo flow + ready flow) plus `(h_corr : corr.card ≤ t)` parameter on `avssCert`. Lex-most-significant cascade dispatches C5 to `partyReady p` and C7 to `partyOutput p`. **PR #64 = 8.5b-γ-followup-2** closes the F4 ready-flow preservation sorry by upgrading `inflightReady : Finset (Fin n)` → `Finset (Fin n × Fin n)` (per-pair tokens, mirroring `inflightEchoes`); `partyReady`/`partyAmplify` populate `(p, r)` for every `r`, `partyReceiveReady r q` erases just `(q, r)`. F4 preservation under `partyReceiveReady` becomes mechanical. **2 sorries remain** — U_dec_prob (8.5b-δ), coalitionView (8.5c). **PR #65 = 8.5b-δ** switches the soundness route of `avss_termination_AS_fair`/`_traj`/`_rushing` from `pi_n_AST_fair_with_progress_det` (requires `TrajectoryUMono`, false under C1+C2 because corrupt-fired sends bump `avssU`) to the BC running-min route `pi_n_AST_fair_with_progress_bc_of_running_min_drops` (handles non-monotone variants by tracking the running minimum). Termination theorems now take a per-`V`-sublevel `TrajectoryFairRunningMinDropIO` hypothesis instead of `TrajectoryUMono` + `TrajectoryFairStrictDecrease`. The `U_dec_prob` sorry is now **vestigial** — the BC route doesn't consume it. Closing it requires either (a) a `Liveness.lean` disjunct weakening of `U_dec_prob` (Or.inr "another fair action enabled at post"), or (b) splitting `FairASTCertificate` into a smaller "BC cert" — both held off-limits this PR. See PHASE-8-5b-CHECKPOINT.md) |
-| **8.5b-iii** | `coalitionView_corrupt_factors_AE` statement weakening + secrecy-chain re-statement (formerly part of 8.5c's scope) | Re-state `coalitionView_corrupt_factors_AE` to drop the four schedule-dependent clauses (`echoSent = false`, `echoesReceived = ∅`, `readySent = false`, `readyReceived = ∅`); retain only the `coeffs`-content clauses (`output = none`, `delivered = false → rowPoly = none`, `delivered = true → rowPoly = some (rowPolyOfDealer …)`). Cascade through ~6+ consumers in the secrecy chain that currently destructure the old 6-tuple conclusion (`coalitionTraceView_eq_reconstruct_AE`, `simAlgebraicView`'s inductive bridge, etc.) — most break with `rcases` failures of the form `right✝ : (... → ...) is not an inductive datatype` and need the destructuring updated to a 2-tuple. Note: this is *statement* weakening only — the deeper `coalitionTrivialView` introduction and full secrecy re-proof remain in 8.5c. **Carved out from 8.5c during the 2026-05-06 subdivision** because the statement weakening is forced by 8.5b-i's `corruptLocalInv` weakening, while `coalitionTrivialView` introduction is deferrable. Estimated ~150 LOC. | ~150 | ⏳ pending (depends on 8.5b-i; can land in same PR as 8.5b-i+ii or as a follow-up) |
-| **8.5c** | Secrecy chain re-proof under wider corrupt-local view | Update `avss_secrecy_AS_view_conditional`'s `h_aux` to take the joint marginal of `(coalitionAlgebraicView, coalitionTrivialView, schedulePrefix)` (rather than just `(coalitionAlgebraicView, schedulePrefix)`). Propagate through `_via_aux`, `_via_init_invariant`, and the `simAlgebraicView`/`simSchedulePrefix` factoring chain — adds a parallel `simTrivialView` deterministic-in-`(s_0, schedule)` factoring lemma. Conclude with the headline `avss_secrecy_AS_view_rushing` re-proven under the wider model. Most substantive sub-PR; the `simTrivialView` factoring follows the same Phase 7.4 inductive AE-bridge pattern as `simAlgebraicView` and is mechanical once 8.5b lands. Depends on 8.5b. | ~200 | ⏳ pending |
-| **8.5d** | `dealerShareTo` (C4) + `coeffs` migration + termination re-scope | Replace `dealerShare` (single all-or-nothing emit) with `dealerShareTo (p : Fin n)` (per-party emit). Update fairness: `dealerShareTo p` is fair-required only for `(honest dealer ∧ honest p)`. Move `s.coeffs` out of state into `μ₀` (witness sample). Update all 153 references to `s.coeffs` — most resolve via the existential-witness forms already landed in PRs #43, #45, #48, #49; the non-existential `_randomised` forms from PR #47 either delete or rephrase. Re-scope `avss_termination_AS_fair` to take a `h_consistent_quorum` hypothesis. Plumb through `_traj`, `_rushing` variants. (`_randomised`/`_rushing_randomised` live on the Phase 9 branch; their re-scoping is a future merge-time concern.) Depends on 8.5b (gate surgery) and 8.5c (secrecy chain re-proven). | ~250 | ✅ landed: 8.5d-α (PR #68, action surgery), 8.5d-β (PR #69, `coeffs` → μ₀ migration, 0 sorries), 8.5d-γ (this PR, termination re-scoped to `consistent_quorum_AE`, sanity-check via `consistent_quorum_AE_of_all_honest_delivered`, 0 sorries) |
-| **8.6** | Operational secrecy under the full adversary | Re-prove `avss_secrecy_AS_view_rushing` against the post-8.4+8.5 adversary, which now has corrupt-party messages and honest-broadcast reception. Requires the **+200 LOC row + column secrecy** form (deferred since `SyncVSS.lean §10`) — the full polynomial-manipulation step. | ~250 | ⏳ pending |
-| **8.7** | Adapter retirement / cleanup | Decide whether to keep pre-Phase-8 model alongside or retire it. Recommend a thin compatibility shim with deprecation warnings for downstream migration. | ~100 | ⏳ pending |
-| **8.8** | MODEL_NOTES rewrite | Comprehensive rewrite to reflect post-Phase-8 state. Most §-level caveats become "✅ resolved by Phase 8". Preserve historical context. | ~150 | ⏳ pending |
+The Phase 8 chain landed non-linearly: planning rows from 2026-05-05
+(8.5b-i / ii / iii) and 2026-05-06 (8.5b-i / ii / iii + 8.5c
+serialization) were superseded by the actual α/β/γ chain that
+landed in PRs #57–#70.  This table reflects what **actually
+landed**.  Earlier planning rows are preserved in §12.1.x below
+for archaeological context.
 
-### 12.2. Sequencing constraints
+| PR | Title | Scope | Status |
+|---|---|---|---|
+| **8.1** (PR #39) | DealerPayload + state surgery (A-lite) | Foundational refactor: introduce `DealerPayload` type and `dealerMessages : Fin n → Option (DealerPayload t F)` field; keep `coeffs` alongside; migrate `dealerShare`/`partyDeliver`/`partyCorruptDeliver` to read from `dealerMessages`; add consistency invariant. **No theorem semantics change.** | ✅ landed |
+| **8.2** (PR #43) | Honest-dealer consistency invariant + correctness re-verification | Define `honestDealerConsistencyInv`; add `coeffsSecretInv` and `avss_correctness_AS_existential` (+ `_rushing` variant). | ✅ landed |
+| **8.3** (PR #45) | Corrupt-dealer commitment (existential statement) | `joinedConsistencyInv`, `consistentPayload`, `honestOutputCount`, `avss_commitment_AS_corrupt_dealer` (+ `_rushing` variant). | ✅ landed |
+| **8.4** (PR #48) | Corrupt-dealer commitment via Vandermonde witness (cryptographic content) | Re-prove `avssStep_preserves_joinedConsistencyInv` via `Lagrange.eq_interpolate_of_eval_eq`; add `partyPointInjInv`. | ✅ landed |
+| **8.5a** (PR #57) | `s.dealerSent = true` gate strengthening (8.5b precursor; variant prep). | ✅ landed |
+| **8.5b-framework** (PR #59) | `V_super` disjunct in `FairASTCertificate` (framework-level prereq for corrupt-fire `Or.inr` dispatch). | ✅ landed |
+| **8.5b-α** (PR #60) | C1+C2 model surgery: drop honest gates on `partyEchoSend`/`partyReady`/`partyAmplify`/`partyEchoReceive`/`partyReceiveReady`; widen broadcast filter; weaken `corruptLocalInv` to two clauses; add `isHonestFire`; rename dispatcher; cert sorries. | ✅ landed |
+| **8.5b-β** (PR #61) | `avssCert` `Or.inr` dispatch via new liveness lemma `avssFairActionEnabled_at_non_terminated` (corrupt-fire post enables some fair action). | ✅ landed |
+| **8.5b-γ** (PR #62) | `avssFreshInv` + `actionGate_iff` corrupt-q branches + `simSyncInv` re-derivation; closes 9 of 13 sorries from 8.5b-α. | ✅ landed |
+| **8.5b-γ-followup** (PR #63) | Closes C5/C7 stuck cases of `avssFairActionEnabled_at_non_terminated` via new `avssFlowInv` (threshold + delivery completeness + echo + ready flow) and `(h_corr : corr.card ≤ t)` parameter on `avssCert`. | ✅ landed |
+| **8.5b-γ-followup-2** (PR #64) | F4 ready-flow preservation: upgrade `inflightReady : Finset (Fin n)` → `Finset (Fin n × Fin n)` (per-pair tokens). | ✅ landed |
+| **8.5b-δ** (PR #65) | BC running-min termination route: switch `avss_termination_AS_fair` from `pi_n_AST_fair_with_progress_det` (TrajectoryUMono — false under C1+C2) to `pi_n_AST_fair_with_progress_bc_of_running_min_drops`. | ✅ landed |
+| **8.5c** (PR #66) | `coalitionView_corrupt_factors_AE` statement weakening + secrecy-chain `rcases` cascade (formerly the "8.5b-iii + 8.5c" plan, landed as a single PR). | ✅ landed |
+| **8.5b-ε** (PR #67) | Remove vestigial `U_dec_prob` (BC running-min route doesn't consume it). | ✅ landed |
+| **8.5d-α** (PR #68) | `dealerShare` → `dealerShareTo (p : Fin n)` per-party action surgery; `s.dealerSent : Fin n → Bool`; per-party `actionGate`/`avssStep`/variant updates. | ✅ landed |
+| **8.5d-β** (PR #69) | `s.coeffs` migration to μ₀; `coeffs` parameter through `initPred` / `avssSpec` / `avssCert` / theorem statements; `dealerCommit : Fin n → DealerPayload t F` field; cTV-bridge dealerHonest-INDEPENDENT closure (8.5d-β-followup-7 via `coalitionRowPolyAlignedInv`). | ✅ landed |
+| **8.5d-γ** (PR #70) | `avss_termination_AS_fair` (and `_traj`/`_rushing`) re-scoped to take `h_consistent_quorum`; new `consistent_quorum_AE` def + `_of_all_honest_delivered` sanity check; 0 sorries. | ✅ landed |
+| **8.5d-δ** (this PR) | MODEL_NOTES finalisation: §11 caveat-closure citations, §12.1 status reconciliation, §12.3 canonical post-Phase-8 state freeze, §12.4 risks update, Phase 11 stub. Docs-only. | 🚧 in-flight (this PR) |
+| **8.6** | Operational secrecy under full adversary (post-8.5d-α/β/γ) | Re-prove `avss_secrecy_AS_view_rushing` against the post-8.5d adversary.  Consists of (a) the +200 LOC row + column secrecy form (deferred since `SyncVSS.lean §10` — full polynomial-manipulation step in two directions), and (b) wiring the row+col form into a strengthened headline conclusion. | ✅ **landed**. **(a)** Phase 11-δ (PR #75): `Leslie.Prob.Polynomial.bivariate_evals_uniform_row_col` (statement + full proof via `bivariate_evals_uniform_full` + constant-fiber projection) and the AVSS-side wrappers `avss_bivariate_corrGrid_uniform` / `avss_bivariate_corrGrid_sec_invariant`.  **(b)** Phase 11-δ-followup (this PR): sibling theorem `avss_secrecy_AS_view_rushing_bivariate` in §19.7 of `AVSS.lean` — bundles the existing operational headline and the bivariate corrupt-grid sec-invariance into a single citation-ready conjunction.  The original `avss_secrecy_AS_view_rushing` is unchanged (backward-compat).  All five load-bearing AVSS theorems remain `[propext, Classical.choice, Quot.sound]`-axiom-clean; zero sorries. |
+| **8.7** | Adapter retirement / cleanup | **Likely empty.** The 8.5b/c/d chain edited the model in place; there is no parallel pre-Phase-8 form to retire (no compatibility shim was kept).  Documented here as a finding — if a deprecation-shim layer is needed for downstream consumers, that work would be added back; otherwise this row is closeable as a no-op. | 🟡 likely no-op |
+| **8.8** | MODEL_NOTES rewrite | Subsumed by **8.5d-δ** (this PR).  The original "comprehensive rewrite" scope is replaced by the targeted §11 / §12 / §13 reconciliation here. | 🟢 subsumed by 8.5d-δ |
 
-- **PRs 8.1–8.3** can be a tight unit (state surgery → honest-dealer correctness → commitment).
-- **PR 8.4** depends on 8.1's `dealerMessages` infrastructure.
-- **PR 8.5 (subdivided)** depends on 8.4's consistency-check infrastructure.  Internal sequencing:
-  - **8.5a** — variant prep — depends on nothing else; can land first. ✅ landed (PR #57).
-  - **8.5b-framework** — `V_super` disjunct in `FairASTCertificate` — framework-level prerequisite, depends on nothing else; lets cert constructors discharge corrupt-fired send actions via `Or.inr`.  Independent of 8.5a; can land in parallel. ✅ landed (PR #59).
-  - **8.5b (subdivided 2026-05-06 into 8.5b-i / 8.5b-ii / 8.5b-iii)** — depends on 8.5a (gate strengthening) and 8.5b-framework (V_super disjunct).
-    - **8.5b-i** — model surgery (gate drops + `corruptLocalInv` weakening + per-action `_lt` lemma adaptations + dispatcher rename). Build is RED at the end of this stage in isolation; **must bundle with 8.5b-ii** for build-green.
-    - **8.5b-ii** — `avssCert` `Or.inr` dispatch + new AVSS-side liveness lemma. **Bundled with 8.5b-i** to land C1 + C2 closure properly.
-    - **8.5b-iii** — `coalitionView_corrupt_factors_AE` statement weakening + secrecy-chain-consumer `rcases` cascade (formerly part of 8.5c). Can land in same PR as 8.5b-i+ii or as a tight follow-up.
-  - **8.5c** — secrecy chain re-proof through `coalitionTrivialView` — depends on 8.5b-iii (statement-level weakening must already be in place).
-  - **8.5d** — `dealerShareTo` + `coeffs` migration + termination re-scope (including the BC running-min termination route switch via `pi_n_AST_fair_with_progress_bc_of_running_min_drops`) — depends on 8.5b and 8.5c.
-- **PR 8.6** depends on PRs 8.4 + 8.5 (full adversary model + selective broadcast).
-- **PRs 8.7, 8.8** are cleanup, can be deferred.
+### 12.2. Sequencing — actual landed order
 
-### 12.3. Post-Phase-8 state
+The actual landed sequence (PR-by-PR), which differs from the
+2026-05-05 / 2026-05-06 planning subdivisions:
 
-After Phase 8 lands, AVSS will be **literature-faithful** for Canetti–Rabin '93:
+```
+8.1 (#39) → 8.2 (#43) → 8.3 (#45) → 8.4 (#48) →
+8.5a (#57) → 8.5b-framework (#59) →
+8.5b-α (#60) → 8.5b-β (#61) → 8.5b-γ (#62) →
+8.5b-γ-followup (#63) → 8.5b-γ-followup-2 (#64) →
+8.5b-δ (#65) → 8.5c (#66) → 8.5b-ε (#67) →
+8.5d-α (#68) → 8.5d-β (#69) → 8.5d-γ (#70) →
+8.5d-δ (this PR)
+```
 
-| Theorem | Pre-Phase-8 (current) | Post-Phase-8 |
+**Pending after this PR.**
+
+  * **8.6** depends on 8.5d-γ's adversary model (selective
+    non-broadcast + per-party messages + `s.coeffs` in μ₀).
+  * **8.7** likely no-op (model edited in place; no parallel
+    form to retire).
+  * **8.8** subsumed by 8.5d-δ.
+  * **Phase 11** (§14) — secrecy framework abstraction; **closed
+    (✅ 11-α / 11-γ / 11-δ / 11-δ-followup / 11-ε landed)**; 11-β
+    (randomised lift) remains ⏸ deferred until Phase 9
+    (`RandomisedAdversary`) merges — its scope is then a one-shot
+    Fubini lift independent of any further AVSS work.
+
+### 12.3. Post-Phase-8 state — **canonical reference (frozen 2026-05-07)**
+
+After the 8.1 → 8.5d chain landed (PRs #39 / #43 / #45 / #48 / #57 –
+#70), AVSS matches Canetti–Rabin '93's threat model up to row + column
+secrecy (deferred to 8.6).  This table is the **canonical citation
+target** for downstream work.
+
+| Theorem | Pre-Phase-8 (historical) | **Post-Phase-8 (this state)** |
 |---|---|---|
-| Termination | Unconditional under fair scheduling (model forces dealer to all-broadcast) | Conditional on ≥ n−t honest parties receiving consistent shares (CR statement) |
-| Correctness | Honest dealer ⇒ outputs consistent with `s.coeffs` (state field) | Honest dealer ⇒ outputs consistent with *some* bivariate polynomial (existential witness) |
-| Commitment | Trivially true (single global `coeffs`) | Genuine joint-consistency theorem under corrupt dealer (Bracha amplification load-bearing) |
-| Reconstruction | Lagrange theorem, unchanged | Lagrange theorem, unchanged |
-| Secrecy | Row-poly secrecy under restricted adversary | Full row + column secrecy under CR rushing adversary |
+| **Termination** | Unconditional under fair scheduling | Conditional on `consistent_quorum_AE` (≥ n − t honest parties have received consistent shares, AE on traces) — `avss_termination_AS_fair` |
+| **Correctness** | Honest dealer ⇒ outputs consistent with `s.coeffs` (state field) | Honest dealer ⇒ ∃ witness s.t. outputs consistent with `bivEval witness ...` — `avss_correctness_AS_existential` |
+| **Commitment** | Trivially true (single global `coeffs`) | Genuine joint-consistency under corrupt dealer (Vandermonde + Lagrange uniqueness via `joinedConsistencyInv_via_vandermonde`) — `avss_commitment_AS_corrupt_dealer` |
+| **Reconstruction** | Lagrange theorem | Unchanged — `avss_reconstruction` |
+| **Secrecy** | Row-poly secrecy under restricted adversary | Operational view-secrecy under rushing adversary, dealerHonest-INDEPENDENT cTV bridge — `avss_secrecy_AS_view_rushing` (existing) **and** the bivariate row+column sibling `avss_secrecy_AS_view_rushing_bivariate` (Phase 11-δ-followup) which additionally bundles the polynomial-level corrupt-grid sec-invariance from `avss_bivariate_corrGrid_sec_invariant`. |
+
+**Adversary model.**
+
+  * Corrupt parties freely fire `partyEchoSend` / `partyReady` /
+    `partyAmplify` (C1 closed).
+  * Honest broadcasts go to corrupt receivers (C2 closed).
+  * `dealerShareTo p` is per-party; corrupt dealer can selectively
+    short-share (C4 closed).
+  * `s.coeffs` lives in μ₀ (initial measure), not state — the witness
+    is sampled at protocol start, not stored in `AVSSState`.
+
+**Remaining gaps (for downstream callers to be aware of).**
+
+  * **C5** (deterministic adversary quantification): closed by Phase 9
+    on a parallel branch.  Cross-branch reconciliation deferred to
+    merge time (see §11.5).
+  * **Row + column secrecy** (the +200 LOC polynomial step deferred
+    since `SyncVSS.lean §10`): ✅ **closed** by Phase 11-δ (PR #75)
+    + Phase 11-δ-followup (this PR).  See §12.1 row 8.6 and §12.4
+    risk 4 for the citation-level pointers.
+
+Freeze this table as the citation reference.  Downstream protocol
+work (e.g., AVSS-using-RBC composition) should cite the Post-Phase-8
+column.
 
 ### 12.4. Risks
 
-1. **Commitment proof's cryptographic content** ✅ resolved across PRs 8.3 + 8.4. PR 8.3 (PR #45) landed the existential statement of `joinedConsistencyInv` and a thin `s.coeffs`-witness preservation proof; PR 8.4 (PR #48) replaced it with a genuine Lagrange-interpolation / Vandermonde-uniqueness construction (`joinedConsistencyInv_via_vandermonde`) using `Lagrange.eq_interpolate_of_eval_eq`. Resolution differed from the original prediction (the consistency-check predicate was not threaded through quorum intersection — Vandermonde uniqueness directly suffices), but the cryptographic load-bearing content is now in place. New invariant `partyPointInjInv` (distinct evaluation points) added as the standard Shamir/Vandermonde precondition.
+1. ✅ **Commitment proof's cryptographic content** — resolved across
+   PRs 8.3 (#45) + 8.4 (#48).  PR #45 landed the existential statement
+   of `joinedConsistencyInv` with a thin `s.coeffs`-witness preservation
+   proof; PR #48 replaced it with the genuine Lagrange-interpolation /
+   Vandermonde-uniqueness construction (`joinedConsistencyInv_via_vandermonde`)
+   using `Lagrange.eq_interpolate_of_eval_eq`.  New invariant
+   `partyPointInjInv` (distinct evaluation points) added as the
+   standard Shamir/Vandermonde precondition.
 
-2. **Variant analysis re-verification** (PR **8.5a**): adding corrupt-party send actions to the fair set changes the variant's strict-decrease story. Each fair action must still strictly decrease U; the per-action `_lt` lemmas need rework, and `unsentEchoSet` / `notReadySentSet` likely need extending to include corrupt parties. Risk: the K-weighting may need reshuffling. **Discovered (2026-05-05) during the Phase 8.5 attempt**: a subtle pre-share quiescence issue arises if corrupt-fired sends are allowed before `dealerSent = true`, since the "all parties have init local state pre-share" clause of `avssTermInv` would be violated by a corrupt party that fires `partyEchoSend` pre-share.  Mitigation: add `s.dealerSent = true` to the gates of `partyEchoSend`/`partyReady`/`partyAmplify` (a small model abstraction; corrupt parties can't echo before the dealer shares), preserving pre-share quiescence.  This is the scope of PR 8.5a.
+2. ✅ **Variant analysis re-verification** — resolved by the 8.5b chain
+   (PRs #57 / #60 / #65).  PR #57 (8.5a) added the `s.dealerSent = true`
+   gate strengthening to preserve pre-share quiescence under C1+C2.
+   PR #60 (8.5b-α) re-proved the per-action `_lt` lemmas under the new
+   gates with `(hph : p ∉ s.corrupted)` premises, added the
+   `isHonestFire` predicate, and renamed the dispatcher.  PR #65
+   (8.5b-δ) handled the deeper issue that corrupt-fired sends bump
+   `avssU` by switching the soundness route from
+   `pi_n_AST_fair_with_progress_det` (TrajectoryUMono — false under
+   C1+C2) to `pi_n_AST_fair_with_progress_bc_of_running_min_drops`
+   (BC running-min, handles non-monotone variants by tracking the
+   running minimum).
 
-3. **`corruptLocalInv` weakening** (PR **8.5b** + **8.5c**): closing C1+C2 (corrupt parties' send actions + corrupt receiver reception) directly invalidates `corruptLocalInv`'s `{echoSent, echoesReceived, readySent, readyReceived} = ∅` clauses, which are load-bearing for the Phase 6/7 coalition-view structural theorem `coalitionView_corrupt_factors_AE`. **Resolution route discovered during the Phase 8.5 attempt** (2026-05-05): introduce a `coalitionTrivialView` per-step projection (deterministic in `(s_0, schedule)` since the trivial fields don't depend on `coeffs`), and update `buildCorruptLocalState`/`reconstructCoalitionTraceView` to take it as a parameter alongside the algebraic view.  The structural bridge `coalitionTraceView_eq_reconstruct_AE` factors through `(coalitionAlgebraicView, coalitionTrivialView)`; the headline secrecy-conditional theorem `avss_secrecy_AS_view_conditional` takes a richer `h_aux` covering the joint marginal `(coalitionAlgebraicView, coalitionTrivialView, schedulePrefix)`.  The downstream chain (`_via_aux`, `_via_init_invariant`, `simAlgebraicView`/`simSchedulePrefix`) gains a parallel `simTrivialView` deterministic-in-`(s_0, schedule)` companion via the same Phase 7.4 inductive AE-bridge pattern.  PR 8.5b lands the model surgery + structural bridge; PR 8.5c lands the secrecy chain re-proof.
+3. ✅ **`corruptLocalInv` weakening cascade** — resolved by the 8.5b
+   chain (PRs #60 / #62 / #66) and finalised by 8.5d-β-followup-7.
+   PR #60 weakened `corruptLocalInv` to its sustainable two-clause form.
+   PR #62 (8.5b-γ) re-derived `simSyncInv` under the wider broadcast
+   image.  PR #66 (8.5c) cascaded through ~6+ secrecy-chain consumers
+   (`coalitionView_corrupt_factors_AE` weakening + `rcases` updates
+   throughout `coalitionTraceView_eq_reconstruct_AE`,
+   `simAlgebraicView`'s inductive bridge, etc.).  The final cTV bridge
+   was made dealerHonest-INDEPENDENT in 8.5d-β-followup-7 via a new
+   `coalitionRowPolyAlignedInv` structural alignment invariant —
+   eliminating the need for the originally-planned `coalitionTrivialView`
+   factoring layer.
 
-4. **Cascade through preservation proofs** (PR **8.5b**): dropping `p ∉ s.corrupted` from gates and switching to implication form `(p ∉ s.corrupted → ...)` invalidates every `rcases hgate with ⟨h_phon, h_del, ...⟩` pattern in the gated-action preservation proofs (variant analysis, invariant preservation, structural lemmas) — there are dozens of such sites.  The re-routing is mechanical (replace `h.2.1` with `h.2.1 hphon` for honest-only consequents), but voluminous.  This is what motivated the subdivision: the re-routing is sufficiently large that it warrants a dedicated PR rather than being bundled with C1/C2/C4 closure.
-
-5. **Row + column secrecy** (PR 8.6): the +200 LOC polynomial-manipulation step has been deferred since `SyncVSS.lean §10`. Doing it now is real cryptographic content (Vandermonde + Lagrange in two directions, with axis-zero handling). Could be its own multi-PR effort if we hit complications.
+4. ✅ **Row + column secrecy** (PR 8.6 / Phase 11-δ) — **landed
+   2026-05-07, axiom-clean.**  The polynomial-level row+column
+   uniformity theorem
+   `Leslie.Prob.Polynomial.bivariate_evals_uniform_row_col` is landed:
+   for any `R ⊆ F` with `|R| ≤ t` and `0 ∉ R`, and any subset
+   `S ⊆ R ×ˢ R`, the joint evaluation distribution at `S` of the
+   uniformly sampled bidegree-`(t, t)` polynomial with `f(0, 0) = sec`
+   is uniform on `↑S → F` — generalising the rectangular-only
+   `bivariate_evals_uniform_full` (Phase 7.7) to arbitrary subsets.
+   Proof reduces to the rectangular form plus a constant-fiber
+   projection along `↑S ↪ ↑R × ↑R`, captured by the auxiliary
+   `PMF.uniform_pi_restrict`.  AVSS-side wrappers
+   `avss_bivariate_corrGrid_uniform` (uniformity) and
+   `avss_bivariate_corrGrid_sec_invariant` (sec-invariance corollary)
+   are landed in §19.6.  All four declarations are
+   `[propext, Classical.choice, Quot.sound]`-axiom-clean (zero
+   sorries; the headline cryptographic reasoning — Vandermonde+
+   Lagrange in two directions — is fully captured by
+   `bivariate_evals_uniform_full`'s existing proof).
+   **Phase 11-δ-followup (this PR).** The row+col form is now wired
+   into a *sibling* of the headline secrecy theorem,
+   `avss_secrecy_AS_view_rushing_bivariate` (`AVSS.lean` §19.7).  The
+   sibling bundles two sec-invariances into a single citation:
+   (a) the existing operational headline's
+   `(coalitionTraceView, schedulePrefix)` marginal sec-invariance
+   (Phase 8.5d), and (b) the polynomial-level
+   `avss_bivariate_corrGrid_sec_invariant` (this PR's parent).  Both
+   axes of secrecy are now available to downstream consumers
+   (e.g. column cross-check protocols à la CR'93 §10) from a single
+   theorem — without any changes to the existing
+   `avss_secrecy_AS_view_rushing` (backward-compat).
+   **Out of scope:** axis-zero handling (`0 ∈ R` case, where the
+   sec-axis is exposed and the conclusion is conditional on `sec`)
+   is documented but **not** included; the current statement requires
+   `0 ∉ R`.  A deeper joint-pushforward variant (extracting the
+   dealer's polynomial through the trace's initial state to give a
+   single trace-level joint sec-invariance) is also queued for a
+   later phase — see §14 Phase 11-ε notes.
 
 ### 12.5. Maintenance protocol
 
@@ -1966,6 +2181,191 @@ that fit the deterministic-spec abstraction (BrachaRBC, SyncVSS,
 AVSSAbstract) can apply the meta-theorem in one line; no further
 trace-determinism plumbing needed.
 
+## 14. Phase 11 — Secrecy framework abstraction
+
+**Status: ✅ closed (modulo the post-Phase-9-merge deliverable 11-β).**
+Phase 11-α ✅ + 11-γ ✅ + 11-δ ✅ + 11-ε ✅ landed; 11-β remains ⏸
+deferred until Phase 9 (`RandomisedAdversary` integration) merges,
+at which point its scope (a one-shot Fubini lift) is well-defined
+and independent.
+
+Extract `Secrecy` and `SecrecyRushing` as framework-level definitions
+in `Leslie/Prob/Secrecy.lean` (Phase 11-α, ✅).  Each protocol's
+headline secrecy theorem becomes an instance of the framework
+abstraction (Phase 11-γ).  Phase 11-β adds the framework lift to
+randomised adversaries (`Secrecy.lift_to_randomised`,
+`SecrecyRushing.of_secrecy`).
+
+**Why now (not earlier).**  Phase 8 has stabilised the AVSS-side
+shape of "operational secrecy under a rushing adversary"
+(`avss_secrecy_AS_view_rushing`'s dealerHonest-INDEPENDENT closure
+via the cTV bridge).  Other protocols in the library (SyncVSS,
+BenOrAsync, ...) will follow the same shape; abstracting now means
+their secrecy theorems can be one-line corollaries instead of
+re-deriving the chain.
+
+**Sub-PR sequencing.**
+
+| Sub-PR | Scope | LOC | Status |
+|---|---|---|---|
+| 11-α | `Leslie/Prob/Secrecy.lean` — `Secrecy` (deterministic-adversary form) and `SecrecyRushing` (rushing form); structural lemmas (`Secrecy.mono_proj`, `SecrecyRushing.mono_proj`, `Secrecy.toRushing`) | ~140 | ✅ |
+| 11-β | `Secrecy.lift_to_randomised`, `SecrecyRushing.of_secrecy` (framework lifts to randomised adversaries) | ~80 | ⏳ (deferred until Phase 9 `RandomisedAdversary` integration) |
+| 11-γ | AVSS instance: `avss_secrecy_AS_view_rushing` re-stated as `SecrecyRushing avssSpec ... := ...` | ~50 | ✅ |
+| 11-δ | Apply to 8.6's row + column secrecy form (composes with the abstraction directly so 8.6 doesn't need its own framework boilerplate) | ~280 | ✅ (PR #75) — headline `Leslie.Prob.Polynomial.bivariate_evals_uniform_row_col` (statement + full proof via constant-fiber projection along `↑S ↪ ↑R × ↑R`); AVSS-side wrappers `avss_bivariate_corrGrid_uniform` / `_sec_invariant` (§19.6); auxiliary `PMF.uniform_pi_restrict`.  All axiom-clean (`[propext, Classical.choice, Quot.sound]`); zero sorries. |
+| 11-δ-followup | Wire the row+col form into a *sibling* of the headline secrecy theorem.  `avss_secrecy_AS_view_rushing_bivariate` (`AVSS.lean` §19.7) bundles the existing trace-level `(coalitionTraceView, schedulePrefix)` sec-invariance and the polynomial-level `avss_bivariate_corrGrid_sec_invariant` into a single conjunction.  The original `avss_secrecy_AS_view_rushing` is unchanged (backward-compat). | ~80 | ✅ (this PR) |
+| 11-ε | Cleanup, MODEL_NOTES finalisation: §12.1 row 8.6 → ✅, §12.3 post-Phase-8 secrecy row updated to cite the new sibling, §12.4 risk 4 closed, §14 marked ✅ closed. Final axiom hygiene check on the five load-bearing AVSS theorems (`avss_termination_AS_fair`, `avss_correctness_AS_existential`, `avss_commitment_AS_corrupt_dealer`, `avss_reconstruction`, `avss_secrecy_AS_view_rushing` + new sibling). | ~50 | ✅ (this PR) |
+
+**Sequence.**  Phase 11-α landed after 8.5d-δ (this PR's parent).
+Subsequent sub-PRs land before Phase 8.6, so 8.6's operational-secrecy
+theorem instantiates the abstraction directly rather than re-deriving
+the chain bottom-up.
+
+**Phase 11-α deliverables (this sub-PR).**
+
+The new file `Leslie/Prob/Secrecy.lean` adds two protocol-independent
+predicates plus three structural lemmas, all axiom-clean
+(`[propext, Classical.choice, Quot.sound]`):
+
+  * `Secrecy spec μ₀ proj` — operational secrecy: under any
+    deterministic adversary `A : Adversary σ ι`, the projected trace
+    distribution `(traceDist spec A (μ₀ sec)).map proj` is invariant
+    in the secret `sec`.
+  * `SecrecyRushing spec μ₀ view proj` — view-restricted variant: the
+    same equality but quantified over `RushingAdversary σ ι W` whose
+    `toProtocolView = view`.
+  * `Secrecy.mono_proj` / `SecrecyRushing.mono_proj` — coarsening the
+    projection by a measurable map preserves secrecy (via
+    `Measure.map_map`).
+  * `Secrecy.toRushing` — plain secrecy implies rushing-secrecy for
+    any view (the universal adversary class subsumes the
+    rushing-adversary image).
+
+The two main definitions intentionally mirror the existing AVSS-side
+shape so that Phase 11-γ's instantiation is a one-liner.
+
+**Phase 11-γ deliverables (this sub-PR).**
+
+The AVSS instance `avss_secrecy_AS_view_rushing_instance` lives in
+`Leslie/Examples/Prob/AVSS.lean` (§19.5) and is axiom-clean
+(`[propext, Classical.choice, Quot.sound]`).  Diagnosing
+`avssSpec`'s `sec` parameter showed it was vestigial — `sec` only
+enters `avssSpec.init`, which `traceDist` does not consume (only
+`spec.actions` is read by `stepKernel`).  Rather than refactor the
+~230 in-file `avssSpec sec corr coeffs` call sites, we proved the
+helper lemma `traceDist_avssSpec_sec_irrelevant` (defeq via `rfl`)
+and used `avssSpec 0 corr coeffs` as the canonical sec-agnostic spec
+for the instance:
+
+  * `traceDist_avssSpec_sec_irrelevant` — `traceDist` is invariant
+    under the `sec` parameter; closed by `rfl` since `stepKernel`
+    only references `spec.actions`.
+  * `avss_secrecy_AS_view_rushing_instance` — full
+    `SecrecyRushing (avssSpec 0 corr coeffs) (μ₀ := …
+    avssInitMeasure …) (avssCoalitionView corr) (proj := …)` with
+    body `intro sec sec' R hR; rw [sec_irrelevant, sec_irrelevant];
+    exact avss_secrecy_AS_view_rushing …`.
+
+The instance closes the AVSS deliverable for 11-γ; downstream
+protocols (SyncVSS, BenOrAsync) can mirror this pattern.
+
+(See `PHASE-8-5d-CHECKPOINT.md` for the worker-side note if a fuller
+plan is recorded there.)
+
+**Phase 11-δ deliverables (this sub-PR).**
+
+This is the +200 LOC row+column bivariate Shamir secrecy upgrade
+**deferred since SyncVSS §10**.  It generalises Phase 7.7's
+`bivariate_evals_uniform_full` (rectangular `pts_x × pts_y`) to the
+literature-standard form on arbitrary subsets `S ⊆ R × R`:
+
+  * `Leslie.Prob.Polynomial.bivariate_evals_uniform_row_col` — for
+    `R ⊆ F` with `|R| ≤ t` and `0 ∉ R` and any subset
+    `S ⊆ R ×ˢ R`, the joint evaluation distribution at `S` of the
+    uniformly-sampled bidegree-`(t, t)` polynomial with
+    `f(0, 0) = sec` is uniform on `↑S → F`.  Proof: corollary of
+    `bivariate_evals_uniform_full` plus a constant-fiber projection
+    along `↑S ↪ ↑R × ↑R`.
+
+  * `PMF.uniform_pi_restrict` (auxiliary) — pushforward of
+    `PMF.uniform (κ → α)` along precomposition with an injection
+    `proj : ι → κ` is `PMF.uniform (ι → α)`.  This is the per-coord
+    constant-fiber restriction lemma; proved via
+    `PMF.uniform_map_of_surjective_constFiber` plus an explicit
+    bijection between the fiber `{g | g ∘ proj = h}` and
+    `(κ \ image proj) → α` (size `|α|^(|κ| − |ι|)`, constant in `h`).
+
+  * AVSS-side instantiations (`Leslie/Examples/Prob/AVSS.lean` §19.6):
+    `avss_bivariate_corrGrid_uniform` (uniformity of corrupt-coalition
+    bivariate evaluations on any subset of `corrPts × corrPts`) and
+    `avss_bivariate_corrGrid_sec_invariant` (sec-invariance corollary,
+    by uniformity-on-both-sides).  Both are thin specialisations of
+    the polynomial-level theorem via the standard `partyPoint`
+    injection bridge.
+
+**Axiom-cleanliness.** All four new declarations
+(`bivariate_evals_uniform_row_col`, `PMF.uniform_pi_restrict`,
+`avss_bivariate_corrGrid_uniform`, `avss_bivariate_corrGrid_sec_invariant`)
+depend on `[propext, Classical.choice, Quot.sound]` only — zero
+sorries, zero custom axioms.  The existing chain through
+`bivariate_shamir_secrecy_rowPoly_full` and
+`avss_secrecy_AS_view_rushing` is unchanged.
+
+**Out of scope for the parent (PR #75 / Phase 11-δ).** Axis-zero
+handling (the `0 ∈ R` case where the sec-axis is exposed and the
+conclusion becomes conditional on the sec value) is documented in
+§12.4 risk 4 but not formalised; the current statement requires
+`0 ∉ R`.  Wiring the row+col form into a strengthened headline was
+deferred to Phase 11-δ-followup — see below.
+
+**Phase 11-δ-followup deliverables (this PR).**
+
+The Phase 11-δ-followup sub-PR closes part (b) of §12.1 row 8.6 — the
+"wire row+col into headline secrecy" deliverable — by adding a
+*sibling* theorem to `avss_secrecy_AS_view_rushing`:
+
+  * `avss_secrecy_AS_view_rushing_bivariate` (`AVSS.lean` §19.7).
+    Bundles two sec-invariances into a single citation:
+    **(a)** the existing trace-level
+    `(coalitionTraceView, schedulePrefix)`-marginal sec-invariance
+    (Phase 8.5d), and
+    **(b)** the polynomial-level row+column sec-invariance from
+    `avss_bivariate_corrGrid_sec_invariant` (Phase 11-δ / PR #75).
+    The conjunction form is the right abstraction for downstream
+    consumers because each clause matches their natural query —
+    "is my operational view sec-invariant?" and "is my bivariate
+    evaluation grid sec-invariant?" — and the two equalities concern
+    *distinct measures* (the trace distribution vs. the
+    bivariate-polynomial measure that `avssInitMeasure` is pulled
+    back from).  A deeper joint pushforward that extracts the
+    dealer's polynomial through the trace's initial state is
+    queued for a later phase; it would add substantive measurability
+    work without changing the cryptographic content.
+
+The original `avss_secrecy_AS_view_rushing` is unchanged
+(backward-compat); the sibling is *additive*.  Axiom hygiene is
+preserved on all five load-bearing AVSS theorems
+(`[propext, Classical.choice, Quot.sound]` only); zero sorries.
+
+**Phase 11-ε deliverables (this PR).**
+
+Phase 11-ε is the MODEL_NOTES finalisation that closes Phase 11.
+Specifically:
+
+  * §12.1 row 8.6 → ✅ landed (cites PR #75 for part (a) and this
+    PR's `avss_secrecy_AS_view_rushing_bivariate` for part (b)).
+  * §12.3 post-Phase-8 state table's "Secrecy" row updated to cite
+    the new sibling theorem alongside the existing headline.
+  * §12.4 risk 4 closed — both the polynomial-level row+col upgrade
+    and the headline wiring are landed.
+  * §14 Phase 11 marked ✅ closed (with 11-β still ⏸ deferred for
+    post-Phase-9-merge).
+  * Axiom hygiene check on the five load-bearing AVSS theorems
+    (`avss_termination_AS_fair`, `avss_correctness_AS_existential`,
+    `avss_commitment_AS_corrupt_dealer`, `avss_reconstruction`,
+    `avss_secrecy_AS_view_rushing` + new sibling
+    `avss_secrecy_AS_view_rushing_bivariate`) — all
+    `[propext, Classical.choice, Quot.sound]`-axiom-clean.
+
 ## How to read the formalised theorems
 
 If you're using AVSS as a black box for downstream protocol verification:
@@ -2031,3 +2431,153 @@ When citing the formalisation in a paper or report, the precise claim is:
 > messages; closing that gap is Phase 8 territory.  See
 > `Leslie/Examples/Prob/AVSS-MODEL-NOTES.md` for the full abstraction
 > inventory and pointers to the remaining literature-faithful refactor.
+
+
+## 15. Phase 12 — UC-style composability layer (queued)
+
+Phase 11's `Secrecy` and `SecrecyRushing` abstractions are *whole-protocol*
+predicates — they say nothing about how secrecy composes across
+subprotocol boundaries. Many cryptographic protocols (random secret
+draw, MPC, byzantine agreement with sub-rounds, ...) build on AVSS or
+similar primitives as black-box subroutines. We want compositional
+reasoning: "the bigger protocol inherits secrecy from the subprotocol
++ a secrecy-respecting composer", without re-opening the subprotocol's
+internal proof.
+
+This is the operational form of **Universal Composability** (Canetti
+UC, Backes-Pfitzmann-Waidner reactive simulatability). The Leslie
+framework needs a new abstraction layer to express it.
+
+### 15.1. Goal
+
+Enable reasoning of the form:
+
+> Q is a protocol that uses P as a subprotocol (P being a
+> `SubprotocolFunctionality` with secrecy on its inputs).
+> Q's combiner is "secrecy-respecting" (e.g., deterministic in P's
+> outputs + non-secret state, or a sum-of-uniforms form).
+> Then Q inherits secrecy on those inputs.
+
+The motivating instance: random secret draw on top of `n` AVSS
+instances + a sum combiner. The honest-uniform input plus AVSS's
+per-instance secrecy plus sum-of-uniforms gives Q's secrecy.
+
+### 15.2. Sub-PR sequence
+
+| Sub-PR | Scope | LOC |
+|---|---|---|
+| **12-α** | `SubprotocolFunctionality` definition + structural foundations in `Leslie/Prob/Subprotocol.lean` (new file) | ~150 |
+| **12-β** | Parallel composition operator on `ProbActionSpec`s (interleaving traces; per-instance μ₀) | ~200 |
+| **12-γ** | Conditional-independence theorem under parallel composition (the load-bearing measure-theoretic content) | ~250 |
+| **12-δ** | Sum-of-uniforms / convolution at the trace-distribution level (one-honest-uniform-addend ⇒ uniform sum) | ~100 |
+| **12-ε** | Main composability theorem: subprotocol secrecy + secrecy-respecting composer ⇒ composite secrecy | ~150 |
+| **12-ζ** | AVSS as `SubprotocolFunctionality` instance (bridging to existing `SecrecyRushing` from Phase 11-γ) | ~80 |
+| **12-η** | RandomSecretDraw protocol definition + secrecy proof via composability | ~200 |
+| **12-θ** | Cleanup + MODEL_NOTES rewrite reflecting Phase 12 state | ~50 |
+
+**Total**: ~1180 LOC, 8 sub-PRs.
+
+### 15.3. Key definitions (preliminary)
+
+```lean
+-- in Leslie/Prob/Subprotocol.lean (new file, Phase 12-α):
+structure SubprotocolFunctionality (α β V : Type*)
+    [MeasurableSpace α] [MeasurableSpace β] [MeasurableSpace V] where
+  spec        : ProbActionSpec σ ι
+  μ₀          : α → Measure σ            -- input → initial measure
+  outputProj  : Trace σ ι → β            -- trace → output
+  viewProj    : Trace σ ι → V            -- trace → corrupt-coalition view
+  -- Operational guarantees:
+  output_AE   : ∀ a A, ∀ᵐ ω ∂(traceDist spec A (μ₀ a)), outputProj ω = ...
+  secrecy     : ∀ a a' A, (traceDist spec A (μ₀ a)).map viewProj
+                       = (traceDist spec A (μ₀ a')).map viewProj
+
+-- in Leslie/Prob/Composition.lean (Phase 12-β):
+def parallelCompose
+    (subs : Fin n → SubprotocolFunctionality α β V)
+    (combiner : (Fin n → β) → γ)
+    (Q_spec : ProbActionSpec _ _) : ProbActionSpec _ _
+  := ...
+
+-- Phase 12-ε (the load-bearing theorem):
+theorem secrecy_of_parallel_composition
+    (subs : Fin n → SubprotocolFunctionality α β V)
+    (combiner : (Fin n → β) → γ)
+    (h_each_secrecy : ∀ i, (subs i).secrecy)
+    (h_combiner_respects : SecrecyRespectingCombiner combiner ...)
+    : Secrecy (parallelCompose subs combiner ...) ...
+```
+
+### 15.4. Key risks
+
+1. **Conditional-independence formalisation** (12-γ): the theorem "AVSS
+   instances are independent given the bigger protocol's schedule" is
+   measure-theoretically subtle.  Mathlib has independence lemmas for
+   product measures; we need to lift to trace distributions over
+   kernel-composed protocols.  If it doesn't fit cleanly in mathlib's
+   existing infrastructure, may need a substantial helper.
+
+2. **Adversary-class subtleties**: the bigger protocol's adversary
+   has joint access to all subprotocol instances' corrupt views.
+   Reducing to per-instance secrecy requires care: the per-instance
+   adversaries derived from a Q-adversary depend on the schedule;
+   formalising this dependency is a real obligation.
+
+3. **Subroutine vs parallel composition**: this plan covers parallel
+   composition (multiple P-instances + a combiner).  Subroutine
+   composition (Q invokes P, awaits output, continues) is harder —
+   the Q-trace contains nested P-traces with explicit
+   call/return points.  Defer to Phase 12-followup or Phase 13.
+
+4. **Schedule semantics**: if Q's adversary can adaptively schedule
+   per-instance actions (e.g., delay AVSS_2 until learning AVSS_1's
+   view), the conditional-independence argument needs care.  The
+   right model is probably: the adversary controls Q's schedule and
+   per-step picks one subprotocol-instance to advance.
+
+### 15.5. Sequence in the master plan
+
+```
+Today's queue (post-Phase-11):
+  Phase 11-α (PR #72)     — Secrecy framework abstraction ✅ landed
+  Phase 11-γ (in flight)  — AVSS instance of SecrecyRushing
+  Phase 11-δ (= Phase 8.6) — operational secrecy + row+col
+  Phase 11-ε              — cleanup + docs
+  ↓
+  Phase 11 closure point — operational secrecy at the protocol level
+  ↓
+  Phase 12-α              — SubprotocolFunctionality abstraction      ← queued here
+  Phase 12-β / γ / δ      — parallel composition + independence + sum
+  Phase 12-ε              — main composability theorem
+  Phase 12-ζ              — AVSS as SubprotocolFunctionality
+  Phase 12-η              — RandomSecretDraw (the motivating instance)
+  Phase 12-θ              — cleanup
+```
+
+### 15.6. Alternative: shortcut path
+
+If random secret draw is the *only* compositional protocol we need,
+the principled Phase 12 layer is overkill.  The shortcut is:
+
+  * Formalise random secret draw directly as a `ProbActionSpec`.
+  * Prove its secrecy *inline*, treating AVSS's per-instance secrecy
+    as a library lemma (call site of `avss_secrecy_AS_view_rushing_instance`
+    from Phase 11-γ).
+  * No `SubprotocolFunctionality` abstraction, no composition operator.
+
+Estimated cost: ~500 LOC for the random secret draw protocol +
+specific secrecy proof.
+
+The principled Phase 12 path costs ~1180 LOC but amortises across
+future protocols (each new compositional protocol becomes ~150-200
+LOC instead of ~500 LOC).
+
+**Decision criterion**: if 3+ compositional protocols are planned,
+go principled.  If random secret draw is one-off, shortcut.
+
+### 15.7. Maintenance protocol
+
+Same as §13.8: each Phase 12 sub-PR's commit message updates
+§15.2's table from ⏳ pending to ✅ landed.  After Phase 12
+completes, this section freezes as the canonical reference for
+the composability layer.

@@ -1643,4 +1643,202 @@ theorem bivariate_shamir_secrecy_rowPoly_full (t : ℕ) (s s' : F)
   rw [rowPoly_eval_uniform_full t s pts h_card h_nz h_F,
       rowPoly_eval_uniform_full t s' pts h_card h_nz h_F]
 
+/-! ## Phase 8.6 / 11-δ: Bivariate row+column uniformity
+
+The +200 LOC row+column secrecy upgrade deferred since `SyncVSS.lean §10`.
+Generalises `bivariate_evals_uniform_full` (which gives uniformity on a
+*rectangular* grid `pts_x × pts_y`) to **arbitrary subsets** `S ⊆ R × R`
+of a single point set `R` (with `|R| ≤ t`, `0 ∉ R`).
+
+This is the literature-standard form of bivariate Shamir secrecy: the
+joint evaluation of `f` at any `≤ t × t` subset of "row × column" points
+in `R × R` (avoiding both secret axes) is uniform on `F^|S|`.
+
+**Proof strategy.** Corollary of `bivariate_evals_uniform_full t t sec R R …`
+followed by a constant-fiber projection along the inclusion
+`↑S ↪ ↑R × ↑R`.  Each fiber over `h : ↑S → F` has size
+`|F|^(|R|² − |S|)` — independent of `h`. -/
+
+omit [Field F] [Fintype F] [DecidableEq F] in
+/-- Auxiliary: pushforward of `PMF.uniform (κ → α)` along precomposition
+with an injection `proj : ι → κ` is `PMF.uniform (ι → α)`.
+
+Used by `bivariate_evals_uniform_row_col` to project the rectangular
+joint distribution down to an arbitrary subset of evaluation points.
+
+**Proof.**  Constant-fiber surjection: for each `h : ι → α`, the fiber
+`{g : κ → α | g ∘ proj = h}` is in bijection with `(κ \ image proj) → α`
+via "drop the proj-image-bound part" (forward) and "extend back via
+proj⁻¹ on image proj using h" (backward).  Hence each fiber has size
+`|α|^(|κ| − |ι|)`, constant in `h`.  Apply
+`PMF.uniform_map_of_surjective_constFiber`. -/
+theorem _root_.PMF.uniform_pi_restrict
+    {ι κ α : Type*} [Fintype ι] [Fintype κ] [DecidableEq ι] [DecidableEq κ]
+    [Fintype α] [DecidableEq α] [Nonempty α] [Nonempty ι] [Nonempty κ]
+    (proj : ι → κ) (h_inj : Function.Injective proj) :
+    (PMF.uniform (κ → α)).map (fun g => g ∘ proj) = PMF.uniform (ι → α) := by
+  classical
+  -- The set of "constrained" coordinates: image of proj.
+  set imageSet : Finset κ := Finset.univ.image proj with himageSet_def
+  have h_image_card : imageSet.card = Fintype.card ι := by
+    rw [himageSet_def, Finset.card_image_of_injective _ h_inj, Finset.card_univ]
+  have h_image_le : Fintype.card ι ≤ Fintype.card κ := by
+    rw [← h_image_card, ← Finset.card_univ]
+    exact Finset.card_le_card (Finset.subset_univ _)
+  -- Choose a left-inverse of proj on its image, using injectivity.
+  let invFun : κ → ι := fun k =>
+    if h : k ∈ imageSet then
+      Classical.choose (Finset.mem_image.mp h)
+    else
+      Classical.arbitrary ι
+  have h_inv_proj : ∀ i : ι, invFun (proj i) = i := by
+    intro i
+    have h_mem : proj i ∈ imageSet :=
+      Finset.mem_image.mpr ⟨i, Finset.mem_univ _, rfl⟩
+    have h_choose := Classical.choose_spec (Finset.mem_image.mp h_mem)
+    show (if h : proj i ∈ imageSet then
+      Classical.choose (Finset.mem_image.mp h) else Classical.arbitrary ι) = i
+    rw [dif_pos h_mem]
+    exact h_inj h_choose.2
+  have h_proj_inv : ∀ k ∈ imageSet, proj (invFun k) = k := by
+    intro k hk
+    have h_choose := Classical.choose_spec (Finset.mem_image.mp hk)
+    show proj (if h : k ∈ imageSet then
+      Classical.choose (Finset.mem_image.mp h) else Classical.arbitrary ι) = k
+    rw [dif_pos hk]
+    exact h_choose.2
+  -- Fiber size: |α|^(|κ| - |ι|).
+  set k_size : ℕ := (Fintype.card α) ^ (Fintype.card κ - Fintype.card ι) with hk_size_def
+  have h_card_α_pos : 0 < Fintype.card α := Fintype.card_pos
+  have hk_pos : 0 < k_size := pow_pos h_card_α_pos _
+  apply PMF.uniform_map_of_surjective_constFiber (fun g : κ → α => g ∘ proj) k_size hk_pos
+  intro h
+  -- Construct a bijection between the fiber and `(univ \ imageSet) → α`.
+  -- Forward: drop the image-bound part (g ↦ g restricted to univ \ imageSet).
+  -- Backward: f ↦ extend f to all of κ using h ∘ invFun on imageSet.
+  let toFree : {g : κ → α // g ∘ proj = h} →
+      ((Finset.univ \ imageSet : Finset κ) → α) :=
+    fun ⟨g, _⟩ j => g j.val
+  let fromFree : ((Finset.univ \ imageSet : Finset κ) → α) →
+      {g : κ → α // g ∘ proj = h} :=
+    fun f => ⟨fun k =>
+      if hk : k ∈ imageSet then h (invFun k) else f ⟨k, Finset.mem_sdiff.mpr ⟨Finset.mem_univ _, hk⟩⟩,
+      by
+        funext i
+        show (if hk : proj i ∈ imageSet then h (invFun (proj i))
+              else f ⟨proj i, by simp [hk]⟩) = h i
+        have hmem : proj i ∈ imageSet :=
+          Finset.mem_image.mpr ⟨i, Finset.mem_univ _, rfl⟩
+        rw [dif_pos hmem, h_inv_proj]⟩
+  have h_bij : Function.Bijective toFree := by
+    refine ⟨?_, ?_⟩
+    · -- Injective.
+      rintro ⟨g₁, hg₁⟩ ⟨g₂, hg₂⟩ heq
+      apply Subtype.ext
+      show g₁ = g₂
+      funext k
+      by_cases hk : k ∈ imageSet
+      · -- On imageSet: g₁ k = g₂ k via h_inv_proj and the constraint hg₁ / hg₂.
+        have h₁ : g₁ (proj (invFun k)) = h (invFun k) := congrFun hg₁ (invFun k)
+        have h₂ : g₂ (proj (invFun k)) = h (invFun k) := congrFun hg₂ (invFun k)
+        have hpik : proj (invFun k) = k := h_proj_inv k hk
+        rw [hpik] at h₁ h₂
+        rw [h₁, h₂]
+      · -- On complement: g₁ k = g₂ k via the heq on free coords.
+        have h_kmem : k ∈ (Finset.univ \ imageSet : Finset κ) := by simp [hk]
+        exact congrFun heq ⟨k, h_kmem⟩
+    · -- Surjective.
+      intro f
+      refine ⟨fromFree f, ?_⟩
+      funext j
+      show (fromFree f).val j.val = f j
+      have hk_notin : j.val ∉ imageSet := by
+        have hjm := j.property
+        simp only [Finset.mem_sdiff, Finset.mem_univ, true_and] at hjm
+        exact hjm
+      show (if hk : j.val ∈ imageSet then h (invFun j.val)
+            else f ⟨j.val, Finset.mem_sdiff.mpr ⟨Finset.mem_univ _, hk⟩⟩) = f j
+      rw [dif_neg hk_notin]
+  -- Compute the cardinality.
+  rw [show (Finset.univ.filter (fun (g : κ → α) => g ∘ proj = h)).card =
+        Fintype.card {g : κ → α // g ∘ proj = h} from
+      (Fintype.card_subtype _).symm]
+  rw [Fintype.card_of_bijective h_bij]
+  rw [Fintype.card_fun, Fintype.card_coe, Finset.card_univ_diff, h_image_card]
+
+/-- **Bivariate row+column uniformity (Phase 8.6 / 11-δ).**
+
+Strengthens `bivariate_evals_uniform_full` from rectangular grids
+`pts_x × pts_y` to arbitrary subsets `S ⊆ R × R` of a single point set
+`R` (with `|R| ≤ t`, `0 ∉ R`).
+
+Concretely: for `R ⊆ F` with `R.card ≤ t` and `0 ∉ R`, and any
+`S ⊆ R ×ˢ R`, the joint evaluation distribution at `S` of a uniformly
+sampled bivariate polynomial of bidegree `(t, t)` with `f(0, 0) = sec`
+is uniform on `↑S → F`.
+
+This is the literature-standard form of bivariate Shamir secrecy: the
+corrupt coalition's view of `f` at *any* subset of (row, col) points
+avoiding both secret axes is uniform — independently of the secret.
+The conclusion does *not* require `S` to be a rectangular product;
+it covers e.g. `S = {(p, q) | p ∈ corr_row} ∪ {(p, q) | q ∈ corr_col}`,
+the row+column union form arising in AVSS's coalition view.
+
+**Proof.** Corollary of `bivariate_evals_uniform_full t t sec R R …`,
+followed by a constant-fiber projection along the canonical inclusion
+`↑S ↪ ↑R × ↑R` (cf. `PMF.uniform_pi_restrict`). -/
+theorem bivariate_evals_uniform_row_col
+    (t : ℕ) (sec : F) (R : Finset F)
+    (h_card : R.card ≤ t) (h_nz : (0 : F) ∉ R)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (S : Finset (F × F)) (hS : S ⊆ R ×ˢ R)
+    [Nonempty S] [Nonempty (↥R × ↥R)] :
+    (uniformBivariateFullWithFixedZero t t sec).map
+        (fun (f : _root_.Polynomial (_root_.Polynomial F)) (pq : S) =>
+          (f.eval (Polynomial.C pq.val.1)).eval pq.val.2) =
+      PMF.uniform (S → F) := by
+  classical
+  -- For `pq : ↑S`, both components live in `R` (since S ⊆ R ×ˢ R).
+  have hR_S : ∀ (pq : S), pq.val.1 ∈ R ∧ pq.val.2 ∈ R := fun pq => by
+    have h_in : pq.val ∈ R ×ˢ R := hS pq.property
+    rwa [Finset.mem_product] at h_in
+  -- Step 1: factor the eval map through the rectangular bivariate eval map.
+  -- The eval map at `S` factors as `proj ∘ rect_eval`, where:
+  --   * `rect_eval f : ↑R → ↑R → F = (p, q) ↦ (f.eval (C p)).eval q`,
+  --   * `proj g : ↑S → F = pq ↦ g ⟨pq.val.1, _⟩ ⟨pq.val.2, _⟩`.
+  have h_factor :
+      (fun (f : _root_.Polynomial (_root_.Polynomial F)) (pq : S) =>
+          (f.eval (Polynomial.C pq.val.1)).eval pq.val.2) =
+        (fun (g : ↥R → ↥R → F) (pq : S) =>
+          g ⟨pq.val.1, (hR_S pq).1⟩ ⟨pq.val.2, (hR_S pq).2⟩) ∘
+        (fun (f : _root_.Polynomial (_root_.Polynomial F)) (p : ↥R) (q : ↥R) =>
+          (f.eval (Polynomial.C p.val)).eval q.val) := by
+    funext f pq; rfl
+  rw [h_factor, ← PMF.map_comp]
+  -- Step 2: apply the rectangular bivariate uniformity at pts_x = pts_y = R.
+  rw [bivariate_evals_uniform_full t t sec R R h_card h_card h_nz h_nz h_F h_F]
+  -- Step 3: factor `proj : (↥R → ↥R → F) → (↑S → F)` through uncurry plus
+  -- precomposition with the canonical inclusion `iota : ↑S → ↥R × ↥R`.
+  let iota : ↥S → ↥R × ↥R :=
+    fun pq => (⟨pq.val.1, (hR_S pq).1⟩, ⟨pq.val.2, (hR_S pq).2⟩)
+  have h_iota_inj : Function.Injective iota := by
+    intro pq₁ pq₂ heq
+    apply Subtype.ext
+    apply Prod.ext
+    · exact congrArg Subtype.val (congrArg Prod.fst heq)
+    · exact congrArg Subtype.val (congrArg Prod.snd heq)
+  have h_curry_eq : (fun (g : ↥R → ↥R → F) (pq : S) =>
+        g ⟨pq.val.1, (hR_S pq).1⟩ ⟨pq.val.2, (hR_S pq).2⟩) =
+      (fun (g : ↥R × ↥R → F) => g ∘ iota) ∘ Function.uncurry := by
+    funext g pq; rfl
+  rw [h_curry_eq, ← PMF.map_comp]
+  -- Step 4: uniform on `↥R → ↥R → F` maps to uniform on `↥R × ↥R → F` via uncurry.
+  have h_uncurry_bij : Function.Bijective
+      (Function.uncurry : (↥R → ↥R → F) → (↥R × ↥R → F)) :=
+    ⟨fun _ _ h => funext fun a => funext fun b => congrFun h (a, b),
+     fun g => ⟨Function.curry g, by funext ⟨a, b⟩; rfl⟩⟩
+  rw [PMF.uniform_map_of_bijective h_uncurry_bij]
+  -- Step 5: project to `↑S → F` via the constant-fiber projection.
+  exact PMF.uniform_pi_restrict iota h_iota_inj
+
 end Leslie.Prob.Polynomial

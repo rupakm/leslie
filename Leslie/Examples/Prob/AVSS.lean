@@ -79,6 +79,7 @@ import Leslie.Prob.PMF
 import Leslie.Prob.Polynomial
 import Leslie.Prob.RandomisedAdversary
 import Leslie.Prob.Refinement
+import Leslie.Prob.Secrecy
 import Leslie.Prob.Trace
 import Mathlib.Data.Fintype.Basic
 import Mathlib.Data.Fintype.Pi
@@ -13555,6 +13556,225 @@ theorem avss_secrecy_AS_view_rushing
     R C h_C_corr k
     (avssInitMeasure_simViewExt_sec_invariant sec sec' R h_R C h_C_corr
       partyPoint dealerHonest h_inj h_nz_pp h_F h_corr k)
+
+/-! ## §19.5. Phase 11-γ — `SecrecyRushing` instance
+
+The headline `avss_secrecy_AS_view_rushing` is restated as an instance of
+the protocol-independent `Leslie.Prob.SecrecyRushing` predicate from
+`Leslie/Prob/Secrecy.lean` (Phase 11-α).
+
+`SecrecyRushing` quantifies over a *single* spec; `avssSpec` carries a
+`sec : F` parameter that turns out to be vestigial — it only enters
+the spec's `init` field, which `traceDist` does not consume (only
+`spec.actions` is read by `stepKernel`).  We therefore pick `sec = 0`
+as the canonical spec and bridge the two sides by `rfl`. -/
+
+/-- `traceDist` ignores `avssSpec`'s `sec` parameter: only `spec.actions`
+is consumed by `stepKernel`, and `actions` is sec-independent. -/
+theorem traceDist_avssSpec_sec_irrelevant
+    (sec sec' : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (A : Adversary (AVSSState n t F) (AVSSAction n F))
+    (μ : Measure (AVSSState n t F)) :
+    traceDist (avssSpec (t := t) sec corr coeffs) A μ =
+      traceDist (avssSpec (t := t) sec' corr coeffs) A μ := rfl
+
+/-- **Phase 11-γ headline.**  `avss_secrecy_AS_view_rushing` restated as
+an instance of the protocol-independent `Leslie.Prob.SecrecyRushing`
+predicate.  The canonical spec is taken at `sec = 0` (any value works:
+see `traceDist_avssSpec_sec_irrelevant`); the secret is encoded in the
+initial measure family `fun sec => avssInitMeasure sec corr partyPoint
+dealerHonest`. -/
+theorem avss_secrecy_AS_view_rushing_instance
+    {corr : Finset (Fin n)}
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_inj : Set.InjOn partyPoint corr)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (h_corr : corr.card ≤ t)
+    (C : BivariateShamir.Coalition n t)
+    (h_C_corr : C.val ⊆ corr) (k : ℕ) :
+    Leslie.Prob.SecrecyRushing
+      (spec := avssSpec (t := t) (0 : F) corr coeffs)
+      (μ₀ := fun (sec : F) =>
+        avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest)
+      (view := avssCoalitionView corr)
+      (proj := fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) := by
+  intro sec sec' R hR
+  rw [traceDist_avssSpec_sec_irrelevant (sec := 0) (sec' := sec),
+      traceDist_avssSpec_sec_irrelevant (sec := 0) (sec' := sec')]
+  exact avss_secrecy_AS_view_rushing sec sec' partyPoint dealerHonest
+    h_inj h_nz_pp h_F h_corr R hR C h_C_corr k
+
+/-! ## §19.6. Phase 11-δ (= Phase 8.6) — bivariate row+column secrecy
+
+This section instantiates the polynomial-level row+column uniformity
+theorem `Leslie.Prob.Polynomial.bivariate_evals_uniform_row_col` to the
+AVSS coalition setting.  This is the cryptographic content **deferred
+since SyncVSS §10**: it generalises the row-only bivariate uniformity
+that flows through the existing `corrRowMap_uniform_sec_invariant` chain
+from a *rectangular* `pts_x × pts_y` form to **arbitrary subsets**
+`S ⊆ R × R` of corrupt parties' point set.
+
+Practically, the upgraded form is used by future protocols that need
+a stronger secrecy conclusion than "corrupt rowPolys are uniform" — for
+example column cross-checks (CR'93 §10) where the corrupt coalition's
+**column-axis** evaluations at corrupt-party rows must also be uniform.
+
+The wrapper takes the AVSS coalition `corr` (size ≤ t) and an arbitrary
+subset `S ⊆ (corr.image partyPoint) ×ˢ (corr.image partyPoint)`,
+specialising the polynomial-level theorem via the standard
+`partyPoint`-injection bridge.
+
+**Status (2026-05-07).**  Landed axiom-clean (PR #75): full proof
+via `Leslie.Prob.Polynomial.bivariate_evals_uniform_row_col` and the
+auxiliary `PMF.uniform_pi_restrict`.  Wired into the headline secrecy
+theorem via the sibling `avss_secrecy_AS_view_rushing_bivariate`
+(§19.7, Phase 11-δ-followup).  See MODEL_NOTES §12.1 row 8.6 + §12.4
+risk 4 for context. -/
+
+/-- **AVSS-side bivariate row+column uniformity (Phase 11-δ).**
+
+Specialisation of `Leslie.Prob.Polynomial.bivariate_evals_uniform_row_col`
+to the AVSS coalition setting (`R = corr.image partyPoint`).  For any
+subset `S` of the corrupt-party bivariate grid, the joint evaluation
+distribution is uniform on `↑S → F` — independently of `sec`.
+
+This is strictly stronger than `corrRowMap_uniform_sec_invariant` (which
+gives only the rowPoly-coefficient form) and matches the literature
+"row + column" secrecy form used in CR'93 §10's cross-check argument. -/
+theorem avss_bivariate_corrGrid_uniform
+    (sec : F) (corr : Finset (Fin n)) (partyPoint : Fin n → F)
+    (h_inj : Set.InjOn partyPoint corr)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (h_corr : corr.card ≤ t)
+    (S : Finset (F × F))
+    (hS : S ⊆ corr.image partyPoint ×ˢ corr.image partyPoint)
+    [Nonempty S]
+    [Nonempty (↥(corr.image partyPoint) × ↥(corr.image partyPoint))] :
+    (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero (F := F) t t sec).map
+        (fun (f : _root_.Polynomial (_root_.Polynomial F)) (pq : S) =>
+          (f.eval (Polynomial.C pq.val.1)).eval pq.val.2) =
+      PMF.uniform (S → F) := by
+  classical
+  -- Deduce the `R = corr.image partyPoint` hypotheses from the AVSS-side ones.
+  have h_R_card : (corr.image partyPoint).card ≤ t := by
+    rw [Finset.card_image_of_injOn h_inj]; exact h_corr
+  have h_R_nz : (0 : F) ∉ corr.image partyPoint := by
+    intro h_mem
+    rw [Finset.mem_image] at h_mem
+    obtain ⟨i, _, h_eq⟩ := h_mem
+    exact h_nz_pp i h_eq
+  exact Leslie.Prob.Polynomial.bivariate_evals_uniform_row_col t sec
+    (corr.image partyPoint) h_R_card h_R_nz h_F S hS
+
+/-- **AVSS-side row+column secrecy corollary (Phase 11-δ).**
+
+Two sec-values yield the same `S`-marginal of
+`uniformBivariateFullWithFixedZero` — the *secrecy* form of
+`avss_bivariate_corrGrid_uniform`.  This is the headline form that
+downstream consumers (e.g. column cross-check protocols) use as a
+black-box "corrupt coalition's bivariate view is sec-invariant". -/
+theorem avss_bivariate_corrGrid_sec_invariant
+    (sec sec' : F) (corr : Finset (Fin n)) (partyPoint : Fin n → F)
+    (h_inj : Set.InjOn partyPoint corr)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (h_corr : corr.card ≤ t)
+    (S : Finset (F × F))
+    (hS : S ⊆ corr.image partyPoint ×ˢ corr.image partyPoint)
+    [Nonempty S]
+    [Nonempty (↥(corr.image partyPoint) × ↥(corr.image partyPoint))] :
+    (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero (F := F) t t sec).map
+        (fun (f : _root_.Polynomial (_root_.Polynomial F)) (pq : S) =>
+          (f.eval (Polynomial.C pq.val.1)).eval pq.val.2) =
+      (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero (F := F) t t sec').map
+        (fun (f : _root_.Polynomial (_root_.Polynomial F)) (pq : S) =>
+          (f.eval (Polynomial.C pq.val.1)).eval pq.val.2) := by
+  rw [avss_bivariate_corrGrid_uniform sec corr partyPoint
+        h_inj h_nz_pp h_F h_corr S hS,
+      avss_bivariate_corrGrid_uniform sec' corr partyPoint
+        h_inj h_nz_pp h_F h_corr S hS]
+
+/-! ## §19.7. Phase 11-δ-followup — bivariate sibling of the headline secrecy theorem
+
+`avss_secrecy_AS_view_rushing_bivariate` is a *sibling* theorem to
+`avss_secrecy_AS_view_rushing` (§19.4) that bundles two sec-invariances
+into a single citation:
+
+  * **(a)** the existing operational headline (Phase 8.5d): the
+    trace-level `(coalitionTraceView, schedulePrefix)`-marginal of the
+    AVSS trace distribution is invariant in the secret;
+  * **(b)** the polynomial-level row+column form (Phase 11-δ /
+    `avss_bivariate_corrGrid_sec_invariant`): the
+    `S`-marginal of `uniformBivariateFullWithFixedZero` at any
+    `S ⊆ corrPts ×ˢ corrPts` is invariant in the secret.
+
+The original headline keeps its statement and proof unchanged; this
+sibling is *additive* and backward-compatible.
+
+**Why the conjunction form (rather than a deeper joint pushforward).**
+The two equalities concern *distinct measures*: (a) is on the trace
+distribution and (b) is on the bivariate-polynomial measure that
+`avssInitMeasure` is pulled back from.  Bundling them at the headline
+level gives downstream callers (e.g., column cross-check protocols,
+CR'93 §10) both axes of secrecy in one citation without forcing a
+joint pushforward — the latter would require extracting the dealer's
+polynomial through the trace's initial state, which adds substantive
+measurability work without changing the cryptographic content.  The
+conjunction is the right abstraction for downstream consumers because
+each clause matches their natural query: (a) "is my operational view
+sec-invariant?" and (b) "is my bivariate evaluation grid
+sec-invariant?". -/
+
+/-- **Phase 11-δ-followup headline.**  Bivariate row+column secrecy
+sibling of `avss_secrecy_AS_view_rushing`.
+
+Conjunction of the existing trace-level operational headline and the
+polynomial-level bivariate corrupt-grid sec-invariance from PR #75
+(`avss_bivariate_corrGrid_sec_invariant`).  Both clauses share the
+AVSS-side `partyPoint` / `corr` hypotheses (`Set.InjOn`, `0 ∉ image`,
+`|corr| ≤ t`, `t + 1 ≤ |F|`).
+
+Backward-compat: the original `avss_secrecy_AS_view_rushing` is
+unchanged; this is a *new* theorem that exposes both axes of secrecy
+together. -/
+theorem avss_secrecy_AS_view_rushing_bivariate
+    {corr : Finset (Fin n)}
+    (sec sec' : F) (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_inj : Set.InjOn partyPoint corr)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (h_corr : corr.card ≤ t)
+    (R : AVSSRushingAdversary n t F corr)
+    (h_R : R.toProtocolView = avssCoalitionView corr)
+    (C : BivariateShamir.Coalition n t)
+    (h_C_corr : C.val ⊆ corr) (k : ℕ)
+    (S : Finset (F × F))
+    (hS : S ⊆ corr.image partyPoint ×ˢ corr.image partyPoint)
+    [Nonempty S]
+    [Nonempty (↥(corr.image partyPoint) × ↥(corr.image partyPoint))] :
+    -- (a) Operational headline: schedule + coalitionTraceView marginal.
+    ((traceDist (avssSpec (t := t) sec corr coeffs) R.toAdversary
+        (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest)).map
+        (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) =
+      (traceDist (avssSpec (t := t) sec' corr coeffs) R.toAdversary
+        (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest)).map
+        (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)))
+    ∧
+    -- (b) Bivariate corrGrid (Phase 11-δ): polynomial-level S-marginal.
+    ((Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero (F := F) t t sec).map
+        (fun (f : _root_.Polynomial (_root_.Polynomial F)) (pq : S) =>
+          (f.eval (Polynomial.C pq.val.1)).eval pq.val.2) =
+      (Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero (F := F) t t sec').map
+        (fun (f : _root_.Polynomial (_root_.Polynomial F)) (pq : S) =>
+          (f.eval (Polynomial.C pq.val.1)).eval pq.val.2)) :=
+  ⟨avss_secrecy_AS_view_rushing sec sec' partyPoint dealerHonest
+      h_inj h_nz_pp h_F h_corr R h_R C h_C_corr k,
+   avss_bivariate_corrGrid_sec_invariant sec sec' corr partyPoint
+      h_inj h_nz_pp h_F h_corr S hS⟩
 
 attribute [instance] instMeasurableSpaceAVSSRushingView
   instMeasurableSingletonClassAVSSRushingView
