@@ -1,56 +1,116 @@
-# Phase 8.5b Checkpoint — 8.5b-γ-followup-2 landed
+# Phase 8.5b Checkpoint — 8.5b-δ landed (BC running-min route switch)
 
-**Branch**: `feat/randomized-leslie-m3-avss-phase8-5b-gamma-followup-2`
-**Base**: PR #63 (8.5b-γ-followup: F4 flow + threshold invariant + C5/C7 dispatch).
+**Branch**: `feat/randomized-leslie-m3-avss-phase8-5b-delta`
+**Base**: PR #64 (8.5b-γ-followup-2: per-pair `inflightReady` tokens).
 **Build state**: green at 2699 jobs.
-**Sorry count**: 2 (was 3 at end of 8.5b-γ-followup; net −1: F4 preservation closed via per-pair tokens).
+**Sorry count**: 2 (unchanged; U_dec_prob reclassified as **vestigial** —
+see "Why U_dec_prob remains" below).
 
-## What 8.5b-γ-followup-2 delivered
+## What 8.5b-δ delivered
 
-**Route (a) chosen** (per the WORKER_TASK brief).  Per-pair `inflightReady`
-tokens `(q, p)` mirror the existing `inflightEchoes : Finset (Fin n × Fin n)`
-shape.
+**Soundness route switch** in the AVSS termination theorems
+(`Leslie/Examples/Prob/AVSS.lean`):
 
-1. **Field type**: `AVSSState.inflightReady : Finset (Fin n × Fin n)`.
-2. **Action effects**:
-   * `partyReady p` / `partyAmplify p`: insert `(p, r)` for every receiver
-     `r` via `Finset.univ.image (fun r => (p, r))` (same pattern as
-     `partyEchoSend`).
-   * `partyReceiveReady r q`: erase just the consumed token `(q, r)`.
-3. **Gate**: `partyReceiveReady r q` requires `(q, r) ∈ inflightReady`.
-4. **`inflightReady_card_le`**: bound widened from `≤ n` to `≤ (n+1)²`
-   (= `K`).
-5. **`avssU` bound**: the `inflightReady.card * K` term now contributes
-   `≤ K²` instead of `≤ n·K`; total bound widened from `6·n·K⁶ + K⁶` to
-   `5·n·K⁶ + 2·K⁶`, both within the `(7·n + 7)·K⁶` constant.
-6. **Variant strict-decrease**:
-   * `avssU_step_partyReceiveReady_lt`: erase `(q, p)` instead of `q`;
-     same K-drop argument.
-   * `avssU_step_partyReady_lt` / `_partyAmplify_lt`: increase ≤ n
-     instead of ≤ 1; net K² − n·K = K(K−n) ≥ K ≥ 1 (using K ≥ n + 1).
-7. **Invariants updated**:
-   * `avssQueueWfInv` Q3: `(q, p) ∈ ifr → q ∉ p.readyReceived`.
-   * `avssFreshInv` Q9: `(q.readySent = false) → ∀ p, (q, p) ∉ ifr`.
-   * `avssFlowInv` F4: `q ∈ p.readyReceived ∨ (q, p) ∈ ifr`.
-   * `simSyncInv.inflightReady_eq`: type changes; `congrArg` updated to
-     thread the per-pair image / erase shape.
-8. **F4 preservation** under `partyReceiveReady r q` is now mechanical:
-   the action only erases `(q, r)`; for `(q', p) ≠ (q, r)` the pre token
-   survives, and the consumed token `(q, r)` is replaced by
-   `q ∈ r.readyReceived`.
-9. **C5 / C7 stuck-case dispatches**: pick `(q, r) ∈ ifr` (instead of
-   `q ∈ ifr`) and dispatch `partyReceiveReady r q`.
-10. **`corrupt_fire_post_not_terminated`**: token witness updated to
-    `(p, p) ∈ ifr_post` (uses the diagonal pair).
+- `avss_termination_AS_fair` / `_traj` / `_rushing` were previously
+  parameterised on `TrajectoryUMono` (`avssU` non-increasing along
+  every trajectory step) and `TrajectoryFairStrictDecrease` (strict
+  drop on each fair firing in the `V` sublevel), and discharged via
+  `FairASTCertificate.sound` / `pi_n_AST_fair_with_progress_det`.
+- Under the C1+C2 model (Phase 8.5b), corrupt parties may fire
+  `partyEchoSend` / `partyReady` / `partyAmplify` /
+  `partyEchoReceive` / `partyReceiveReady`, all of which are in
+  `avssFairActions`.  A corrupt-fired send *increases* `avssU`
+  (the honest-only `unsentEcho`/`notReadySent` components don't
+  shrink while `inflightEchoes`/`inflightReady` grows by ≤ n).
+  `TrajectoryUMono` is therefore **false**.
+- Phase 8.5b-δ replaces both witnesses with a single per-sublevel
+  `TrajectoryFairRunningMinDropIO` hypothesis and dispatches
+  termination via
+  `pi_n_AST_fair_with_progress_bc_of_running_min_drops`.  The BC
+  running-min route handles non-monotone variants by tracking the
+  running minimum of `avssU` along trajectories: every fair firing
+  strictly drops the running minimum, even though intermediate
+  corrupt firings may temporarily raise the pointwise value.
 
-## Sorry inventory (2 total)
+The body of `avss_termination_AS_fair_traj` retains the explicit
+`pi_infty_zero_fair` + per-sublevel partition argument (the
+`partition_almostDiamond_fair` skeleton); only the inner
+sublevel-rule dispatch changed (det → BC running-min).
 
-### Out of scope for 8.5b-γ-followup-2
+## Why `U_dec_prob` remains as a vestigial sorry
 
-| Line | Theorem | Resolution route |
+The `FairASTCertificate.U_dec_prob` field has the strict-form
+signature
+
+```lean
+∀ k : ℝ≥0, ∃ p : ℝ≥0, 0 < p ∧
+  ∀ (i : ι) (s : σ) (h : (spec.actions i).gate s),
+    i ∈ F.fair_actions → Inv s → ¬ terminated s → V s ≤ k →
+    p ≤ ∑' s' : σ,
+      ((spec.actions i).effect s h) s' *
+        (if U s' < U s then 1 else 0)
+```
+
+Under the C1+C2 model + the Dirac kernel, this requires a uniform
+`p > 0` such that **every** fair-fired step from a non-terminated
+invariant state strictly decreases `avssU`.  Corrupt-fired actions
+(`partyEchoSend p` for `p ∈ s.corrupted` etc.) are gated and in
+`avssFairActions` whenever the local-state preconditions hold
+(`s.dealerSent = true` and `(s.local_ p).delivered = true ∧
+echoSent = false`), and they bump `avssU`.  The strict-decrease
+indicator sums to 0 in those cases, forcing `p ≤ 0`, contradicting
+`0 < p`.  No clause of `Inv` (`avssTermInv ∧ corruptLocalInv ∧
+avssQueueWfInv ∧ avssFreshInv ∧ avssFlowInv`) excludes such
+corrupt-fire premised states; `Inv` is consistently preserved by
+`partyCorruptDeliver` (the action that creates the
+`delivered = true ∧ echoSent = false` window for corrupt parties).
+
+**Why this is OK on the live soundness path.** The BC running-min
+route consumes `cert.U_bdd_subl`, `cert.Inv`, `cert.inv_step`, and
+the caller-supplied `TrajectoryFairRunningMinDropIO` witness only.
+`cert.U_dec_prob` is **not consumed** by
+`pi_n_AST_fair_with_progress_bc_of_running_min_drops` or
+`pi_n_AST_fair_with_progress_bc`, so the sorry is dead weight on
+the active soundness chain.  The remaining references to
+`cert.U_dec_prob` in `Liveness.lean` (lines 365, 871, 1522) are
+all in *comments* tracking the gap-2 conditional Borel-Cantelli
+plan, not in active proof bodies.
+
+**To eliminate the sorry** (future work, deferred to 8.5b-δ-followup
+or a framework PR), pick one of:
+
+  (a) Open `Liveness.lean` and weaken `U_dec_prob` to a disjunct
+      form mirroring `U_dec_det` and `V_super_fair`:
+
+      ```lean
+      U_dec_prob : ∀ k : ℝ≥0, ∃ p : ℝ≥0, 0 < p ∧
+        ∀ (i : ι) (s : σ) (h : (spec.actions i).gate s),
+          i ∈ F.fair_actions → Inv s → ¬ terminated s → V s ≤ k →
+          (p ≤ ∑' s' : σ, ... (if U s' < U s then 1 else 0)) ∨
+          (∀ s' ∈ ((spec.actions i).effect s h).support,
+            ∃ j ∈ F.fair_actions, (spec.actions j).gate s')
+      ```
+
+      AVSS would then dispatch via `Or.inr` on the corrupt-fire
+      branch using `avssFairActionEnabled_at_non_terminated`,
+      mirroring the existing `V_super_fair` / `U_dec_det` cert
+      dispatch.
+
+  (b) Split `FairASTCertificate` into a smaller "BC cert" that
+      omits `U_dec_prob` (the BC running-min route doesn't need
+      it).  AVSS would target the smaller structure, eliminating
+      the field entirely.
+
+Either is a `Liveness.lean` framework adaptation outside this PR's
+scope (the worker brief held `Leslie/Prob/Liveness.lean` off-limits
+for this δ phase).
+
+## Sorry inventory (2 total, unchanged)
+
+| Line | Theorem | Status |
 |---|---|---|
-| ~5045 | `avssCert.U_dec_prob` corrupt-fire branch | 8.5b-δ termination route switch (running-min). |
-| ~8016 | `coalitionView_corrupt_factors_AE` | 8.5c — statement weakening + cascade through `corrupt_local_state_uniqueness` (needs `coalitionTrivialView` infrastructure). |
+| ~4877 (avssCert U_dec_prob) | structural blocker | **vestigial** under BC route — see above |
+| ~7996 | `coalitionView_corrupt_factors_AE` | 8.5c — statement weakening + `coalitionTrivialView` cascade |
 
 ## Path forward
 
@@ -61,37 +121,48 @@ shape.
   ↓
 8.5b-γ [✅ 4 sorries; -9 net; freshness, actionGate_iff, simSyncInv]
   ↓
-8.5b-γ-followup [✅ 3 sorries; -1 net]
-        Closed: C5 / C7 stuck cases via flow + threshold cascade.
-        New helper sorry: F4 ready-flow preservation under partyReceiveReady.
+8.5b-γ-followup [✅ 3 sorries; -1 net; C5/C7 stuck-case dispatch]
   ↓
-8.5b-γ-followup-2 [✅ this checkpoint, 2 sorries; -1 net]
-        Closed: F4 ready-flow preservation via per-pair `inflightReady`
-                tokens (Route (a)).
+8.5b-γ-followup-2 [✅ 2 sorries; -1 net; F4 via per-pair tokens]
   ↓
-8.5b-δ — switch AVSS termination to BC running-min route to absorb
-         U_dec_prob corrupt-fire bump.
+8.5b-δ [✅ this checkpoint, 2 sorries; 0 net but route switched]
+        Switched termination route to BC running-min.
+        U_dec_prob sorry now vestigial (BC route doesn't consume).
   ↓
-8.5c — `coalitionView_corrupt_factors_AE` weakening + `coalitionTrivialView`
-       cascade through secrecy chain (~6 callers).
+8.5b-δ-followup (NEW): close U_dec_prob via Liveness.lean disjunct
+        weakening (route-A above).  ~80-120 LOC framework PR.
+  ↓
+8.5c — `coalitionView_corrupt_factors_AE` weakening +
+       `coalitionTrivialView` cascade through secrecy chain.
   ↓
 8.5b-ε — verify all axiom-clean, finalize MODEL_NOTES.
 ```
 
 ## Axiom hygiene status
 
-`avssCert` still depends transitively on `sorryAx` (via U_dec_prob corrupt
-branch and coalitionView).  After 8.5b-γ-followup-2, the cert's
-`avssFlowInv` clause and `avssFairActionEnabled_at_non_terminated` are
-fully axiom-clean.  The cert becomes axiom-clean after 8.5b-δ + 8.5c
-close the remaining two sorries.
+`avssCert` still depends transitively on `sorryAx` via the vestigial
+`U_dec_prob` sorry.  The cert's `avssTermInv`, `corruptLocalInv`,
+`avssQueueWfInv`, `avssFreshInv`, `avssFlowInv` clauses, the
+`V_super` / `V_super_fair` / `U_dec_det` cert dispatches, and the
+`avssFairActionEnabled_at_non_terminated` lemma are all axiom-clean.
+After 8.5b-δ-followup (close the vestigial sorry) + 8.5c
+(`coalitionView_corrupt_factors_AE`), the cert and downstream
+termination theorems become axiom-clean.
+
+The **soundness path** for `avss_termination_AS_fair` /
+`avss_termination_AS_fair_traj` /
+`avss_termination_AS_fair_rushing` flows through
+`pi_n_AST_fair_with_progress_bc_of_running_min_drops` and
+`pi_infty_zero_fair`, neither of which consumes `cert.U_dec_prob`.
 
 ## How to pick up
 
 1. Read this file + `PHASE-8-5b-PLAN.md` (in this worktree).
 2. `lake build Leslie.Prob.Index` — confirm green at 2699 jobs.
-3. For 8.5b-δ: switch `avss_termination_AS_fair`'s soundness route
-   to `pi_n_AST_fair_with_progress_bc_of_running_min_drops`.
+3. For 8.5b-δ-followup: open `Leslie/Prob/Liveness.lean` and weaken
+   `FairASTCertificate.U_dec_prob` to a disjunct form (Or.inr
+   "another fair action enabled at post").  Update `avssCert` to
+   dispatch via `Or.inr` on the corrupt-fire branch.
 4. For 8.5c: introduce `coalitionTrivialView`, weaken
    `coalitionView_corrupt_factors_AE` statement, cascade through
    ~6 secrecy-chain consumers.
