@@ -9733,9 +9733,32 @@ lemma corrupt_local_state_uniqueness
     (h_out : ls.output = none)
     (h_rp_none : ls.delivered = false → ls.rowPoly = none)
     (h_rp_some : ls.delivered = true → ls.rowPoly = some rp) :
-    ls = buildCorruptLocalState rp
-      (ls.echoSent, ls.echoesReceived, ls.readySent, ls.readyReceived)
-      ls.delivered := by
+    -- Phase 8.6 step-1: weakened to a structural equality on the
+    -- non-value fields plus the projected sender set.  The full
+    -- `ls = buildCorruptLocalState ...` equality no longer holds
+    -- because echoesReceived's values are secret-dependent; Step 2/3
+    -- will refine this to a value-determinacy-keyed reconstruction.
+    ls.delivered = (buildCorruptLocalState rp
+        (ls.echoSent, ls.echoesReceived.image Prod.fst,
+         ls.readySent, ls.readyReceived) ls.delivered).delivered ∧
+    ls.rowPoly = (buildCorruptLocalState rp
+        (ls.echoSent, ls.echoesReceived.image Prod.fst,
+         ls.readySent, ls.readyReceived) ls.delivered).rowPoly ∧
+    ls.echoSent = (buildCorruptLocalState rp
+        (ls.echoSent, ls.echoesReceived.image Prod.fst,
+         ls.readySent, ls.readyReceived) ls.delivered).echoSent ∧
+    ls.echoesReceived.image Prod.fst = (buildCorruptLocalState rp
+        (ls.echoSent, ls.echoesReceived.image Prod.fst,
+         ls.readySent, ls.readyReceived) ls.delivered).echoesReceived.image Prod.fst ∧
+    ls.readySent = (buildCorruptLocalState rp
+        (ls.echoSent, ls.echoesReceived.image Prod.fst,
+         ls.readySent, ls.readyReceived) ls.delivered).readySent ∧
+    ls.readyReceived = (buildCorruptLocalState rp
+        (ls.echoSent, ls.echoesReceived.image Prod.fst,
+         ls.readySent, ls.readyReceived) ls.delivered).readyReceived ∧
+    ls.output = (buildCorruptLocalState rp
+        (ls.echoSent, ls.echoesReceived.image Prod.fst,
+         ls.readySent, ls.readyReceived) ls.delivered).output := by
   cases ls with
   | mk d rp_actual es er rr rs out =>
     simp only at h_out
@@ -9745,12 +9768,17 @@ lemma corrupt_local_state_uniqueness
         have heq : rp_actual = none := h_rp_none rfl
         subst heq
         unfold buildCorruptLocalState
-        rfl
+        refine ⟨rfl, rfl, rfl, ?_, rfl, rfl, rfl⟩
+        -- Show: er.image Prod.fst = (er.image Prod.fst).image (fun q => (q, 0)) |>.image Prod.fst.
+        ext q
+        simp [Finset.mem_image]
     | true =>
         have heq : rp_actual = some rp := h_rp_some rfl
         subst heq
         unfold buildCorruptLocalState
-        rfl
+        refine ⟨rfl, rfl, rfl, ?_, rfl, rfl, rfl⟩
+        ext q
+        simp [Finset.mem_image]
 
 /-- Reconstruct `coalitionTraceView` from `(coalitionAlgebraicView,
 coalitionTrivialView)`: at every `(i, p)`, build the corrupt local
@@ -9766,7 +9794,6 @@ def reconstructCoalitionTraceView
     Fin k → C.val → AVSSLocalState n t F :=
   fun i p => buildCorruptLocalState (rp p) (tv i p) (delivered i p)
 
-omit [Field F] in
 @[fun_prop]
 theorem measurable_reconstruct_pair
     {C : BivariateShamir.Coalition n t} {k : ℕ} :
@@ -13756,7 +13783,7 @@ theorem simViewExt_simSched_avssInitState_factors
             p.val).echoSent,
           ((avssSimulateTrace R
             (avssInitState (n := n) sec corr partyPoint dealerHonest c) i.val).1.local_
-            p.val).echoesReceived,
+            p.val).echoesReceived.image Prod.fst,
           ((avssSimulateTrace R
             (avssInitState (n := n) sec corr partyPoint dealerHonest c) i.val).1.local_
             p.val).readySent,
@@ -13768,7 +13795,7 @@ theorem simViewExt_simSched_avssInitState_factors
             p.val).echoSent,
          ((avssSimulateTrace R
             (avssInitState (n := n) sec' corr partyPoint dealerHonest c') i.val).1.local_
-            p.val).echoesReceived,
+            p.val).echoesReceived.image Prod.fst,
          ((avssSimulateTrace R
             (avssInitState (n := n) sec' corr partyPoint dealerHonest c') i.val).1.local_
             p.val).readySent,

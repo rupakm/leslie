@@ -235,24 +235,37 @@ post-state's `(r, q, v_rq)` triples are unique by construction).
 * `corrupt_fire_post_not_terminated`, `avssU_le_bound`, `avssCert`'s
   `U_bdd_subl` / `V_init_bdd` constants threaded.
 
-**Remaining errors** (all in §17/§19, secrecy structural abstractions):
+**Remaining errors** (4 errors, all in §17/§19 secrecy structural
+abstractions; root cause is the same fundamental break — echo values
+are secret-dependent):
 
-* `simSyncInv` preservation under `partyEchoSend` fails for honest
-  senders, because the echo's value depends on `s.local_ q .rowPoly`
-  which can differ between simulate-synced states with different
-  secrets.  Fix requires either narrowing `simSyncInv` to only match
-  states with equal honest row polys (defeats the purpose) or
-  refactoring the inflight contribution through a trivial-field
-  projection that is value-independent (Step 2/3).
-* `TrivialView` (§17.x) loses information when `echoesReceived`
-  contains values: the projection to sender ids is lossy, and
-  `corrupt_local_state_uniqueness` no longer factors cleanly.  In this
-  WIP, `buildCorruptLocalState` reconstructs `echoesReceived` with a
-  `(q, 0 : F)` placeholder; the uniqueness lemma's conclusion is
-  weakened to sender-only but still needs hypothesis-level
-  restatement.
-* `simTrivialView` and downstream §19.x consumers need analogous
-  projections.
+* **`simSyncInv` preservation under `partyEchoSend` (12452)**:
+  fails for honest senders, because the echo's value depends on
+  `s.local_ q .rowPoly` which can differ between simulate-synced
+  states with different secrets.  The `inflightEchoes_eq` field of
+  `simSyncInv` becomes unprovable post-action.  Fix requires either
+  narrowing `simSyncInv` to pin honest row polys (defeats the
+  secrecy proof's premise that secrets can differ) or refactoring
+  the inflight contribution through a trivial-field projection
+  (Step 2/3).
+* **`coalitionTraceView_eq_reconstruct{,_AE,_AE_ex,_AE_indep}`
+  (9878 / 9939 / 9994)**: claim `(ω i).1.local_ p =
+  reconstructCoalitionTraceView ...`, but `buildCorruptLocalState`
+  produces `echoesReceived = (sender_ids).image (fun q => (q, 0))`
+  while real corrupt parties' `echoesReceived` carries CR'93
+  values.  In this WIP, `corrupt_local_state_uniqueness` was
+  weakened to a 7-conjunct field-projection equality (instead of
+  the original full state equality), but downstream consumers
+  still expect the full equality and fail with type mismatch.
+  Closing requires restating those theorems to use the projected
+  `echoesReceived.image Prod.fst` form.
+
+These errors are all the same structural issue: the secrecy proof's
+TrivialView/buildCorruptLocalState abstraction projects out
+secret-dependent information; with values added, that projection is
+lossy.  Step 2 (echo validation) and Step 3 (`bivariateAlignedInv`)
+will provide the canonical-value reconstruction needed to close
+these.
 
 These are the same structural issues anticipated in the §"recommended
 Step 1 subdivision" above: with values introduced, the secrecy
