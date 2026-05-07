@@ -1570,7 +1570,7 @@ target** for downstream work.
 |---|---|---|
 | **Termination** | Unconditional under fair scheduling | Conditional on `consistent_quorum_AE` (≥ n − t honest parties have received consistent shares, AE on traces) — `avss_termination_AS_fair` |
 | **Correctness** | Honest dealer ⇒ outputs consistent with `s.coeffs` (state field) | Honest dealer ⇒ ∃ witness s.t. outputs consistent with `bivEval witness ...` — `avss_correctness_AS_existential` |
-| **Commitment** | Trivially true (single global `coeffs`) | Genuine joint-consistency under corrupt dealer (Vandermonde + Lagrange uniqueness via `joinedConsistencyInv_via_vandermonde`) — `avss_commitment_AS_existential` |
+| **Commitment** | Trivially true (single global `coeffs`) | Honest-dealer-conditional existential commitment (via `joinedConsistencyInv_via_vandermonde`) — `avss_commitment_AS_existential`; full corrupt-dealer strengthening is queued in Phase 8.6 |
 | **Reconstruction** | Lagrange theorem | Unchanged — `avss_reconstruction` |
 | **Secrecy** | Row-poly secrecy under restricted adversary | Operational view-secrecy under rushing adversary, dealerHonest-INDEPENDENT cTV bridge — `avss_secrecy_AS_view_rushing` (existing) **and** the bivariate row+column sibling `avss_secrecy_AS_view_rushing_bivariate` (Phase 11-δ-followup) which additionally bundles the polynomial-level corrupt-grid sec-invariance from `avss_bivariate_corrGrid_sec_invariant`. |
 
