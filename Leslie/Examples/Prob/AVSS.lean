@@ -6104,26 +6104,28 @@ theorem avss_correctness_AS_randomised
         ∀ p, p ∉ s.corrupted →
           ∀ v, (s.local_ p).output = some v →
             v = bivEval s.coeffs (s.partyPoint p) 0) := by
-  have h_init' : ∀ᵐ s ∂μ₀, honestDealerInv s := by
+  have h_init' : ∀ᵐ s ∂μ₀, honestDealerInv s ∧ dealerMessagesInv s := by
     filter_upwards [h_init] with s hs
-    exact initPred_honestDealerInv sec corr s hs
+    exact ⟨initPred_honestDealerInv sec corr s hs,
+           initPred_dealerMessagesInv sec corr s hs⟩
   have h_step : ∀ (a : AVSSAction n F) (s : AVSSState n t F)
       (h : ((avssSpec (t := t) sec corr).actions a).gate s),
-      honestDealerInv s →
+      (honestDealerInv s ∧ dealerMessagesInv s) →
       ∀ s' ∈ ((avssSpec (t := t) sec corr).actions a).effect s h |>.support,
-        honestDealerInv s' := by
-    intro a s hgate hinv s' hsupp
+        honestDealerInv s' ∧ dealerMessagesInv s' := by
+    intro a s hgate ⟨hinv, hcons⟩ s' hsupp
     rw [show ((avssSpec (t := t) sec corr).actions a).effect s hgate
           = PMF.pure (avssStep a s) from rfl,
         PMF.support_pure, Set.mem_singleton_iff] at hsupp
     subst hsupp
-    exact avssStep_preserves_honestDealerInv a s hgate hinv
+    exact ⟨avssStep_preserves_honestDealerInv a s hgate hinv hcons,
+           avssStep_preserves_dealerMessagesInv a s hgate hcons⟩
   have h_inv : AlmostBoxRandomised (avssSpec (t := t) sec corr) R μ₀
-      honestDealerInv :=
-    AlmostBoxRandomised_of_inductive honestDealerInv h_step μ₀ h_init' R
+      (fun s => honestDealerInv s ∧ dealerMessagesInv s) :=
+    AlmostBoxRandomised_of_inductive _ h_step μ₀ h_init' R
   unfold AlmostBoxRandomised at h_inv ⊢
   filter_upwards [h_inv] with ω hinv k hh p hp v hv
-  exact (hinv k hh).2 p hp v hv
+  exact ((hinv k).1 hh).2 p hp v hv
 
 /-- **Output-determined commitment against a randomised adversary.**
 The randomised analog of `avss_commitment_AS` (PR #45). Every output,
@@ -6141,21 +6143,28 @@ theorem avss_commitment_AS_randomised
     (R : RandomisedAdversary (AVSSState n t F) (AVSSAction n F)) :
     AlmostBoxRandomised (avssSpec (t := t) sec corr) R μ₀
       outputDeterminedInv := by
-  have h_init' : ∀ᵐ s ∂μ₀, outputDeterminedInv s := by
+  have h_init' : ∀ᵐ s ∂μ₀, outputDeterminedInv s ∧ dealerMessagesInv s := by
     filter_upwards [h_init] with s hs
-    exact initPred_outputDeterminedInv sec corr s hs
+    exact ⟨initPred_outputDeterminedInv sec corr s hs,
+           initPred_dealerMessagesInv sec corr s hs⟩
   have h_step : ∀ (a : AVSSAction n F) (s : AVSSState n t F)
       (h : ((avssSpec (t := t) sec corr).actions a).gate s),
-      outputDeterminedInv s →
+      (outputDeterminedInv s ∧ dealerMessagesInv s) →
       ∀ s' ∈ ((avssSpec (t := t) sec corr).actions a).effect s h |>.support,
-        outputDeterminedInv s' := by
-    intro a s hgate hinv s' hsupp
+        outputDeterminedInv s' ∧ dealerMessagesInv s' := by
+    intro a s hgate ⟨hinv, hcons⟩ s' hsupp
     rw [show ((avssSpec (t := t) sec corr).actions a).effect s hgate
           = PMF.pure (avssStep a s) from rfl,
         PMF.support_pure, Set.mem_singleton_iff] at hsupp
     subst hsupp
-    exact avssStep_preserves_outputDeterminedInv a s hgate hinv
-  exact AlmostBoxRandomised_of_inductive outputDeterminedInv h_step μ₀ h_init' R
+    exact ⟨avssStep_preserves_outputDeterminedInv a s hgate hinv hcons,
+           avssStep_preserves_dealerMessagesInv a s hgate hcons⟩
+  have h_inv : AlmostBoxRandomised (avssSpec (t := t) sec corr) R μ₀
+      (fun s => outputDeterminedInv s ∧ dealerMessagesInv s) :=
+    AlmostBoxRandomised_of_inductive _ h_step μ₀ h_init' R
+  unfold AlmostBoxRandomised at h_inv ⊢
+  filter_upwards [h_inv] with ω hω k
+  exact (hω k).1
 
 /-- **Coord-0 grid secrecy against a randomised adversary.** The
 randomised analog of `avss_secrecy_AS_step_zero_grid`: the marginal
@@ -6216,18 +6225,6 @@ content is the trivial static preservation of `s.coeffs`, `s.secret`,
 and `s.dealerHonest` (none of which is touched by any `avssStep`
 branch). -/
 
-/-- Honest-output count: the number of honest parties that have
-written an output. Used as the Bracha-quorum gate in the
-literature-faithful existential-witness commitment statement
-(`avss_commitment_AS_corrupt_dealer_randomised`). The gate
-`honestOutputCount s ≥ t + 1` is stricter than necessary in this
-model — the existential witness `s.coeffs` exists structurally — but
-keeping the gate aligns the surface statement with the literature
-form of corrupt-dealer commitment. -/
-def honestOutputCount (s : AVSSState n t F) : ℕ :=
-  ((Finset.univ : Finset (Fin n)).filter
-    (fun p => p ∉ s.corrupted ∧ (s.local_ p).output.isSome)).card
-
 /-- **Honest-dealer correctness, existential-witness form, against a
 randomised adversary.** Literature-faithful analog of
 `avss_correctness_AS_randomised`: with an honest dealer, there exists
@@ -6262,12 +6259,14 @@ theorem avss_correctness_AS_existential_randomised
               ∀ v, (s.local_ p).output = some v →
                 v = bivEval witness (s.partyPoint p) 0) := by
   set P : AVSSState n t F → Prop := fun s =>
-    honestDealerInv s ∧ (s.dealerHonest = true → s.coeffs 0 0 = s.secret)
+    (honestDealerInv s ∧ dealerMessagesInv s) ∧
+      (s.dealerHonest = true → s.coeffs 0 0 = s.secret)
   have h_init' : ∀ᵐ s ∂μ₀, P s := by
     filter_upwards [h_init] with s hs
-    refine ⟨initPred_honestDealerInv sec corr s hs, ?_⟩
+    refine ⟨⟨initPred_honestDealerInv sec corr s hs,
+            initPred_dealerMessagesInv sec corr s hs⟩, ?_⟩
     intro hh
-    obtain ⟨_, hsec, _, _, _, _, _, _, hch⟩ := hs
+    obtain ⟨_, hsec, _, _, _, _, _, _, _, hch⟩ := hs
     rw [hch hh, hsec]
   have h_step : ∀ (a : AVSSAction n F) (s : AVSSState n t F)
       (h : ((avssSpec (t := t) sec corr).actions a).gate s),
@@ -6279,7 +6278,8 @@ theorem avss_correctness_AS_existential_randomised
           = PMF.pure (avssStep a s) from rfl,
         PMF.support_pure, Set.mem_singleton_iff] at hsupp
     subst hsupp
-    refine ⟨avssStep_preserves_honestDealerInv a s hgate hp.1, ?_⟩
+    refine ⟨⟨avssStep_preserves_honestDealerInv a s hgate hp.1.1 hp.1.2,
+            avssStep_preserves_dealerMessagesInv a s hgate hp.1.2⟩, ?_⟩
     intro hh
     have hh_pre : s.dealerHonest = true := by
       cases a <;> simp [avssStep, setLocal] at hh <;> exact hh
@@ -6294,7 +6294,7 @@ theorem avss_correctness_AS_existential_randomised
   filter_upwards [h_inv] with ω hP k hh
   refine ⟨(ω k).1.coeffs, (hP k).2 hh, ?_⟩
   intro p hp v hv
-  exact ((hP k).1 hh).2 p hp v hv
+  exact ((hP k).1.1 hh).2 p hp v hv
 
 /-- **Corrupt-dealer commitment, existential-witness form, against a
 randomised adversary.** Literature-faithful analog of
