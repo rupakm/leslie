@@ -1516,7 +1516,7 @@ for archaeological context.
 | **8.5d-β** (PR #69) | `s.coeffs` migration to μ₀; `coeffs` parameter through `initPred` / `avssSpec` / `avssCert` / theorem statements; `dealerCommit : Fin n → DealerPayload t F` field; cTV-bridge dealerHonest-INDEPENDENT closure (8.5d-β-followup-7 via `coalitionRowPolyAlignedInv`). | ✅ landed |
 | **8.5d-γ** (PR #70) | `avss_termination_AS_fair` (and `_traj`/`_rushing`) re-scoped to take `h_consistent_quorum`; new `consistent_quorum_AE` def + `_of_all_honest_delivered` sanity check; 0 sorries. | ✅ landed |
 | **8.5d-δ** (this PR) | MODEL_NOTES finalisation: §11 caveat-closure citations, §12.1 status reconciliation, §12.3 canonical post-Phase-8 state freeze, §12.4 risks update, Phase 11 stub. Docs-only. | 🚧 in-flight (this PR) |
-| **8.6** | Operational secrecy under full adversary (post-8.5d-α/β/γ) | Re-prove `avss_secrecy_AS_view_rushing` against the post-8.5d adversary.  Now consists of (a) the +200 LOC row + column secrecy form (deferred since `SyncVSS.lean §10` — full polynomial-manipulation step in two directions), and (b) any remaining secrecy-chain plumbing if the dealerHonest-INDEPENDENT cTV bridge from 8.5d-β-followup-7 doesn't already cover it. | ⏳ pending |
+| **8.6** | Operational secrecy under full adversary (post-8.5d-α/β/γ) | Re-prove `avss_secrecy_AS_view_rushing` against the post-8.5d adversary.  Consists of (a) the +200 LOC row + column secrecy form (deferred since `SyncVSS.lean §10` — full polynomial-manipulation step in two directions), and (b) wiring the row+col form into a strengthened headline conclusion. | ✅ **landed**. **(a)** Phase 11-δ (PR #75): `Leslie.Prob.Polynomial.bivariate_evals_uniform_row_col` (statement + full proof via `bivariate_evals_uniform_full` + constant-fiber projection) and the AVSS-side wrappers `avss_bivariate_corrGrid_uniform` / `avss_bivariate_corrGrid_sec_invariant`.  **(b)** Phase 11-δ-followup (this PR): sibling theorem `avss_secrecy_AS_view_rushing_bivariate` in §19.7 of `AVSS.lean` — bundles the existing operational headline and the bivariate corrupt-grid sec-invariance into a single citation-ready conjunction.  The original `avss_secrecy_AS_view_rushing` is unchanged (backward-compat).  All five load-bearing AVSS theorems remain `[propext, Classical.choice, Quot.sound]`-axiom-clean; zero sorries. |
 | **8.7** | Adapter retirement / cleanup | **Likely empty.** The 8.5b/c/d chain edited the model in place; there is no parallel pre-Phase-8 form to retire (no compatibility shim was kept).  Documented here as a finding — if a deprecation-shim layer is needed for downstream consumers, that work would be added back; otherwise this row is closeable as a no-op. | 🟡 likely no-op |
 | **8.8** | MODEL_NOTES rewrite | Subsumed by **8.5d-δ** (this PR).  The original "comprehensive rewrite" scope is replaced by the targeted §11 / §12 / §13 reconciliation here. | 🟢 subsumed by 8.5d-δ |
 
@@ -1542,9 +1542,11 @@ The actual landed sequence (PR-by-PR), which differs from the
   * **8.7** likely no-op (model edited in place; no parallel
     form to retire).
   * **8.8** subsumed by 8.5d-δ.
-  * **Phase 11** (§14) — secrecy framework abstraction; **11-α + 11-γ
-    landed**; 11-β (randomised lift, deferred until Phase 9
-    integration) / 11-δ / 11-ε queued for before 8.6.
+  * **Phase 11** (§14) — secrecy framework abstraction; **closed
+    (✅ 11-α / 11-γ / 11-δ / 11-δ-followup / 11-ε landed)**; 11-β
+    (randomised lift) remains ⏸ deferred until Phase 9
+    (`RandomisedAdversary`) merges — its scope is then a one-shot
+    Fubini lift independent of any further AVSS work.
 
 ### 12.3. Post-Phase-8 state — **canonical reference (frozen 2026-05-07)**
 
@@ -1559,7 +1561,7 @@ target** for downstream work.
 | **Correctness** | Honest dealer ⇒ outputs consistent with `s.coeffs` (state field) | Honest dealer ⇒ ∃ witness s.t. outputs consistent with `bivEval witness ...` — `avss_correctness_AS_existential` |
 | **Commitment** | Trivially true (single global `coeffs`) | Genuine joint-consistency under corrupt dealer (Vandermonde + Lagrange uniqueness via `joinedConsistencyInv_via_vandermonde`) — `avss_commitment_AS_corrupt_dealer` |
 | **Reconstruction** | Lagrange theorem | Unchanged — `avss_reconstruction` |
-| **Secrecy** | Row-poly secrecy under restricted adversary | Operational view-secrecy under rushing adversary, dealerHonest-INDEPENDENT cTV bridge — `avss_secrecy_AS_view_rushing` |
+| **Secrecy** | Row-poly secrecy under restricted adversary | Operational view-secrecy under rushing adversary, dealerHonest-INDEPENDENT cTV bridge — `avss_secrecy_AS_view_rushing` (existing) **and** the bivariate row+column sibling `avss_secrecy_AS_view_rushing_bivariate` (Phase 11-δ-followup) which additionally bundles the polynomial-level corrupt-grid sec-invariance from `avss_bivariate_corrGrid_sec_invariant`. |
 
 **Adversary model.**
 
@@ -1577,7 +1579,9 @@ target** for downstream work.
     on a parallel branch.  Cross-branch reconciliation deferred to
     merge time (see §11.5).
   * **Row + column secrecy** (the +200 LOC polynomial step deferred
-    since `SyncVSS.lean §10`): queued as Phase 8.6.
+    since `SyncVSS.lean §10`): ✅ **closed** by Phase 11-δ (PR #75)
+    + Phase 11-δ-followup (this PR).  See §12.1 row 8.6 and §12.4
+    risk 4 for the citation-level pointers.
 
 Freeze this table as the citation reference.  Downstream protocol
 work (e.g., AVSS-using-RBC composition) should cite the Post-Phase-8
@@ -1620,12 +1624,44 @@ column.
    eliminating the need for the originally-planned `coalitionTrivialView`
    factoring layer.
 
-4. ⏳ **Row + column secrecy** (PR 8.6) — still pending.  The +200 LOC
-   polynomial-manipulation step has been deferred since
-   `SyncVSS.lean §10` and remains the next significant cryptographic
-   content gap (Vandermonde + Lagrange in two directions, with
-   axis-zero handling).  Could be its own multi-PR effort if
-   complications arise during the column-direction work.
+4. ✅ **Row + column secrecy** (PR 8.6 / Phase 11-δ) — **landed
+   2026-05-07, axiom-clean.**  The polynomial-level row+column
+   uniformity theorem
+   `Leslie.Prob.Polynomial.bivariate_evals_uniform_row_col` is landed:
+   for any `R ⊆ F` with `|R| ≤ t` and `0 ∉ R`, and any subset
+   `S ⊆ R ×ˢ R`, the joint evaluation distribution at `S` of the
+   uniformly sampled bidegree-`(t, t)` polynomial with `f(0, 0) = sec`
+   is uniform on `↑S → F` — generalising the rectangular-only
+   `bivariate_evals_uniform_full` (Phase 7.7) to arbitrary subsets.
+   Proof reduces to the rectangular form plus a constant-fiber
+   projection along `↑S ↪ ↑R × ↑R`, captured by the auxiliary
+   `PMF.uniform_pi_restrict`.  AVSS-side wrappers
+   `avss_bivariate_corrGrid_uniform` (uniformity) and
+   `avss_bivariate_corrGrid_sec_invariant` (sec-invariance corollary)
+   are landed in §19.6.  All four declarations are
+   `[propext, Classical.choice, Quot.sound]`-axiom-clean (zero
+   sorries; the headline cryptographic reasoning — Vandermonde+
+   Lagrange in two directions — is fully captured by
+   `bivariate_evals_uniform_full`'s existing proof).
+   **Phase 11-δ-followup (this PR).** The row+col form is now wired
+   into a *sibling* of the headline secrecy theorem,
+   `avss_secrecy_AS_view_rushing_bivariate` (`AVSS.lean` §19.7).  The
+   sibling bundles two sec-invariances into a single citation:
+   (a) the existing operational headline's
+   `(coalitionTraceView, schedulePrefix)` marginal sec-invariance
+   (Phase 8.5d), and (b) the polynomial-level
+   `avss_bivariate_corrGrid_sec_invariant` (this PR's parent).  Both
+   axes of secrecy are now available to downstream consumers
+   (e.g. column cross-check protocols à la CR'93 §10) from a single
+   theorem — without any changes to the existing
+   `avss_secrecy_AS_view_rushing` (backward-compat).
+   **Out of scope:** axis-zero handling (`0 ∈ R` case, where the
+   sec-axis is exposed and the conclusion is conditional on `sec`)
+   is documented but **not** included; the current statement requires
+   `0 ∉ R`.  A deeper joint-pushforward variant (extracting the
+   dealer's polynomial through the trace's initial state to give a
+   single trace-level joint sec-invariance) is also queued for a
+   later phase — see §14 Phase 11-ε notes.
 
 ### 12.5. Maintenance protocol
 
@@ -1714,8 +1750,11 @@ completes, §11.5 (C5) should be marked "✅ resolved by Phase 9 (PR
 
 ## 14. Phase 11 — Secrecy framework abstraction
 
-**Status: 🚧 in progress; Phase 11-α ✅ + 11-γ ✅ landed; 11-β / 11-δ /
-11-ε queued.**
+**Status: ✅ closed (modulo the post-Phase-9-merge deliverable 11-β).**
+Phase 11-α ✅ + 11-γ ✅ + 11-δ ✅ + 11-ε ✅ landed; 11-β remains ⏸
+deferred until Phase 9 (`RandomisedAdversary` integration) merges,
+at which point its scope (a one-shot Fubini lift) is well-defined
+and independent.
 
 Extract `Secrecy` and `SecrecyRushing` as framework-level definitions
 in `Leslie/Prob/Secrecy.lean` (Phase 11-α, ✅).  Each protocol's
@@ -1739,8 +1778,9 @@ re-deriving the chain.
 | 11-α | `Leslie/Prob/Secrecy.lean` — `Secrecy` (deterministic-adversary form) and `SecrecyRushing` (rushing form); structural lemmas (`Secrecy.mono_proj`, `SecrecyRushing.mono_proj`, `Secrecy.toRushing`) | ~140 | ✅ |
 | 11-β | `Secrecy.lift_to_randomised`, `SecrecyRushing.of_secrecy` (framework lifts to randomised adversaries) | ~80 | ⏳ (deferred until Phase 9 `RandomisedAdversary` integration) |
 | 11-γ | AVSS instance: `avss_secrecy_AS_view_rushing` re-stated as `SecrecyRushing avssSpec ... := ...` | ~50 | ✅ |
-| 11-δ | Apply to 8.6's row + column secrecy form (composes with the abstraction directly so 8.6 doesn't need its own framework boilerplate) | ~80 | ⏳ |
-| 11-ε | Cleanup, MODEL_NOTES note, citation table | ~40 | ⏳ |
+| 11-δ | Apply to 8.6's row + column secrecy form (composes with the abstraction directly so 8.6 doesn't need its own framework boilerplate) | ~280 | ✅ (PR #75) — headline `Leslie.Prob.Polynomial.bivariate_evals_uniform_row_col` (statement + full proof via constant-fiber projection along `↑S ↪ ↑R × ↑R`); AVSS-side wrappers `avss_bivariate_corrGrid_uniform` / `_sec_invariant` (§19.6); auxiliary `PMF.uniform_pi_restrict`.  All axiom-clean (`[propext, Classical.choice, Quot.sound]`); zero sorries. |
+| 11-δ-followup | Wire the row+col form into a *sibling* of the headline secrecy theorem.  `avss_secrecy_AS_view_rushing_bivariate` (`AVSS.lean` §19.7) bundles the existing trace-level `(coalitionTraceView, schedulePrefix)` sec-invariance and the polynomial-level `avss_bivariate_corrGrid_sec_invariant` into a single conjunction.  The original `avss_secrecy_AS_view_rushing` is unchanged (backward-compat). | ~80 | ✅ (this PR) |
+| 11-ε | Cleanup, MODEL_NOTES finalisation: §12.1 row 8.6 → ✅, §12.3 post-Phase-8 secrecy row updated to cite the new sibling, §12.4 risk 4 closed, §14 marked ✅ closed. Final axiom hygiene check on the five load-bearing AVSS theorems (`avss_termination_AS_fair`, `avss_correctness_AS_existential`, `avss_commitment_AS_corrupt_dealer`, `avss_reconstruction`, `avss_secrecy_AS_view_rushing` + new sibling). | ~50 | ✅ (this PR) |
 
 **Sequence.**  Phase 11-α landed after 8.5d-δ (this PR's parent).
 Subsequent sub-PRs land before Phase 8.6, so 8.6's operational-secrecy
@@ -1797,6 +1837,101 @@ protocols (SyncVSS, BenOrAsync) can mirror this pattern.
 
 (See `PHASE-8-5d-CHECKPOINT.md` for the worker-side note if a fuller
 plan is recorded there.)
+
+**Phase 11-δ deliverables (this sub-PR).**
+
+This is the +200 LOC row+column bivariate Shamir secrecy upgrade
+**deferred since SyncVSS §10**.  It generalises Phase 7.7's
+`bivariate_evals_uniform_full` (rectangular `pts_x × pts_y`) to the
+literature-standard form on arbitrary subsets `S ⊆ R × R`:
+
+  * `Leslie.Prob.Polynomial.bivariate_evals_uniform_row_col` — for
+    `R ⊆ F` with `|R| ≤ t` and `0 ∉ R` and any subset
+    `S ⊆ R ×ˢ R`, the joint evaluation distribution at `S` of the
+    uniformly-sampled bidegree-`(t, t)` polynomial with
+    `f(0, 0) = sec` is uniform on `↑S → F`.  Proof: corollary of
+    `bivariate_evals_uniform_full` plus a constant-fiber projection
+    along `↑S ↪ ↑R × ↑R`.
+
+  * `PMF.uniform_pi_restrict` (auxiliary) — pushforward of
+    `PMF.uniform (κ → α)` along precomposition with an injection
+    `proj : ι → κ` is `PMF.uniform (ι → α)`.  This is the per-coord
+    constant-fiber restriction lemma; proved via
+    `PMF.uniform_map_of_surjective_constFiber` plus an explicit
+    bijection between the fiber `{g | g ∘ proj = h}` and
+    `(κ \ image proj) → α` (size `|α|^(|κ| − |ι|)`, constant in `h`).
+
+  * AVSS-side instantiations (`Leslie/Examples/Prob/AVSS.lean` §19.6):
+    `avss_bivariate_corrGrid_uniform` (uniformity of corrupt-coalition
+    bivariate evaluations on any subset of `corrPts × corrPts`) and
+    `avss_bivariate_corrGrid_sec_invariant` (sec-invariance corollary,
+    by uniformity-on-both-sides).  Both are thin specialisations of
+    the polynomial-level theorem via the standard `partyPoint`
+    injection bridge.
+
+**Axiom-cleanliness.** All four new declarations
+(`bivariate_evals_uniform_row_col`, `PMF.uniform_pi_restrict`,
+`avss_bivariate_corrGrid_uniform`, `avss_bivariate_corrGrid_sec_invariant`)
+depend on `[propext, Classical.choice, Quot.sound]` only — zero
+sorries, zero custom axioms.  The existing chain through
+`bivariate_shamir_secrecy_rowPoly_full` and
+`avss_secrecy_AS_view_rushing` is unchanged.
+
+**Out of scope for the parent (PR #75 / Phase 11-δ).** Axis-zero
+handling (the `0 ∈ R` case where the sec-axis is exposed and the
+conclusion becomes conditional on the sec value) is documented in
+§12.4 risk 4 but not formalised; the current statement requires
+`0 ∉ R`.  Wiring the row+col form into a strengthened headline was
+deferred to Phase 11-δ-followup — see below.
+
+**Phase 11-δ-followup deliverables (this PR).**
+
+The Phase 11-δ-followup sub-PR closes part (b) of §12.1 row 8.6 — the
+"wire row+col into headline secrecy" deliverable — by adding a
+*sibling* theorem to `avss_secrecy_AS_view_rushing`:
+
+  * `avss_secrecy_AS_view_rushing_bivariate` (`AVSS.lean` §19.7).
+    Bundles two sec-invariances into a single citation:
+    **(a)** the existing trace-level
+    `(coalitionTraceView, schedulePrefix)`-marginal sec-invariance
+    (Phase 8.5d), and
+    **(b)** the polynomial-level row+column sec-invariance from
+    `avss_bivariate_corrGrid_sec_invariant` (Phase 11-δ / PR #75).
+    The conjunction form is the right abstraction for downstream
+    consumers because each clause matches their natural query —
+    "is my operational view sec-invariant?" and "is my bivariate
+    evaluation grid sec-invariant?" — and the two equalities concern
+    *distinct measures* (the trace distribution vs. the
+    bivariate-polynomial measure that `avssInitMeasure` is pulled
+    back from).  A deeper joint pushforward that extracts the
+    dealer's polynomial through the trace's initial state is
+    queued for a later phase; it would add substantive measurability
+    work without changing the cryptographic content.
+
+The original `avss_secrecy_AS_view_rushing` is unchanged
+(backward-compat); the sibling is *additive*.  Axiom hygiene is
+preserved on all five load-bearing AVSS theorems
+(`[propext, Classical.choice, Quot.sound]` only); zero sorries.
+
+**Phase 11-ε deliverables (this PR).**
+
+Phase 11-ε is the MODEL_NOTES finalisation that closes Phase 11.
+Specifically:
+
+  * §12.1 row 8.6 → ✅ landed (cites PR #75 for part (a) and this
+    PR's `avss_secrecy_AS_view_rushing_bivariate` for part (b)).
+  * §12.3 post-Phase-8 state table's "Secrecy" row updated to cite
+    the new sibling theorem alongside the existing headline.
+  * §12.4 risk 4 closed — both the polynomial-level row+col upgrade
+    and the headline wiring are landed.
+  * §14 Phase 11 marked ✅ closed (with 11-β still ⏸ deferred for
+    post-Phase-9-merge).
+  * Axiom hygiene check on the five load-bearing AVSS theorems
+    (`avss_termination_AS_fair`, `avss_correctness_AS_existential`,
+    `avss_commitment_AS_corrupt_dealer`, `avss_reconstruction`,
+    `avss_secrecy_AS_view_rushing` + new sibling
+    `avss_secrecy_AS_view_rushing_bivariate`) — all
+    `[propext, Classical.choice, Quot.sound]`-axiom-clean.
 
 ## How to read the formalised theorems
 
