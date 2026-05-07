@@ -43,6 +43,9 @@ Builds every `Leslie.Prob.*` library module and every
     are intentionally not part of the production build.
 -/
 
+-- Mathlib-upstream candidate (parameterised Ionescu–Tulcea trajectory)
+import Leslie.Mathlib.Probability.Kernel.IonescuTulcea.Bind
+
 -- Library
 import Leslie.Prob.Action
 import Leslie.Prob.Adversary
