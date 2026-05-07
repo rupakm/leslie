@@ -7976,13 +7976,63 @@ theorem traceDist_corrupted_AE_eq_init
     rw [ae_map_iff hmeas_pair.aemeasurable MeasurableSet.of_discrete] at hjoint
     exact hjoint
 
-/-- **Phase 6.2 structural theorem (`corruptViewFactorsThroughGrid`).**
+/-! ### Phase 8.5c — `TrivialView` and `coalitionTrivialView`
+
+Phase 8.5b-α weakened `corruptLocalInv` to drop the
+`{echoSent, echoesReceived, readySent, readyReceived} = ∅` clauses
+(those fields are now schedule-dependent for corrupt parties).
+Phase 8.5c re-introduces the `TrivialView` projection that was
+landed in PR #58 (and removed during 8.5b-α): it carries the
+schedule-derived per-step trivial-field view per corrupt party.
+The structural bridge `coalitionTraceView_eq_reconstruct_AE`
+factors through both `coalitionAlgebraicView` *and*
+`coalitionTrivialView`. -/
+
+/-- Carrier for the schedule-derived trivial-field view of a corrupt
+party's local state at one step: `(echoSent, echoesReceived,
+readySent, readyReceived)`. -/
+abbrev TrivialView (n : ℕ) : Type :=
+  Bool × Finset (Fin n) × Bool × Finset (Fin n)
+
+instance : MeasurableSpace (TrivialView n) := ⊤
+instance : MeasurableSingletonClass (TrivialView n) := ⟨fun _ => trivial⟩
+
+/-- The corrupt coalition's per-step trivial-field view. Reads the
+schedule-derived fields directly from the trace. Under the C1+C2
+model, these fields can take non-`init` values; their joint
+sec-invariance follows from the simulation factoring through the
+initial state (§19.2.5+). -/
+def coalitionTrivialView (C : BivariateShamir.Coalition n t)
+    (ω : ℕ → AVSSState n t F × Option (AVSSAction n F)) (k : ℕ) :
+    Fin k → C.val → TrivialView n :=
+  fun i p =>
+    let ls := (ω i.val).1.local_ p.val
+    (ls.echoSent, ls.echoesReceived, ls.readySent, ls.readyReceived)
+
+omit [Field F] in
+@[fun_prop]
+theorem measurable_coalitionTrivialView
+    (C : BivariateShamir.Coalition n t) (k : ℕ) :
+    Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+        coalitionTrivialView C ω k) := by
+  classical
+  refine measurable_pi_iff.mpr fun i => measurable_pi_iff.mpr fun p => ?_
+  have h1 : Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+      ω i.val) := measurable_pi_apply _
+  have h2 : Measurable (Prod.fst :
+      AVSSState n t F × Option (AVSSAction n F) → AVSSState n t F) := measurable_fst
+  have h3 : Measurable (fun s : AVSSState n t F =>
+      ((s.local_ p.val).echoSent, (s.local_ p.val).echoesReceived,
+       (s.local_ p.val).readySent, (s.local_ p.val).readyReceived)) :=
+    measurable_of_countable _
+  exact (h3.comp h2).comp h1
+
+/-- **Phase 6.2 structural theorem (`corruptViewFactorsThroughGrid`),
+8.5c weakened.**
 
 Almost surely, every corrupt party `p ∈ C` has, at every step `i < k`,
-a local state pinned to:
-  * `echoSent = false ∧ echoesReceived = ∅ ∧ readySent = false ∧
-     readyReceived = ∅ ∧ output = none` (constants, by
-     `corruptLocalInv`),
+a local state whose **algebraic** content is pinned to:
+  * `output = none` (by `corruptLocalInv`),
   * `rowPoly = some (rowPolyOfDealer (ω 0).1.partyPoint
      (ω 0).1.coeffs p.val)` whenever `delivered = true` (by
      `outputDeterminedInv` plus the AE invariance of
@@ -7990,11 +8040,12 @@ a local state pinned to:
   * `rowPoly = none` whenever `delivered = false` (by
      `corruptLocalInv`).
 
-Combined with the schedule prefix (which determines the `delivered`
-bit at every step), this expresses the corrupt coalition's
-operational view as a deterministic function of `(s_0.partyPoint,
-s_0.coeffs, schedulePrefix)`, modulo the coalition-grid-vs-row-poly
-secrecy gap discussed at §17.12. -/
+Phase 8.5b-α weakening: the four trivial fields
+`{echoSent, echoesReceived, readySent, readyReceived}` are now
+schedule-dependent for corrupt parties (those gates dropped
+`p ∉ corrupted`); they are recovered separately via the companion
+theorem `coalitionView_corrupt_trivial_factors_AE`, which is just
+the unfolding of `coalitionTrivialView`. -/
 theorem coalitionView_corrupt_factors_AE
     (sec : F) (corr : Finset (Fin n))
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
@@ -8005,33 +8056,60 @@ theorem coalitionView_corrupt_factors_AE
     ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
         ∀ p : C.val,
           let ls := (ω k).1.local_ p.val
-          ls.echoSent = false ∧
-          ls.echoesReceived = ∅ ∧
-          ls.readySent = false ∧
-          ls.readyReceived = ∅ ∧
           ls.output = none ∧
           (ls.delivered = false → ls.rowPoly = none) ∧
           (ls.delivered = true →
             ls.rowPoly = some (rowPolyOfDealer (ω 0).1.partyPoint
               (ω 0).1.coeffs p.val)) := by
-  -- TODO Phase 8.5b-γ: theorem statement needs weakening. Under the
-  -- C1+C2 model (Phase 8.5b-α), corrupt parties' fields
-  -- {echoSent, echoesReceived, readySent, readyReceived} are
-  -- schedule-dependent — the AE claim above is FALSE.
-  --
-  -- Phase 8.5b-γ should:
-  --  1. Drop the four schedule-dependent clauses from the statement.
-  --  2. Re-prove against the weakened `corruptLocalInv` (output = none ∧
-  --     delivered = false → rowPoly = none) plus the
-  --     `delivered = true` branch (which still factors through
-  --     `outputDeterminedInv` + `partyPoint`/`coeffs` AE-init).
-  --  3. Cascade through ~6+ secrecy-chain consumers
-  --     (`coalitionTraceView_eq_reconstruct_AE`,
-  --      `avss_secrecy_AS_view_conditional`, `_via_aux`,
-  --      `_via_init_invariant`, `simAlgebraicView`/`simSchedulePrefix`).
-  -- The schedule-dependent fields are recovered separately via the
-  -- `coalitionTrivialView` infrastructure landed in PR #58.
-  sorry
+  classical
+  have h_phase6 :=
+    avss_phase6Inv_AS (t := t) sec corr μ₀ h_init A
+  unfold AlmostBox at h_phase6
+  have h_pp := traceDist_partyPoint_AE_eq_init (t := t) sec corr μ₀ A k
+  have h_co := traceDist_coeffs_AE_eq_init (t := t) sec corr μ₀ A k
+  have h_corrupted :=
+    traceDist_corrupted_AE_eq_init (t := t) sec corr μ₀ A k
+  -- Pull `(ω 0).1.corrupted = corr` from `h_init` via the step-0 marginal.
+  have h_init_corr : ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
+      (ω 0).1.corrupted = corr := by
+    have hmeas : Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
+        (ω 0).1) := by fun_prop
+    have h_init_corr_μ : ∀ᵐ s ∂μ₀, s.corrupted = corr := by
+      filter_upwards [h_init] with s hs
+      exact hs.2.2.1
+    rw [← traceDist_step_zero_state_marginal (t := t) sec corr μ₀ A] at h_init_corr_μ
+    exact (ae_map_iff hmeas.aemeasurable MeasurableSet.of_discrete).mp h_init_corr_μ
+  filter_upwards [h_phase6, h_pp, h_co, h_corrupted, h_init_corr]
+    with ω h_inv h_pp_ω h_co_ω h_corrupted_ω h_init_corr_ω
+  intro p
+  have hp_corr : p.val ∈ (ω k).1.corrupted := by
+    rw [h_corrupted_ω, h_init_corr_ω]
+    exact h_C_corr p.2
+  have h_inv_k := h_inv k
+  obtain ⟨h_outDet, h_corruptLoc, _⟩ := h_inv_k
+  obtain ⟨h_out_eq, h_rp_none⟩ := h_corruptLoc p.val hp_corr
+  refine ⟨h_out_eq, h_rp_none, ?_⟩
+  intro h_del
+  have h_rp_some := h_outDet.1 p.val h_del
+  rw [h_rp_some, h_pp_ω, h_co_ω]
+
+/-- **Phase 8.5c companion theorem.** The trivial-field view of every
+corrupt party at every step matches `coalitionTrivialView`. This is
+literally definitional unfolding — `coalitionTrivialView` is *defined*
+as the projection of the per-step local state onto the four trivial
+fields. The lemma form is convenient at consumer sites (see
+`coalitionTraceView_eq_reconstruct_AE`). -/
+theorem coalitionView_corrupt_trivial_factors_AE
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (A : Adversary (AVSSState n t F) (AVSSAction n F))
+    (C : BivariateShamir.Coalition n t) (k : ℕ) :
+    ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
+        ∀ (i : Fin k) (p : C.val),
+          let ls := (ω i.val).1.local_ p.val
+          coalitionTrivialView C ω k i p =
+            (ls.echoSent, ls.echoesReceived, ls.readySent, ls.readyReceived) :=
+  Filter.Eventually.of_forall (fun _ _ _ => rfl)
 
 end Phase6_OperationalView
 
@@ -8144,38 +8222,41 @@ theorem measurable_coalitionAlgebraicView
         (s.local_ p.val).delivered) := measurable_of_countable _
     exact (h3.comp h2).comp h1
 
-/-- Build a corrupt party's local state from its row poly and the
-`delivered` bit, padding the trivial fields with their `init` values
-(as pinned by `corruptLocalInv`). -/
-def buildCorruptLocalState (rp : Fin (t+1) → F) (delivered : Bool) :
-    AVSSLocalState n t F :=
+/-- Build a corrupt party's local state from its row poly, its
+`TrivialView` projection, and its `delivered` bit. Phase 8.5c
+weakening: the trivial fields are now schedule-dependent and are
+threaded explicitly via `tv : TrivialView n` (rather than being
+hardcoded to `(false, ∅, false, ∅)` as in pre-8.5b). -/
+def buildCorruptLocalState (rp : Fin (t+1) → F) (tv : TrivialView n)
+    (delivered : Bool) : AVSSLocalState n t F :=
   { delivered := delivered
     rowPoly := if delivered then some rp else none
-    echoSent := false
-    echoesReceived := ∅
-    readySent := false
-    readyReceived := ∅
+    echoSent := tv.1
+    echoesReceived := tv.2.1
+    readySent := tv.2.2.1
+    readyReceived := tv.2.2.2
     output := none }
 
 omit [Fintype F] in
 /-- A corrupt party's local state is uniquely determined by its
-`delivered` bit and its row poly, given that the other fields are
-pinned (by `corruptLocalInv`) and `rowPoly` follows
-`outputDeterminedInv` plus the pin. -/
+`delivered` bit, its row poly, and its trivial-field projection,
+given that `output = none` (by `corruptLocalInv`) and `rowPoly`
+follows `outputDeterminedInv` plus the pin. Phase 8.5c weakening:
+the four trivial-field hypotheses are absorbed into the `tv`
+parameter; the lemma now only requires the three algebraic-content
+hypotheses. -/
 lemma corrupt_local_state_uniqueness
     (ls : AVSSLocalState n t F) (rp : Fin (t+1) → F)
-    (h_es : ls.echoSent = false)
-    (h_er : ls.echoesReceived = ∅)
-    (h_rs : ls.readySent = false)
-    (h_rr : ls.readyReceived = ∅)
     (h_out : ls.output = none)
     (h_rp_none : ls.delivered = false → ls.rowPoly = none)
     (h_rp_some : ls.delivered = true → ls.rowPoly = some rp) :
-    ls = buildCorruptLocalState rp ls.delivered := by
+    ls = buildCorruptLocalState rp
+      (ls.echoSent, ls.echoesReceived, ls.readySent, ls.readyReceived)
+      ls.delivered := by
   cases ls with
   | mk d rp_actual es er rr rs out =>
-    simp only at h_es h_er h_rs h_rr h_out
-    subst h_es; subst h_er; subst h_rr; subst h_rs; subst h_out
+    simp only at h_out
+    subst h_out
     cases d with
     | false =>
         have heq : rp_actual = none := h_rp_none rfl
@@ -8188,26 +8269,36 @@ lemma corrupt_local_state_uniqueness
         unfold buildCorruptLocalState
         rfl
 
-/-- Reconstruct `coalitionTraceView` from a `coalitionAlgebraicView`:
-at every `(i, p)`, build the corrupt local state from `(rp p)` and
-`(delivered i p)`. -/
+/-- Reconstruct `coalitionTraceView` from `(coalitionAlgebraicView,
+coalitionTrivialView)`: at every `(i, p)`, build the corrupt local
+state from `(rp p)`, the per-step trivial-field projection, and
+`(delivered i p)`. Phase 8.5c restructuring: this function now
+takes a `tv` parameter to thread the schedule-dependent trivial
+fields. -/
 def reconstructCoalitionTraceView
     {C : BivariateShamir.Coalition n t} {k : ℕ}
-    (rp : C.val → Fin (t+1) → F) (delivered : Fin k → C.val → Bool) :
+    (rp : C.val → Fin (t+1) → F)
+    (tv : Fin k → C.val → TrivialView n)
+    (delivered : Fin k → C.val → Bool) :
     Fin k → C.val → AVSSLocalState n t F :=
-  fun i p => buildCorruptLocalState (rp p) (delivered i p)
+  fun i p => buildCorruptLocalState (rp p) (tv i p) (delivered i p)
 
 omit [Field F] in
 @[fun_prop]
 theorem measurable_reconstruct_pair
     {C : BivariateShamir.Coalition n t} {k : ℕ} :
-    Measurable (fun rd : (C.val → Fin (t+1) → F) × (Fin k → C.val → Bool) =>
-        reconstructCoalitionTraceView (C := C) (k := k) rd.1 rd.2) :=
+    Measurable
+      (fun rtd : ((C.val → Fin (t+1) → F) × (Fin k → C.val → Bool)) ×
+                 (Fin k → C.val → TrivialView n) =>
+        reconstructCoalitionTraceView (C := C) (k := k)
+          rtd.1.1 rtd.2 rtd.1.2) :=
   measurable_of_countable _
 
-/-- **Phase 6.2 → 6.3 structural bridge.** Almost surely along the
-trace, `coalitionTraceView` matches `reconstructCoalitionTraceView`
-applied to the components of `coalitionAlgebraicView`. -/
+/-- **Phase 6.2 → 6.3 structural bridge** (8.5c). Almost surely along
+the trace, `coalitionTraceView` matches `reconstructCoalitionTraceView`
+applied to `(coalitionAlgebraicView, coalitionTrivialView)`. The
+trivial-view component captures the schedule-dependent fields that,
+post-8.5b-α, no longer pin to `(false, ∅, false, ∅)`. -/
 theorem coalitionTraceView_eq_reconstruct_AE
     (sec : F) (corr : Finset (Fin n))
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
@@ -8219,32 +8310,36 @@ theorem coalitionTraceView_eq_reconstruct_AE
         coalitionTraceView C ω k =
           reconstructCoalitionTraceView (C := C) (k := k)
             (coalitionAlgebraicView C ω k).1
+            (coalitionTrivialView C ω k)
             (coalitionAlgebraicView C ω k).2 := by
   classical
-  -- Per-step factor: at every step `i`, the corrupt local states are pinned.
+  -- Per-step factor: at every step `i`, the corrupt local states are
+  -- determined by their trivial view + algebraic view + delivered bit.
   have h_step :
       ∀ i : ℕ, ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
           ∀ p : C.val,
-            (ω i).1.local_ p.val =
-              buildCorruptLocalState
+            let ls := (ω i).1.local_ p.val
+            ls = buildCorruptLocalState
                 (rowPolyOfDealer (ω 0).1.partyPoint (ω 0).1.coeffs p.val)
-                ((ω i).1.local_ p.val).delivered := by
+                (ls.echoSent, ls.echoesReceived, ls.readySent, ls.readyReceived)
+                ls.delivered := by
     intro i
     have h_factor :=
       coalitionView_corrupt_factors_AE (t := t) sec corr μ₀ h_init A
         C h_C_corr i
     filter_upwards [h_factor] with ω hω p
-    obtain ⟨h_es, h_er, h_rs, h_rr, h_out, h_rp_none, h_rp_some⟩ := hω p
+    obtain ⟨h_out, h_rp_none, h_rp_some⟩ := hω p
     exact corrupt_local_state_uniqueness ((ω i).1.local_ p.val)
       (rowPolyOfDealer (ω 0).1.partyPoint (ω 0).1.coeffs p.val)
-      h_es h_er h_rs h_rr h_out h_rp_none h_rp_some
+      h_out h_rp_none h_rp_some
   -- AE-quantify over `i : Fin k`.
   have h_all : ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) A μ₀),
       ∀ i : Fin k, ∀ p : C.val,
-        (ω i.val).1.local_ p.val =
-          buildCorruptLocalState
+        let ls := (ω i.val).1.local_ p.val
+        ls = buildCorruptLocalState
             (rowPolyOfDealer (ω 0).1.partyPoint (ω 0).1.coeffs p.val)
-            ((ω i.val).1.local_ p.val).delivered := by
+            (ls.echoSent, ls.echoesReceived, ls.readySent, ls.readyReceived)
+            ls.delivered := by
     rw [ae_all_iff]
     intro i
     exact h_step i.val
@@ -8252,14 +8347,17 @@ theorem coalitionTraceView_eq_reconstruct_AE
   -- Conclude pointwise equality of the function maps.
   funext i p
   unfold coalitionTraceView coalitionView reconstructCoalitionTraceView
-    coalitionAlgebraicView
+    coalitionAlgebraicView coalitionTrivialView
   exact hω i p
 
-/-- **Phase 6.3 conditional headline theorem.** Given the joint
-invariance of `(coalitionAlgebraicView, schedulePrefix)` in the
-secret (a hypothesis that Phase 7 plus row-poly secrecy will
-unconditionally supply), the operational view's joint marginal
-`(coalitionTraceView, schedulePrefix)` is invariant in the secret.
+/-- **Phase 6.3 conditional headline theorem (8.5c form).** Given the
+joint invariance of `(coalitionAlgebraicView, coalitionTrivialView,
+schedulePrefix)` in the secret — Phase 7.5/7.6 plus row-poly secrecy
+will unconditionally supply this — the operational view's joint
+marginal `(coalitionTraceView, schedulePrefix)` is invariant in the
+secret. Phase 8.5c update: `h_aux` now also covers the trivial-view
+projection, since post-8.5b-α the trivial fields are
+schedule-dependent.
 
 ⚠ See the §17.12 doc-comment for the two structural blockers
 (schedule leakage + row-poly-vs-grid secrecy) that prevent an
@@ -8276,38 +8374,44 @@ theorem avss_secrecy_AS_view_conditional
     (k : ℕ)
     (h_aux :
       (traceDist (avssSpec (t := t) sec corr) A μ_sec).map
-          (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k)) =
+          (fun ω => ((coalitionAlgebraicView C ω k, coalitionTrivialView C ω k),
+                     schedulePrefix ω k)) =
         (traceDist (avssSpec (t := t) sec' corr) A μ_sec').map
-          (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k))) :
+          (fun ω => ((coalitionAlgebraicView C ω k, coalitionTrivialView C ω k),
+                     schedulePrefix ω k))) :
     (traceDist (avssSpec (t := t) sec corr) A μ_sec).map
         (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) =
       (traceDist (avssSpec (t := t) sec' corr) A μ_sec').map
         (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) := by
   classical
-  -- The reduction map: given `(av, sp) : (algebraicView, schedule)`,
-  -- produce `(reconstruct av, sp) : (coalitionTraceView, schedule)`.
-  set G : ((C.val → Fin (t+1) → F) × (Fin k → C.val → Bool)) ×
+  -- The reduction map: given `((av, tv), sp) : (algView, trivView, sched)`,
+  -- produce `(reconstruct av tv sched_delivered, sp) : (coalitionTraceView, schedule)`.
+  set G : (((C.val → Fin (t+1) → F) × (Fin k → C.val → Bool)) ×
+            (Fin k → C.val → TrivialView n)) ×
             (Fin k → Option (AVSSAction n F)) →
           (Fin k → C.val → AVSSLocalState n t F) ×
             (Fin k → Option (AVSSAction n F)) :=
-    fun avSp =>
-      (reconstructCoalitionTraceView (C := C) (k := k) avSp.1.1 avSp.1.2,
-       avSp.2)
+    fun atSp =>
+      (reconstructCoalitionTraceView (C := C) (k := k)
+        atSp.1.1.1 atSp.1.2 atSp.1.1.2,
+       atSp.2)
     with hG_def
   have hmeas_G : Measurable G := measurable_of_countable _
-  -- Bridge: cTV ω = reconstruct (algebraicView ω) AE under both traces.
+  -- Bridge: cTV ω = reconstruct (algView ω, trivView ω) AE under both traces.
   have h_bridge_sec :=
     coalitionTraceView_eq_reconstruct_AE (t := t) sec corr μ_sec
       h_init_sec A C h_C_corr k
   have h_bridge_sec' :=
     coalitionTraceView_eq_reconstruct_AE (t := t) sec' corr μ_sec'
       h_init_sec' A C h_C_corr k
-  -- Push the `cTV, sP` marginal through `G ∘ (algebraicView, sP)`.
+  -- Push the `cTV, sP` marginal through `G ∘ (algView, trivView, sP)`.
   have h_push_sec :
       (traceDist (avssSpec (t := t) sec corr) A μ_sec).map
           (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) =
         (traceDist (avssSpec (t := t) sec corr) A μ_sec).map
-          (fun ω => G (coalitionAlgebraicView C ω k, schedulePrefix ω k)) := by
+          (fun ω => G ((coalitionAlgebraicView C ω k,
+                         coalitionTrivialView C ω k),
+                        schedulePrefix ω k)) := by
     apply Measure.map_congr
     filter_upwards [h_bridge_sec] with ω hω
     rw [hG_def]
@@ -8316,21 +8420,29 @@ theorem avss_secrecy_AS_view_conditional
       (traceDist (avssSpec (t := t) sec' corr) A μ_sec').map
           (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) =
         (traceDist (avssSpec (t := t) sec' corr) A μ_sec').map
-          (fun ω => G (coalitionAlgebraicView C ω k, schedulePrefix ω k)) := by
+          (fun ω => G ((coalitionAlgebraicView C ω k,
+                         coalitionTrivialView C ω k),
+                        schedulePrefix ω k)) := by
     apply Measure.map_congr
     filter_upwards [h_bridge_sec'] with ω hω
     rw [hG_def]
     simp only [hω]
-  -- Compose with the auxiliary hypothesis (algebraicView × sP invariance).
+  -- Compose with the auxiliary hypothesis (joint × sP invariance).
   rw [h_push_sec, h_push_sec']
-  -- Both sides equal `(map (algebraicView, sP)).map G`. Apply h_aux.
+  -- Both sides equal `(map (algView, trivView, sP)).map G`. Apply h_aux.
   rw [show (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
-        G (coalitionAlgebraicView C ω k, schedulePrefix ω k)) =
-      G ∘ (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k)) from rfl]
+        G ((coalitionAlgebraicView C ω k, coalitionTrivialView C ω k),
+           schedulePrefix ω k)) =
+      G ∘ (fun ω => ((coalitionAlgebraicView C ω k,
+                       coalitionTrivialView C ω k),
+                      schedulePrefix ω k)) from rfl]
   have hmeas_av_sp_sec :
       Measurable (fun ω : ℕ → AVSSState n t F × Option (AVSSAction n F) =>
-          (coalitionAlgebraicView C ω k, schedulePrefix ω k)) :=
-    (measurable_coalitionAlgebraicView C k).prodMk (measurable_schedulePrefix k)
+          ((coalitionAlgebraicView C ω k, coalitionTrivialView C ω k),
+           schedulePrefix ω k)) :=
+    ((measurable_coalitionAlgebraicView C k).prodMk
+        (measurable_coalitionTrivialView C k)).prodMk
+      (measurable_schedulePrefix k)
   rw [← Measure.map_map hmeas_G hmeas_av_sp_sec,
       ← Measure.map_map hmeas_G hmeas_av_sp_sec, h_aux]
 
@@ -9428,6 +9540,18 @@ noncomputable def simSchedulePrefix (R : AVSSRushingAdversary n t F corr)
     Fin k → Option (AVSSAction n F) :=
   fun i => (avssSimulateTrace R s_0 i.val).2
 
+/-- **Phase 8.5c** simulate-derived trivial-field view: a deterministic
+function of the initial state `s_0`, equal AE to `coalitionTrivialView
+C ω k` along the trace under a rushing adversary `R`. Mirrors the
+second component of `simAlgebraicView` (the `delivered` bits) for the
+four schedule-dependent trivial fields. -/
+noncomputable def simTrivialView (R : AVSSRushingAdversary n t F corr)
+    (C : BivariateShamir.Coalition n t) (k : ℕ) (s_0 : AVSSState n t F) :
+    Fin k → C.val → TrivialView n :=
+  fun i p =>
+    let ls := (avssSimulateTrace R s_0 i.val).1.local_ p.val
+    (ls.echoSent, ls.echoesReceived, ls.readySent, ls.readyReceived)
+
 /-- **Phase 7.4 joint factoring.** Under a rushing adversary `R`, the
 joint `(coalitionAlgebraicView C ω k, schedulePrefix ω k)` AE-equals
 the simulate's deterministic image of `(ω 0).1`.
@@ -9497,6 +9621,70 @@ theorem traceDist_algebraicView_schedulePrefix_factors_AE
           (simAlgebraicView R C k (ω 0).1, simSchedulePrefix R k (ω 0).1)) := by
   refine Measure.map_congr ?_
   exact coalitionAlgebraicView_schedulePrefix_AE_eq_sim
+    (t := t) sec corr μ₀ R C k
+
+/-- **Phase 8.5c joint factoring (Ext form).** Under a rushing
+adversary `R`, the joint
+`((coalitionAlgebraicView ω k, coalitionTrivialView ω k),
+  schedulePrefix ω k)` AE-equals the simulate's deterministic image
+of `(ω 0).1`. Same proof structure as the algebraic-only bridge,
+extended with the trivial-view component. -/
+theorem coalitionViewExt_schedulePrefix_AE_eq_sim
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (R : AVSSRushingAdversary n t F corr)
+    (C : BivariateShamir.Coalition n t) (k : ℕ) :
+    ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀),
+        ((coalitionAlgebraicView C ω k, coalitionTrivialView C ω k),
+          schedulePrefix ω k) =
+          ((simAlgebraicView R C k (ω 0).1,
+              simTrivialView R C k (ω 0).1),
+            simSchedulePrefix R k (ω 0).1) := by
+  classical
+  have h_prefix :=
+    traceDist_AE_eq_avssSimulateTrace_strong (t := t) sec corr μ₀ R k
+  filter_upwards [h_prefix] with ω hω
+  refine Prod.ext (Prod.ext (Prod.ext rfl ?_) ?_) ?_
+  · -- delivered bits at every (i : Fin k, p ∈ C)
+    funext i p
+    show ((ω i.val).1.local_ p.val).delivered =
+        ((avssSimulateTrace R (ω 0).1 i.val).1.local_ p.val).delivered
+    have hi : i.val ≤ k := le_of_lt i.isLt
+    rw [hω i.val hi]
+  · -- trivial-field projections at every (i : Fin k, p ∈ C)
+    funext i p
+    have hi : i.val ≤ k := le_of_lt i.isLt
+    show (((ω i.val).1.local_ p.val).echoSent,
+          ((ω i.val).1.local_ p.val).echoesReceived,
+          ((ω i.val).1.local_ p.val).readySent,
+          ((ω i.val).1.local_ p.val).readyReceived) =
+        (((avssSimulateTrace R (ω 0).1 i.val).1.local_ p.val).echoSent,
+         ((avssSimulateTrace R (ω 0).1 i.val).1.local_ p.val).echoesReceived,
+         ((avssSimulateTrace R (ω 0).1 i.val).1.local_ p.val).readySent,
+         ((avssSimulateTrace R (ω 0).1 i.val).1.local_ p.val).readyReceived)
+    rw [hω i.val hi]
+  · -- schedulePrefix at every i : Fin k
+    funext i
+    show (ω i.val).2 = (avssSimulateTrace R (ω 0).1 i.val).2
+    have hi : i.val ≤ k := le_of_lt i.isLt
+    rw [hω i.val hi]
+
+/-- Measure-level form of `coalitionViewExt_schedulePrefix_AE_eq_sim`. -/
+theorem traceDist_algTrivView_schedulePrefix_factors_AE
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (R : AVSSRushingAdversary n t F corr)
+    (C : BivariateShamir.Coalition n t) (k : ℕ) :
+    (traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀).map
+        (fun ω => ((coalitionAlgebraicView C ω k, coalitionTrivialView C ω k),
+                   schedulePrefix ω k)) =
+      (traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀).map
+        (fun ω =>
+          ((simAlgebraicView R C k (ω 0).1,
+              simTrivialView R C k (ω 0).1),
+            simSchedulePrefix R k (ω 0).1)) := by
+  refine Measure.map_congr ?_
+  exact coalitionViewExt_schedulePrefix_AE_eq_sim
     (t := t) sec corr μ₀ R C k
 
 /-! ## §19.3. Phase 7.5 — operational view secrecy under rushing adversary
@@ -9576,9 +9764,11 @@ theorem avss_secrecy_AS_view_rushing_via_aux
     (h_C_corr : C.val ⊆ corr) (k : ℕ)
     (h_aux :
       (traceDist (avssSpec (t := t) sec corr) R.toAdversary μ_sec).map
-          (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k)) =
+          (fun ω => ((coalitionAlgebraicView C ω k, coalitionTrivialView C ω k),
+                     schedulePrefix ω k)) =
         (traceDist (avssSpec (t := t) sec' corr) R.toAdversary μ_sec').map
-          (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k))) :
+          (fun ω => ((coalitionAlgebraicView C ω k, coalitionTrivialView C ω k),
+                     schedulePrefix ω k))) :
     (traceDist (avssSpec (t := t) sec corr) R.toAdversary μ_sec).map
         (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) =
       (traceDist (avssSpec (t := t) sec' corr) R.toAdversary μ_sec').map
@@ -9665,6 +9855,44 @@ theorem traceDist_jointMarginal_eq_init
   rw [← Measure.map_map hmeas_simView hmeas_state0]
   rw [traceDist_step_zero_state_marginal sec corr μ₀ R.toAdversary]
 
+/-- **Step 1 (Ext form, 8.5c).** The trace-level joint marginal of
+`((coalitionAlgebraicView, coalitionTrivialView), schedulePrefix)`
+equals the pushforward of the initial measure through
+`((simAlgebraicView, simTrivialView), simSchedulePrefix)`. -/
+theorem traceDist_jointMarginalExt_eq_init
+    (sec : F) (corr : Finset (Fin n))
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (R : AVSSRushingAdversary n t F corr)
+    (C : BivariateShamir.Coalition n t) (k : ℕ) :
+    (traceDist (avssSpec (t := t) sec corr) R.toAdversary μ₀).map
+        (fun ω => ((coalitionAlgebraicView C ω k,
+                    coalitionTrivialView C ω k),
+                   schedulePrefix ω k)) =
+      μ₀.map (fun s_0 =>
+        ((simAlgebraicView R C k s_0, simTrivialView R C k s_0),
+          simSchedulePrefix R k s_0)) := by
+  classical
+  rw [traceDist_algTrivView_schedulePrefix_factors_AE
+    (t := t) sec corr μ₀ R C k]
+  have hmeas_simView : Measurable
+      (fun s_0 : AVSSState n t F =>
+        ((simAlgebraicView R C k s_0, simTrivialView R C k s_0),
+          simSchedulePrefix R k s_0)) :=
+    measurable_of_countable _
+  have hmeas_state0 : Measurable
+      (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+        (ω 0).1) := by fun_prop
+  rw [show (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+            ((simAlgebraicView R C k (ω 0).1,
+                simTrivialView R C k (ω 0).1),
+              simSchedulePrefix R k (ω 0).1)) =
+        (fun s_0 : AVSSState n t F =>
+            ((simAlgebraicView R C k s_0, simTrivialView R C k s_0),
+              simSchedulePrefix R k s_0)) ∘
+          (fun ω => (ω 0).1) from rfl]
+  rw [← Measure.map_map hmeas_simView hmeas_state0]
+  rw [traceDist_step_zero_state_marginal sec corr μ₀ R.toAdversary]
+
 /-- **Step 2.** Given sec-invariance at the initial-measure level
 (through the simulate-derived deterministic function), conclude
 sec-invariance at the trace level. -/
@@ -9685,6 +9913,35 @@ theorem traceDist_algebraicView_schedulePrefix_invariant
         (fun ω => (coalitionAlgebraicView C ω k, schedulePrefix ω k)) := by
   rw [traceDist_jointMarginal_eq_init (t := t) sec corr μ_sec R C k,
       traceDist_jointMarginal_eq_init (t := t) sec' corr μ_sec' R C k]
+  exact h_init_invariant
+
+/-- **Step 2 (Ext form, 8.5c).** Sec-invariance of the initial-measure
+joint pushforward through `((simAlgebraicView, simTrivialView),
+simSchedulePrefix)` lifts to sec-invariance of the trace-level joint
+`((coalitionAlgebraicView, coalitionTrivialView), schedulePrefix)`. -/
+theorem traceDist_algTrivView_schedulePrefix_invariant
+    (sec sec' : F) (corr : Finset (Fin n))
+    (μ_sec μ_sec' : Measure (AVSSState n t F))
+    [IsProbabilityMeasure μ_sec] [IsProbabilityMeasure μ_sec']
+    (R : AVSSRushingAdversary n t F corr)
+    (C : BivariateShamir.Coalition n t) (k : ℕ)
+    (h_init_invariant :
+        μ_sec.map (fun s_0 =>
+          ((simAlgebraicView R C k s_0, simTrivialView R C k s_0),
+            simSchedulePrefix R k s_0)) =
+          μ_sec'.map (fun s_0 =>
+            ((simAlgebraicView R C k s_0, simTrivialView R C k s_0),
+              simSchedulePrefix R k s_0))) :
+    (traceDist (avssSpec (t := t) sec corr) R.toAdversary μ_sec).map
+        (fun ω => ((coalitionAlgebraicView C ω k,
+                    coalitionTrivialView C ω k),
+                   schedulePrefix ω k)) =
+      (traceDist (avssSpec (t := t) sec' corr) R.toAdversary μ_sec').map
+        (fun ω => ((coalitionAlgebraicView C ω k,
+                    coalitionTrivialView C ω k),
+                   schedulePrefix ω k)) := by
+  rw [traceDist_jointMarginalExt_eq_init (t := t) sec corr μ_sec R C k,
+      traceDist_jointMarginalExt_eq_init (t := t) sec' corr μ_sec' R C k]
   exact h_init_invariant
 
 /-- **Step 3 (Phase 7.4 headline).**  Operational view secrecy under a
@@ -9709,16 +9966,18 @@ theorem avss_secrecy_AS_view_rushing_via_init_invariant
     (h_C_corr : C.val ⊆ corr) (k : ℕ)
     (h_init_invariant :
         μ_sec.map (fun s_0 =>
-          (simAlgebraicView R C k s_0, simSchedulePrefix R k s_0)) =
+          ((simAlgebraicView R C k s_0, simTrivialView R C k s_0),
+            simSchedulePrefix R k s_0)) =
           μ_sec'.map (fun s_0 =>
-            (simAlgebraicView R C k s_0, simSchedulePrefix R k s_0))) :
+            ((simAlgebraicView R C k s_0, simTrivialView R C k s_0),
+              simSchedulePrefix R k s_0))) :
     (traceDist (avssSpec (t := t) sec corr) R.toAdversary μ_sec).map
         (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) =
       (traceDist (avssSpec (t := t) sec' corr) R.toAdversary μ_sec').map
         (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) := by
   apply avss_secrecy_AS_view_rushing_via_aux sec sec' μ_sec μ_sec'
     h_init_sec h_init_sec' R C h_C_corr k
-  exact traceDist_algebraicView_schedulePrefix_invariant
+  exact traceDist_algTrivView_schedulePrefix_invariant
     (t := t) sec sec' corr μ_sec μ_sec' R C k h_init_invariant
 
 /-! ## §19.4. Phase 7.4 final closure — discharging `h_init_invariant`
@@ -11407,6 +11666,191 @@ theorem avssInitMeasure_simView_sec_invariant
   exact corrRowMap_uniform_sec_invariant sec sec' corr partyPoint
     h_inj h_nz_pp h_F h_corr
 
+/-! ## §19.4.5-bis — Ext form (8.5c): `simTrivialView` joint sec-invariance
+
+Phase 8.5c lifts the §19.4.5 sec-invariance from `(simAlgebraicView,
+simSchedulePrefix)` to `((simAlgebraicView, simTrivialView),
+simSchedulePrefix)`. The `simTrivialView` component reads the four
+schedule-dependent trivial fields from the simulate trace; it agrees
+on two states with matching corrupt-rowpolys (the local-states-at-
+corrupt are equal under `simSyncInv`, and the trivial fields are
+projections of those local states). -/
+
+/-- The Ext form of `simView_simSched_avssInitState_factors`: the
+simulate-derived `((simAlgebraicView, simTrivialView),
+simSchedulePrefix)` triple agrees on `avssInitState` of two
+secret-realisations whose corrupt-rowpolys match. -/
+theorem simViewExt_simSched_avssInitState_factors
+    (R : AVSSRushingAdversary n t F corr)
+    (h_R : R.toProtocolView = avssCoalitionView corr)
+    (C : BivariateShamir.Coalition n t) (h_C_corr : C.val ⊆ corr)
+    (sec sec' : F) (partyPoint : Fin n → F) (dealerHonest : Bool) (k : ℕ)
+    (c c' : Fin (t+1) → Fin (t+1) → F)
+    (h_rp : ∀ p ∈ corr,
+      rowPolyOfDealer partyPoint c p = rowPolyOfDealer partyPoint c' p) :
+    ((simAlgebraicView R C k
+        (avssInitState (n := n) sec corr partyPoint dealerHonest c),
+      simTrivialView R C k
+        (avssInitState (n := n) sec corr partyPoint dealerHonest c)),
+     simSchedulePrefix R k
+      (avssInitState (n := n) sec corr partyPoint dealerHonest c)) =
+    ((simAlgebraicView R C k
+        (avssInitState (n := n) sec' corr partyPoint dealerHonest c'),
+      simTrivialView R C k
+        (avssInitState (n := n) sec' corr partyPoint dealerHonest c')),
+     simSchedulePrefix R k
+      (avssInitState (n := n) sec' corr partyPoint dealerHonest c')) := by
+  have h_sync :=
+    simSyncInv_avssInitState sec sec' corr partyPoint dealerHonest c c' h_rp
+  have h_view :=
+    simAlgebraicView_simSchedulePrefix_eq_of_simSyncInv R h_R C h_C_corr _ _ h_sync k
+  -- The trivial-view component agrees by `local_corrupt_eq` at every step.
+  have h_triv :
+      simTrivialView R C k
+          (avssInitState (n := n) sec corr partyPoint dealerHonest c) =
+        simTrivialView R C k
+          (avssInitState (n := n) sec' corr partyPoint dealerHonest c') := by
+    funext i p
+    have h_step :=
+      avssSimulateTrace_simSyncInv R h_R _ _ h_sync i.val
+    have h_state_inv := h_step.1
+    have h_pcorr : p.val ∈ corr := h_C_corr p.property
+    have h_local_eq := h_state_inv.local_corrupt_eq p.val h_pcorr
+    show (((avssSimulateTrace R
+            (avssInitState (n := n) sec corr partyPoint dealerHonest c) i.val).1.local_
+            p.val).echoSent,
+          ((avssSimulateTrace R
+            (avssInitState (n := n) sec corr partyPoint dealerHonest c) i.val).1.local_
+            p.val).echoesReceived,
+          ((avssSimulateTrace R
+            (avssInitState (n := n) sec corr partyPoint dealerHonest c) i.val).1.local_
+            p.val).readySent,
+          ((avssSimulateTrace R
+            (avssInitState (n := n) sec corr partyPoint dealerHonest c) i.val).1.local_
+            p.val).readyReceived) =
+        (((avssSimulateTrace R
+            (avssInitState (n := n) sec' corr partyPoint dealerHonest c') i.val).1.local_
+            p.val).echoSent,
+         ((avssSimulateTrace R
+            (avssInitState (n := n) sec' corr partyPoint dealerHonest c') i.val).1.local_
+            p.val).echoesReceived,
+         ((avssSimulateTrace R
+            (avssInitState (n := n) sec' corr partyPoint dealerHonest c') i.val).1.local_
+            p.val).readySent,
+         ((avssSimulateTrace R
+            (avssInitState (n := n) sec' corr partyPoint dealerHonest c') i.val).1.local_
+            p.val).readyReceived)
+    rw [h_local_eq]
+  -- Combine.
+  refine Prod.ext ?_ h_view.2
+  exact Prod.ext h_view.1 h_triv
+
+/-- **Step A (Ext form).** Post-composition map for the Ext joint:
+adds `simTrivialView` to `avssSimViewK`'s output. -/
+noncomputable def avssSimViewKExt {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (C : BivariateShamir.Coalition n t)
+    (partyPoint : Fin n → F) (dealerHonest : Bool) (k : ℕ) :
+    (corr → Fin (t+1) → F) →
+      (((C.val → Fin (t+1) → F) × (Fin k → C.val → Bool)) ×
+        (Fin k → C.val → TrivialView n)) ×
+      (Fin k → Option (AVSSAction n F)) :=
+  fun rp =>
+    let chooseC : Fin (t+1) → Fin (t+1) → F :=
+      Classical.epsilon
+        (fun c => ∀ (p : corr), rowPolyOfDealer (n := n) (t := t)
+          partyPoint c p.val = rp p)
+    ((simAlgebraicView R C k
+        (avssInitState (n := n) (0 : F) corr partyPoint dealerHonest chooseC),
+      simTrivialView R C k
+        (avssInitState (n := n) (0 : F) corr partyPoint dealerHonest chooseC)),
+      simSchedulePrefix R k
+        (avssInitState (n := n) (0 : F) corr partyPoint dealerHonest chooseC))
+
+/-- **Step A (Ext form).** The pushforward of `avssInitMeasure` through
+the Ext joint factors through `corrRowMap` plus `avssSimViewKExt`. -/
+theorem avssInitMeasure_simViewExt_factors_through_corrRow
+    (sec : F) {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (h_R : R.toProtocolView = avssCoalitionView corr)
+    (C : BivariateShamir.Coalition n t) (h_C_corr : C.val ⊆ corr)
+    (partyPoint : Fin n → F) (dealerHonest : Bool) (k : ℕ) :
+    (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest).map
+        (fun s_0 =>
+          ((simAlgebraicView R C k s_0, simTrivialView R C k s_0),
+            simSchedulePrefix R k s_0)) =
+      (((Leslie.Prob.Polynomial.uniformBivariateFullWithFixedZero
+          (F := F) t t sec).map
+            (corrRowMap (n := n) (t := t) corr partyPoint)).map
+          (avssSimViewKExt R C partyPoint dealerHonest k)).toMeasure := by
+  classical
+  unfold avssInitMeasure
+  rw [PMF.toMeasure_map _ _ (measurable_of_countable _)]
+  congr 1
+  rw [PMF.map_comp]
+  unfold avssInitPMF
+  rw [PMF.map_comp]
+  apply PMF.map_congr_of_support
+  intro f hf
+  show ((simAlgebraicView R C k
+      (avssInitState (n := n) sec corr partyPoint dealerHonest (polyToCoeffs f)),
+        simTrivialView R C k
+      (avssInitState (n := n) sec corr partyPoint dealerHonest (polyToCoeffs f))),
+        simSchedulePrefix R k
+      (avssInitState (n := n) sec corr partyPoint dealerHonest (polyToCoeffs f))) =
+    avssSimViewKExt R C partyPoint dealerHonest k
+      (corrRowMap (n := n) (t := t) corr partyPoint f)
+  unfold avssSimViewKExt
+  apply simViewExt_simSched_avssInitState_factors R h_R C h_C_corr
+  intro p hp
+  have h_witness :
+      ∃ c : Fin (t+1) → Fin (t+1) → F,
+        ∀ (p_c : corr), rowPolyOfDealer (n := n) (t := t)
+          partyPoint c p_c.val =
+            corrRowMap (n := n) (t := t) corr partyPoint f p_c := by
+    refine ⟨polyToCoeffs f, ?_⟩
+    intro p_c
+    rfl
+  have h_eps :
+      ∀ (p_c : corr),
+        rowPolyOfDealer (n := n) (t := t) partyPoint
+          (Classical.epsilon
+            (fun c => ∀ (p_c : corr), rowPolyOfDealer (n := n) (t := t)
+              partyPoint c p_c.val =
+                corrRowMap (n := n) (t := t) corr partyPoint f p_c))
+          p_c.val =
+            corrRowMap (n := n) (t := t) corr partyPoint f p_c :=
+    Classical.epsilon_spec h_witness
+  exact (h_eps ⟨p, hp⟩).symm
+
+set_option maxHeartbeats 400000 in
+/-- **Step B (Ext form, 8.5c) — sec-invariance of the Ext joint marginal.** -/
+theorem avssInitMeasure_simViewExt_sec_invariant
+    (sec sec' : F) {corr : Finset (Fin n)}
+    (R : AVSSRushingAdversary n t F corr)
+    (h_R : R.toProtocolView = avssCoalitionView corr)
+    (C : BivariateShamir.Coalition n t) (h_C_corr : C.val ⊆ corr)
+    (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_inj : Set.InjOn partyPoint corr)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (h_corr : corr.card ≤ t) (k : ℕ) :
+    (avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest).map
+        (fun s_0 =>
+          ((simAlgebraicView R C k s_0, simTrivialView R C k s_0),
+            simSchedulePrefix R k s_0)) =
+      (avssInitMeasure (n := n) (t := t) sec' corr partyPoint dealerHonest).map
+        (fun s_0 =>
+          ((simAlgebraicView R C k s_0, simTrivialView R C k s_0),
+            simSchedulePrefix R k s_0)) := by
+  rw [avssInitMeasure_simViewExt_factors_through_corrRow
+        (n := n) (t := t) sec R h_R C h_C_corr partyPoint dealerHonest k,
+      avssInitMeasure_simViewExt_factors_through_corrRow
+        (n := n) (t := t) sec' R h_R C h_C_corr partyPoint dealerHonest k]
+  congr 2
+  exact corrRowMap_uniform_sec_invariant sec sec' corr partyPoint
+    h_inj h_nz_pp h_F h_corr
+
 /-- **Canonical headline — fully unconditional operational view-secrecy
 under a rushing adversary.**
 
@@ -11485,7 +11929,7 @@ theorem avss_secrecy_AS_view_rushing
     (avssInitMeasure_AE_initPred sec corr partyPoint dealerHonest)
     (avssInitMeasure_AE_initPred sec' corr partyPoint dealerHonest)
     R C h_C_corr k
-  exact avssInitMeasure_simView_sec_invariant (n := n) (t := t)
+  exact avssInitMeasure_simViewExt_sec_invariant (n := n) (t := t)
     sec sec' R h_R C h_C_corr partyPoint dealerHonest
     h_inj h_nz_pp h_F h_corr k
 

@@ -1,10 +1,65 @@
-# Phase 8.5b Checkpoint — 8.5b-δ landed (BC running-min route switch)
+# Phase 8.5b Checkpoint — 8.5c landed (coalitionView weakening + secrecy cascade)
 
-**Branch**: `feat/randomized-leslie-m3-avss-phase8-5b-delta`
-**Base**: PR #64 (8.5b-γ-followup-2: per-pair `inflightReady` tokens).
+**Branch**: `feat/randomized-leslie-m3-avss-phase8-5c`
+**Base**: PR #65 (8.5b-δ: BC running-min route switch).
 **Build state**: green at 2699 jobs.
-**Sorry count**: 2 (unchanged; U_dec_prob reclassified as **vestigial** —
-see "Why U_dec_prob remains" below).
+**Sorry count**: **1** (only the vestigial `U_dec_prob`; the
+`coalitionView_corrupt_factors_AE` headline sorry is closed).
+**Axiom-clean** secrecy chain: `coalitionView_corrupt_factors_AE`,
+`coalitionTraceView_eq_reconstruct_AE`, `avss_secrecy_AS_view_conditional`,
+`avss_secrecy_AS_view_rushing_via_aux`,
+`avss_secrecy_AS_view_rushing_via_init_invariant`, and
+`avss_secrecy_AS_view_rushing` all carry only `[propext, Classical.choice,
+Quot.sound]`.
+
+## What 8.5c delivered
+
+**`coalitionView_corrupt_factors_AE` weakening + `coalitionTrivialView`
+secrecy-chain cascade**:
+
+1. **Re-introduced `TrivialView` infrastructure** (originally landed in PR #58
+   and removed in 8.5b-α): the abbrev `TrivialView (n : ℕ) := Bool × Finset
+   (Fin n) × Bool × Finset (Fin n)`, the per-step projection
+   `coalitionTrivialView C ω k : Fin k → C.val → TrivialView n`, and
+   `measurable_coalitionTrivialView`.
+2. **Weakened `coalitionView_corrupt_factors_AE`** to drop the four
+   schedule-dependent clauses (`echoSent = false`, `echoesReceived = ∅`,
+   `readySent = false`, `readyReceived = ∅`); retained the three
+   algebraic-content clauses (`output = none`, `delivered = false →
+   rowPoly = none`, `delivered = true → rowPoly = some (rowPolyOfDealer
+   …)`). Re-proved against `phase6Inv` AE plus the existing
+   `traceDist_partyPoint_AE_eq_init` / `traceDist_coeffs_AE_eq_init` /
+   `traceDist_corrupted_AE_eq_init` plus a step-0 `initPred` pull-back.
+3. **Added companion `coalitionView_corrupt_trivial_factors_AE`** (rfl —
+   trivially unfolds `coalitionTrivialView`).
+4. **Restructured `buildCorruptLocalState`, `corrupt_local_state_uniqueness`,
+   `reconstructCoalitionTraceView`** to thread `TrivialView` as an
+   explicit parameter (instead of hardcoding the trivial fields to
+   `(false, ∅, false, ∅)`).
+5. **Cascade through the secrecy chain** (~6 consumers):
+   - `coalitionTraceView_eq_reconstruct_AE` — conclusion now uses
+     `coalitionTrivialView` alongside `coalitionAlgebraicView`.
+   - `avss_secrecy_AS_view_conditional` — `h_aux` extended to the joint
+     `((coalitionAlgebraicView, coalitionTrivialView), schedulePrefix)`.
+   - `avss_secrecy_AS_view_rushing_via_aux` — `h_aux` similarly extended.
+   - `avss_secrecy_AS_view_rushing_via_init_invariant` —
+     `h_init_invariant` over `((simAlgebraicView, simTrivialView),
+     simSchedulePrefix)`; uses new `traceDist_algTrivView_schedulePrefix_invariant`.
+   - `avss_secrecy_AS_view_rushing` (headline) — composes through new
+     `avssInitMeasure_simViewExt_sec_invariant`.
+6. **Added simulate-side parallel infrastructure** (Phase 7.4 Ext form):
+   `simTrivialView`, `coalitionViewExt_schedulePrefix_AE_eq_sim`,
+   `traceDist_algTrivView_schedulePrefix_factors_AE`,
+   `traceDist_jointMarginalExt_eq_init`,
+   `traceDist_algTrivView_schedulePrefix_invariant`,
+   `simViewExt_simSched_avssInitState_factors`, `avssSimViewKExt`,
+   `avssInitMeasure_simViewExt_factors_through_corrRow`,
+   `avssInitMeasure_simViewExt_sec_invariant`. Each parallels its
+   `(simAlgebraicView, simSchedulePrefix)`-only counterpart from §19.2.5
+   / §19.4.5; the proof structure is the same, extended to also produce
+   `simTrivialView`. The Ext form factors through the same
+   `corrRowMap_uniform_sec_invariant` (the row-poly secrecy lemma) — no
+   new algebraic-core hypothesis is required.
 
 ## What 8.5b-δ delivered
 
@@ -105,12 +160,12 @@ Either is a `Liveness.lean` framework adaptation outside this PR's
 scope (the worker brief held `Leslie/Prob/Liveness.lean` off-limits
 for this δ phase).
 
-## Sorry inventory (2 total, unchanged)
+## Sorry inventory (1 total, **vestigial only**)
 
 | Line | Theorem | Status |
 |---|---|---|
-| ~4877 (avssCert U_dec_prob) | structural blocker | **vestigial** under BC route — see above |
-| ~7996 | `coalitionView_corrupt_factors_AE` | 8.5c — statement weakening + `coalitionTrivialView` cascade |
+| ~4877 (avssCert U_dec_prob) | structural blocker | **vestigial** under BC route — see "Why U_dec_prob remains" |
+| ~~~~7996~~ | ~~`coalitionView_corrupt_factors_AE`~~ | ✅ **closed in 8.5c** (statement weakening + secrecy cascade) |
 
 ## Path forward
 
@@ -125,29 +180,41 @@ for this δ phase).
   ↓
 8.5b-γ-followup-2 [✅ 2 sorries; -1 net; F4 via per-pair tokens]
   ↓
-8.5b-δ [✅ this checkpoint, 2 sorries; 0 net but route switched]
+8.5b-δ [✅ 2 sorries; 0 net but route switched]
         Switched termination route to BC running-min.
         U_dec_prob sorry now vestigial (BC route doesn't consume).
   ↓
-8.5b-δ-followup (NEW): close U_dec_prob via Liveness.lean disjunct
-        weakening (route-A above).  ~80-120 LOC framework PR.
+8.5c [✅ this checkpoint, 1 sorry; -1 net]
+        coalitionView_corrupt_factors_AE weakened + secrecy cascade.
+        Secrecy chain axiom-clean.
   ↓
-8.5c — `coalitionView_corrupt_factors_AE` weakening +
-       `coalitionTrivialView` cascade through secrecy chain.
+8.5b-δ-followup (PENDING): close U_dec_prob via Liveness.lean disjunct
+        weakening (route-A above).  ~80-120 LOC framework PR.
   ↓
 8.5b-ε — verify all axiom-clean, finalize MODEL_NOTES.
 ```
 
 ## Axiom hygiene status
 
-`avssCert` still depends transitively on `sorryAx` via the vestigial
-`U_dec_prob` sorry.  The cert's `avssTermInv`, `corruptLocalInv`,
-`avssQueueWfInv`, `avssFreshInv`, `avssFlowInv` clauses, the
-`V_super` / `V_super_fair` / `U_dec_det` cert dispatches, and the
-`avssFairActionEnabled_at_non_terminated` lemma are all axiom-clean.
-After 8.5b-δ-followup (close the vestigial sorry) + 8.5c
-(`coalitionView_corrupt_factors_AE`), the cert and downstream
-termination theorems become axiom-clean.
+After 8.5c, the **secrecy chain is fully axiom-clean** — every load-bearing
+operational-secrecy theorem reports `[propext, Classical.choice, Quot.sound]`:
+
+- `coalitionView_corrupt_factors_AE` ✅ axiom-clean
+- `coalitionView_corrupt_trivial_factors_AE` ✅ axiom-clean
+- `coalitionTraceView_eq_reconstruct_AE` ✅ axiom-clean
+- `avss_secrecy_AS_view_conditional` ✅ axiom-clean
+- `avss_secrecy_AS_view_rushing_via_aux` ✅ axiom-clean
+- `avss_secrecy_AS_view_rushing_via_init_invariant` ✅ axiom-clean
+- `avss_secrecy_AS_view_rushing` (headline) ✅ axiom-clean
+
+The **termination chain** still inherits `sorryAx` transitively because
+`avssCert` mentions the vestigial `U_dec_prob` sorry as one of its
+fields. The cert's `avssTermInv`, `corruptLocalInv`, `avssQueueWfInv`,
+`avssFreshInv`, `avssFlowInv` clauses, the `V_super` / `V_super_fair` /
+`U_dec_det` cert dispatches, and the `avssFairActionEnabled_at_non_terminated`
+lemma are all individually axiom-clean. Closing the vestigial sorry
+(8.5b-δ-followup) makes `avss_termination_AS_fair` / `_traj` / `_rushing`
+also axiom-clean.
 
 The **soundness path** for `avss_termination_AS_fair` /
 `avss_termination_AS_fair_traj` /
@@ -159,10 +226,8 @@ The **soundness path** for `avss_termination_AS_fair` /
 
 1. Read this file + `PHASE-8-5b-PLAN.md` (in this worktree).
 2. `lake build Leslie.Prob.Index` — confirm green at 2699 jobs.
-3. For 8.5b-δ-followup: open `Leslie/Prob/Liveness.lean` and weaken
-   `FairASTCertificate.U_dec_prob` to a disjunct form (Or.inr
-   "another fair action enabled at post").  Update `avssCert` to
-   dispatch via `Or.inr` on the corrupt-fire branch.
-4. For 8.5c: introduce `coalitionTrivialView`, weaken
-   `coalitionView_corrupt_factors_AE` statement, cascade through
-   ~6 secrecy-chain consumers.
+3. For 8.5b-δ-followup (the last remaining sorry): open
+   `Leslie/Prob/Liveness.lean` and weaken `FairASTCertificate.U_dec_prob`
+   to a disjunct form (Or.inr "another fair action enabled at post").
+   Update `avssCert` to dispatch via `Or.inr` on the corrupt-fire
+   branch.
