@@ -13533,6 +13533,55 @@ theorem avss_secrecy_AS_view_rushing_instance
   exact avss_secrecy_AS_view_rushing sec sec' partyPoint dealerHonest
     h_inj h_nz_pp h_F h_corr R hR C h_C_corr k
 
+/-- Randomised analog of `traceDist_avssSpec_sec_irrelevant`:
+`randomisedTraceDist` also ignores `avssSpec`'s `sec` parameter.  Only
+`spec.actions` is consumed by `randomisedStepKernel` (via
+`randomisedStepPMF`), and `actions` is sec-independent. -/
+theorem randomisedTraceDist_avssSpec_sec_irrelevant
+    (sec sec' : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (R : Leslie.Prob.RandomisedAdversary (AVSSState n t F) (AVSSAction n F))
+    (μ : Measure (AVSSState n t F)) :
+    randomisedTraceDist (avssSpec (t := t) sec corr coeffs) R μ =
+      randomisedTraceDist (avssSpec (t := t) sec' corr coeffs) R μ := rfl
+
+/-- **Phase 11-γ-randomised headline.**  `avss_secrecy_AS_view_rushing_randomised`
+restated as an instance of the protocol-independent
+`Leslie.Prob.SecrecyRushingRandomised` predicate from
+`Leslie/Prob/Secrecy.lean` (Phase 11-β, PR #82).
+
+This mirrors the deterministic `avss_secrecy_AS_view_rushing_instance`
+(§19.5) and closes the literature-faithful threat-model story: secrecy
+holds against **randomised + rushing** adversaries (the strongest
+classical AVSS adversary class).
+
+The wrapped headline `avss_secrecy_AS_view_rushing_randomised` (Phase 9.6,
+PR #53) quantifies universally over `AVSSRushingRandomisedAdversary` and
+delivers the *grid* projection at arbitrary step `k`; this instance form
+is a one-liner over it.  The view hypothesis `_hR : R.toProtocolView =
+view` is irrelevant on this side: the underlying randomised theorem
+already quantifies over all `R : AVSSRushingRandomisedAdversary` (whose
+`toProtocolView` is part of the structure but unconstrained), so the
+`hR` constraint is simply ignored. -/
+theorem avss_secrecy_AS_view_rushing_randomised_instance
+    {corr : Finset (Fin n)}
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (partyPoint : Fin n → F) (dealerHonest : Bool)
+    (h_nz_pp : ∀ i, partyPoint i ≠ 0)
+    (h_F : t + 1 ≤ Fintype.card F)
+    (C D : BivariateShamir.Coalition n t) (k : ℕ) :
+    Leslie.Prob.SecrecyRushingRandomised
+      (spec := avssSpec (t := t) (0 : F) corr coeffs)
+      (μ₀ := fun (sec : F) =>
+        avssInitMeasure (n := n) (t := t) sec corr partyPoint dealerHonest)
+      (view := avssCoalitionView corr)
+      (proj := fun ω => coalitionGrid coeffs C D (ω k).1) := by
+  intro sec sec' R _hR
+  rw [randomisedTraceDist_avssSpec_sec_irrelevant (sec := 0) (sec' := sec),
+      randomisedTraceDist_avssSpec_sec_irrelevant (sec := 0) (sec' := sec')]
+  exact avss_secrecy_AS_view_rushing_randomised sec sec' corr coeffs
+    partyPoint dealerHonest h_nz_pp h_F C D R k
+
 /-! ## §19.6. Phase 11-δ (= Phase 8.6) — bivariate row+column secrecy
 
 This section instantiates the polynomial-level row+column uniformity
