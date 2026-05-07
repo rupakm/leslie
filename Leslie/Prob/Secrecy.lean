@@ -307,44 +307,53 @@ This proof structure is **load-bearing for the sorry-handoff
 chain**: each named sorry is a self-contained measure-theoretic
 sub-claim that a subsequent worker can attack independently.
 
-**Sorry inventory** (after Phase 11-β-followup-4, Worker 4):
+**Sorry inventory** (after Phase 11-β-followup-6, Worker 6):
 
   * `Phase 11-β-followup-2` — ✅ closed (Worker 2). `scheduleSpaceMeasure`
     + its `IsProbabilityMeasure` instance now use mathlib's
     `MeasureTheory.Measure.infinitePi` over the (arbitrary) history
-    index set with per-fiber `PMF.toMeasure`.  Note that mathlib's
-    `infinitePi` does not require a `Countable` index, so the file-
-    level `[Countable σ] [Countable ι]` are not threaded into the
-    definition itself (they remain useful for the rest of the
-    development, e.g. measurability of discrete projections).
+    index set with per-fiber `PMF.toMeasure`.
   * `Phase 11-β-followup-3` — ✅ closed (Worker 3).
     `randomisedTraceDist_eq_integral_traceDist` is a one-line
-    forwarding to a single named sub-claim `_traj` (the substantive
-    trajectory-level Fubini), and the two supporting facts (per-step
-    factorisation, schedule-space marginal) are fully proved.
-  * `Phase 11-β-followup-4` — ✅ closed (Worker 4, this PR).
-    `Secrecy.toRandomised` is fully proved modulo `_traj` (the
-    only remaining sorry in the chain). Strategy: extract the
-    bind equality + `AEMeasurable` witness from
+    forwarding to a single named sub-claim `_traj`, and the two
+    supporting facts (per-step factorisation, schedule-space marginal)
+    are fully proved.
+  * `Phase 11-β-followup-4` — ✅ closed (Worker 4).
+    `Secrecy.toRandomised` is fully proved modulo `_traj`. Strategy:
+    extract the bind equality + `AEMeasurable` witness from
     `randomisedTraceDist_eq_integral_traceDist`, reduce to set
     equality via `Measure.map_apply` + `Measure.bind_apply`, and
     discharge pointwise under the integral by the deterministic
-    secrecy hypothesis `h`. The conclusion of `_traj` was
-    strengthened in this PR to also yield the `AEMeasurable`
-    witness — a natural byproduct of any genuine cylinder-induction
-    proof, and the only piece of structure beyond the bind equality
-    that `Secrecy.toRandomised` requires.
-  * `Phase 11-β-followup-3a` — ⏳ open (last remaining; queued for
-    follow-up). `randomisedTraceDist_eq_integral_traceDist_traj`:
-    the cylinder-set Ionescu-Tulcea induction that lifts the
-    per-step factorisation to the trajectory measure (and also
-    yields the `AEMeasurable` witness). ~150 lines of mechanical
-    measure-theoretic plumbing; proof outline + inputs are documented
-    in the helper's docstring.
+    secrecy hypothesis `h`. The conclusion of `_traj` was strengthened
+    to also yield the `AEMeasurable` witness — needed by
+    `Secrecy.toRandomised` to push `Measure.map proj` past the bind.
+  * `Phase 11-β-followup-6` — ⚠️ partially advanced (Worker 6, this
+    PR). Refactored `_traj` into two independent helpers
+    `_traj_aeMeasurable` (`-3a-i`) and `_traj_bind_eq` (`-3a-ii`).
+    Worker 6 attempted to close `-3a-i` independently; investigation
+    revealed it requires the same parameterised Ionescu-Tulcea
+    machinery as `-3a-ii` (measurability of `Kernel.trajMeasure` in
+    its kernel-family parameter — not exposed by mathlib). Both
+    helpers remain `sorry`-bearing pending follow-up infrastructure.
+    The split is still a net improvement: each helper can be attacked
+    independently, and `-3a-i` is plausibly closeable as a corollary
+    of `-3a-ii`'s cylinder-induction infrastructure once that is in
+    place.
+  * `Phase 11-β-followup-3a-i` — ⏳ open. `_traj_aeMeasurable`:
+    AEMeasurability of `sched ↦ traceDist spec
+    (sched.toAdversary R.corrupt) μ`. Requires construction of a
+    `sched`-parameterised Markov-kernel form of `Kernel.trajMeasure`
+    (mathlib gap).
+  * `Phase 11-β-followup-3a-ii` — ⏳ open. `_traj_bind_eq`: the
+    bind-equality conjunct. Requires Ionescu-Tulcea cylinder
+    uniqueness (mathlib gap; ~150-300 LOC).
 
-After Phase 11-β-followup-4, the chain is reduced to a **single**
-remaining mathlib-gap helper (`_traj`); closing it completes the
-correspondence and discharges every sorry in `Secrecy.lean`. -/
+After Phase 11-β-followup-6, the chain has **two** remaining
+mathlib-gap helpers (`_traj_aeMeasurable`, `_traj_bind_eq`); closing
+both completes the correspondence and discharges every sorry in
+`Secrecy.lean`. The two helpers share underlying infrastructure (the
+parameterised `Kernel.trajMeasure` machinery), so a unified follow-up
+PR likely closes both. -/
 
 /-! ### Schedule-space machinery
 
@@ -487,24 +496,85 @@ private lemma scheduleSpaceMeasure_map_eval
   unfold scheduleSpaceMeasure
   exact Measure.infinitePi_map_eval _ h
 
-/-- **3c (queued sub-sorry, Phase 11-β-followup-3a).**
+/-! #### Subdivision of `Phase 11-β-followup-3a` (Worker 6)
 
-Trajectory-level Fubini for the mixture trace measure. This is the
-substantive measure-theoretic content of `Secrecy.toRandomised`.
+Worker 6 (Phase 11-β-followup-6) splits the trajectory-level Fubini
+sub-claim into two independently-attackable conjuncts:
 
-**Statement intuition.** A randomised adversary `R` with per-history
-PMFs samples a fresh schedule choice at each step; equivalently, by
-Kolmogorov / Ionescu-Tulcea, we can sample *all* schedule choices in
-advance (one per history) and run the deterministic step kernel
-against the sampled schedule. Both yield the same trace distribution
-because the per-step independence of schedule samples in the
-randomised kernel matches the per-history independence in the
-Kolmogorov product.
+  * `Phase 11-β-followup-3a-i` —
+    `randomisedTraceDist_eq_integral_traceDist_traj_aeMeasurable`:
+    AEMeasurability of the integrand `sched ↦ traceDist spec
+    (sched.toAdversary R.corrupt) μ` w.r.t. `scheduleSpaceMeasure R`.
+  * `Phase 11-β-followup-3a-ii` —
+    `randomisedTraceDist_eq_integral_traceDist_traj_bind_eq`: the
+    bind equality `randomisedTraceDist spec R μ = Measure.bind ...`.
+    Requires Ionescu-Tulcea cylinder uniqueness — the substantive
+    measure-theoretic content.
 
-**Proof obligation.** Apply Ionescu-Tulcea cylinder uniqueness:
-two probability measures on `Trace σ ι = ∀ n, σ × Option ι` are
-equal iff their cylinder-set values agree. Both sides agree on
-cylinders by induction on the cylinder length, using:
+The original conjunctive statement
+`randomisedTraceDist_eq_integral_traceDist_traj` is now a one-liner
+combining the two helpers. -/
+
+set_option linter.unusedSectionVars false in
+/-- **Phase 11-β-followup-3a-i.** AEMeasurability of the
+trajectory-distribution integrand `sched ↦ traceDist spec
+(sched.toAdversary R.corrupt) μ` w.r.t. the schedule-space measure.
+
+**Proof outline.** Strengthen `AEMeasurable` to plain `Measurable`. By
+the GiryMonad characterisation `Measure.measurable_of_measurable_coe`,
+reduce to showing that for every measurable set `t ⊆ Trace σ ι` the
+function `sched ↦ (traceDist spec (sched.toAdversary R.corrupt) μ) t`
+is measurable in `sched`.
+
+The `ScheduleAssignment` space carries the Pi-σ-algebra
+(`instMeasurableSpaceScheduleAssignment`), so coordinate evaluations
+`sched ↦ sched h` are measurable for each history `h`. Combined with
+the cylinder structure on `Trace σ ι`, this reduces to per-cylinder
+measurability of `(Kernel.trajMeasure ... (stepKernel spec
+(sched.toAdversary R.corrupt))) t` in `sched`, which decomposes via
+`Kernel.partialTraj` into a finite kernel composition.
+
+**Proof sketch (for Worker 6's chained successor).** Build a
+parameterised kernel `K_n : Kernel (ScheduleAssignment σ ι ×
+FinPrefix σ ι n) (σ × Option ι)` lifting `stepKernel`'s `sched`-
+dependence, then assemble `Kernel.partialTraj` to obtain measurability
+of `sched ↦ trajMeasure ... t` for each finite cylinder `t`. The
+construction depends on:
+  * `Measure.measurable_of_measurable_coe` (GiryMonad reduction).
+  * `Measurable.of_discrete` on the per-history match-branch (target
+    `Measure (σ × Option ι)` viewed via `Option ι`-discreteness on
+    the schedule fibre). Wait — this requires the source factor on
+    `sched` to be discrete, which it is NOT (Pi-σ-algebra over a
+    countable index, function space uncountable).
+  * Therefore the proof strategy collapses to: parameterised cylinder
+    induction on `Trace σ ι`, with `Pi`-σ-algebra coordinate
+    measurability lifted through each `partialTraj` step.
+
+This is approximately the same machinery as `_traj_bind_eq`; closing
+it independently yields measurability without the bind equality, but
+shares the Ionescu-Tulcea cylinder framework. Queued for follow-up.
+-/
+private lemma randomisedTraceDist_eq_integral_traceDist_traj_aeMeasurable
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
+    (μ : Measure σ) [IsProbabilityMeasure μ] :
+    AEMeasurable
+        (fun sched : ScheduleAssignment σ ι =>
+          traceDist spec (sched.toAdversary R.corrupt) μ)
+        (scheduleSpaceMeasure R) := by
+  sorry  -- Phase 11-β-followup-3a-i: parameterised Ionescu-Tulcea
+         -- measurability. See docstring above. Worker 7 finishes.
+
+set_option linter.unusedSectionVars false in
+/-- **Phase 11-β-followup-3a-ii (queued for Worker 7).** Bind equality
+for the trajectory-level Fubini factorisation.
+
+The randomised mixture trace measure equals the `Measure.bind` of the
+deterministic trace measures over the schedule-space measure.
+
+**Proof obligation.** Apply Ionescu-Tulcea cylinder uniqueness: two
+probability measures on `Trace σ ι = ∀ n, σ × Option ι` are equal iff
+their cylinder-set values agree. Both sides agree on cylinders by
+induction on the cylinder length, using:
   * `randomisedStepKernel_eq_bind_singleActionStep` (3a) at each step
     on the LHS, and
   * `stepKernel_apply_eq_singleActionStep` for each fixed `sched` on
@@ -518,17 +588,27 @@ form needed on the RHS.
 **Mathlib gap.** Mathlib's `Kernel.trajMeasure` does not expose a
 "`trajMeasure` of a `Kernel.bind`-mixture equals `Measure.bind` of
 trajectory measures" lemma; the proof must be done by hand on
-cylinder sets. ~150 lines of mechanical induction; isolated here as
-a single named sorry to be discharged in a follow-up PR.
-
-**Conclusion strengthened (Phase 11-β-followup-4).** In addition to
-the bind equality, the family `sched ↦ traceDist spec
-(sched.toAdversary R.corrupt) μ` is `AEMeasurable` w.r.t.
-`scheduleSpaceMeasure R`. This is a natural byproduct of any genuine
-factorisation proof (kernel composition / Ionescu-Tulcea both
-preserve measurability in the underlying parameter), and is needed
-by `Secrecy.toRandomised` to push `Measure.map proj` past the bind.
+cylinder sets. ~150-300 lines of mechanical induction.
 -/
+private lemma randomisedTraceDist_eq_integral_traceDist_traj_bind_eq
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
+    (μ : Measure σ) [IsProbabilityMeasure μ] :
+    randomisedTraceDist spec R μ =
+      Measure.bind (scheduleSpaceMeasure R) fun sched =>
+        traceDist spec (sched.toAdversary R.corrupt) μ := by
+  sorry  -- Phase 11-β-followup-3a-ii: Ionescu-Tulcea cylinder
+         -- uniqueness. See docstring above. Worker 7 finishes.
+
+set_option linter.unusedSectionVars false in
+/-- **3c (one-liner combining `-3a-i` and `-3a-ii`, Worker 6).**
+
+Trajectory-level Fubini for the mixture trace measure: the conjunction
+of AEMeasurability of the integrand (`-3a-i`,
+`..._traj_aeMeasurable`) and the bind equality (`-3a-ii`,
+`..._traj_bind_eq`).
+
+Worker 6 (Phase 11-β-followup-6) refactored this from a single sorry
+into the two independent helpers above; the body is now structural. -/
 private theorem randomisedTraceDist_eq_integral_traceDist_traj
     (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
     (μ : Measure σ) [IsProbabilityMeasure μ] :
@@ -538,14 +618,9 @@ private theorem randomisedTraceDist_eq_integral_traceDist_traj
         (scheduleSpaceMeasure R)
       ∧ randomisedTraceDist spec R μ =
         Measure.bind (scheduleSpaceMeasure R) fun sched =>
-          traceDist spec (sched.toAdversary R.corrupt) μ := by
-  sorry  -- TODO Phase 11-β-followup-3a: Ionescu-Tulcea cylinder
-         -- factorisation. See docstring above for the proof outline.
-         -- Inputs: 3a (`randomisedStepKernel_eq_bind_singleActionStep`)
-         --       + 3b (`scheduleSpaceMeasure_map_eval`)
-         --       + Ionescu-Tulcea cylinder uniqueness.
-         -- The AEMeasurable witness comes from the kernel-composition
-         -- form natural in the cylinder induction.
+          traceDist spec (sched.toAdversary R.corrupt) μ :=
+  ⟨randomisedTraceDist_eq_integral_traceDist_traj_aeMeasurable spec R μ,
+   randomisedTraceDist_eq_integral_traceDist_traj_bind_eq spec R μ⟩
 
 /-- **Fubini factorisation of the mixture trace measure** (the heart
 of `Secrecy.toRandomised`).
