@@ -29,9 +29,22 @@ per-step kernel itself depends on an outer parameter `b : β`.
   over a parameter measure `ν`, the trajectory measure factors as a `Measure.bind`
   of the parameter-fixed deterministic trajectory measures.
 
-  Concretely, given `ν : Measure β` and `κ : β → ∀ n, Kernel ..`, define the
-  *averaged* kernel family `κAvg n h := (κ · n h).bind ν`. Then
-  `trajMeasure μ₀ κAvg = ν.bind (fun b ↦ trajMeasure μ₀ (κ b))`.
+  ⚠️ **Statement is FALSE as currently written.** See the docstring of
+  `trajMeasure_bind_kernel` for an explicit two-coordinate counterexample.
+  The identity holds only when `(ν, κ)` carries an *independence-across-levels*
+  structure (e.g. `ν` is a `Measure.pi` over query points and `κ b n h`
+  depends on `b` only through `n`-specific coordinates). The original sorry is
+  preserved for API compatibility while callers migrate to the corrected
+  variant `trajMeasure_bind_kernel_of_partial`, which takes the
+  trajectory-level bind identity directly as a hypothesis (and is closed
+  axiom-clean).
+
+* `ProbabilityTheory.Kernel.trajMeasure_bind_kernel_of_partial` — the
+  *corrected* trajectory-level Fubini identity. Same conclusion as above, but
+  the per-step `h_kappa_bind` is replaced by the strictly stronger
+  `h_partialTraj_bind` hypothesis (the bind identity on every finite
+  truncation `partialTraj κ 0 n`). Plus joint measurability witnesses for
+  `b ↦ trajMeasure μ₀ (κ b)` and `(b, x₀) ↦ partialTraj (κ b) 0 n x₀ S`.
 
 Both results are textbook (Kallenberg, *Foundations of Modern Probability*,
 §6.16; Bauer, *Probability Theory*, §35.5) but, as of the current `mathlib`,
@@ -112,51 +125,151 @@ end Measurability
 
 /-! ### Lemma 2 — Fubini-over-parameter identity for `trajMeasure` -/
 
+section trajMeasure_bind_kernel_helpers
+
+/-! ### Helper lemmas for `trajMeasure_bind_kernel`
+
+These are placed in a dedicated section to avoid textual conflicts with potential
+helpers added for `trajMeasure_measurable`. -/
+
+variable {μ₀ : Measure (X 0)} [IsProbabilityMeasure μ₀]
+variable {ν : Measure β} [IsProbabilityMeasure ν]
+
+/-- Two probability measures on `Π n, X n` are equal iff their `frestrictLe n`
+projections agree for every `n`. -/
+lemma eq_of_frestrictLe_eq (μ₁ μ₂ : Measure (Π n, X n))
+    [IsProbabilityMeasure μ₁] [IsProbabilityMeasure μ₂]
+    (h : ∀ n, μ₁.map (frestrictLe n) = μ₂.map (frestrictLe n)) : μ₁ = μ₂ := by
+  let P : (n : ℕ) → Measure (Π i : Iic n, X i) := fun n ↦ μ₁.map (frestrictLe n)
+  have hP_proj : ∀ a b (hab : a ≤ b), (P b).map (frestrictLe₂ hab) = P a := by
+    intro a b hab
+    simp only [P]
+    rw [Measure.map_map (measurable_frestrictLe₂ _) (measurable_frestrictLe _),
+        frestrictLe₂_comp_frestrictLe hab]
+  have hPF := MeasureTheory.isProjectiveMeasureFamily_inducedFamily P hP_proj
+  have hμ₁ : IsProjectiveLimit μ₁ (MeasureTheory.inducedFamily P) := by
+    rw [MeasureTheory.isProjectiveLimit_nat_iff hPF]
+    intro n; rw [MeasureTheory.inducedFamily_Iic]
+  have hμ₂ : IsProjectiveLimit μ₂ (MeasureTheory.inducedFamily P) := by
+    rw [MeasureTheory.isProjectiveLimit_nat_iff hPF]
+    intro n; rw [MeasureTheory.inducedFamily_Iic, ← h n]
+  exact hμ₁.unique hμ₂
+
+omit [IsProbabilityMeasure μ₀] in
+/-- The `frestrictLe n` projection of `trajMeasure μ₀ κ` equals the composition
+`partialTraj κ 0 n ∘ₘ (μ₀.map (piUnique _).symm)`. -/
+lemma trajMeasure_map_frestrictLe
+    (κ : (n : ℕ) → Kernel (Π i : Iic n, X i) (X (n + 1)))
+    [∀ n, IsMarkovKernel (κ n)] (n : ℕ) :
+    (trajMeasure μ₀ κ).map (frestrictLe n) =
+      (partialTraj κ 0 n) ∘ₘ
+        (μ₀.map (MeasurableEquiv.piUnique (fun i : Iic 0 ↦ X i)).symm) := by
+  unfold trajMeasure
+  rw [Measure.map_comp _ _ (by fun_prop), traj_map_frestrictLe]
+
+/-- `Measure.bind` commutes with measure pushforward under measurability of the bind family. -/
+lemma map_bind_eq_bind_map {α γ : Type*} [MeasurableSpace α] [MeasurableSpace γ]
+    {ρ : Measure β} (g : β → Measure α)
+    (hg : Measurable g) {f : α → γ} (hf : Measurable f) :
+    (ρ.bind g).map f = ρ.bind (fun b ↦ (g b).map f) := by
+  ext s hs
+  rw [Measure.map_apply hf hs,
+      Measure.bind_apply (hf hs) hg.aemeasurable,
+      Measure.bind_apply hs (Measurable.aemeasurable (by fun_prop))]
+  refine lintegral_congr (fun b ↦ ?_)
+  rw [Measure.map_apply hf hs]
+
+omit [IsProbabilityMeasure ν] in
+/-- The averaged kernel `κAvg` is the `Measure.bind` of `κ b` over `ν`. -/
+lemma kappa_avg_eq_bind
+    (κ : β → (n : ℕ) → Kernel (Π i : Iic n, X i) (X (n + 1)))
+    [∀ b n, IsMarkovKernel (κ b n)]
+    (h_meas : ∀ (n : ℕ) (h : Π i : Iic n, X i) {s : Set (X (n + 1))},
+        MeasurableSet s → Measurable (fun b ↦ (κ b n) h s))
+    (κAvg : (n : ℕ) → Kernel (Π i : Iic n, X i) (X (n + 1)))
+    (h_kappa_bind : ∀ (n : ℕ) (h : Π i : Iic n, X i) {s : Set (X (n + 1))},
+        MeasurableSet s → κAvg n h s = ∫⁻ b, (κ b n) h s ∂ν)
+    (n : ℕ) (h : Π i : Iic n, X i) :
+    κAvg n h = ν.bind (fun b ↦ (κ b n) h) := by
+  have hb_meas : Measurable (fun b ↦ (κ b n) h) :=
+    Measure.measurable_of_measurable_coe _ (fun s hs ↦ h_meas n h hs)
+  ext s hs
+  rw [Measure.bind_apply hs hb_meas.aemeasurable]
+  exact h_kappa_bind n h hs
+
+omit [IsProbabilityMeasure ν] in
+/-- Lintegral form of the averaged kernel: integrating against `κAvg` is the
+`ν`-average of integrating against `κ b`. -/
+lemma kappa_avg_lintegral
+    (κ : β → (n : ℕ) → Kernel (Π i : Iic n, X i) (X (n + 1)))
+    [∀ b n, IsMarkovKernel (κ b n)]
+    (h_meas : ∀ (n : ℕ) (h : Π i : Iic n, X i) {s : Set (X (n + 1))},
+        MeasurableSet s → Measurable (fun b ↦ (κ b n) h s))
+    (κAvg : (n : ℕ) → Kernel (Π i : Iic n, X i) (X (n + 1)))
+    (h_kappa_bind : ∀ (n : ℕ) (h : Π i : Iic n, X i) {s : Set (X (n + 1))},
+        MeasurableSet s → κAvg n h s = ∫⁻ b, (κ b n) h s ∂ν)
+    (n : ℕ) (h : Π i : Iic n, X i) {f : X (n + 1) → ℝ≥0∞} (mf : Measurable f) :
+    ∫⁻ x, f x ∂(κAvg n h) = ∫⁻ b, ∫⁻ x, f x ∂(κ b n h) ∂ν := by
+  have hb_meas : Measurable (fun b ↦ (κ b n) h) :=
+    Measure.measurable_of_measurable_coe _ (fun s hs ↦ h_meas n h hs)
+  rw [kappa_avg_eq_bind κ h_meas κAvg h_kappa_bind n h,
+      Measure.lintegral_bind hb_meas.aemeasurable mf.aemeasurable]
+
+end trajMeasure_bind_kernel_helpers
+
 section BindKernel
 
 variable {μ₀ : Measure (X 0)} [IsProbabilityMeasure μ₀]
 variable {ν : Measure β} [IsProbabilityMeasure ν]
 
-/-- **Fubini / Ionescu–Tulcea identity for `trajMeasure`.**
+/-- **Fubini / Ionescu–Tulcea identity for `trajMeasure`** *(STATEMENT IS FALSE
+AS WRITTEN — see the analysis below; preserved here for API compatibility while
+the user-site is migrated to a stronger formulation).*
 
 Suppose `κ : β → ∀ n, Kernel ..` is a measurable family of Markov kernels in `b`
-and `κAvg : ∀ n, Kernel ..` is the *averaged* kernel family obtained by integrating
-each `κ b n` over the parameter measure `ν`:
+and `κAvg : ∀ n, Kernel ..` is the *per-level averaged* kernel family obtained
+by integrating each `κ b n` over the parameter measure `ν`:
 
     `κAvg n h s = ∫⁻ b, (κ b n h) s ∂ν` for measurable `s`.
 
-Then the trajectory measure of the averaged family equals the parameter-bind of
-the trajectory measures of the deterministic families:
+The current statement claims:
 
     `trajMeasure μ₀ κAvg = ν.bind (fun b ↦ trajMeasure μ₀ (κ b))`.
 
-This is the trajectory-level Fubini identity that lifts a per-step
-`Measure.bind` to the entire infinite product.
+**Counterexample.** Take `X n := Bool` for all `n`, `μ₀ := dirac false`,
+`β := Bool`, `ν := (dirac false + dirac true) / 2`, and
+`κ b n h := dirac b` (deterministic, ignoring state). Then
+`κAvg n h = (dirac false + dirac true) / 2`, so under `trajMeasure μ₀ κAvg`
+the coordinates `x_1, x_2, …` are i.i.d. Bernoulli(1/2); the cylinder
+`{x_1 = false ∧ x_2 = true}` has mass `1/4`. On the right, `ν.bind` first
+samples `b ~ ν` once, then applies `κ b` at every level — so all coordinates
+are equal to `b`, and the same cylinder has mass `0`. The two measures are
+distinct.
 
-The hypothesis `h_kappa_bind` asks for the per-step bind identity directly,
-sidestepping any explicit `Kernel.bind` definition (which mathlib doesn't expose
-in the form we need). In practice the user packages the per-step identity from
-`Measure.bind_apply` and the joint measurability witness `h_meas`.
+**What the theorem really requires.** The identity does hold in the special
+case where `κ b n h` depends on `b` only through some `n`-specific
+"coordinate projection" `b ↦ b_n` and `ν` is a product measure
+`Measure.pi (fun n ↦ ν_n)`. Equivalently, one needs the trajectory-level
+identity (a *strictly stronger* hypothesis than the per-level
+`h_kappa_bind`):
 
-**Proof outline.** By Ionescu–Tulcea uniqueness (`isProjectiveLimit_trajFun` +
-`IsProjectiveLimit.unique`), it suffices to show that both sides agree as
-projective limits, i.e. their `frestrictLe n` marginals agree for every `n`.
+    `partialTraj κAvg 0 n x₀ S = ∫⁻ b, partialTraj (κ b) 0 n x₀ S ∂ν`
+    for every `n`, every `x₀ : Π i : Iic 0, X i`, and every measurable
+    `S ⊆ Π i : Iic n, X i`.
 
-* The LHS marginal at `n` is `partialTraj κAvg 0 n x₀` for `x₀ : Π i : Iic 0, X i`
-  the initial-state representative of `μ₀`; this expands by
-  `partialTraj_succ_of_le` recursively as a composition of `compProd`s with
-  `κAvg k`.
+Given that hypothesis, the conclusion follows from
+`eq_of_frestrictLe_eq` + Fubini on the initial-state integral; the helpers
+`trajMeasure_map_frestrictLe`, `map_bind_eq_bind_map`, `kappa_avg_eq_bind`,
+and `kappa_avg_lintegral` (in the `trajMeasure_bind_kernel_helpers` section
+above) handle the remaining bookkeeping cleanly.
 
-* The RHS marginal at `n` is `ν.bind (fun b ↦ partialTraj (κ b) 0 n x₀)` by
-  `bind_map` and `Kernel.measurable_coe` for the marginal projection.
-
-* By induction on `n` the two collapse to the same expression, since at each
-  step the swap `(∫⁻ b, ...) ∘ partialTraj` ↔ `∫⁻ b, partialTraj ∘ (...)`
-  is exactly `Measure.bind`-Fubini for finite kernel compositions.
-
-Implementing this fully requires ~250 LOC of `partialTraj` / `compProd` algebra
-plus careful manipulation of `frestrictLe`-marginals; we leave it as a single
-named sorry pending an upstream PR. -/
+**Status.** The single named sorry below is preserved to keep the existing
+caller (`Leslie.Prob.RandomisedAdversary`) compiling while we migrate it to
+the corrected API. It is *not* fixable as a function of the current
+hypotheses; closing it requires either (i) strengthening the hypotheses to
+the trajectory-level identity above, or (ii) adding a "schedule independence"
+hypothesis on `(ν, κ)` that makes the per-level and trajectory-level mixings
+coincide. See the parallel commit's PR description for the migration plan. -/
 theorem trajMeasure_bind_kernel
     (κ : β → (n : ℕ) → Kernel (Π i : Iic n, X i) (X (n + 1)))
     [hMarkov : ∀ b n, IsMarkovKernel (κ b n)]
@@ -182,6 +295,105 @@ theorem trajMeasure_bind_kernel
   -- See the docstring above for the full outline. We leave this as a single
   -- named sorry pending an upstream PR; see the file docstring for context.
   sorry
+
+/-- **Corrected Fubini / Ionescu–Tulcea identity for `trajMeasure`.**
+
+Replacement for `trajMeasure_bind_kernel` whose original per-level hypothesis is
+insufficient (see the counterexample in the docstring of `trajMeasure_bind_kernel`).
+
+This version takes as a hypothesis the *trajectory-level* bind identity at every
+finite truncation `n`. In typical applications (e.g. randomised adversaries
+where `ν` is a `Measure.infinitePi` indexed by query points) this hypothesis is
+derivable from the per-level identity plus the product structure of `ν`. -/
+theorem trajMeasure_bind_kernel_of_partial
+    (κ : β → (n : ℕ) → Kernel (Π i : Iic n, X i) (X (n + 1)))
+    [hMarkov : ∀ b n, IsMarkovKernel (κ b n)]
+    (h_traj_meas : Measurable (fun b ↦ trajMeasure μ₀ (κ b)))
+    (κAvg : (n : ℕ) → Kernel (Π i : Iic n, X i) (X (n + 1)))
+    [hMarkov_avg : ∀ n, IsMarkovKernel (κAvg n)]
+    (h_partialTraj_meas :
+      ∀ (n : ℕ) {S : Set (Π i : Iic n, X i)}, MeasurableSet S →
+        Measurable (Function.uncurry
+          (fun b (x₀ : Π i : Iic 0, X i) ↦ partialTraj (κ b) 0 n x₀ S)))
+    (h_partialTraj_bind :
+      ∀ (n : ℕ) (x₀ : Π i : Iic 0, X i) {S : Set (Π i : Iic n, X i)},
+        MeasurableSet S →
+        partialTraj κAvg 0 n x₀ S = ∫⁻ b, partialTraj (κ b) 0 n x₀ S ∂ν) :
+    trajMeasure μ₀ κAvg =
+      ν.bind (fun b ↦ trajMeasure μ₀ (κ b)) := by
+  -- Both sides are probability measures on `Π n, X n`. Reduce to projection agreement.
+  haveI : IsProbabilityMeasure (ν.bind (fun b ↦ trajMeasure μ₀ (κ b))) := by
+    constructor
+    rw [Measure.bind_apply MeasurableSet.univ h_traj_meas.aemeasurable]
+    simp
+  refine eq_of_frestrictLe_eq _ _ (fun n ↦ ?_)
+  -- LHS projection: `(partialTraj κAvg 0 n) ∘ₘ (μ₀.map (piUnique _).symm)`.
+  rw [trajMeasure_map_frestrictLe κAvg n]
+  -- RHS projection: bind/map commute, then per-fibre projection.
+  rw [map_bind_eq_bind_map _ h_traj_meas (by fun_prop : Measurable (frestrictLe n))]
+  set μ' : Measure (Π i : Iic 0, X i) :=
+    μ₀.map (MeasurableEquiv.piUnique (fun i : Iic 0 ↦ X i)).symm with hμ'
+  have hμ'_prob : IsProbabilityMeasure μ' := by
+    rw [hμ']
+    exact Measure.isProbabilityMeasure_map
+      (MeasurableEquiv.measurable _).aemeasurable
+  -- Pointwise rewrite of the RHS: each fibre projection collapses to `partialTraj`.
+  conv_rhs =>
+    rw [show (fun b ↦ Measure.map (frestrictLe n) (trajMeasure μ₀ (κ b)))
+          = (fun b ↦ (partialTraj (κ b) 0 n) ∘ₘ μ') from
+        funext (fun b ↦ trajMeasure_map_frestrictLe (κ b) n)]
+  -- Now both sides are measures on `Π i : Iic n, X i`; show ext on measurable sets.
+  ext S hS
+  -- LHS S = ∫⁻ x₀, partialTraj κAvg 0 n x₀ S ∂μ'
+  rw [Measure.bind_apply hS (Kernel.aemeasurable _)]
+  -- RHS S = ∫⁻ b, ((partialTraj (κ b) 0 n) ∘ₘ μ') S ∂ν.
+  -- We bypass `Measure.bind_apply` by reducing to `lintegral_bind` via the kernel structure.
+  -- For now, evaluate the bind via its measurable-of-coe proof.
+  have hjoint := h_partialTraj_meas n hS
+  have hb_int : Measurable (fun b ↦ ∫⁻ x₀, partialTraj (κ b) 0 n x₀ S ∂μ') :=
+    Measurable.lintegral_prod_right (ν := μ') hjoint
+  -- AEMeasurability of `b ↦ (partialTraj (κ b) 0 n) ∘ₘ μ' : Measure _` —
+  -- this requires `Measure.measurable_of_measurable_coe`.
+  have hb_meas_meas : Measurable (fun b ↦ (partialTraj (κ b) 0 n) ∘ₘ μ') := by
+    refine Measure.measurable_of_measurable_coe _ ?_
+    intro t ht
+    have hjoint_t := h_partialTraj_meas n ht
+    have hbt_int : Measurable (fun b ↦ ∫⁻ x₀, partialTraj (κ b) 0 n x₀ t ∂μ') :=
+      Measurable.lintegral_prod_right (ν := μ') hjoint_t
+    have heq : (fun b ↦ ((partialTraj (κ b) 0 n) ∘ₘ μ') t)
+        = (fun b ↦ ∫⁻ x₀, partialTraj (κ b) 0 n x₀ t ∂μ') := by
+      funext b; rw [Measure.bind_apply ht (Kernel.aemeasurable _)]
+    rw [heq]; exact hbt_int
+  rw [Measure.bind_apply hS hb_meas_meas.aemeasurable]
+  -- Inner: ((partialTraj (κ b) 0 n) ∘ₘ μ') S = ∫⁻ x₀, partialTraj (κ b) 0 n x₀ S ∂μ'
+  have hinner : ∀ b, ((partialTraj (κ b) 0 n) ∘ₘ μ') S
+                  = ∫⁻ x₀, partialTraj (κ b) 0 n x₀ S ∂μ' := by
+    intro b; rw [Measure.bind_apply hS (Kernel.aemeasurable _)]
+  conv_rhs => enter [2, b]; rw [hinner]
+  -- Apply the trajectory-level hypothesis pointwise then Fubini-swap.
+  have hpt : ∀ x₀, partialTraj κAvg 0 n x₀ S
+                = ∫⁻ b, partialTraj (κ b) 0 n x₀ S ∂ν :=
+    fun x₀ ↦ h_partialTraj_bind n x₀ hS
+  calc
+    ∫⁻ x₀, partialTraj κAvg 0 n x₀ S ∂μ'
+        = ∫⁻ x₀, (∫⁻ b, partialTraj (κ b) 0 n x₀ S ∂ν) ∂μ' :=
+          lintegral_congr (fun x₀ ↦ hpt x₀)
+    _ = ∫⁻ b, ∫⁻ x₀, partialTraj (κ b) 0 n x₀ S ∂μ' ∂ν := by
+          -- `lintegral_lintegral_swap`: requires AEMeasurability of `(x₀, b) ↦ ...`.
+          have hsw : Measurable (Function.uncurry
+              (fun (x₀ : Π i : Iic 0, X i) (b : β) ↦
+                partialTraj (κ b) 0 n x₀ S)) := by
+            -- This is `hjoint` composed with `Prod.swap`.
+            have : (Function.uncurry
+              (fun (x₀ : Π i : Iic 0, X i) (b : β) ↦
+                partialTraj (κ b) 0 n x₀ S))
+                = (Function.uncurry
+                  (fun b (x₀ : Π i : Iic 0, X i) ↦
+                    partialTraj (κ b) 0 n x₀ S)) ∘ Prod.swap := by
+              funext ⟨x₀, b⟩; rfl
+            rw [this]; exact hjoint.comp (by fun_prop)
+          rw [lintegral_lintegral_swap hsw.aemeasurable]
+
 
 end BindKernel
 
