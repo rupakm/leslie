@@ -307,7 +307,7 @@ This proof structure is **load-bearing for the sorry-handoff
 chain**: each named sorry is a self-contained measure-theoretic
 sub-claim that a subsequent worker can attack independently.
 
-**Sorry inventory** (after Phase 11-β-followup-3, Worker 3):
+**Sorry inventory** (after Phase 11-β-followup-4, Worker 4):
 
   * `Phase 11-β-followup-2` — ✅ closed (Worker 2). `scheduleSpaceMeasure`
     + its `IsProbabilityMeasure` instance now use mathlib's
@@ -317,23 +317,34 @@ sub-claim that a subsequent worker can attack independently.
     level `[Countable σ] [Countable ι]` are not threaded into the
     definition itself (they remain useful for the rest of the
     development, e.g. measurability of discrete projections).
-  * `Phase 11-β-followup-3` — ✅ closed (Worker 3, this PR).
-    `randomisedTraceDist_eq_integral_traceDist` is now a one-line
+  * `Phase 11-β-followup-3` — ✅ closed (Worker 3).
+    `randomisedTraceDist_eq_integral_traceDist` is a one-line
     forwarding to a single named sub-claim `_traj` (the substantive
     trajectory-level Fubini), and the two supporting facts (per-step
     factorisation, schedule-space marginal) are fully proved.
-  * `Phase 11-β-followup-3a` — ⏳ open (queued for follow-up).
-    `randomisedTraceDist_eq_integral_traceDist_traj`: the cylinder-
-    set Ionescu-Tulcea induction that lifts the per-step
-    factorisation to the trajectory measure. ~150 lines of mechanical
+  * `Phase 11-β-followup-4` — ✅ closed (Worker 4, this PR).
+    `Secrecy.toRandomised` is fully proved modulo `_traj` (the
+    only remaining sorry in the chain). Strategy: extract the
+    bind equality + `AEMeasurable` witness from
+    `randomisedTraceDist_eq_integral_traceDist`, reduce to set
+    equality via `Measure.map_apply` + `Measure.bind_apply`, and
+    discharge pointwise under the integral by the deterministic
+    secrecy hypothesis `h`. The conclusion of `_traj` was
+    strengthened in this PR to also yield the `AEMeasurable`
+    witness — a natural byproduct of any genuine cylinder-induction
+    proof, and the only piece of structure beyond the bind equality
+    that `Secrecy.toRandomised` requires.
+  * `Phase 11-β-followup-3a` — ⏳ open (last remaining; queued for
+    follow-up). `randomisedTraceDist_eq_integral_traceDist_traj`:
+    the cylinder-set Ionescu-Tulcea induction that lifts the
+    per-step factorisation to the trajectory measure (and also
+    yields the `AEMeasurable` witness). ~150 lines of mechanical
     measure-theoretic plumbing; proof outline + inputs are documented
     in the helper's docstring.
-  * `Phase 11-β-followup-4` — ⏳ open. `Secrecy.toRandomised` itself:
-    assemble the factorisation + apply `h` under the integral +
-    conclude.
 
-Each of these is a clean handoff target; subsequent PRs in the chain
-can address them independently. -/
+After Phase 11-β-followup-4, the chain is reduced to a **single**
+remaining mathlib-gap helper (`_traj`); closing it completes the
+correspondence and discharges every sorry in `Secrecy.lean`. -/
 
 /-! ### Schedule-space machinery
 
@@ -508,18 +519,33 @@ form needed on the RHS.
 "`trajMeasure` of a `Kernel.bind`-mixture equals `Measure.bind` of
 trajectory measures" lemma; the proof must be done by hand on
 cylinder sets. ~150 lines of mechanical induction; isolated here as
-a single named sorry to be discharged in a follow-up PR. -/
+a single named sorry to be discharged in a follow-up PR.
+
+**Conclusion strengthened (Phase 11-β-followup-4).** In addition to
+the bind equality, the family `sched ↦ traceDist spec
+(sched.toAdversary R.corrupt) μ` is `AEMeasurable` w.r.t.
+`scheduleSpaceMeasure R`. This is a natural byproduct of any genuine
+factorisation proof (kernel composition / Ionescu-Tulcea both
+preserve measurability in the underlying parameter), and is needed
+by `Secrecy.toRandomised` to push `Measure.map proj` past the bind.
+-/
 private theorem randomisedTraceDist_eq_integral_traceDist_traj
     (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
     (μ : Measure σ) [IsProbabilityMeasure μ] :
-    randomisedTraceDist spec R μ =
-      Measure.bind (scheduleSpaceMeasure R) fun sched =>
-        traceDist spec (sched.toAdversary R.corrupt) μ := by
+    AEMeasurable
+        (fun sched : ScheduleAssignment σ ι =>
+          traceDist spec (sched.toAdversary R.corrupt) μ)
+        (scheduleSpaceMeasure R)
+      ∧ randomisedTraceDist spec R μ =
+        Measure.bind (scheduleSpaceMeasure R) fun sched =>
+          traceDist spec (sched.toAdversary R.corrupt) μ := by
   sorry  -- TODO Phase 11-β-followup-3a: Ionescu-Tulcea cylinder
          -- factorisation. See docstring above for the proof outline.
          -- Inputs: 3a (`randomisedStepKernel_eq_bind_singleActionStep`)
          --       + 3b (`scheduleSpaceMeasure_map_eval`)
          --       + Ionescu-Tulcea cylinder uniqueness.
+         -- The AEMeasurable witness comes from the kernel-composition
+         -- form natural in the cylinder induction.
 
 /-- **Fubini factorisation of the mixture trace measure** (the heart
 of `Secrecy.toRandomised`).
@@ -551,13 +577,24 @@ measure-theoretic content. The two supporting facts are closed:
     `scheduleSpaceMeasure_map_eval` (closed via mathlib's
     `infinitePi_map_eval`).
 
-The main lemma is now a single-line forwarding to 3c. -/
+The main lemma is now a single-line forwarding to 3c.
+
+**Phase 11-β-followup-4 strengthening.** The conclusion now bundles
+the bind equality with an `AEMeasurable` witness for the inner
+family — both are needed by `Secrecy.toRandomised` to push
+`Measure.map proj` past the bind via `bind_apply`. The two
+conjuncts are direct projections of
+`randomisedTraceDist_eq_integral_traceDist_traj`. -/
 private theorem randomisedTraceDist_eq_integral_traceDist
     (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
     (μ : Measure σ) [IsProbabilityMeasure μ] :
-    randomisedTraceDist spec R μ =
-      Measure.bind (scheduleSpaceMeasure R) fun sched =>
-        traceDist spec (sched.toAdversary R.corrupt) μ :=
+    AEMeasurable
+        (fun sched : ScheduleAssignment σ ι =>
+          traceDist spec (sched.toAdversary R.corrupt) μ)
+        (scheduleSpaceMeasure R)
+      ∧ randomisedTraceDist spec R μ =
+        Measure.bind (scheduleSpaceMeasure R) fun sched =>
+          traceDist spec (sched.toAdversary R.corrupt) μ :=
   randomisedTraceDist_eq_integral_traceDist_traj spec R μ
 
 /-- **Hard direction** of the `Secrecy ↔ SecrecyRandomised`
@@ -572,41 +609,47 @@ conclusion.
 
 Concretely:
   * factor both sides via `randomisedTraceDist_eq_integral_traceDist`,
-  * push `Measure.map proj` inside the bind via `Measure.map_bind`,
+  * push `Measure.map proj` inside the bind by reducing to set-equality
+    via `Measure.bind_apply` + `Measure.map_apply`,
   * apply the deterministic hypothesis `h sec sec' (sched.toAdversary R.corrupt)`
-    pointwise inside the bind,
-  * conclude by `Measure.bind_congr`.
+    pointwise inside the integral,
+  * conclude by `lintegral_congr`.
 
-NOTE: this is the substantive measure-theoretic content.  The
-proof is in progress (sorry-handoff chain). -/
+The hypothesis `Measurable proj` (mirroring `mono_proj`) is necessary
+to push `Measure.map proj` past the `Measure.bind`. It is satisfied in
+all standard caller contexts: framework projections are typically
+discrete (coalition views, schedule prefixes) where measurability is
+automatic from `MeasurableSpace`-discreteness of the codomain. -/
 theorem Secrecy.toRandomised
     {spec : ProbActionSpec σ ι}
     {Sec V : Type*} [MeasurableSpace V]
     {μ₀ : Sec → Measure σ} [∀ s, IsProbabilityMeasure (μ₀ s)]
-    {proj : Trace σ ι → V}
+    {proj : Trace σ ι → V} (hproj : Measurable proj)
     (h : Secrecy spec μ₀ proj) :
     SecrecyRandomised spec μ₀ proj := by
   intro sec sec' R
-  -- Strategy: factor both sides through the schedule-space measure
-  -- (`randomisedTraceDist_eq_integral_traceDist`), push `Measure.map proj`
-  -- through `Measure.bind`, then apply `h sec sec' (sched.toAdversary R.corrupt)`
-  -- pointwise under the integral.
-  --
-  -- Pushing `Measure.map proj` through `Measure.bind` requires
-  -- `AEMeasurable proj` w.r.t. the inner measure.  In the framework
-  -- `proj` is typically discrete-valued (e.g., a coalition view); the
-  -- standard lift is `Measurable.aemeasurable` after a
-  -- `[MeasurableSingletonClass V]` upgrade or a discrete σ-algebra on
-  -- `V`.  Because the current `Secrecy` signature does not carry a
-  -- `Measurable proj` hypothesis, the cleanest fix in the chain is
-  -- either (a) add such a hypothesis here (mirroring `mono_proj`),
-  -- or (b) prove that `proj`'s measurability is automatic in all
-  -- caller contexts.  This is left for Phase 11-β-followup-4.
-  sorry  -- TODO Phase 11-β-followup-4: assemble the factorisation
-         -- (lemma -3) + push `proj` through `Measure.bind` (needs
-         -- `AEMeasurable proj`; either add hypothesis or derive from
-         -- caller context) + apply `h` pointwise + close by
-         -- `Measure.bind_congr`.  See proof-strategy comment in the
-         -- file docstring above.
+  -- Step 1: extract the factorisation + AEMeasurable witnesses for
+  -- both secrets.
+  obtain ⟨hAE_sec,  heq_sec⟩  :=
+    randomisedTraceDist_eq_integral_traceDist spec R (μ₀ sec)
+  obtain ⟨hAE_sec', heq_sec'⟩ :=
+    randomisedTraceDist_eq_integral_traceDist spec R (μ₀ sec')
+  -- Step 2: substitute the bind form into the goal.
+  rw [heq_sec, heq_sec']
+  -- Step 3: reduce to set-equality and unfold both `map` and `bind`.
+  ext t ht
+  have ht' : MeasurableSet (proj ⁻¹' t) := hproj ht
+  rw [Measure.map_apply hproj ht, Measure.map_apply hproj ht,
+      Measure.bind_apply ht' hAE_sec, Measure.bind_apply ht' hAE_sec']
+  -- Step 4: pointwise equality under the integral via `h`.
+  refine lintegral_congr fun sched => ?_
+  -- For each fixed deterministic schedule, `h` gives the projected
+  -- trace measures equal — apply at preimage `proj ⁻¹' t`.
+  have hpoint :=
+    congrArg (fun ν : Measure V => ν t)
+      (h sec sec' (sched.toAdversary R.corrupt))
+  -- `Measure.map_apply` on each side reduces `(traceDist ...).map proj t`
+  -- to `traceDist ... (proj ⁻¹' t)`.
+  simpa [Measure.map_apply hproj ht] using hpoint
 
 end Leslie.Prob
