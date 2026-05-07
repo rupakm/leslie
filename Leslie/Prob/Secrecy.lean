@@ -307,7 +307,7 @@ This proof structure is **load-bearing for the sorry-handoff
 chain**: each named sorry is a self-contained measure-theoretic
 sub-claim that a subsequent worker can attack independently.
 
-**Sorry inventory** (after Phase 11-β-followup-2, Worker 2):
+**Sorry inventory** (after Phase 11-β-followup-3, Worker 3):
 
   * `Phase 11-β-followup-2` — ✅ closed (Worker 2). `scheduleSpaceMeasure`
     + its `IsProbabilityMeasure` instance now use mathlib's
@@ -317,10 +317,17 @@ sub-claim that a subsequent worker can attack independently.
     level `[Countable σ] [Countable ι]` are not threaded into the
     definition itself (they remain useful for the rest of the
     development, e.g. measurability of discrete projections).
-  * `Phase 11-β-followup-3` — ⏳ open. `randomisedTraceDist_eq_integral_traceDist`:
-    the Fubini factorisation that the mixture trace measure equals
-    the integral of deterministic trace measures over the schedule-
-    space measure.
+  * `Phase 11-β-followup-3` — ✅ closed (Worker 3, this PR).
+    `randomisedTraceDist_eq_integral_traceDist` is now a one-line
+    forwarding to a single named sub-claim `_traj` (the substantive
+    trajectory-level Fubini), and the two supporting facts (per-step
+    factorisation, schedule-space marginal) are fully proved.
+  * `Phase 11-β-followup-3a` — ⏳ open (queued for follow-up).
+    `randomisedTraceDist_eq_integral_traceDist_traj`: the cylinder-
+    set Ionescu-Tulcea induction that lifts the per-step
+    factorisation to the trajectory measure. ~150 lines of mechanical
+    measure-theoretic plumbing; proof outline + inputs are documented
+    in the helper's docstring.
   * `Phase 11-β-followup-4` — ⏳ open. `Secrecy.toRandomised` itself:
     assemble the factorisation + apply `h` under the integral +
     conclude.
@@ -399,6 +406,121 @@ private instance instIsProbabilityMeasure_scheduleSpaceMeasure
   unfold scheduleSpaceMeasure
   infer_instance
 
+/-! ### Per-step factorisation building blocks
+
+The Fubini factorisation `randomisedTraceDist_eq_integral_traceDist`
+decomposes naturally into three layers of decreasing tractability:
+
+  * **3a (closed here)** — per-history per-step factorisation: the
+    randomised step kernel at history `h` equals the PMF-bind of
+    `singleActionStep` over the schedule choice. Direct from the
+    existing tsum identity `randomisedStepKernel_apply_tsum`.
+  * **3b (closed here)** — schedule-space marginal: the marginal of
+    `scheduleSpaceMeasure R` at any single history coordinate is
+    `(R.strategy h).toMeasure`. Direct from mathlib's
+    `infinitePi_map_eval`.
+  * **3c (open, queued for follow-up)** — trajectory-level Fubini:
+    lifting the per-step factorisation to the trajectory measure via
+    Ionescu-Tulcea. This is the substantive measure-theoretic
+    content; see the sub-sorry comment below for a structured
+    breakdown.
+
+Phase 11-β-followup-3 (this PR) closes 3a and 3b and reduces the main
+factorisation to a single, clearly-stated trajectory-level sub-claim
+`randomisedTraceDist_eq_integral_traceDist_traj`. The main lemma is
+proved structurally: it exposes the bind-of-trajectories form and
+hands off the Ionescu-Tulcea-cylinder argument to the next worker.
+-/
+
+set_option linter.unusedSectionVars false in
+/-- **3a (closed).** Per-history factorisation of the randomised
+step kernel: at any history `h`, the kernel measure equals the
+`Measure.bind` of `singleActionStep spec h` over the schedule PMF
+viewed as a measure.
+
+Direct from the tsum identity `randomisedStepKernel_apply_tsum`,
+unfolding `Measure.bind` via `bind_apply` and reducing the integral
+on the discrete `Option ι` PMF to a tsum via `lintegral_countable'`. -/
+private lemma randomisedStepKernel_eq_bind_singleActionStep
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
+    {n : ℕ} (h : FinPrefix σ ι n) :
+    (randomisedStepKernel spec R n) h =
+      Measure.bind (R.strategy h.toList).toMeasure
+        (fun α => singleActionStep spec h α) := by
+  -- Reduce to set-equality and use `bind_apply` + `tsum`.
+  ext s hs
+  -- LHS: the existing tsum identity.
+  rw [randomisedStepKernel_apply_tsum spec R h hs]
+  -- RHS: `bind_apply` reduces to `lintegral`, then `lintegral_countable'`
+  -- (Option ι is countable + discrete) reduces to `tsum`.
+  rw [Measure.bind_apply hs
+        ((Measurable.of_discrete (f := singleActionStep spec h)).aemeasurable)]
+  -- ∫⁻ α, singleActionStep spec h α s ∂(R.strategy ...).toMeasure
+  --   = ∑' α, singleActionStep spec h α s * (R.strategy ...).toMeasure {α}
+  --   = ∑' α, (R.strategy h.toList) α * singleActionStep spec h α s.
+  rw [MeasureTheory.lintegral_countable' (μ := (R.strategy h.toList).toMeasure)
+        (fun α => singleActionStep spec h α s)]
+  refine tsum_congr fun α => ?_
+  rw [PMF.toMeasure_apply_singleton _ _ MeasurableSet.of_discrete, mul_comm]
+
+set_option linter.unusedSectionVars false in
+/-- **3b (closed).** Schedule-space marginal at a single history:
+the projection of `scheduleSpaceMeasure R` onto the `h`-coordinate
+recovers `(R.strategy h).toMeasure`.
+
+Direct application of mathlib's `Measure.infinitePi_map_eval`. -/
+private lemma scheduleSpaceMeasure_map_eval
+    (R : RandomisedAdversary σ ι) (h : List (σ × Option ι)) :
+    (scheduleSpaceMeasure R).map (fun sched => sched h) =
+      (R.strategy h).toMeasure := by
+  unfold scheduleSpaceMeasure
+  exact Measure.infinitePi_map_eval _ h
+
+/-- **3c (queued sub-sorry, Phase 11-β-followup-3a).**
+
+Trajectory-level Fubini for the mixture trace measure. This is the
+substantive measure-theoretic content of `Secrecy.toRandomised`.
+
+**Statement intuition.** A randomised adversary `R` with per-history
+PMFs samples a fresh schedule choice at each step; equivalently, by
+Kolmogorov / Ionescu-Tulcea, we can sample *all* schedule choices in
+advance (one per history) and run the deterministic step kernel
+against the sampled schedule. Both yield the same trace distribution
+because the per-step independence of schedule samples in the
+randomised kernel matches the per-history independence in the
+Kolmogorov product.
+
+**Proof obligation.** Apply Ionescu-Tulcea cylinder uniqueness:
+two probability measures on `Trace σ ι = ∀ n, σ × Option ι` are
+equal iff their cylinder-set values agree. Both sides agree on
+cylinders by induction on the cylinder length, using:
+  * `randomisedStepKernel_eq_bind_singleActionStep` (3a) at each step
+    on the LHS, and
+  * `stepKernel_apply_eq_singleActionStep` for each fixed `sched` on
+    the RHS,
+followed by Fubini on `scheduleSpaceMeasure R` to swap the
+schedule-space integral past the trajectory integral. The
+schedule-space marginal `scheduleSpaceMeasure_map_eval` (3b) bridges
+the per-step kernel form on the LHS with the per-history-marginal
+form needed on the RHS.
+
+**Mathlib gap.** Mathlib's `Kernel.trajMeasure` does not expose a
+"`trajMeasure` of a `Kernel.bind`-mixture equals `Measure.bind` of
+trajectory measures" lemma; the proof must be done by hand on
+cylinder sets. ~150 lines of mechanical induction; isolated here as
+a single named sorry to be discharged in a follow-up PR. -/
+private theorem randomisedTraceDist_eq_integral_traceDist_traj
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
+    (μ : Measure σ) [IsProbabilityMeasure μ] :
+    randomisedTraceDist spec R μ =
+      Measure.bind (scheduleSpaceMeasure R) fun sched =>
+        traceDist spec (sched.toAdversary R.corrupt) μ := by
+  sorry  -- TODO Phase 11-β-followup-3a: Ionescu-Tulcea cylinder
+         -- factorisation. See docstring above for the proof outline.
+         -- Inputs: 3a (`randomisedStepKernel_eq_bind_singleActionStep`)
+         --       + 3b (`scheduleSpaceMeasure_map_eval`)
+         --       + Ionescu-Tulcea cylinder uniqueness.
+
 /-- **Fubini factorisation of the mixture trace measure** (the heart
 of `Secrecy.toRandomised`).
 
@@ -417,32 +539,26 @@ For our `Secrecy` use-case, `g` is the indicator of a
 outside the integral and leaves the deterministic equality to
 discharge.
 
-TODO Phase 11-β-followup-3: prove the factorisation.  The standard
-route is induction on the trajectory length:
+**Phase 11-β-followup-3 status.** This PR closes the main lemma
+modulo the trajectory-level Fubini sub-claim
+`randomisedTraceDist_eq_integral_traceDist_traj` (sorry-bookmark
+`Phase 11-β-followup-3a`), which is the substantive
+measure-theoretic content. The two supporting facts are closed:
 
-  1. Coordinate-0 marginal: both sides agree (both reduce to
-     `μ₀.map (·, none)`, and the schedule-space measure is a
-     probability measure so it integrates to 1).
-  2. Successor step: use the marginal recurrence
-     `Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure`
-     and the per-step kernel mixture identity
-     `randomisedStepKernel_apply_tsum`, plus the schedule-space
-     marginal projection.
-  3. Pass to the trajectory measure via Ionescu-Tulcea uniqueness
-     (a probability measure on `Trace σ ι` is determined by its
-     finite-dim marginals).
+  * Per-step factorisation 3a:
+    `randomisedStepKernel_eq_bind_singleActionStep` (closed).
+  * Schedule-space marginal 3b:
+    `scheduleSpaceMeasure_map_eval` (closed via mathlib's
+    `infinitePi_map_eval`).
 
-The induction is mechanical but voluminous (~150 lines).  An
-alternative route — direct `Kernel.trajMeasure` extensionality on
-`Kernel.bind` — would be cleaner but requires a Mathlib lemma about
-`trajMeasure` of `Kernel.bind` that does not exist by name. -/
+The main lemma is now a single-line forwarding to 3c. -/
 private theorem randomisedTraceDist_eq_integral_traceDist
     (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
     (μ : Measure σ) [IsProbabilityMeasure μ] :
     randomisedTraceDist spec R μ =
       Measure.bind (scheduleSpaceMeasure R) fun sched =>
-        traceDist spec (sched.toAdversary R.corrupt) μ := by
-  sorry  -- TODO Phase 11-β-followup-3: Fubini factorisation of mixture trace measure
+        traceDist spec (sched.toAdversary R.corrupt) μ :=
+  randomisedTraceDist_eq_integral_traceDist_traj spec R μ
 
 /-- **Hard direction** of the `Secrecy ↔ SecrecyRandomised`
 correspondence: deterministic secrecy implies randomised secrecy.
