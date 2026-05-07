@@ -26,8 +26,8 @@ Builds every `Leslie.Prob.*` library module and every
 ## What's included
 
   * **Library** (`Leslie.Prob.*`): the framework — `Action`,
-    `Adversary`, `Coupling`, `Embed`, `PMF`, `Polynomial`, `Refinement`,
-    `Trace`. Sorry-free.
+    `Adversary`, `Coupling`, `DeterministicSimulate`, `Embed`, `PMF`,
+    `Polynomial`, `Refinement`, `Trace`. Sorry-free.
   * **Examples** (`Leslie.Examples.Prob.*`): protocols + calibration —
     `AVSS`, `BenOrAsync`, `BivariateShamir`, `BrachaRBC`, `CommonCoin`,
     `CouplingDemo`, `ITMAC`, `KnuthDice`, `OneTimePad`, `RandomWalker1D`,
@@ -47,6 +47,7 @@ Builds every `Leslie.Prob.*` library module and every
 import Leslie.Prob.Action
 import Leslie.Prob.Adversary
 import Leslie.Prob.Coupling
+import Leslie.Prob.DeterministicSimulate
 import Leslie.Prob.Embed
 import Leslie.Prob.Liveness
 import Leslie.Prob.PMF
