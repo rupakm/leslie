@@ -2135,6 +2135,55 @@ The other Phase 9 randomised forms — `avss_correctness_AS_*` /
 #55, #56, #74) — are aligned with their deterministic counterparts
 and do not need follow-up; only termination is affected.
 
+### 13.10. Operational randomised secrecy follow-up (queued)
+
+**Status: ⏳ pending Fubini plumbing.**
+
+Phase 11-γ-randomised (PR #83) added the AVSS-side instance form
+`avss_secrecy_AS_view_rushing_randomised_instance : SecrecyRushingRandomised
+... view proj`, mirroring the deterministic Phase 11-γ instance
+(`avss_secrecy_AS_view_rushing_instance`, PR #74).  The two
+instances differ in **projection strength**:
+
+| Variant | Projection wrapped | Underlying theorem |
+|---|---|---|
+| Deterministic (PR #74) | `(coalitionTraceView, schedulePrefix)` — operational, full literature shape | `avss_secrecy_AS_view_rushing` (PR #43, plus 8.5d-β-followup-7 dealerHonest-INDEPENDENT chain) |
+| Randomised (PR #83) | `coalitionGrid C D (ω k).1` — **algebraic grid only** | `avss_secrecy_AS_view_rushing_randomised` (Phase 9.6, PR #53) |
+
+The randomised instance is therefore for a **strictly weaker
+projection**: it captures bivariate-grid secrecy but not the full
+operational coalition-view + schedule-prefix joint distribution
+that the deterministic instance proves.
+
+To close the gap, an **operational randomised secrecy theorem**
+parallel to `avss_secrecy_AS_view_rushing` is needed.  Required
+content:
+
+  * **Randomised AE-bridge**: lift the Phase 7.4 deterministic AE-
+    bridge `traceDist_AE_eq_avssSimulateTrace` (which expresses
+    the rushing trace as a deterministic pushforward of μ₀) to the
+    randomised mixture trace.  This requires Fubini over the
+    per-step adversary PMFs.
+  * **Randomised algebraic-view factoring**: lift `avssSimulateTrace`
+    to a randomised analog that integrates over R's coin flips at
+    each step.
+  * **Headline randomised theorem**: `avss_secrecy_AS_view_rushing_randomised_operational`,
+    with conclusion `(randomisedTraceDist ...).map (coalitionTraceView, schedulePrefix) =
+    same on the other secret`.
+
+Estimated scope: ~150–250 LOC, single substantive PR, mostly in
+`Leslie/Examples/Prob/AVSS.lean`.  May be combined with Phase 11-β-
+followup (the framework-level `Secrecy → SecrecyRandomised` Fubini
+direction) since both rely on similar measure-theoretic plumbing.
+
+**Why not blocking**: the algebraic-grid randomised secrecy is
+already enough for downstream Phase 12 composability arguments
+that work at the polynomial level (e.g., random-secret-draw via
+sum-of-uniforms).  Operational randomised secrecy is needed only
+when downstream protocols want to reason about randomised
+coalition-trace views directly, which is a less common pattern
+in the AVSS literature.
+
 ## 14. Phase 10 — Generic deterministic-simulate meta-theorem
 
 The Phase 7.4 inductive AE-bridge `traceDist_AE_eq_avssSimulateTrace`
