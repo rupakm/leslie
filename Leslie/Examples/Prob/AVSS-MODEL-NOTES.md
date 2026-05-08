@@ -3082,6 +3082,9 @@ for example `AVSSFaithful.lean`, with a separate state/action family:
 1. **Spec skeleton PR.**  Add `AVSSFaithful.lean` with state/action
    types, payload/candidate/certificate data structures, finite and
    measurable instances, and no major proofs beyond frame lemmas.
+   **Status:** implemented in Phase 8.6-redux as
+   `Leslie/Examples/Prob/AVSSFaithful.lean`; imported by
+   `Leslie/Prob/Index.lean`.
 
 2. **Operational invariants PR.**  Prove queue freshness, validated
    echo/ready preservation, and candidate-scoped threshold invariants.

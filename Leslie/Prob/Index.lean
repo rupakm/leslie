@@ -63,6 +63,7 @@ import Leslie.Prob.Trace
 
 -- Examples
 import Leslie.Examples.Prob.AVSS
+import Leslie.Examples.Prob.AVSSFaithful
 import Leslie.Examples.Prob.AVSSAbstract
 import Leslie.Examples.Prob.BenOrAsync
 import Leslie.Examples.Prob.BivariateShamir
