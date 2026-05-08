@@ -1767,13 +1767,27 @@ Three candidate paths surfaced in `STEP2-BLOCKED.md`:
 
 Defer commitment to a path until the cost-vs-value tradeoff is reassessed.  The current `_existential` form (post-Fix 1) is honest about what it proves.  CR '93 property parity is achieved modulo this gap and the adaptive-corruption gap (§16); both are documented and not soundness issues.
 
-If pursued later: prefer Path X+Y combined, since they address different residual sub-problems (Y closes error 4 cheaply; X is needed for errors 1-3).  Estimated total chain: ~1500-2000 LOC across 4-5 PRs.
+If pursued later: prefer Path X+Y combined, since they address different residual sub-problems (Y closes error 4 cheaply; X is needed for errors 1-3).  Estimated total chain: ~2386-3186 LOC across 4 PRs.
+
+#### Empirical confirmation (PR #101 — Worker 1 of redesigned chain)
+
+A first attempt at the redesigned chain (Worker 1 on `feature/8.6`) cherry-picked PR #88's 3 commits onto current `main` and reproduced the 4 compile errors at **identical line numbers** (9782 / 9843 / 9898 / 12346) and identical residual-goal shapes — no drift since #98 merged.  Worker 1 then enumerated which errors close via Path X vs Path Y:
+
+| Error | Site | Path that closes it |
+|---|---|---|
+| 1, 2, 3 | `corrupt_local_state_uniqueness` consumers | **Path X** (reconstruction-side) — confirms `WORKER_TASK.md`'s scoping |
+| 4 | `simSyncInv.inflightEchoes_eq` preservation under `partyEchoSend q` | **Path Y** (action-label refactor) — *NOT* closable via Path X |
+
+Error 4's structural shape: honest `q`'s rowPoly legitimately differs across simulating traces (different secrets `c, c'`); pinning it would force `c = c'` and trivialise secrecy.  This is the same structural unsoundness the original §12.6 plan documented for `simSyncInv` strengthening, manifesting at the echo-flight layer instead of the echo-receipt layer.
+
+**Implication for the chain**: Step 1 must combine Path X+Y in a single PR.  Splitting into "Step 1 = Path X only" (as my initial scoping suggested) leaves error 4 unresolved.  Worker 1 stopped at the rebase-clean baseline rather than ship a partial fix; full diagnosis preserved in PR #101's `STEP1-BLOCKED.md`.  Branch `feature/8.6-with-experiment` (local) holds the cherry-pick + 4-error reproduction for forensics.
 
 #### Status of artefacts
 
   * **PR #88**: open, broken (4 errors), CONFLICTING with main.  Preserved as record of Worker 1's analysis + 1086 LOC of model surgery work.  **Closed** when (Z) chosen, or **superseded** when X+Y land.
-  * **PR #95**: open, contains structural-blocker analysis (`STEP2-BLOCKED.md`).  Preserved as canonical record of why the original plan failed.  **Closed** alongside PR #88.
-  * **Branches**: `feature/phase8-6`, `feature/phase8-6-step2` retained for forensics; can be deleted if/when (Z) chosen.
+  * **PR #95**: open, contains Worker 2's structural-blocker analysis (`STEP2-BLOCKED.md`).  Preserved as canonical record of why the *original* plan (`simSyncInv` strengthening) failed.  **Closed** alongside PR #88.
+  * **PR #101**: open, contains Worker 1' rebooted's empirical confirmation (`STEP1-BLOCKED.md`) that Path X alone is insufficient.  Findings folded into this section; PR closeable as superseded.
+  * **Branches**: `feature/phase8-6`, `feature/phase8-6-step2`, `feature/8.6`, `feature/8.6-blocked`, `feature/8.6-with-experiment` retained for forensics; can be deleted if/when (Z) chosen.
 
 ## 13. Phase 9 — Randomised adversary support (independent of Phase 8)
 
