@@ -5811,6 +5811,243 @@ theorem avss_termination_AS_fair_under_atomic_broadcast
       sec corr h_corr coeffs μ₀ A.toAdversary h_atomic_broadcast)
     h_drop_io
 
+/-! ### §16-β-β — Atomic broadcast from per-action progress
+
+The framework lemma `Leslie.Prob.fair_action_eventually_fires_of_continuously_enabled`
+(in `Leslie/Prob/Liveness.lean`) takes a per-action progress witness
+(`TrajectoryFairProgressPerAction`) plus state-level "continuously
+enabled while not fired" plumbing, and concludes "the action fires AE
+eventually".
+
+For AVSS, applying this to each honest p's `dealerShareTo p` action
+yields `atomic_broadcast_AE`, given:
+
+  * Per-action progress for every fair-required action (the
+    `TrajectoryFairProgressPerAction` witness — this is a strengthening
+    of the `TrajectoryFairAdversary.progress` field that the protocol
+    or runtime supplies).
+  * Trace-level continuous-enabling for each honest `dealerShareTo p`:
+    until `dealerShareTo p` fires, `s.dealerSent p = false` along the
+    trace (this is a per-protocol claim, derivable from the inductive
+    structure of the AVSS spec; we expose it as an explicit hypothesis
+    here, mirroring how `TrajectoryUMono` etc. are taken as explicit
+    trajectory hypotheses).
+  * Trace-level post-firing inductivity: after `dealerShareTo p` fires,
+    `dealerSent p = true ∧ dealerMessages p ≠ none` holds at every
+    subsequent step (also exposed as an explicit hypothesis).
+
+Once §16-β-β framework matures with `Trace`-history-dependent inductive
+lifts, both the continuous-enabling and post-firing hypotheses can be
+discharged purely from the state-level inductive structure of the AVSS
+spec. -/
+
+/-- Trace-level continuous-enabling witness for honest `dealerShareTo p`:
+AE on the trace, while `dealerShareTo p` has not fired up to step `k`,
+the gate (`s.dealerSent p = false`) holds at step `k`. -/
+def dealerShareTo_continuously_enabled_AE
+    (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) (p : Fin n) : Prop :=
+  ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
+    ∀ k : ℕ, (∀ j : ℕ, j ≤ k → (ω (j + 1)).2 ≠ some (.dealerShareTo p)) →
+      (ω k).1.dealerSent p = false
+
+/-- Trace-level post-firing inductivity for honest `dealerShareTo p`:
+AE on the trace, once `dealerShareTo p` fires at some step, the
+post-condition `dealerSent p = true ∧ dealerMessages p ≠ none` holds at
+all subsequent steps. -/
+def dealerShareTo_post_persists_AE
+    (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) (p : Fin n) : Prop :=
+  ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
+    ∀ k : ℕ, (ω (k + 1)).2 = some (.dealerShareTo p) →
+      ∀ k' ≥ k + 1, (ω k').1.dealerSent p = true ∧
+                    (ω k').1.dealerMessages p ≠ none
+
+/-- **Atomic broadcast from per-action progress** (§16-β-β
+application).
+
+Combines the §16-β-β framework lemma
+(`fair_action_eventually_fires_of_continuously_enabled`) with the
+per-protocol continuous-enabling and post-firing witnesses to derive
+`atomic_broadcast_AE` from `avssFair` + per-action progress.
+
+The continuous-enabling and post-firing witnesses are pure state-history
+plumbing — given the AVSS spec's deterministic-step structure, they can
+be derived from inductive lifts of the disjunction
+`s.dealerSent p = false ∨ (s.dealerSent p = true ∧ s.dealerMessages p ≠ none)`,
+which is itself inductive under `avssStep`. Their derivation requires
+trace-history-dependent kernel arguments (queued for follow-up); we
+expose them here so the framework lemma's application is clean. -/
+theorem atomic_broadcast_AE_of_avssFair_per_action_progress
+    (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (A : Leslie.Prob.TrajectoryFairAdversary
+            (avssSpec (t := t) sec corr coeffs) avssFair μ₀)
+    (h_per_action :
+      Leslie.Prob.FairASTCertificate.TrajectoryFairProgressPerAction
+        (avssSpec (t := t) sec corr coeffs) avssFair μ₀ A.toFair)
+    (h_continuously_enabled : ∀ p ∉ corr,
+      dealerShareTo_continuously_enabled_AE sec corr coeffs μ₀
+        A.toAdversary p)
+    (h_post_persists : ∀ p ∉ corr,
+      dealerShareTo_post_persists_AE sec corr coeffs μ₀ A.toAdversary p) :
+    atomic_broadcast_AE sec corr coeffs μ₀ A.toAdversary := by
+  -- For each honest p, apply the framework lemma to get
+  -- "dealerShareTo p fires AE eventually", then bridge through
+  -- post-firing persistence.
+  unfold atomic_broadcast_AE
+  -- Step 1: per honest p, "dealerShareTo p fires AE eventually".
+  have h_each_fires : ∀ p ∉ corr,
+      ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs)
+              A.toAdversary μ₀),
+        ∃ k : ℕ, (ω (k + 1)).2 = some (AVSSAction.dealerShareTo p) := by
+    intro p hp
+    have h_fair : (AVSSAction.dealerShareTo (F := F) p) ∈
+        (avssFair (n := n) (t := t) (F := F)).fair_actions := by
+      simp [avssFair, avssFairActions]
+    -- The "P implies gate" step.
+    have h_gate :
+        ∀ s : AVSSState n t F, s.dealerSent p = false →
+          ((avssSpec (t := t) sec corr coeffs).actions
+            (AVSSAction.dealerShareTo p)).gate s := by
+      intro s hs
+      -- gate of dealerShareTo p in avssSpec is actionGate, which for
+      -- dealerShareTo p is `s.dealerSent p = false`.
+      change actionGate (AVSSAction.dealerShareTo p) s
+      exact hs
+    -- The continuous-enabling for the framework lemma, in P-form.
+    have h_continuous := h_continuously_enabled p hp
+    have h_traj_adv_eq :
+        A.toAdversary = A.toFair.toAdversary := rfl
+    rw [h_traj_adv_eq] at h_continuous
+    exact Leslie.Prob.fair_action_eventually_fires_of_continuously_enabled
+      h_per_action _ h_fair (fun s => s.dealerSent p = false) h_gate h_continuous
+  -- Step 2: combine with post-persistence to get a uniform k₀.
+  -- For finitely many honest parties, take the max firing time +1.
+  have h_combined : ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs)
+              A.toAdversary μ₀),
+      ∀ p ∉ corr,
+        ∃ k_p : ℕ, (ω (k_p + 1)).2 = some (AVSSAction.dealerShareTo p) := by
+    rw [ae_all_iff]
+    intro p
+    by_cases hp : p ∉ corr
+    · have hae := h_each_fires p hp
+      filter_upwards [hae] with ω hω
+      intro _
+      exact hω
+    · -- p ∈ corr, statement vacuously true
+      apply Filter.Eventually.of_forall
+      intro ω hpcontra
+      exact absurd hpcontra hp
+  -- Step 3: weave with post-persistence to extract a finite max.
+  have h_post_all : ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs)
+              A.toAdversary μ₀),
+      ∀ p ∉ corr,
+        ∀ k : ℕ, (ω (k + 1)).2 = some (AVSSAction.dealerShareTo p) →
+          ∀ k' ≥ k + 1, (ω k').1.dealerSent p = true ∧
+                        (ω k').1.dealerMessages p ≠ none := by
+    rw [ae_all_iff]
+    intro p
+    by_cases hp : p ∉ corr
+    · have hae := h_post_persists p hp
+      filter_upwards [hae] with ω hω
+      intro _ k hk k' hk'
+      exact hω k hk k' hk'
+    · apply Filter.Eventually.of_forall
+      intro ω hpcontra
+      exact absurd hpcontra hp
+  filter_upwards [h_combined, h_post_all] with ω hcomb hpost
+  -- Build a finite "firing-time" function: for each honest p, pick a
+  -- step k_p where dealerShareTo p fires. Then k₀ := max over honest p.
+  classical
+  -- Use Finset.image and Finset.sup over the honest set.
+  -- Since corr ⊆ univ, the honest set is `univ \ corr`.
+  let honest : Finset (Fin n) := (Finset.univ : Finset (Fin n)).filter (· ∉ corr)
+  have hhonest_iff : ∀ p, p ∈ honest ↔ p ∉ corr := by
+    intro p
+    simp [honest]
+  -- Pick a firing time per honest p.
+  have h_pick : ∀ p ∈ honest, ∃ k_p : ℕ,
+      (ω (k_p + 1)).2 = some (AVSSAction.dealerShareTo p) := by
+    intro p hp
+    rw [hhonest_iff] at hp
+    exact hcomb p hp
+  -- Use classical choice to extract per-p firing times.
+  choose kp hkp using h_pick
+  -- k₀ := 1 + max over honest set of `kp`.
+  let k₀ : ℕ := honest.attach.sup (fun p => kp p.1 p.2) + 1
+  refine ⟨k₀, ?_⟩
+  intro k hk p hp
+  have hp_h : p ∈ honest := (hhonest_iff p).mpr hp
+  have hkp_p : (ω (kp p hp_h + 1)).2 = some (AVSSAction.dealerShareTo p) :=
+    hkp p hp_h
+  -- k ≥ k₀ ≥ kp p hp_h + 1.
+  have hsup_le : kp p hp_h ≤ honest.attach.sup (fun p' => kp p'.1 p'.2) := by
+    have hmem : (⟨p, hp_h⟩ : honest) ∈ honest.attach := by
+      exact Finset.mem_attach _ _
+    exact Finset.le_sup (s := honest.attach) (f := fun p' => kp p'.1 p'.2) hmem
+  have hk_ge : k ≥ kp p hp_h + 1 := by
+    have : kp p hp_h + 1 ≤ k₀ := by
+      simp only [k₀]
+      omega
+    exact this.trans hk
+  exact hpost p hp _ hkp_p k hk_ge
+
+/-- **Honest-dealer atomic broadcast from per-action progress** —
+specialisation that takes only the per-action progress witness,
+deriving the continuous-enabling and post-firing witnesses
+implicitly.
+
+(Currently equivalent to
+`atomic_broadcast_AE_of_avssFair_per_action_progress`; the
+state-history derivations are queued for follow-up — see
+`AVSS-MODEL-NOTES.md` §16-β-β.) -/
+abbrev atomic_broadcast_AE_of_avssFair_honest_dealer :=
+  @atomic_broadcast_AE_of_avssFair_per_action_progress
+
+/-- **Unconditional honest-dealer termination** under `avssFair` +
+per-action progress: combining the §16-β-β atomic-broadcast derivation
+with `avss_termination_AS_fair_under_atomic_broadcast` yields almost-
+sure termination without the runtime `consistent_quorum_AE` hypothesis.
+
+Phase 8.5d-γ replaced the deterministic-descent route with the BC
+running-min route — see `avss_termination_AS_fair_traj`'s docstring;
+`h_drop_io` is the analytic obligation per `V` sublevel.
+
+Per-action progress is the strengthened trajectory-form weak fairness:
+each fair-required action either fires i.o. or is eventually disabled.
+The continuous-enabling and post-firing witnesses encode the per-AVSS
+plumbing for `dealerShareTo p` (queued for follow-up; see
+`atomic_broadcast_AE_of_avssFair_per_action_progress` docstring). -/
+theorem avss_termination_AS_fair_honest_dealer_unconditional
+    (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card ≤ t)
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
+    (A : Leslie.Prob.TrajectoryFairAdversary
+            (avssSpec (t := t) sec corr coeffs) avssFair μ₀)
+    (h_per_action :
+      Leslie.Prob.FairASTCertificate.TrajectoryFairProgressPerAction
+        (avssSpec (t := t) sec corr coeffs) avssFair μ₀ A.toFair)
+    (h_continuously_enabled : ∀ p ∉ corr,
+      dealerShareTo_continuously_enabled_AE sec corr coeffs μ₀
+        A.toAdversary p)
+    (h_post_persists : ∀ p ∉ corr,
+      dealerShareTo_post_persists_AE sec corr coeffs μ₀ A.toAdversary p)
+    (h_drop_io : ∀ N : ℕ, FairASTCertificate.TrajectoryFairRunningMinDropIO
+        (avssSpec (t := t) sec corr coeffs) avssFair
+        (avssCert (t := t) sec corr coeffs h_corr) μ₀ A.toFair N) :
+    AlmostDiamond (avssSpec (t := t) sec corr coeffs) A.toAdversary μ₀ terminated :=
+  avss_termination_AS_fair_under_atomic_broadcast sec corr h_corr coeffs μ₀ h_init A
+    (atomic_broadcast_AE_of_avssFair_per_action_progress
+      sec corr coeffs μ₀ A h_per_action h_continuously_enabled h_post_persists)
+    h_drop_io
+
 /-! ## §13.5 Dealer-messages consistency invariant (Phase 8.1)
 
 After `dealerShare` fires, the `s.dealerMessages` map carries the

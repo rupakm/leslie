@@ -399,6 +399,29 @@ def TrajectoryFairProgress (spec : ProbActionSpec σ ι)
   ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
     ∀ N : ℕ, ∃ n ≥ N, ∃ i ∈ F.fair_actions, (ω (n + 1)).2 = some i
 
+/-- **Per-action AE-fairness predicate** (§16-β-β).
+
+For each fair-required action `a`, AE on the trace, either `a` fires
+infinitely often, or `a` is eventually disabled (its gate fails forever
+beyond some point).
+
+This is the trajectory-form of weak fairness applied per-action: every
+specific weakly-fair action either fires i.o. or is eventually disabled,
+ruling out the situation where `a` is continuously enabled forever
+without ever firing.
+
+This is strictly stronger than `TrajectoryFairProgress` (which gives only
+"some fair action fires i.o."). It is the witness needed to derive
+"if `a` is continuously enabled then `a` fires AE eventually". -/
+def TrajectoryFairProgressPerAction (spec : ProbActionSpec σ ι)
+    (F : FairnessAssumptions σ ι)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (A : FairAdversary σ ι F) : Prop :=
+  ∀ a ∈ F.fair_actions,
+    ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+      (∃ N : ℕ, ∀ n : ℕ, n ≥ N → ¬ (spec.actions a).gate (ω n).1) ∨
+      (∀ N : ℕ, ∃ n ≥ N, (ω (n + 1)).2 = some a)
+
 /-- A fair-required action fires between trace positions `n` and
 `n + 1`. -/
 def FairFiresAt (F : FairnessAssumptions σ ι) (ω : Trace σ ι) (n : ℕ) : Prop :=
@@ -1760,6 +1783,77 @@ def toAdversary (A : TrajectoryFairAdversary spec F μ₀) :
   A.toFair.toAdversary
 
 end TrajectoryFairAdversary
+
+/-! ### §16-β-β — Fair-action eventually fires under continuous enabling
+
+Framework-level "every fair-required, continuously-enabled action
+eventually fires" lemma.  Given:
+
+  * `a ∈ F.fair_actions` (fair-required),
+  * `TrajectoryFairProgressPerAction` providing the trajectory-form
+    weak-fairness witness for `a` (i.o. fire or eventually disabled),
+  * an AE-trace property `P` such that:
+      - `P s → (spec.actions a).gate s` (`P` implies `a` is enabled),
+      - AE on the trace, `P` holds at every prefix where `a` has not
+        yet fired (continuous enabling under `P`),
+
+we conclude that AE on the trace, `a` fires eventually.
+
+The proof is a straightforward case analysis on the disjunction in
+`TrajectoryFairProgressPerAction`: the i.o. branch immediately gives
+the conclusion; the eventually-disabled branch contradicts continuous
+enabling under `P`.
+
+This composes with `TrajectoryFairAdversary` (which carries the weaker
+`TrajectoryFairProgress`) by taking the per-action witness as a
+separate hypothesis — `FairnessAssumptions.isWeaklyFair` is opaque, so
+this stronger trajectory predicate cannot be derived from
+`A.toFair.fair` alone, but concrete protocols whose schedules
+realize per-action weak fairness supply it directly. -/
+
+/-- §16-β-β framework lemma: a continuously-enabled fair-required
+action fires AE eventually.
+
+`P` is a "still-enabled" property: it implies the gate of `a` and is
+preserved along every trajectory prefix on which `a` has not yet
+fired.  Combined with the per-action progress witness, this forces
+`a` to fire on AE every trace. -/
+theorem fair_action_eventually_fires_of_continuously_enabled
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+    {spec : ProbActionSpec σ ι} {F : FairnessAssumptions σ ι}
+    {μ₀ : Measure σ} [IsProbabilityMeasure μ₀]
+    {A : FairAdversary σ ι F}
+    (h_per_action : FairASTCertificate.TrajectoryFairProgressPerAction spec F μ₀ A)
+    (a : ι) (h_fair : a ∈ F.fair_actions)
+    (P : σ → Prop)
+    (h_P_implies_gate : ∀ s, P s → (spec.actions a).gate s)
+    (h_continuous : ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+        ∀ k : ℕ, (∀ j : ℕ, j ≤ k → (ω (j + 1)).2 ≠ some a) → P (ω k).1) :
+    ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+      ∃ k : ℕ, (ω (k + 1)).2 = some a := by
+  have h_action_progress := h_per_action a h_fair
+  filter_upwards [h_action_progress, h_continuous] with ω hprog hcont
+  rcases hprog with ⟨N, hdisabled⟩ | hio
+  · -- Eventually-disabled branch: derive a contradiction with continuous enabling.
+    -- Either `a` fires at some step ≤ N (done), or it never fires up to N
+    -- and then continuous-enabling forces the gate to hold at step N — contra.
+    by_cases hfired : ∃ k ≤ N, (ω (k + 1)).2 = some a
+    · obtain ⟨k, _, hk⟩ := hfired
+      exact ⟨k, hk⟩
+    · push_neg at hfired
+      -- `a` has not fired up to step N; by continuous enabling P (ω N).1.
+      have hP_N : P (ω N).1 := by
+        apply hcont N
+        intro j hj
+        exact hfired j hj
+      have hgate_N : (spec.actions a).gate (ω N).1 := h_P_implies_gate _ hP_N
+      have hdis_N : ¬ (spec.actions a).gate (ω N).1 := hdisabled N le_rfl
+      exact absurd hgate_N hdis_N
+  · -- Infinitely-often branch: pick any firing.
+    obtain ⟨n, _, hn⟩ := hio 0
+    exact ⟨n, hn⟩
 
 /-! ### `sound_traj_det` deferred
 
