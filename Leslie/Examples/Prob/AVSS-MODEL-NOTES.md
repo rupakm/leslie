@@ -2819,13 +2819,13 @@ the composability layer.
 
 A reader who picks up the formalised theorems may reasonably ask:
 "under what assumptions on `n` and `t` are these claims meaningful?"
-The headline theorems all carry only `corr.card ≤ t` as their
-threshold hypothesis (no explicit `n ≥ 3t + 1` or `n ≥ 4t + 1`).
-The preamble of `AVSS.lean` does claim "`n ≥ 3t + 1`" as the model's
-intended setting, but **no theorem in the codebase enforces this
-bound as a hypothesis**.  This section audits where the actual bounds
-sit and how the formalisation relates to Canetti–Rabin '93's stated
-threat model.
+Most headline theorems carry only `corr.card ≤ t` as their threshold
+hypothesis.  Phase 8.6-redux adds an explicit `3 * t + 1 ≤ n`
+self-documentation hypothesis to the four existential-commitment
+headlines, but the current proofs do not consume it.  The preamble of
+`AVSS.lean` claims "`n ≥ 3t + 1`" as the model's intended setting; this
+section audits where the actual bounds sit and how the formalisation
+relates to Canetti–Rabin '93's stated threat model.
 
 ### 16.1. Threshold bounds — what's enforced vs claimed
 
@@ -2833,7 +2833,7 @@ threat model.
 |---|---|---|
 | `corr.card ≤ t` | ✅ enforced as theorem hypothesis | All headline theorems take `h_corr : corr.card ≤ t` |
 | `n ≥ 2t + 1` (so `n - t ≥ t + 1`) | ⚠️ implicit | Used silently when `n - t` is required to dominate `t + 1` (e.g., honest-output quorum existence in `consistent_quorum_AE_of_all_honest_delivered` cardinality argument) |
-| `n ≥ 3t + 1` (Bracha echo-quorum intersection) | ❌ **claimed but not enforced** | Stated in `AVSS.lean` preamble (line 6); `quorum_intersection_card` lemma (§16 of `AVSS.lean`) carries the bound information but is **defined-but-never-used** — no headline theorem consumes it |
+| `n ≥ 3t + 1` (Bracha echo-quorum intersection) | ⚠️ partially explicit | The four existential-commitment headlines now carry `3 * t + 1 ≤ n` as a self-documenting hypothesis.  `quorum_intersection_card` (§16 of `AVSS.lean`) carries the bound information but is still **defined-but-never-used** — no proof consumes it yet |
 | `n ≥ 4t + 1` (Bracha-quality intersection: `≥ t+1` honest in any two output-quorums) | ❌ not enforced | Quorum-intersection lemma's docstring mentions it as a stronger setting; not actually used |
 
 **Interpretation.**  The headline theorems are mathematically valid
@@ -2986,22 +2986,124 @@ Once proven, `consistent_quorum_AE` could be discharged from
      (~600–1000 LOC) and is a known modern-formalisation
      simplification.
 
-The threshold bound `n ≥ 3t + 1` is **not enforced** in our
-theorems but is the bound under which the runtime hypotheses are
-satisfiable in the actual protocol.  Adding `n ≥ 3t + 1` as an
-explicit hypothesis to the headline theorems would make them
-**self-documenting** but would not change their content (since the
-bound is needed for the hypotheses' satisfiability, not for the
-theorems themselves).  Recommended as a **light-touch follow-up**:
-add `(h_n_geq : 3 * t + 1 ≤ n)` to the four headline theorems'
-signatures, drop unused but document-aligned, ~20 LOC.
+The threshold bound `n ≥ 3t + 1` is now explicit on the four
+existential-commitment headlines, but not yet load-bearing.  The next
+faithfulness step is to make this hypothesis operational by consuming
+`quorum_intersection_card` in the value-validation and any-or-all
+proofs, rather than carrying the bound only as documentation.
 
 ### 16.6. Recommended follow-ups (queued)
 
 | # | Follow-up | Scope | LOC | Status |
 |---|---|---|---|---|
-| **16-α** | Add `n ≥ 3 * t + 1` hypothesis to headline theorems for self-documentation | Light-touch, signature surgery | ~20 | queued |
+| **16-α** | Add `n ≥ 3 * t + 1` hypothesis to the four existential-commitment headlines for self-documentation | Light-touch, signature surgery | ~20 | ✅ landed in Phase 8.6-redux |
 | **16-β** | Formalise Bracha "any-or-all" amplification → discharge `consistent_quorum_AE` from `avssFair` + broadcast | Substantive; **independent of Phase 8.6 obstruction** (does not require value-bearing echoes) | ~150–250 | queued |
 | **16-γ** | Adaptive corruption support | Substantial state surgery | ~600–1000 | queued |
 | ~~Phase 8.6 / corrupt-dealer commitment~~ | (originally queued) | (originally ~200–400; revised to ~2386–3186 after empirical analysis) | **❌ deferred indefinitely** — see §12.6 final disposition |
 
+## 17. Roadmap to a literature-faithful AVSS model
+
+Phase 8.6-redux revisited the current `AVSS.lean` model against the
+Canetti–Rabin AVSS story at a higher level.  The conclusion is that
+the current `avssSpec` should be treated as a threshold-faithful
+operational skeleton, not as the final CR-faithful verified-sharing
+protocol.
+
+The model has the right high-level asynchronous structure: per-party
+dealer delivery, bivariate row/column payload carriers, echo/ready/
+amplify thresholds, rushing adversaries, randomised adversaries, and
+row/column bivariate secrecy facts.  The missing operational mechanism
+is the verification path itself: echoes and readies currently carry
+only sender identities.  They do not carry payload values, row/column
+evaluations, or certificates that a receiver can compare against its
+own column polynomial.
+
+This is why corrupt-dealer commitment cannot be recovered by proof
+engineering alone.  In the current sender-only echo model, a corrupt
+dealer can choose inconsistent `dealerCommit p .rowPoly` values for
+honest parties; honest parties can still accumulate sender-count
+quorums and output `evalRowPoly rp 0` from their own delivered row.
+No gate forces the resulting honest outputs to lie on one degree-`≤ t`
+polynomial.
+
+### 17.1. Current fidelity classification
+
+| Component | Status | Notes |
+|---|---|---|
+| Static corruption | ✅ formalised | CR '93 is adaptive; static corruption remains a known simplification |
+| Async trace model | ✅ formalised | `traceDist`, rushing and randomised adversary layers are substantial |
+| Threshold skeleton | ✅ formalised | `n - t` echo/ready/output gates and `t + 1` amplify gate are present |
+| Bivariate payload carrier | ⚠️ partial | `DealerPayload` has row and column fields, but `colPoly` is operationally unused |
+| Verification messages | ❌ missing | Echo/ready messages carry sender IDs only, not values/certificates |
+| Corrupt-dealer commitment | ❌ not true for current `avssSpec` | The honest-dealer guard is structural, not merely a missing proof |
+| Any-or-all amplification | ❌ not formalised | Replaced by `consistent_quorum_AE`; see §16.4 |
+| Fairness | ⚠️ partial | Current trajectory progress is label-level; CR fairness is enabled-message / honest-action fairness |
+
+### 17.2. Recommended architecture
+
+Do not mutate `avssSpec` in place.  It is useful as a stable proof
+platform and regression baseline.  Add a new CR-faithful specification,
+for example `AVSSFaithful.lean`, with a separate state/action family:
+
+1. **Dealer payloads are real row+column payloads.**  Honest dealer
+   initialisation should set both `rowPolyOfDealer` and
+   `colPolyOfDealer`.  Corrupt dealer initialisation may choose
+   arbitrary per-party row/column pairs.
+
+2. **Messages carry verification content.**  Echo messages should
+   record the relevant value/certificate, not just the sender.  The
+   natural CR-style primitive is a cross-check value such as
+   `row_q (partyPoint p)` together with the receiver-side comparison
+   against `col_p (partyPoint q)`.
+
+3. **Local state stores validated evidence, not only sender sets.**
+   Replace `echoesReceived : Finset (Fin n)` with a structure keyed by
+   candidate payload/value/certificate.  Threshold gates should count
+   senders supporting the same validated candidate.
+
+4. **Ready messages should be candidate/certificate-scoped.**  A
+   receiver should output only after collecting an `n - t` ready quorum
+   for a single candidate, not merely any `n - t` ready senders.
+
+5. **Commitment proof consumes quorum intersection.**  The proof route
+   should use `quorum_intersection_card` and the validated-candidate
+   invariant to show any two honest output certificates agree on enough
+   honest evaluation points to force one degree-`≤ t` reconstruction.
+
+6. **Secrecy proof becomes distributional at the value layer.**  Prior
+   Phase 8.6 attempts failed because value-bearing honest messages are
+   secret-dependent across two simulation traces.  A faithful model
+   should not try to maintain pointwise equality for these fields in
+   `simSyncInv`; it should expose a projection whose distribution is
+   handled by the existing bivariate Shamir row+column secrecy theorems.
+
+### 17.3. Suggested PR chain
+
+1. **Spec skeleton PR.**  Add `AVSSFaithful.lean` with state/action
+   types, payload/candidate/certificate data structures, finite and
+   measurable instances, and no major proofs beyond frame lemmas.
+   **Status:** implemented in Phase 8.6-redux as
+   `Leslie/Examples/Prob/AVSSFaithful.lean`; imported by
+   `Leslie/Prob/Index.lean`.
+
+2. **Operational invariants PR.**  Prove queue freshness, validated
+   echo/ready preservation, and candidate-scoped threshold invariants.
+
+3. **Commitment PR.**  Prove corrupt-dealer commitment for the faithful
+   spec using candidate-scoped ready quorums plus `quorum_intersection_card`.
+
+4. **Fairness/termination PR.**  Replace `consistent_quorum_AE` with a
+   CR-style delivery/fairness theorem for the faithful spec, or make the
+   required broadcast/delivery assumption explicit and local to the new
+   spec.
+
+5. **Secrecy PR.**  Rebuild the operational secrecy theorem for the
+   faithful spec using distributional bivariate row+column secrecy
+   rather than pointwise equality of value-bearing honest messages.
+
+This route avoids repeating the three failed Phase 8.6 attempts: it
+does not add secret-dependent value fields to the existing
+`simSyncInv` and then try to prove pointwise equality; it instead
+builds a spec whose commitment theorem is true operationally and a
+secrecy proof architecture that treats value-bearing observations as
+joint distributions.

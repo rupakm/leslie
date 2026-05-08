@@ -7310,9 +7310,14 @@ outputs via Vandermonde uniqueness
 witness is derived from observable honest outputs.
 
 The `h_distinct` hypothesis carries the standard Shamir/Vandermonde
-precondition that party evaluation points are pairwise distinct. -/
+precondition that party evaluation points are pairwise distinct.  The
+`3 * t + 1 ≤ n` hypothesis records the Canetti-Rabin threshold setting;
+it is intentionally not load-bearing in this honest-dealer-conditional
+Vandermonde proof, but should become load-bearing in the faithful
+corrupt-dealer commitment successor. -/
 theorem avss_commitment_AS_existential
     (sec : F) (corr : Finset (Fin n)) (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (_h_n_geq : 3 * t + 1 ≤ n)
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
     (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
     (h_distinct : ∀ᵐ s ∂μ₀, partyPointInjInv s)
@@ -10745,9 +10750,12 @@ the honest-dealer guard rationale and the Phase 8.6 follow-up
 queued to drop it via Bracha amplification.
 
 Phase 8.4 added the `h_distinct` hypothesis (Shamir/Vandermonde
-precondition: party evaluation points are pairwise distinct). -/
+precondition: party evaluation points are pairwise distinct).  Phase
+8.6-redux makes the `3 * t + 1 ≤ n` threshold setting explicit for
+surface-statement fidelity. -/
 theorem avss_commitment_AS_existential_rushing
     (sec : F) (corr : Finset (Fin n)) (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (_h_n_geq : 3 * t + 1 ≤ n)
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
     (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
     (h_distinct : ∀ᵐ s ∂μ₀, partyPointInjInv s)
@@ -10759,7 +10767,8 @@ theorem avss_commitment_AS_existential_rushing
           ∀ p, p ∉ s.corrupted →
             ∀ v, (s.local_ p).output = some v →
               v = bivEval witness (s.partyPoint p) 0) :=
-  avss_commitment_AS_existential sec corr coeffs μ₀ h_init h_distinct R.toAdversary
+  avss_commitment_AS_existential sec corr coeffs _h_n_geq μ₀ h_init h_distinct
+    R.toAdversary
 
 /-! ## §19.1.5 Phase 9.3 — randomised-adversary restatements (partial coverage)
 
@@ -11074,10 +11083,13 @@ previous name `_corrupt_dealer_randomised` overclaimed.
 Proof: derived directly from `avss_commitment_AS_randomised`
 (`outputDeterminedInv` lift); the existential is satisfied with
 `witness := coeffs` and the per-party clause is exactly
-`outputDeterminedInv`'s second conjunct. -/
+`outputDeterminedInv`'s second conjunct.  The explicit `3 * t + 1 ≤ n`
+hypothesis records the intended Canetti-Rabin threshold regime but is
+not consumed by this honest-dealer-conditional proof. -/
 theorem avss_commitment_AS_existential_randomised
     (sec : F) (corr : Finset (Fin n))
     (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (_h_n_geq : 3 * t + 1 ≤ n)
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
     (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
     (R : RandomisedAdversary (AVSSState n t F) (AVSSAction n F)) :
@@ -11200,10 +11212,11 @@ adversary** (honest-dealer-conditional, post-Fix 1 rename).  Thin
 wrapper: feed `R.toRandomisedAdversary` into
 `avss_commitment_AS_existential_randomised` (PR #49).  See
 `avss_commitment_AS_existential` for the honest-dealer guard
-rationale and the Phase 8.6 follow-up. -/
+rationale and the explicit threshold-regime hypothesis. -/
 theorem avss_commitment_AS_existential_rushing_randomised
     (sec : F) (corr : Finset (Fin n))
     (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (_h_n_geq : 3 * t + 1 ≤ n)
     (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
     (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
     (R : AVSSRushingRandomisedAdversary n t F corr) :
@@ -11214,7 +11227,7 @@ theorem avss_commitment_AS_existential_rushing_randomised
           ∀ p, p ∉ s.corrupted →
             ∀ v, (s.local_ p).output = some v →
               v = bivEval witness (s.partyPoint p) 0) :=
-  avss_commitment_AS_existential_randomised sec corr coeffs μ₀ h_init
+  avss_commitment_AS_existential_randomised sec corr coeffs _h_n_geq μ₀ h_init
     R.toRandomisedAdversary
 
 /-- **Coord-0 grid secrecy against a rushing randomised adversary.**
@@ -14489,4 +14502,3 @@ attribute [instance] instMeasurableSpaceAVSSRushingView
 end RushingSimulation
 
 end Leslie.Examples.Prob.AVSS
-
