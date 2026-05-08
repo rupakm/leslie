@@ -503,4 +503,457 @@ instance : Countable (Action n t F) := Finite.to_countable
 
 end Instances
 
+/-! ## State-frame lemmas for `step`
+
+These mirror the pattern in `Leslie.Examples.Prob.AVSS`
+(`avssStep_partyPoint_invariant`, `avssStep_corrupted_invariant`,
+etc.).  Most fields are preserved by every action; the only
+field-level monotone update is `dealerSent` under `dealerShareTo`. -/
+
+omit [Fintype F] in
+/-- `partyPoint` is preserved by every `step` action. -/
+theorem step_partyPoint_invariant (a : Action n t F) (s : State n t F) :
+    (step a s).partyPoint = s.partyPoint := by
+  cases a <;> simp [step, setLocal]
+
+omit [Fintype F] in
+/-- `secret` is preserved by every `step` action. -/
+theorem step_secret_invariant (a : Action n t F) (s : State n t F) :
+    (step a s).secret = s.secret := by
+  cases a <;> simp [step, setLocal]
+
+omit [Fintype F] in
+/-- `corrupted` is preserved by every `step` action. -/
+theorem step_corrupted_invariant (a : Action n t F) (s : State n t F) :
+    (step a s).corrupted = s.corrupted := by
+  cases a <;> simp [step, setLocal]
+
+omit [Fintype F] in
+/-- `dealerHonest` is preserved by every `step` action. -/
+theorem step_dealerHonest_invariant (a : Action n t F) (s : State n t F) :
+    (step a s).dealerHonest = s.dealerHonest := by
+  cases a <;> simp [step, setLocal]
+
+omit [Fintype F] in
+/-- `dealerCommit` is preserved by every `step` action.  The per-party
+commitments are pinned at init (canonically for honest dealer, freely
+for corrupt dealer) and never modified afterwards. -/
+theorem step_dealerCommit_invariant (a : Action n t F) (s : State n t F) :
+    (step a s).dealerCommit = s.dealerCommit := by
+  cases a <;> simp [step, setLocal]
+
+omit [Fintype F] in
+/-- Frame: `dealerSent p` is unchanged by any action other than
+`dealerShareTo p`. -/
+theorem step_dealerSent_self_unless (a : Action n t F) (s : State n t F)
+    (p : Fin n) (h_not_share : a ≠ .dealerShareTo p) :
+    (step a s).dealerSent p = s.dealerSent p := by
+  cases a with
+  | dealerShareTo q =>
+    have hpq : p ≠ q := fun heq => h_not_share (heq ▸ rfl)
+    show (step (.dealerShareTo q) s).dealerSent p = s.dealerSent p
+    simp [step, Function.update_of_ne hpq]
+  | partyDeliver q => simp [step, setLocal]
+  | partyCorruptDeliver q => simp [step, setLocal]
+  | partyEchoSend q r => simp [step, setLocal]
+  | partyEchoReceive msg => simp [step, setLocal]
+  | partyReady q cert => simp [step, setLocal]
+  | partyAmplify q cert => simp [step, setLocal]
+  | partyReceiveReady msg => simp [step, setLocal]
+  | partyOutput q cert => simp [step, setLocal]
+
+omit [Fintype F] in
+/-- After `dealerShareTo p`, `dealerSent p = true`. -/
+theorem step_dealerSent_set_after (s : State n t F) (p : Fin n) :
+    (step (.dealerShareTo p) s).dealerSent p = true := by
+  show (step (.dealerShareTo p) s).dealerSent p = true
+  simp [step, Function.update_self]
+
+omit [Fintype F] in
+/-- Monotonicity: `dealerSent p = true` is preserved by every action. -/
+theorem step_dealerSent_monotone (a : Action n t F) (s : State n t F)
+    (p : Fin n) (h_pre : s.dealerSent p = true) :
+    (step a s).dealerSent p = true := by
+  by_cases h : a = .dealerShareTo p
+  · subst h; exact step_dealerSent_set_after s p
+  · rw [step_dealerSent_self_unless a s p h]; exact h_pre
+
+/-! ## Initial-state-predicate properties
+
+These extract individual facts pinned by `initPred`.  They are pure
+projections — no induction or step reasoning. -/
+
+omit [Fintype F] [DecidableEq F] in
+/-- `initPred` does not constrain `partyPoint`: any value is permitted. -/
+theorem initPred_partyPoint_arbitrary (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t + 1) -> Fin (t + 1) -> F) (s : State n t F)
+    (h : initPred sec corr coeffs s) (pp : Fin n -> F) :
+    initPred sec corr coeffs { s with partyPoint := pp } ∨
+      initPred sec corr coeffs s := Or.inr h
+
+omit [Fintype F] [DecidableEq F] in
+/-- Under honest dealer, `initPred` pins every per-party commitment to
+the canonical row+column payload. -/
+theorem initPred_dealerCommit_honest (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t + 1) -> Fin (t + 1) -> F) (s : State n t F)
+    (h : initPred sec corr coeffs s) (hh : s.dealerHonest = true) (p : Fin n) :
+    s.dealerCommit p = DealerPayload.ofCoeffs s.partyPoint coeffs p :=
+  (h.2.2.2.2.2.2.2.2 hh).2 p
+
+omit [Fintype F] [DecidableEq F] in
+/-- `initPred` pins the corruption set. -/
+theorem initPred_corrupted (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t + 1) -> Fin (t + 1) -> F) (s : State n t F)
+    (h : initPred sec corr coeffs s) :
+    s.corrupted = corr := h.2.2.1
+
+omit [Fintype F] [DecidableEq F] in
+/-- `initPred` pins the secret. -/
+theorem initPred_secret (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t + 1) -> Fin (t + 1) -> F) (s : State n t F)
+    (h : initPred sec corr coeffs s) :
+    s.secret = sec := h.2.1
+
+omit [Fintype F] [DecidableEq F] in
+/-- `initPred` pins `dealerSent` to the constant-`false` function. -/
+theorem initPred_dealerSent_init (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t + 1) -> Fin (t + 1) -> F) (s : State n t F)
+    (h : initPred sec corr coeffs s) (p : Fin n) :
+    s.dealerSent p = false := by
+  have hfn : s.dealerSent = (fun _ => false) := h.2.2.2.1
+  simp [hfn]
+
+/-! ## Phase-1 invariants
+
+Three simple invariants with init + preservation lemmas.  These are
+the foundation for the queue / flight / freshness invariants in
+Step 2 and the substantive cryptographic invariants later. -/
+
+/-- Honest-dealer commitment invariant: under an honest dealer, every
+per-party commitment is the canonical bivariate payload at that party
+point.  Trivially preserved (both `dealerCommit` and `partyPoint` are
+pinned by `step`). -/
+def honestDealerCommitInv
+    (coeffs : Fin (t + 1) -> Fin (t + 1) -> F) (s : State n t F) : Prop :=
+  s.dealerHonest = true ->
+    ∀ p, s.dealerCommit p = DealerPayload.ofCoeffs s.partyPoint coeffs p
+
+omit [Fintype F] [DecidableEq F] in
+/-- Honest-dealer commitment holds at init. -/
+theorem honestDealerCommitInv_init (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t + 1) -> Fin (t + 1) -> F) (s : State n t F)
+    (h : initPred sec corr coeffs s) :
+    honestDealerCommitInv coeffs s := fun hh =>
+  (h.2.2.2.2.2.2.2.2 hh).2
+
+omit [Fintype F] in
+/-- Honest-dealer commitment is preserved by every `step` action. -/
+theorem honestDealerCommitInv_preserve
+    (coeffs : Fin (t + 1) -> Fin (t + 1) -> F)
+    (a : Action n t F) (s : State n t F)
+    (h : honestDealerCommitInv coeffs s) :
+    honestDealerCommitInv coeffs (step a s) := by
+  intro hh p
+  rw [step_dealerCommit_invariant, step_partyPoint_invariant]
+  apply h
+  rw [step_dealerHonest_invariant] at hh
+  exact hh
+
+/-- Delivered-implies-dealer-sent invariant: a party with a delivered
+payload must have been served by `dealerShareTo`.  Preserved by the
+`partyDeliver` and `partyCorruptDeliver` gates (each requires
+`dealerSent p = true`); other actions don't change `delivered`. -/
+def deliveredImpliesDealerSent (s : State n t F) : Prop :=
+  ∀ p, (s.local_ p).delivered.isSome -> s.dealerSent p = true
+
+omit [Fintype F] [DecidableEq F] in
+/-- Vacuously true at init: no party is delivered. -/
+theorem deliveredImpliesDealerSent_init (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t + 1) -> Fin (t + 1) -> F) (s : State n t F)
+    (h : initPred sec corr coeffs s) :
+    deliveredImpliesDealerSent s := by
+  intro p hd
+  have hloc : s.local_ p = LocalState.init n t F := h.1 p
+  rw [hloc] at hd
+  simp [LocalState.init] at hd
+
+omit [Fintype F] in
+/-- Preservation: any action that introduces a delivered payload at `p`
+is gated by `dealerSent p = true`; other actions don't change
+`delivered` and `dealerSent` is monotone. -/
+theorem deliveredImpliesDealerSent_preserve
+    (a : Action n t F) (s : State n t F)
+    (hgate : gate a s) (h : deliveredImpliesDealerSent s) :
+    deliveredImpliesDealerSent (step a s) := by
+  intro p hd
+  cases a with
+  | dealerShareTo q =>
+    -- step doesn't touch local_; reduce to old `delivered` + monotonicity
+    have hloc : (step (.dealerShareTo q) s).local_ p = s.local_ p := by
+      simp [step, setLocal]
+    rw [hloc] at hd
+    exact step_dealerSent_monotone _ _ _ (h p hd)
+  | partyDeliver q =>
+    by_cases hpq : p = q
+    · subst hpq
+      -- gate gives dealerSent p = true; step preserves dealerSent on this branch
+      have hsent : s.dealerSent p = true := hgate.1
+      have : (step (.partyDeliver p) s).dealerSent p = s.dealerSent p := by
+        simp [step, setLocal]
+      rw [this]; exact hsent
+    · have hloc : (step (.partyDeliver q) s).local_ p = s.local_ p := by
+        simp [step, setLocal, hpq]
+      rw [hloc] at hd
+      have hpre : s.dealerSent p = true := h p hd
+      have : (step (.partyDeliver q) s).dealerSent p = s.dealerSent p := by
+        simp [step, setLocal]
+      rw [this]; exact hpre
+  | partyCorruptDeliver q =>
+    by_cases hpq : p = q
+    · subst hpq
+      have hsent : s.dealerSent p = true := hgate.1
+      have : (step (.partyCorruptDeliver p) s).dealerSent p = s.dealerSent p := by
+        simp [step, setLocal]
+      rw [this]; exact hsent
+    · have hloc : (step (.partyCorruptDeliver q) s).local_ p = s.local_ p := by
+        simp [step, setLocal, hpq]
+      rw [hloc] at hd
+      have hpre : s.dealerSent p = true := h p hd
+      have : (step (.partyCorruptDeliver q) s).dealerSent p = s.dealerSent p := by
+        simp [step, setLocal]
+      rw [this]; exact hpre
+  | partyEchoSend q r =>
+    -- step only updates echoedTo on q's local state; delivered untouched
+    have hd' : (s.local_ p).delivered.isSome := by
+      by_cases hpq : p = q
+      · subst hpq
+        have : (step (.partyEchoSend p r) s).local_ p =
+            { s.local_ p with echoedTo := insert r (s.local_ p).echoedTo } := by
+          simp [step, setLocal]
+        rw [this] at hd; exact hd
+      · have : (step (.partyEchoSend q r) s).local_ p = s.local_ p := by
+          simp [step, setLocal, hpq]
+        rw [this] at hd; exact hd
+    have hpre : s.dealerSent p = true := h p hd'
+    have : (step (.partyEchoSend q r) s).dealerSent p = s.dealerSent p := by
+      simp [step, setLocal]
+    rw [this]; exact hpre
+  | partyEchoReceive msg =>
+    have hd' : (s.local_ p).delivered.isSome := by
+      by_cases hpq : p = msg.receiver
+      · rw [hpq] at hd ⊢
+        have : (step (.partyEchoReceive msg) s).local_ msg.receiver =
+            { s.local_ msg.receiver with
+              acceptedEchoes :=
+                insert msg (s.local_ msg.receiver).acceptedEchoes } := by
+          simp [step, setLocal]
+        rw [this] at hd; exact hd
+      · have : (step (.partyEchoReceive msg) s).local_ p = s.local_ p := by
+          simp [step, setLocal, hpq]
+        rw [this] at hd; exact hd
+    have hpre : s.dealerSent p = true := h p hd'
+    have : (step (.partyEchoReceive msg) s).dealerSent p = s.dealerSent p := by
+      simp [step, setLocal]
+    rw [this]; exact hpre
+  | partyReady q cert =>
+    have hd' : (s.local_ p).delivered.isSome := by
+      by_cases hpq : p = q
+      · subst hpq
+        have : (step (.partyReady p cert) s).local_ p =
+            { s.local_ p with readySent := insert cert (s.local_ p).readySent } := by
+          simp [step, setLocal]
+        rw [this] at hd; exact hd
+      · have : (step (.partyReady q cert) s).local_ p = s.local_ p := by
+          simp [step, setLocal, hpq]
+        rw [this] at hd; exact hd
+    have hpre : s.dealerSent p = true := h p hd'
+    have : (step (.partyReady q cert) s).dealerSent p = s.dealerSent p := by
+      simp [step, setLocal]
+    rw [this]; exact hpre
+  | partyAmplify q cert =>
+    have hd' : (s.local_ p).delivered.isSome := by
+      by_cases hpq : p = q
+      · subst hpq
+        have : (step (.partyAmplify p cert) s).local_ p =
+            { s.local_ p with readySent := insert cert (s.local_ p).readySent } := by
+          simp [step, setLocal]
+        rw [this] at hd; exact hd
+      · have : (step (.partyAmplify q cert) s).local_ p = s.local_ p := by
+          simp [step, setLocal, hpq]
+        rw [this] at hd; exact hd
+    have hpre : s.dealerSent p = true := h p hd'
+    have : (step (.partyAmplify q cert) s).dealerSent p = s.dealerSent p := by
+      simp [step, setLocal]
+    rw [this]; exact hpre
+  | partyReceiveReady msg =>
+    have hd' : (s.local_ p).delivered.isSome := by
+      by_cases hpq : p = msg.receiver
+      · rw [hpq] at hd ⊢
+        have : (step (.partyReceiveReady msg) s).local_ msg.receiver =
+            { s.local_ msg.receiver with
+              readyReceived :=
+                insert msg (s.local_ msg.receiver).readyReceived } := by
+          simp [step, setLocal]
+        rw [this] at hd; exact hd
+      · have : (step (.partyReceiveReady msg) s).local_ p = s.local_ p := by
+          simp [step, setLocal, hpq]
+        rw [this] at hd; exact hd
+    have hpre : s.dealerSent p = true := h p hd'
+    have : (step (.partyReceiveReady msg) s).dealerSent p = s.dealerSent p := by
+      simp [step, setLocal]
+    rw [this]; exact hpre
+  | partyOutput q cert =>
+    have hd' : (s.local_ p).delivered.isSome := by
+      by_cases hpq : p = q
+      · subst hpq
+        have : (step (.partyOutput p cert) s).local_ p =
+            { s.local_ p with
+              output := some (AVSS.evalRowPoly cert.candidate.rowPoly 0) } := by
+          simp [step, setLocal]
+        rw [this] at hd; exact hd
+      · have : (step (.partyOutput q cert) s).local_ p = s.local_ p := by
+          simp [step, setLocal, hpq]
+        rw [this] at hd; exact hd
+    have hpre : s.dealerSent p = true := h p hd'
+    have : (step (.partyOutput q cert) s).dealerSent p = s.dealerSent p := by
+      simp [step, setLocal]
+    rw [this]; exact hpre
+
+/-- Echoed-implies-delivered invariant: if party `p` has marked party
+`q` as echoed-to, then `p` has a delivered payload (the gate of
+`partyEchoSend p q` requires `delivered.isSome`). -/
+def echoedToImpliesDelivered (s : State n t F) : Prop :=
+  ∀ p q, q ∈ (s.local_ p).echoedTo -> (s.local_ p).delivered.isSome
+
+omit [Fintype F] [DecidableEq F] in
+/-- Vacuously true at init: every `echoedTo` is empty. -/
+theorem echoedToImpliesDelivered_init (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t + 1) -> Fin (t + 1) -> F) (s : State n t F)
+    (h : initPred sec corr coeffs s) :
+    echoedToImpliesDelivered s := by
+  intro p q hq
+  have hloc : s.local_ p = LocalState.init n t F := h.1 p
+  rw [hloc] at hq
+  simp [LocalState.init] at hq
+
+omit [Fintype F] in
+/-- Preservation: only `partyEchoSend` extends `echoedTo`, and its
+gate provides the required `delivered.isSome`.  Other actions either
+leave `local_ p` alone or extend non-`echoedTo` and non-`delivered`
+fields. -/
+theorem echoedToImpliesDelivered_preserve
+    (a : Action n t F) (s : State n t F)
+    (hgate : gate a s) (h : echoedToImpliesDelivered s) :
+    echoedToImpliesDelivered (step a s) := by
+  intro p q hq
+  cases a with
+  | dealerShareTo r =>
+    have hloc : (step (.dealerShareTo r) s).local_ p = s.local_ p := by
+      simp [step, setLocal]
+    rw [hloc] at hq ⊢
+    exact h p q hq
+  | partyDeliver r =>
+    -- delivered becomes some at r; echoedTo unchanged at r
+    by_cases hpr : p = r
+    · subst hpr
+      have hloc : (step (.partyDeliver p) s).local_ p =
+          { s.local_ p with delivered := some (s.dealerCommit p) } := by
+        simp [step, setLocal]
+      rw [hloc] at hq ⊢
+      simp at hq ⊢
+    · have hloc : (step (.partyDeliver r) s).local_ p = s.local_ p := by
+        simp [step, setLocal, hpr]
+      rw [hloc] at hq ⊢
+      exact h p q hq
+  | partyCorruptDeliver r =>
+    by_cases hpr : p = r
+    · subst hpr
+      have hloc : (step (.partyCorruptDeliver p) s).local_ p =
+          { s.local_ p with delivered := some (s.dealerCommit p) } := by
+        simp [step, setLocal]
+      rw [hloc] at hq ⊢
+      simp at hq ⊢
+    · have hloc : (step (.partyCorruptDeliver r) s).local_ p = s.local_ p := by
+        simp [step, setLocal, hpr]
+      rw [hloc] at hq ⊢
+      exact h p q hq
+  | partyEchoSend r r' =>
+    by_cases hpr : p = r
+    · subst hpr
+      have hloc : (step (.partyEchoSend p r') s).local_ p =
+          { s.local_ p with echoedTo := insert r' (s.local_ p).echoedTo } := by
+        simp [step, setLocal]
+      rw [hloc] at hq ⊢
+      -- gate says s.local_ p has delivered.isSome
+      exact hgate.1
+    · have hloc : (step (.partyEchoSend r r') s).local_ p = s.local_ p := by
+        simp [step, setLocal, hpr]
+      rw [hloc] at hq ⊢
+      exact h p q hq
+  | partyEchoReceive msg =>
+    by_cases hpr : p = msg.receiver
+    · rw [hpr] at hq ⊢
+      have hloc : (step (.partyEchoReceive msg) s).local_ msg.receiver =
+          { s.local_ msg.receiver with
+            acceptedEchoes :=
+              insert msg (s.local_ msg.receiver).acceptedEchoes } := by
+        simp [step, setLocal]
+      rw [hloc] at hq ⊢
+      exact h msg.receiver q hq
+    · have hloc : (step (.partyEchoReceive msg) s).local_ p = s.local_ p := by
+        simp [step, setLocal, hpr]
+      rw [hloc] at hq ⊢
+      exact h p q hq
+  | partyReady r cert =>
+    by_cases hpr : p = r
+    · subst hpr
+      have hloc : (step (.partyReady p cert) s).local_ p =
+          { s.local_ p with readySent := insert cert (s.local_ p).readySent } := by
+        simp [step, setLocal]
+      rw [hloc] at hq ⊢
+      exact h p q hq
+    · have hloc : (step (.partyReady r cert) s).local_ p = s.local_ p := by
+        simp [step, setLocal, hpr]
+      rw [hloc] at hq ⊢
+      exact h p q hq
+  | partyAmplify r cert =>
+    by_cases hpr : p = r
+    · subst hpr
+      have hloc : (step (.partyAmplify p cert) s).local_ p =
+          { s.local_ p with readySent := insert cert (s.local_ p).readySent } := by
+        simp [step, setLocal]
+      rw [hloc] at hq ⊢
+      exact h p q hq
+    · have hloc : (step (.partyAmplify r cert) s).local_ p = s.local_ p := by
+        simp [step, setLocal, hpr]
+      rw [hloc] at hq ⊢
+      exact h p q hq
+  | partyReceiveReady msg =>
+    by_cases hpr : p = msg.receiver
+    · rw [hpr] at hq ⊢
+      have hloc : (step (.partyReceiveReady msg) s).local_ msg.receiver =
+          { s.local_ msg.receiver with
+            readyReceived :=
+              insert msg (s.local_ msg.receiver).readyReceived } := by
+        simp [step, setLocal]
+      rw [hloc] at hq ⊢
+      exact h msg.receiver q hq
+    · have hloc : (step (.partyReceiveReady msg) s).local_ p = s.local_ p := by
+        simp [step, setLocal, hpr]
+      rw [hloc] at hq ⊢
+      exact h p q hq
+  | partyOutput r cert =>
+    by_cases hpr : p = r
+    · subst hpr
+      have hloc : (step (.partyOutput p cert) s).local_ p =
+          { s.local_ p with
+            output := some (AVSS.evalRowPoly cert.candidate.rowPoly 0) } := by
+        simp [step, setLocal]
+      rw [hloc] at hq ⊢
+      exact h p q hq
+    · have hloc : (step (.partyOutput r cert) s).local_ p = s.local_ p := by
+        simp [step, setLocal, hpr]
+      rw [hloc] at hq ⊢
+      exact h p q hq
+
 end Leslie.Examples.Prob.AVSSFaithful
