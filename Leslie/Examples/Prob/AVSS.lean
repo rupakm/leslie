@@ -9216,18 +9216,25 @@ factors through both `coalitionAlgebraicView` *and*
 `coalitionTrivialView`. -/
 
 /-- Carrier for the schedule-derived trivial-field view of a corrupt
-party's local state at one step: `(echoSent, echoesReceived senders,
+party's local state at one step: `(echoSent, echoesReceived,
 readySent, readyReceived)`.
 
-Phase 8.6 step-1: the second component projects `echoesReceived` to
-sender ids only (`.image Prod.fst`) — values would leak `f(α_p, α_q)`
-which the secrecy proof tracks separately.  TrivialView itself stays
-F-free. -/
-abbrev TrivialView (n : ℕ) : Type :=
-  Bool × Finset (Fin n) × Bool × Finset (Fin n)
+Phase 8.6 step-1 (Path X-lite): the second component carries the
+**full** `echoesReceived` set with values, so the downstream
+uniqueness lemma `corrupt_local_state_uniqueness` proves the full
+state equality (rather than a projected one).  This is the minimal-
+invasion variant of Path X: instead of threading `schedulePrefix` to
+*reconstruct* values, we expose the actual values through `TrivialView`. -/
+abbrev TrivialView (n : ℕ) (F : Type*) :=
+  Bool × Finset (Fin n × F) × Bool × Finset (Fin n)
 
-instance : MeasurableSpace (TrivialView n) := ⊤
-instance : MeasurableSingletonClass (TrivialView n) := ⟨fun _ => trivial⟩
+instance [Fintype F] [DecidableEq F] : MeasurableSpace (TrivialView n F) := ⊤
+instance [Fintype F] [DecidableEq F] : MeasurableSingletonClass (TrivialView n F) :=
+  ⟨fun _ => trivial⟩
+instance [Fintype F] : Fintype (TrivialView n F) := by
+  unfold TrivialView; infer_instance
+instance [Fintype F] [DecidableEq F] : Countable (TrivialView n F) :=
+  Finite.to_countable
 
 /-- The corrupt coalition's per-step trivial-field view. Reads the
 schedule-derived fields directly from the trace. Under the C1+C2
@@ -9236,11 +9243,12 @@ sec-invariance follows from the simulation factoring through the
 initial state (§19.2.5+). -/
 def coalitionTrivialView (C : BivariateShamir.Coalition n t)
     (ω : ℕ → AVSSState n t F × Option (AVSSAction n F)) (k : ℕ) :
-    Fin k → C.val → TrivialView n :=
+    Fin k → C.val → TrivialView n F :=
   fun i p =>
     let ls := (ω i.val).1.local_ p.val
-    -- Phase 8.6 step-1: project echoesReceived to sender ids.
-    (ls.echoSent, ls.echoesReceived.image Prod.fst, ls.readySent, ls.readyReceived)
+    -- Phase 8.6 step-1 (Path X-lite): keep the full echoesReceived value-
+    -- carrying set so the uniqueness lemma proves the full state equality.
+    (ls.echoSent, ls.echoesReceived, ls.readySent, ls.readyReceived)
 
 omit [Field F] in
 @[fun_prop]
@@ -9256,7 +9264,7 @@ theorem measurable_coalitionTrivialView
       AVSSState n t F × Option (AVSSAction n F) → AVSSState n t F) := measurable_fst
   have h3 : Measurable (fun s : AVSSState n t F =>
       ((s.local_ p.val).echoSent,
-       (s.local_ p.val).echoesReceived.image Prod.fst,
+       (s.local_ p.val).echoesReceived,
        (s.local_ p.val).readySent, (s.local_ p.val).readyReceived)) :=
     measurable_of_countable _
   exact (h3.comp h2).comp h1
@@ -9489,7 +9497,7 @@ theorem coalitionView_corrupt_trivial_factors_AE
         ∀ (i : Fin k) (p : C.val),
           let ls := (ω i.val).1.local_ p.val
           coalitionTrivialView C ω k i p =
-            (ls.echoSent, ls.echoesReceived.image Prod.fst,
+            (ls.echoSent, ls.echoesReceived,
              ls.readySent, ls.readyReceived) :=
   Filter.Eventually.of_forall (fun _ _ _ => rfl)
 
@@ -9607,19 +9615,18 @@ theorem measurable_coalitionAlgebraicView
 /-- Build a corrupt party's local state from its row poly, its
 `TrivialView` projection, and its `delivered` bit. Phase 8.5c
 weakening: the trivial fields are now schedule-dependent and are
-threaded explicitly via `tv : TrivialView n` (rather than being
-hardcoded to `(false, ∅, false, ∅)` as in pre-8.5b). -/
-def buildCorruptLocalState (rp : Fin (t+1) → F) (tv : TrivialView n)
+threaded explicitly via `tv : TrivialView n F` (rather than being
+hardcoded to `(false, ∅, false, ∅)` as in pre-8.5b).
+
+Phase 8.6 step-1 (Path X-lite): `tv.2.1` now carries the full
+`echoesReceived` set with values, so the build matches the actual
+local state pointwise. -/
+def buildCorruptLocalState (rp : Fin (t+1) → F) (tv : TrivialView n F)
     (delivered : Bool) : AVSSLocalState n t F :=
   { delivered := delivered
     rowPoly := if delivered then some rp else none
     echoSent := tv.1
-    -- Phase 8.6 step-1: echoesReceived now carries values; reconstruct as
-    -- `(sender, 0)` placeholder since the trivial view doesn't track values.
-    -- The downstream uniqueness lemma `corrupt_local_state_uniqueness`
-    -- restricts to the projected `image Prod.fst` view (Phase 8.6 step-2
-    -- will refine this to the canonical CR'93 echo content).
-    echoesReceived := tv.2.1.image (fun q => (q, (0 : F)))
+    echoesReceived := tv.2.1
     readySent := tv.2.2.1
     readyReceived := tv.2.2.2
     output := none }
@@ -9637,32 +9644,12 @@ lemma corrupt_local_state_uniqueness
     (h_out : ls.output = none)
     (h_rp_none : ls.delivered = false → ls.rowPoly = none)
     (h_rp_some : ls.delivered = true → ls.rowPoly = some rp) :
-    -- Phase 8.6 step-1: weakened to a structural equality on the
-    -- non-value fields plus the projected sender set.  The full
-    -- `ls = buildCorruptLocalState ...` equality no longer holds
-    -- because echoesReceived's values are secret-dependent; Step 2/3
-    -- will refine this to a value-determinacy-keyed reconstruction.
-    ls.delivered = (buildCorruptLocalState rp
-        (ls.echoSent, ls.echoesReceived.image Prod.fst,
-         ls.readySent, ls.readyReceived) ls.delivered).delivered ∧
-    ls.rowPoly = (buildCorruptLocalState rp
-        (ls.echoSent, ls.echoesReceived.image Prod.fst,
-         ls.readySent, ls.readyReceived) ls.delivered).rowPoly ∧
-    ls.echoSent = (buildCorruptLocalState rp
-        (ls.echoSent, ls.echoesReceived.image Prod.fst,
-         ls.readySent, ls.readyReceived) ls.delivered).echoSent ∧
-    ls.echoesReceived.image Prod.fst = (buildCorruptLocalState rp
-        (ls.echoSent, ls.echoesReceived.image Prod.fst,
-         ls.readySent, ls.readyReceived) ls.delivered).echoesReceived.image Prod.fst ∧
-    ls.readySent = (buildCorruptLocalState rp
-        (ls.echoSent, ls.echoesReceived.image Prod.fst,
-         ls.readySent, ls.readyReceived) ls.delivered).readySent ∧
-    ls.readyReceived = (buildCorruptLocalState rp
-        (ls.echoSent, ls.echoesReceived.image Prod.fst,
-         ls.readySent, ls.readyReceived) ls.delivered).readyReceived ∧
-    ls.output = (buildCorruptLocalState rp
-        (ls.echoSent, ls.echoesReceived.image Prod.fst,
-         ls.readySent, ls.readyReceived) ls.delivered).output := by
+    -- Phase 8.6 step-1 (Path X-lite): `TrivialView` now carries the
+    -- full `echoesReceived` set with values, so the full state
+    -- equality holds again (no projection needed).
+    ls = buildCorruptLocalState rp
+        (ls.echoSent, ls.echoesReceived, ls.readySent, ls.readyReceived)
+        ls.delivered := by
   cases ls with
   | mk d rp_actual es er rr rs out =>
     simp only at h_out
@@ -9671,18 +9658,11 @@ lemma corrupt_local_state_uniqueness
     | false =>
         have heq : rp_actual = none := h_rp_none rfl
         subst heq
-        unfold buildCorruptLocalState
-        refine ⟨rfl, rfl, rfl, ?_, rfl, rfl, rfl⟩
-        -- Show: er.image Prod.fst = (er.image Prod.fst).image (fun q => (q, 0)) |>.image Prod.fst.
-        ext q
-        simp [Finset.mem_image]
+        rfl
     | true =>
         have heq : rp_actual = some rp := h_rp_some rfl
         subst heq
-        unfold buildCorruptLocalState
-        refine ⟨rfl, rfl, rfl, ?_, rfl, rfl, rfl⟩
-        ext q
-        simp [Finset.mem_image]
+        rfl
 
 /-- Reconstruct `coalitionTraceView` from `(coalitionAlgebraicView,
 coalitionTrivialView)`: at every `(i, p)`, build the corrupt local
@@ -9693,7 +9673,7 @@ fields. -/
 def reconstructCoalitionTraceView
     {C : BivariateShamir.Coalition n t} {k : ℕ}
     (rp : C.val → Fin (t+1) → F)
-    (tv : Fin k → C.val → TrivialView n)
+    (tv : Fin k → C.val → TrivialView n F)
     (delivered : Fin k → C.val → Bool) :
     Fin k → C.val → AVSSLocalState n t F :=
   fun i p => buildCorruptLocalState (rp p) (tv i p) (delivered i p)
@@ -9703,7 +9683,7 @@ theorem measurable_reconstruct_pair
     {C : BivariateShamir.Coalition n t} {k : ℕ} :
     Measurable
       (fun rtd : ((C.val → Fin (t+1) → F) × (Fin k → C.val → Bool)) ×
-                 (Fin k → C.val → TrivialView n) =>
+                 (Fin k → C.val → TrivialView n F) =>
         reconstructCoalitionTraceView (C := C) (k := k)
           rtd.1.1 rtd.2 rtd.1.2) :=
   measurable_of_countable _
@@ -9938,7 +9918,7 @@ theorem avss_secrecy_AS_view_conditional
   -- The reduction map: given `((av, tv), sp) : (algView, trivView, sched)`,
   -- produce `(reconstruct av tv sched_delivered, sp) : (coalitionTraceView, schedule)`.
   set G : (((C.val → Fin (t+1) → F) × (Fin k → C.val → Bool)) ×
-            (Fin k → C.val → TrivialView n)) ×
+            (Fin k → C.val → TrivialView n F)) ×
             (Fin k → Option (AVSSAction n F)) →
           (Fin k → C.val → AVSSLocalState n t F) ×
             (Fin k → Option (AVSSAction n F)) :=
@@ -10046,7 +10026,7 @@ theorem avss_secrecy_AS_view_conditional_ex
         (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) := by
   classical
   set G : (((C.val → Fin (t+1) → F) × (Fin k → C.val → Bool)) ×
-            (Fin k → C.val → TrivialView n)) ×
+            (Fin k → C.val → TrivialView n F)) ×
             (Fin k → Option (AVSSAction n F)) →
           (Fin k → C.val → AVSSLocalState n t F) ×
             (Fin k → Option (AVSSAction n F)) :=
@@ -10146,7 +10126,7 @@ theorem avss_secrecy_AS_view_conditional_indep
         (fun ω => (coalitionTraceView C ω k, schedulePrefix ω k)) := by
   classical
   set G : (((C.val → Fin (t+1) → F) × (Fin k → C.val → Bool)) ×
-            (Fin k → C.val → TrivialView n)) ×
+            (Fin k → C.val → TrivialView n F)) ×
             (Fin k → Option (AVSSAction n F)) →
           (Fin k → C.val → AVSSLocalState n t F) ×
             (Fin k → Option (AVSSAction n F)) :=
@@ -11341,11 +11321,11 @@ second component of `simAlgebraicView` (the `delivered` bits) for the
 four schedule-dependent trivial fields. -/
 noncomputable def simTrivialView (R : AVSSRushingAdversary n t F corr)
     (C : BivariateShamir.Coalition n t) (k : ℕ) (s_0 : AVSSState n t F) :
-    Fin k → C.val → TrivialView n :=
+    Fin k → C.val → TrivialView n F :=
   fun i p =>
     let ls := (avssSimulateTrace R s_0 i.val).1.local_ p.val
-    -- Phase 8.6 step-1: project echoesReceived to sender ids.
-    (ls.echoSent, ls.echoesReceived.image Prod.fst, ls.readySent, ls.readyReceived)
+    -- Phase 8.6 step-1 (Path X-lite): keep full echoesReceived value-carrying.
+    (ls.echoSent, ls.echoesReceived, ls.readySent, ls.readyReceived)
 
 /-- **Phase 7.4 joint factoring.** Under a rushing adversary `R`, the
 joint `(coalitionAlgebraicView C ω k, schedulePrefix ω k)` AE-equals
@@ -11450,11 +11430,11 @@ theorem coalitionViewExt_schedulePrefix_AE_eq_sim
     funext i p
     have hi : i.val ≤ k := le_of_lt i.isLt
     show (((ω i.val).1.local_ p.val).echoSent,
-          ((ω i.val).1.local_ p.val).echoesReceived.image Prod.fst,
+          ((ω i.val).1.local_ p.val).echoesReceived,
           ((ω i.val).1.local_ p.val).readySent,
           ((ω i.val).1.local_ p.val).readyReceived) =
         (((avssSimulateTrace R (ω 0).1 i.val).1.local_ p.val).echoSent,
-         ((avssSimulateTrace R (ω 0).1 i.val).1.local_ p.val).echoesReceived.image Prod.fst,
+         ((avssSimulateTrace R (ω 0).1 i.val).1.local_ p.val).echoesReceived,
          ((avssSimulateTrace R (ω 0).1 i.val).1.local_ p.val).readySent,
          ((avssSimulateTrace R (ω 0).1 i.val).1.local_ p.val).readyReceived)
     rw [hω i.val hi]
@@ -13663,7 +13643,7 @@ theorem simViewExt_simSched_avssInitState_factors
             p.val).echoSent,
           ((avssSimulateTrace R
             (avssInitState (n := n) sec corr partyPoint dealerHonest c) i.val).1.local_
-            p.val).echoesReceived.image Prod.fst,
+            p.val).echoesReceived,
           ((avssSimulateTrace R
             (avssInitState (n := n) sec corr partyPoint dealerHonest c) i.val).1.local_
             p.val).readySent,
@@ -13675,7 +13655,7 @@ theorem simViewExt_simSched_avssInitState_factors
             p.val).echoSent,
          ((avssSimulateTrace R
             (avssInitState (n := n) sec' corr partyPoint dealerHonest c') i.val).1.local_
-            p.val).echoesReceived.image Prod.fst,
+            p.val).echoesReceived,
          ((avssSimulateTrace R
             (avssInitState (n := n) sec' corr partyPoint dealerHonest c') i.val).1.local_
             p.val).readySent,
@@ -13695,7 +13675,7 @@ noncomputable def avssSimViewKExt {corr : Finset (Fin n)}
     (partyPoint : Fin n → F) (dealerHonest : Bool) (k : ℕ) :
     (corr → Fin (t+1) → F) →
       (((C.val → Fin (t+1) → F) × (Fin k → C.val → Bool)) ×
-        (Fin k → C.val → TrivialView n)) ×
+        (Fin k → C.val → TrivialView n F)) ×
       (Fin k → Option (AVSSAction n F)) :=
   fun rp =>
     let chooseC : Fin (t+1) → Fin (t+1) → F :=
