@@ -5605,6 +5605,62 @@ theorem consistent_quorum_AE_of_all_honest_delivered
   rw [hcompl, Finset.card_compl, Fintype.card_fin]
   exact Nat.sub_le_sub_left h_corr n
 
+/-! ### §16-β-α — Atomic broadcast (CR '93 spirit)
+
+Phase 8.5d-α (PR #68) split the dealer's atomic broadcast into per-party
+`dealerShareTo p` actions, closing caveat C4 (selective non-broadcast)
+but introducing a runtime hypothesis `consistent_quorum_AE` on
+`avss_termination_AS_fair`.  Under CR '93's atomic-broadcast assumption
+this hypothesis is redundant — every honest party gets delivered.
+
+This subsection introduces an explicit `atomic_broadcast_AE` predicate
+that matches CR '93's broadcast assumption in the per-party action
+model and shows it discharges `consistent_quorum_AE`.
+
+The discharge chain is straightforward (this section): atomic broadcast
+→ all honest delivered → consistent quorum.
+
+The harder claim — that under `avssFair` + honest dealer, atomic
+broadcast holds AE — requires a framework-level "every fair-required,
+continuously-enabled action eventually fires" lemma in `Liveness.lean`
+and is queued as §16-β-β.  Once landed, honest-dealer termination
+becomes **truly unconditional** under `avssFair` alone, recovering
+CR '93's unconditional fair-AST claim. -/
+
+/-- **Atomic broadcast (AE)**: AE on the AVSS trace, every honest
+party eventually has both `dealerSent p = true` and `dealerMessages p
+≠ none`.  This is CR '93's broadcast assumption stated for the
+per-party action model: under atomic broadcast, the dealer's message
+reaches every honest party (no selective withholding, even if the
+dealer is corrupt — atomic broadcast is a property of the *channel*,
+not the dealer).
+
+Under this hypothesis, `consistent_quorum_AE` is immediately
+satisfied (`atomic_broadcast_AE_implies_consistent_quorum_AE` below).
+
+Under honest dealer + `avssFair`, this holds AE on traces (the proof
+is queued as §16-β-β framework work; for now, take this as a
+strengthened hypothesis on the schedule). -/
+def atomic_broadcast_AE (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) : Prop :=
+  ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
+    ∃ k₀ : ℕ, ∀ k ≥ k₀, ∀ p, p ∉ corr →
+      (ω k).1.dealerSent p = true ∧ (ω k).1.dealerMessages p ≠ none
+
+/-- Atomic broadcast implies the consistent-quorum hypothesis.  This
+is just `consistent_quorum_AE_of_all_honest_delivered` re-stated with
+the CR '93-named predicate; the body is identical. -/
+theorem atomic_broadcast_AE_implies_consistent_quorum_AE
+    (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card ≤ t)
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (A : Adversary (AVSSState n t F) (AVSSAction n F))
+    (h_atomic : atomic_broadcast_AE sec corr coeffs μ₀ A) :
+    consistent_quorum_AE sec corr coeffs μ₀ A :=
+  consistent_quorum_AE_of_all_honest_delivered sec corr h_corr coeffs μ₀ A h_atomic
+
 /-- Trajectory-form termination via the **BC running-min route**
 `pi_n_AST_fair_with_progress_bc_of_running_min_drops`.  Every fair
 execution almost-surely reaches a terminated state (every honest
@@ -5718,6 +5774,42 @@ theorem avss_termination_AS_fair
     AlmostDiamond (avssSpec (t := t) sec corr coeffs) A.toAdversary μ₀ terminated :=
   avss_termination_AS_fair_traj sec corr h_corr coeffs μ₀ h_init A
     h_consistent_quorum h_drop_io
+
+/-- **Termination under atomic broadcast (CR '93 spirit).**  Same as
+`avss_termination_AS_fair` but takes `atomic_broadcast_AE` instead of
+the weaker `consistent_quorum_AE`.  The discharge chain
+(atomic broadcast → all honest delivered → consistent quorum) is
+provided by `atomic_broadcast_AE_implies_consistent_quorum_AE`.
+
+Under `avssFair` + honest dealer, `atomic_broadcast_AE` holds AE on
+traces — that derivation is queued as §16-β-β framework work.  Once
+that lands, this theorem becomes the basis of unconditional honest-
+dealer termination (composing this with the §16-β-β derivation gives
+`avss_termination_AS_fair_honest_dealer_unconditional`).
+
+This is the CR '93-spirit reformulation of the termination claim: in
+CR '93's atomic-broadcast model, broadcast is a *channel* property
+that delivers to every honest party regardless of dealer honesty.  Our
+per-party `dealerShareTo p` action model is more permissive (corrupt
+dealer can selectively withhold under the bare model), but recovers
+CR '93's claim under the explicit atomic-broadcast hypothesis. -/
+theorem avss_termination_AS_fair_under_atomic_broadcast
+    (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card ≤ t)
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
+    (A : Leslie.Prob.TrajectoryFairAdversary
+            (avssSpec (t := t) sec corr coeffs) avssFair μ₀)
+    (h_atomic_broadcast :
+      atomic_broadcast_AE sec corr coeffs μ₀ A.toAdversary)
+    (h_drop_io : ∀ N : ℕ, FairASTCertificate.TrajectoryFairRunningMinDropIO
+        (avssSpec (t := t) sec corr coeffs) avssFair
+        (avssCert (t := t) sec corr coeffs h_corr) μ₀ A.toFair N) :
+    AlmostDiamond (avssSpec (t := t) sec corr coeffs) A.toAdversary μ₀ terminated :=
+  avss_termination_AS_fair sec corr h_corr coeffs μ₀ h_init A
+    (atomic_broadcast_AE_implies_consistent_quorum_AE
+      sec corr h_corr coeffs μ₀ A.toAdversary h_atomic_broadcast)
+    h_drop_io
 
 /-! ## §13.5 Dealer-messages consistency invariant (Phase 8.1)
 
