@@ -64,6 +64,7 @@ Per implementation plan v2.2 §M3 + MODEL_NOTES §13.1 (PR 9.1, 9.2).
 -/
 
 import Leslie.Mathlib.Probability.Kernel.IonescuTulcea.Bind
+import Leslie.Mathlib.Probability.Kernel.IonescuTulcea.InfinitePiFubini
 import Leslie.Prob.Action
 import Leslie.Prob.Adversary
 import Leslie.Prob.Liveness
@@ -571,18 +572,14 @@ This section establishes:
     per-history PMFs.
   * `randomisedTraceDist_eq_bind_traceDist` — the **framework
     lemma**: AEMeasurability of the schedule-indexed deterministic
-    trace measure + bind equality. This is the **sole remaining
-    `sorry` in the `Secrecy → SecrecyRandomised` chain**, and
-    captures the substantive Ionescu–Tulcea cylinder-uniqueness
-    content that mathlib does not currently expose at this
+    trace measure + bind equality. This captures the substantive
+    Ionescu–Tulcea cylinder-uniqueness content at the
     `sched`-parameterised level.
 
 Worker 7's design choice: package both AEMeasurability and the bind
-equality into one combined lemma, so that the chain has a *single*
-named sorry rather than two. The two `Secrecy.lean` consumers
+equality into one combined lemma. The two `Secrecy.lean` consumers
 (`..._traj_aeMeasurable`, `..._traj_bind_eq`) are then trivial
-`.1` / `.2` projections, eliminating all sorries from
-`Secrecy.lean`. -/
+`.1` / `.2` projections. -/
 
 section ScheduleSpace
 
@@ -694,10 +691,8 @@ plus a Fubini swap between the (`partialTraj`-driven) random history and
 `Measure.infinitePi`'s coordinate marginals — sound but not yet exposed in
 mathlib at this generality.
 
-**Proof outline (sketch — left as a single named sorry pending the
-`infinitePi`-Fubini infrastructure that mathlib does not yet expose at
-this level of generality).** Both helpers reduce to a parameterised
-cylinder argument:
+**Proof outline.** Both helpers reduce to a parameterised cylinder
+argument:
 
   * **AEMeasurability.** It suffices to show that for every
     measurable `t ⊆ Trace σ ι`, the function
@@ -723,17 +718,9 @@ cylinder argument:
     particular is the precise mathematical content of the
     `infinitePi`-Fubini gap.
 
-**Mathlib gap.** Mathlib's `Measure.infinitePi` does not yet expose
-a coordinate-by-coordinate Fubini swap suitable for parameterised
-`Kernel.partialTraj` families, where the queried coordinate at each
-level is determined by the random outcomes of earlier levels (rather
-than a fixed finset of coordinates). Closing this honestly requires
-~200–400 LOC of induction-on-`n` plus a `lintegral_restrict_infinitePi`-
-based Fubini swap on a randomly-determined finite coordinate set.
-Queued for a future PR.
-
-The chain remains axiom-clean modulo `sorryAx` at the two named
-declarations below. -/
+The bind identity is proved by first establishing the singleton-cylinder
+case using finite-coordinate independence for `Measure.infinitePi`, then
+expanding an arbitrary measurable set over countably many singleton atoms. -/
 section RandomisedTraceDistFubini
 
 variable {σ ι : Type*}
@@ -796,6 +783,22 @@ private lemma randomisedStepKernel_apply_eq_bind_stepKernel
     rw [← scheduleSpaceMeasure_map_eval R h.toList]
     rw [lintegral_map hf_meas hproj_meas]
   rw [hrhs]
+  rw [randomisedStepKernel_apply_tsum spec R h hs]
+  rw [lintegral_countable' (μ := (R.strategy h.toList).toMeasure)
+        (f := fun α : Option ι => (singleActionStep spec h α) s)]
+  refine tsum_congr fun α => ?_
+  rw [(R.strategy h.toList).toMeasure_apply_singleton α
+        (MeasurableSet.singleton _)]
+  ring
+
+set_option linter.unusedSectionVars false in
+private lemma randomisedStepKernel_apply_eq_lintegral_singleActionStep
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
+    {n : ℕ} (h : FinPrefix σ ι n) {s : Set (σ × Option ι)}
+    (hs : MeasurableSet s) :
+    (randomisedStepKernel spec R n) h s =
+      ∫⁻ α : Option ι, (singleActionStep spec h α) s
+          ∂((R.strategy h.toList).toMeasure) := by
   rw [randomisedStepKernel_apply_tsum spec R h hs]
   rw [lintegral_countable' (μ := (R.strategy h.toList).toMeasure)
         (f := fun α : Option ι => (singleActionStep spec h α) s)]
@@ -1019,6 +1022,180 @@ private lemma partialTraj_apply_measurable_in_sched
   exact (Measure.measurable_coe hS).comp (Kernel.measurable _)
 
 set_option linter.unusedSectionVars false in
+private def prefixSucc {n : ℕ} (y : FinPrefix σ ι (n + 1)) : FinPrefix σ ι n :=
+  fun i => y ⟨i.1, Finset.mem_Iic.2 ((Finset.mem_Iic.1 i.2).trans n.le_succ)⟩
+
+set_option linter.unusedSectionVars false in
+private lemma finPrefix_toList_length {n : ℕ} (h : FinPrefix σ ι n) :
+    h.toList.length = n + 1 := by
+  simp [FinPrefix.toList]
+
+open Classical in
+private noncomputable def pathQueryFinset :
+    (n : ℕ) → FinPrefix σ ι n → Finset (List (σ × Option ι))
+  | 0, _ => ∅
+  | n + 1, y => insert (prefixSucc y).toList (pathQueryFinset n (prefixSucc y))
+
+set_option linter.unusedSectionVars false in
+open Classical in
+private lemma pathQueryFinset_mem_length_le :
+    ∀ (n : ℕ) (y : FinPrefix σ ι n) (q : List (σ × Option ι)),
+      q ∈ pathQueryFinset n y → q.length ≤ n
+  | 0, y, q => by simp [pathQueryFinset]
+  | n + 1, y, q => by
+      intro hq
+      simp only [pathQueryFinset, Finset.mem_insert] at hq
+      rcases hq with hq | hq
+      · subst hq
+        simp [finPrefix_toList_length]
+      · exact (pathQueryFinset_mem_length_le n (prefixSucc y) q hq).trans n.le_succ
+
+set_option linter.unusedSectionVars false in
+open Classical in
+private lemma pathQueryFinset_self_not_mem
+    (n : ℕ) (y : FinPrefix σ ι n) :
+    y.toList ∉ pathQueryFinset n y := by
+  intro hy
+  have hlen := pathQueryFinset_mem_length_le n y y.toList hy
+  simp [finPrefix_toList_length] at hlen
+
+open Classical Filter Finset Function MeasurableEquiv MeasurableSpace MeasureTheory
+  Preorder ProbabilityTheory Filtration in
+private lemma partialTraj_singleton_measurable_in_sched_piFinset
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) :
+    ∀ (n : ℕ) (x₀ : FinPrefix σ ι 0) (y : FinPrefix σ ι n),
+      Measurable[piFinset (pathQueryFinset n y)]
+        (fun sched : ScheduleAssignment σ ι =>
+          (Kernel.partialTraj (X := fun _ => σ × Option ι)
+            (fun n => stepKernel spec (sched.toAdversary corrupt) n) 0 n x₀) {y})
+  | 0, x₀, y => by
+      simp [pathQueryFinset, Kernel.partialTraj_self, Kernel.id_apply]
+  | n + 1, x₀, y => by
+      let yp : FinPrefix σ ι n := prefixSucc y
+      let q : List (σ × Option ι) := yp.toList
+      let z : σ × Option ι := y ⟨n + 1, Finset.mem_Iic.2 le_rfl⟩
+      have hIH := partialTraj_singleton_measurable_in_sched_piFinset
+        spec corrupt n x₀ yp
+      have hB : Measurable[piFinset ({q} : Finset (List (σ × Option ι)))]
+          (fun sched : ScheduleAssignment σ ι =>
+            (stepKernel spec (sched.toAdversary corrupt) n) yp {z}) := by
+        have hEval : Measurable[piFinset ({q} : Finset (List (σ × Option ι)))]
+            (fun sched : ScheduleAssignment σ ι => sched q) := by
+          rw [piFinset_eq_comap_restrict (X := fun _ : List (σ × Option ι) => Option ι)
+            ({q} : Finset (List (σ × Option ι)))]
+          simpa [Set.restrict_apply] using
+            (measurable_pi_apply ⟨q, by simp⟩).comp
+              (comap_measurable ((({q} : Finset (List (σ × Option ι))) :
+                Set (List (σ × Option ι))).restrict))
+        have hDisc : Measurable
+            (fun α : Option ι => (singleActionStep spec yp α) {z}) :=
+          Measurable.of_discrete
+        have hEq : (fun sched : ScheduleAssignment σ ι =>
+            (stepKernel spec (sched.toAdversary corrupt) n) yp {z}) =
+            (fun α : Option ι => (singleActionStep spec yp α) {z}) ∘
+              (fun sched : ScheduleAssignment σ ι => sched q) := by
+          funext sched
+          simp [q, stepKernel_apply_eq_singleActionStep]
+        rw [hEq]
+        exact hDisc.comp hEval
+      have hFormula : (fun sched : ScheduleAssignment σ ι =>
+          (Kernel.partialTraj (X := fun _ => σ × Option ι)
+            (fun n => stepKernel spec (sched.toAdversary corrupt) n) 0 (n + 1) x₀) {y}) =
+          fun sched : ScheduleAssignment σ ι =>
+            (Kernel.partialTraj (X := fun _ => σ × Option ι)
+              (fun n => stepKernel spec (sched.toAdversary corrupt) n) 0 n x₀) {yp} *
+            (stepKernel spec (sched.toAdversary corrupt) n) yp {z} := by
+        funext sched
+        exact ProbabilityTheory.Kernel.partialTraj_succ_apply_singleton_const
+          (κ := fun n => stepKernel spec (sched.toAdversary corrupt) n) n x₀ y
+      rw [hFormula]
+      have hPath : pathQueryFinset (n + 1) y =
+          insert q (pathQueryFinset n yp) := by
+        rfl
+      rw [hPath]
+      refine (hIH.mono ?_ le_rfl).mul (hB.mono ?_ le_rfl)
+      · exact piFinset.mono (by intro t ht; exact Finset.mem_insert_of_mem ht)
+      · exact piFinset.mono (by
+          intro t ht
+          exact Finset.mem_insert.mpr (Or.inl (by simpa using ht)))
+
+open Classical Filter Finset Function MeasurableEquiv MeasurableSpace MeasureTheory
+  Preorder ProbabilityTheory Filtration in
+set_option linter.unusedSectionVars false in
+private lemma partialTraj_singleton_eq_bind_in_sched
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι) :
+    ∀ (n : ℕ) (x₀ : FinPrefix σ ι 0) (y : FinPrefix σ ι n),
+      (Kernel.partialTraj (X := fun _ => σ × Option ι)
+        (randomisedStepKernel spec R) 0 n x₀) {y} =
+        ∫⁻ sched : ScheduleAssignment σ ι,
+          (Kernel.partialTraj (X := fun _ => σ × Option ι)
+            (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀) {y}
+          ∂(scheduleSpaceMeasure R)
+  | 0, x₀, y => by
+      rw [Kernel.partialTraj_self, Kernel.id_apply]
+      simp_rw [Kernel.partialTraj_self, Kernel.id_apply]
+      rw [lintegral_const, measure_univ, mul_one]
+  | n + 1, x₀, y => by
+      let yp : FinPrefix σ ι n := prefixSucc y
+      let q : List (σ × Option ι) := yp.toList
+      let z : σ × Option ι := y ⟨n + 1, Finset.mem_Iic.2 le_rfl⟩
+      have hIH := partialTraj_singleton_eq_bind_in_sched spec R n x₀ yp
+      rw [ProbabilityTheory.Kernel.partialTraj_succ_apply_singleton_const
+        (κ := randomisedStepKernel spec R) n x₀ y]
+      have hFormula : (fun sched : ScheduleAssignment σ ι =>
+          (Kernel.partialTraj (X := fun _ => σ × Option ι)
+            (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 (n + 1) x₀) {y}) =
+          fun sched : ScheduleAssignment σ ι =>
+            (Kernel.partialTraj (X := fun _ => σ × Option ι)
+              (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀) {yp} *
+            (singleActionStep spec yp (sched q)) {z} := by
+        funext sched
+        change
+          (Kernel.partialTraj (X := fun _ => σ × Option ι)
+            (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 (n + 1) x₀) {y} =
+            (Kernel.partialTraj (X := fun _ => σ × Option ι)
+              (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀) {yp} *
+            (singleActionStep spec yp (sched q)) {z}
+        rw [ProbabilityTheory.Kernel.partialTraj_succ_apply_singleton_const
+          (κ := fun n => stepKernel spec (sched.toAdversary R.corrupt) n) n x₀ y]
+        change
+          (Kernel.partialTraj (X := fun _ => σ × Option ι)
+            (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀) {yp} *
+            (stepKernel spec (sched.toAdversary R.corrupt) n) yp {z} =
+            (Kernel.partialTraj (X := fun _ => σ × Option ι)
+              (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀) {yp} *
+            (singleActionStep spec yp (sched q)) {z}
+        simp [q, stepKernel_apply_eq_singleActionStep]
+      rw [hFormula]
+      unfold scheduleSpaceMeasure
+      have hq : q ∉ pathQueryFinset n yp := by
+        simpa [q] using pathQueryFinset_self_not_mem n yp
+      have hA :
+          Measurable[piFinset (pathQueryFinset n yp)]
+            (fun sched : ScheduleAssignment σ ι =>
+              (Kernel.partialTraj (X := fun _ => σ × Option ι)
+                (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀) {yp}) :=
+        partialTraj_singleton_measurable_in_sched_piFinset spec R.corrupt n x₀ yp
+      have hB : Measurable (fun α : Option ι => (singleActionStep spec yp α) {z}) :=
+        Measurable.of_discrete
+      rw [Measure.lintegral_infinitePi_mul_eval_of_piFinset
+        (μ := fun h : List (σ × Option ι) => (R.strategy h).toMeasure)
+        hq hA hB (fun _ => (none : Option ι))]
+      have hIH' :
+          (Kernel.partialTraj (X := fun _ => σ × Option ι)
+              (randomisedStepKernel spec R) 0 n x₀) {yp} =
+            ∫⁻ sched : ScheduleAssignment σ ι,
+              (Kernel.partialTraj (X := fun _ => σ × Option ι)
+                (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀) {yp}
+              ∂(Measure.infinitePi
+                (fun h : List (σ × Option ι) => (R.strategy h).toMeasure)) := by
+        simpa [scheduleSpaceMeasure] using hIH
+      rw [← hIH']
+      rw [← randomisedStepKernel_apply_eq_lintegral_singleActionStep
+        spec R yp (MeasurableSet.singleton z)]
+      rfl
+
+set_option linter.unusedSectionVars false in
 /-- **Auxiliary trajectory-level bind identity** for the AVSS step-kernel
 family. This is the `h_partialTraj_bind` hypothesis required by
 `Kernel.trajMeasure_bind_kernel_of_partial`.
@@ -1028,78 +1205,70 @@ For the AVSS-style kernel
 each per-history step queries `sched` at exactly one coordinate. Across
 distinct trajectory levels the histories have distinct list-lengths, hence
 distinct query coordinates. Under `scheduleSpaceMeasure R = Measure.infinitePi
-(R.strategy ·)`, those coordinates are independent — so sampling once and
-querying repeatedly is distributionally equivalent to sampling fresh per
-level, and the trajectory-level bind identity reduces to a `Fubini`-on-
-`infinitePi` swap.
+(R.strategy ·)`, those coordinates are independent.
 
-**Mathlib gap (ESTABLISHED, NOT FIXABLE WITHIN THIS FILE).** Discharging this
-honestly requires an `infinitePi`-Fubini swap on a *sequentially-determined*
-finset of coordinates (the histories visited at levels `0..n-1` depend on the
-random trajectory outcomes of earlier levels). A pure structural induction on
-`n` *does not work*: at the inductive step the inner integral against
-`partialTraj κAvg 0 n x₀` cannot be replaced by an inner integral against
-`partialTraj (κ b) 0 n x₀` for the same outer-`b` because `κAvg n` and
-`κ b n` are *different* per-step kernels — this is exactly the failure mode
-of the unconditional `trajMeasure_bind_kernel` discovered in PR #96 (see the
-Bernoulli counterexample in the docstring of
-`Kernel.trajMeasure_bind_kernel_of_partial`).
-
-The honest proof requires using the *product structure* of
-`ν = scheduleSpaceMeasure R = infinitePi (R.strategy ·)` — namely, that for
-distinct histories the corresponding `sched` coordinates are independent.
-Mathlib exposes coordinate-marginal lemmas
-(`MeasureTheory.infinitePi_map_eval`, `lintegral_restrict_infinitePi`,
-`lintegral_infinitePi_of_piFinset`) only for *fixed* coordinate sets, while
-here the relevant coordinate is determined by the random level-`k` history
-`h_k` — i.e. by the level-`k` outcome of `partialTraj`. Closing this gap
-requires roughly:
-
-  1. an `infinitePi`-Fubini lemma for *sequentially-defined* finsets of
-     coordinates (the queried coordinate at step `k` is a measurable
-     function of the partial trajectory through level `k`, not a fixed
-     finset member); and
-  2. a careful induction on `n` using the per-step bind identity
-     (`randomisedStepKernel_apply_eq_bind_stepKernel`) at each level,
-     factored over the fresh query coordinate at that level.
-
-We estimate ≥500 LOC of new measure-theoretic infrastructure to close this
-inside `Leslie/Prob/RandomisedAdversary.lean` directly; the cleaner home is
-a small upstream-style file, e.g.
-`Leslie/Mathlib/Probability/Kernel/IonescuTulcea/InfinitePiFubini.lean`,
-exposing the sequential-Fubini lemma in fully general form. **Queued
-explicitly as a follow-up PR.** All other pieces of the
-`Secrecy → SecrecyRandomised` chain are now axiom-clean (Helper 1
-`partialTraj_apply_measurable_in_sched` is closed via the
-`jointPartialTrajSched` construction above). -/
+The proof first handles singleton cylinders by induction on the trajectory
+length: a path prefix depends on the finite set of previously queried
+coordinates, while the next step queries a fresh coordinate, so
+`Measure.lintegral_infinitePi_mul_eval_of_piFinset` factors the integral.
+The general measurable-set case follows by countable atomic decomposition of
+finite prefixes and `lintegral_tsum`. -/
 private lemma partialTraj_apply_eq_bind_in_sched
     (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι) (n : ℕ)
     (x₀ : Π _i : Finset.Iic 0, σ × Option ι)
-    {S : Set (Π i : Finset.Iic n, σ × Option ι)} (_hS : MeasurableSet S) :
+    {S : Set (Π _i : Finset.Iic n, σ × Option ι)} (_hS : MeasurableSet S) :
     (Kernel.partialTraj (X := fun _ => σ × Option ι)
         (randomisedStepKernel spec R) 0 n x₀) S =
       ∫⁻ sched : ScheduleAssignment σ ι,
         (Kernel.partialTraj (X := fun _ => σ × Option ι)
           (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀) S
           ∂(scheduleSpaceMeasure R) := by
-  -- Honest mathematical content of the `Secrecy → SecrecyRandomised` direction:
-  -- the `infinitePi`-Fubini swap between `partialTraj` and
-  -- `scheduleSpaceMeasure`. See the docstring above for the precise gap
-  -- statement (sequentially-defined finset of coordinates required at each
-  -- inductive step). Queued for a follow-up PR exposing the sequential
-  -- `infinitePi`-Fubini lemma in upstream-style form.
-  --
-  -- Partial progress: the `n = 0` base case closes by `partialTraj_self` plus
-  -- `lintegral_const`. The successor case `n → n + 1` requires the upstream
-  -- gap above (sequentially-Fubini on `infinitePi`) and is left as a sorry.
-  induction n with
-  | zero =>
-    rw [Kernel.partialTraj_self, Kernel.id_apply]
-    simp_rw [Kernel.partialTraj_self, Kernel.id_apply]
-    rw [lintegral_const, measure_univ, mul_one]
-  | succ n _ih =>
-    -- Successor step requires sequential `infinitePi`-Fubini; see docstring.
-    sorry
+  classical
+  let Y := Π _i : Finset.Iic n, σ × Option ι
+  have hS : MeasurableSet S := (Set.to_countable S).measurableSet
+  let μAvg : Measure Y :=
+    (Kernel.partialTraj (X := fun _ => σ × Option ι)
+      (randomisedStepKernel spec R) 0 n x₀)
+  let μSched : ScheduleAssignment σ ι → Measure Y := fun sched =>
+    (Kernel.partialTraj (X := fun _ => σ × Option ι)
+      (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀)
+  have hμAvg_atoms : μAvg S = ∑' y : S, μAvg ({(y : Y)} : Set Y) := by
+    have h := lintegral_countable
+      (μ := μAvg) (f := fun _ : Y => (1 : ENNReal)) (s := S) (Set.to_countable S)
+    simpa [μAvg, one_mul, Measure.restrict_apply, hS] using h
+  have hμSched_atoms (sched : ScheduleAssignment σ ι) :
+      μSched sched S = ∑' y : S, μSched sched ({(y : Y)} : Set Y) := by
+    have h := lintegral_countable
+      (μ := μSched sched) (f := fun _ : Y => (1 : ENNReal)) (s := S) (Set.to_countable S)
+    simpa [μSched, one_mul, Measure.restrict_apply, hS] using h
+  have hsingleton (y : S) :
+      μAvg ({(y : Y)} : Set Y) =
+        ∫⁻ sched : ScheduleAssignment σ ι, μSched sched ({(y : Y)} : Set Y)
+          ∂(scheduleSpaceMeasure R) := by
+    simpa [μAvg, μSched, Y] using
+      partialTraj_singleton_eq_bind_in_sched spec R n x₀ (y : Y)
+  have hsingleton_meas (y : S) :
+      AEMeasurable (fun sched : ScheduleAssignment σ ι =>
+        μSched sched ({(y : Y)} : Set Y)) (scheduleSpaceMeasure R) := by
+    have huncurry := partialTraj_apply_measurable_in_sched
+      spec R.corrupt n (MeasurableSet.singleton (y : Y))
+    have hpair : Measurable (fun sched : ScheduleAssignment σ ι => (sched, x₀)) :=
+      measurable_prodMk_right
+    exact (huncurry.comp hpair).aemeasurable
+  calc
+    μAvg S = ∑' y : S, μAvg ({(y : Y)} : Set Y) := hμAvg_atoms
+    _ = ∑' y : S, ∫⁻ sched : ScheduleAssignment σ ι,
+          μSched sched ({(y : Y)} : Set Y) ∂(scheduleSpaceMeasure R) := by
+        exact tsum_congr fun y => hsingleton y
+    _ = ∫⁻ sched : ScheduleAssignment σ ι,
+          ∑' y : S, μSched sched ({(y : Y)} : Set Y)
+          ∂(scheduleSpaceMeasure R) := by
+        rw [lintegral_tsum]
+        exact fun y => hsingleton_meas y
+    _ = ∫⁻ sched : ScheduleAssignment σ ι, μSched sched S ∂(scheduleSpaceMeasure R) := by
+        refine lintegral_congr_ae ?_
+        filter_upwards with sched
+        rw [hμSched_atoms sched]
 
 set_option linter.unusedSectionVars false in
 /-- **Framework lemma (Phase 11-β-followup-7; migrated PR #97).** Fubini /
@@ -1123,8 +1292,7 @@ from the auxiliary lemmas `stepKernel_apply_measurable_in_sched`,
 `randomisedStepKernel_apply_eq_bind_stepKernel`,
 `partialTraj_apply_measurable_in_sched`, and
 `partialTraj_apply_eq_bind_in_sched` above; the latter two encapsulate
-the residual `infinitePi`-Fubini content (the only remaining sorries
-in this chain). -/
+the residual `infinitePi`-Fubini content. -/
 theorem randomisedTraceDist_eq_bind_traceDist
     (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
     (μ : Measure σ) [IsProbabilityMeasure μ] :
