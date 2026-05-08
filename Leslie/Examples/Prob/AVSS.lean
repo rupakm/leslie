@@ -9147,6 +9147,409 @@ theorem traceDist_dealerCommit_AE_eq_init
     rw [ae_map_iff hmeas_pair.aemeasurable MeasurableSet.of_discrete] at hjoint
     exact hjoint
 
+/-! ### §16-β-γ — Kernel-history discharge of `dealerShareTo` trace hypotheses
+
+The §16-β-β packaging exposes `dealerShareTo_continuously_enabled_AE`
+and `dealerShareTo_post_persists_AE` as explicit trace-level
+hypotheses.  This subsection discharges both via a single
+kernel-history inductive lift that mirrors
+`traceDist_partyPoint_AE_eq_init`.
+
+The key insight is the partition disjunction tracking whether
+`dealerShareTo p` has fired in the prefix:
+
+```
+((ω k).1.dealerSent p = false ∧ (ω k).1.dealerMessages p = none ∧
+  ∀ j ∈ [1, k], (ω j).2 ≠ some (.dealerShareTo p)) ∨
+((ω k).1.dealerSent p = true ∧ (ω k).1.dealerMessages p ≠ none ∧
+  ∃ j ∈ [1, k], (ω j).2 = some (.dealerShareTo p))
+```
+
+This disjunction is preserved by every `avssStep` action (left
+stays left until `dealerShareTo p` fires, then moves to right;
+right stays right by `dealerSent p`/`dealerMessages p`
+monotonicity), and yields both target hypotheses as direct
+corollaries. -/
+
+omit [Fintype F] in
+/-- Frame: `dealerSent p` is unchanged by any action that is not
+`dealerShareTo p`. -/
+theorem avssStep_dealerSent_self_unless
+    (a : AVSSAction n F) (s : AVSSState n t F) (p : Fin n)
+    (h_not_share : a ≠ .dealerShareTo p) :
+    (avssStep a s).dealerSent p = s.dealerSent p := by
+  cases a with
+  | dealerShareTo q =>
+    have hpq : p ≠ q := fun heq => h_not_share (heq ▸ rfl)
+    show (avssStep (.dealerShareTo q) s).dealerSent p = s.dealerSent p
+    simp [avssStep, Function.update_of_ne hpq]
+  | partyDeliver q => simp [avssStep, setLocal]
+  | partyCorruptDeliver q => simp [avssStep, setLocal]
+  | partyEchoSend q => simp [avssStep, setLocal]
+  | partyEchoReceive q r => simp [avssStep, setLocal]
+  | partyReady q => simp [avssStep, setLocal]
+  | partyAmplify q => simp [avssStep, setLocal]
+  | partyReceiveReady q r => simp [avssStep, setLocal]
+  | partyOutput q => simp [avssStep, setLocal]
+
+omit [Fintype F] in
+/-- Frame: `dealerMessages p` is unchanged by any action that is not
+`dealerShareTo p`. -/
+theorem avssStep_dealerMessages_self_unless
+    (a : AVSSAction n F) (s : AVSSState n t F) (p : Fin n)
+    (h_not_share : a ≠ .dealerShareTo p) :
+    (avssStep a s).dealerMessages p = s.dealerMessages p := by
+  cases a with
+  | dealerShareTo q =>
+    have hpq : p ≠ q := fun heq => h_not_share (heq ▸ rfl)
+    show (avssStep (.dealerShareTo q) s).dealerMessages p = s.dealerMessages p
+    simp [avssStep, Function.update_of_ne hpq]
+  | partyDeliver q => rfl
+  | partyCorruptDeliver q => rfl
+  | partyEchoSend q => rfl
+  | partyEchoReceive q r => rfl
+  | partyReady q => rfl
+  | partyAmplify q => rfl
+  | partyReceiveReady q r => rfl
+  | partyOutput q => rfl
+
+omit [Fintype F] in
+/-- After `dealerShareTo p`, `dealerSent p = true`. -/
+theorem avssStep_dealerSent_set_after_share
+    (s : AVSSState n t F) (p : Fin n) :
+    (avssStep (.dealerShareTo p) s).dealerSent p = true := by
+  show (avssStep (.dealerShareTo p) s).dealerSent p = true
+  simp [avssStep, Function.update_self]
+
+omit [Fintype F] in
+/-- After `dealerShareTo p`, `dealerMessages p ≠ none`. -/
+theorem avssStep_dealerMessages_some_after_share
+    (s : AVSSState n t F) (p : Fin n) :
+    (avssStep (.dealerShareTo p) s).dealerMessages p ≠ none := by
+  show (avssStep (.dealerShareTo p) s).dealerMessages p ≠ none
+  simp [avssStep, Function.update_self]
+
+omit [Fintype F] in
+/-- Monotonicity: `dealerSent p = true` is preserved by every action. -/
+theorem avssStep_dealerSent_monotone
+    (a : AVSSAction n F) (s : AVSSState n t F) (p : Fin n)
+    (h_pre : s.dealerSent p = true) :
+    (avssStep a s).dealerSent p = true := by
+  by_cases h : a = .dealerShareTo p
+  · subst h; exact avssStep_dealerSent_set_after_share s p
+  · rw [avssStep_dealerSent_self_unless a s p h]; exact h_pre
+
+omit [Fintype F] in
+/-- Monotonicity: `dealerMessages p ≠ none` is preserved by every action. -/
+theorem avssStep_dealerMessages_some_monotone
+    (a : AVSSAction n F) (s : AVSSState n t F) (p : Fin n)
+    (h_pre : s.dealerMessages p ≠ none) :
+    (avssStep a s).dealerMessages p ≠ none := by
+  by_cases h : a = .dealerShareTo p
+  · subst h; exact avssStep_dealerMessages_some_after_share s p
+  · rw [avssStep_dealerMessages_self_unless a s p h]; exact h_pre
+
+/-- Per-step kernel history-tracking AE relation for `dealerSent p`
+and `dealerMessages p`: AE on the kernel, the resulting pair `y`
+either records a `dealerShareTo p` firing (action label witnesses,
+post is post-share) or it preserves the pre-state's `dealerSent p`
+and `dealerMessages p` (and the action label is not the firing). -/
+private theorem avssSpec_stepKernel_dealerShareTo_track_AE
+    (sec : F) (corr : Finset (Fin n))
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) (k : ℕ)
+    (h : FinPrefix (AVSSState n t F) (AVSSAction n F) k) (p : Fin n) :
+    ∀ᵐ y ∂(stepKernel (avssSpec (t := t) sec corr coeffs) A k h),
+      (y.2 = some (.dealerShareTo p) ∧ y.1.dealerSent p = true ∧
+          y.1.dealerMessages p ≠ none) ∨
+      (y.2 ≠ some (.dealerShareTo p) ∧
+          y.1.dealerSent p = h.currentState.dealerSent p ∧
+          y.1.dealerMessages p = h.currentState.dealerMessages p) := by
+  classical
+  have hPset : MeasurableSet
+      {x : AVSSState n t F × Option (AVSSAction n F) |
+        (x.2 = some (.dealerShareTo p) ∧ x.1.dealerSent p = true ∧
+            x.1.dealerMessages p ≠ none) ∨
+        (x.2 ≠ some (.dealerShareTo p) ∧
+            x.1.dealerSent p = h.currentState.dealerSent p ∧
+            x.1.dealerMessages p = h.currentState.dealerMessages p)} :=
+    MeasurableSet.of_discrete
+  unfold stepKernel
+  simp only [ProbabilityTheory.Kernel.ofFunOfCountable, ProbabilityTheory.Kernel.coe_mk]
+  rcases hsched : A.schedule h.toList with _ | i
+  · rw [ae_dirac_iff hPset]
+    -- Stutter: y = (h.currentState, none).
+    right
+    exact ⟨by simp, rfl, rfl⟩
+  · by_cases hgate : ((avssSpec (t := t) sec corr coeffs).actions i).gate h.currentState
+    · simp only [hgate, dite_true]
+      rw [show ((avssSpec (t := t) sec corr coeffs).actions i).effect h.currentState hgate
+            = PMF.pure (avssStep i h.currentState) from rfl,
+          PMF.toMeasure_pure, Measure.map_dirac (by fun_prop), ae_dirac_iff hPset]
+      -- y = (avssStep i h.currentState, some i). Case on `i = dealerShareTo p`.
+      by_cases hi : i = .dealerShareTo p
+      · subst hi
+        left
+        refine ⟨rfl, ?_, ?_⟩
+        · exact avssStep_dealerSent_set_after_share h.currentState p
+        · exact avssStep_dealerMessages_some_after_share h.currentState p
+      · right
+        refine ⟨?_, ?_, ?_⟩
+        · simp [hi]
+        · exact avssStep_dealerSent_self_unless i h.currentState p hi
+        · exact avssStep_dealerMessages_self_unless i h.currentState p hi
+    · simp only [hgate, dite_false]
+      rw [ae_dirac_iff hPset]
+      right
+      exact ⟨by simp, rfl, rfl⟩
+
+/-- Trace-level history-tracked partition for `dealerShareTo p`:
+AE on the trace, at every step `k`, we are in exactly one of two
+states — either `dealerShareTo p` has not fired in `[1, k]` and the
+gate is still open, or it has fired and the post-condition holds.
+
+This is the inductive bridge between the §16-β-β trace hypotheses
+and `avssStep`'s state-level semantics: both
+`dealerShareTo_continuously_enabled_AE` and
+`dealerShareTo_post_persists_AE` are direct corollaries. -/
+theorem traceDist_dealerShareTo_history_AE
+    (sec : F) (corr : Finset (Fin n)) (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) (p : Fin n) (k : ℕ) :
+    ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
+      ((ω k).1.dealerSent p = false ∧ (ω k).1.dealerMessages p = none ∧
+        ∀ j, 1 ≤ j → j ≤ k → (ω j).2 ≠ some (.dealerShareTo p)) ∨
+      ((ω k).1.dealerSent p = true ∧ (ω k).1.dealerMessages p ≠ none ∧
+        ∃ j, 1 ≤ j ∧ j ≤ k ∧ (ω j).2 = some (.dealerShareTo p)) := by
+  classical
+  -- Lift `h_init` to a step-0 AE statement on the trace.
+  have h_init_AE : ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
+      initPred sec corr coeffs (ω 0).1 := by
+    have hmap := traceDist_step_zero_state_marginal (t := t) sec corr coeffs μ₀ A
+    have hmeas : Measurable (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+        (ω 0).1) := by fun_prop
+    rw [← hmap] at h_init
+    rwa [ae_map_iff hmeas.aemeasurable MeasurableSet.of_discrete] at h_init
+  induction k with
+  | zero =>
+    -- Base: at step 0, gate is open (from initPred), and there are
+    -- no indices in [1, 0].
+    filter_upwards [h_init_AE] with ω h_init0
+    left
+    refine ⟨?_, ?_, ?_⟩
+    · have : (ω 0).1.dealerSent = (fun _ => false) := h_init0.2.2.2.2.2.2.2.1
+      rw [this]
+    · have : (ω 0).1.dealerMessages = (fun _ => none) := h_init0.2.2.2.2.2.2.2.2.1
+      rw [this]
+    · intro j h1 h2
+      omega
+  | succ k ih =>
+    -- Per-step kernel-AE: lift to `(traceDist).map (frestrictLe k) ⊗ₘ stepKernel`,
+    -- then to `traceDist`-AE on the joint pair `(prefix, ω (k+1))`.
+    have hmeas_pair : Measurable
+        (fun ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F) =>
+          (Preorder.frestrictLe k ω, ω (k+1))) := by fun_prop
+    haveI : IsProbabilityMeasure
+        (μ₀.map (fun s : AVSSState n t F => (s, (none : Option (AVSSAction n F))))) :=
+      Measure.isProbabilityMeasure_map (by fun_prop)
+    have hk :
+        ((traceDist (avssSpec (t := t) sec corr coeffs) A μ₀).map
+            (Preorder.frestrictLe k)) ⊗ₘ
+          (stepKernel (avssSpec (t := t) sec corr coeffs) A k) =
+        (traceDist (avssSpec (t := t) sec corr coeffs) A μ₀).map
+          (fun ω => (Preorder.frestrictLe k ω, ω (k+1))) := by
+      unfold traceDist
+      exact ProbabilityTheory.Kernel.map_frestrictLe_trajMeasure_compProd_eq_map_trajMeasure
+    have h_inner : ∀ᵐ h ∂((traceDist (avssSpec (t := t) sec corr coeffs) A μ₀).map
+          (Preorder.frestrictLe k)),
+        ∀ᵐ y ∂(stepKernel (avssSpec (t := t) sec corr coeffs) A k h),
+          (y.2 = some (.dealerShareTo p) ∧ y.1.dealerSent p = true ∧
+              y.1.dealerMessages p ≠ none) ∨
+          (y.2 ≠ some (.dealerShareTo p) ∧
+              y.1.dealerSent p = h.currentState.dealerSent p ∧
+              y.1.dealerMessages p = h.currentState.dealerMessages p) :=
+      Filter.Eventually.of_forall fun h =>
+        avssSpec_stepKernel_dealerShareTo_track_AE sec corr A k h p
+    have hjoint :
+        ∀ᵐ x ∂(((traceDist (avssSpec (t := t) sec corr coeffs) A μ₀).map
+              (Preorder.frestrictLe k)) ⊗ₘ
+            (stepKernel (avssSpec (t := t) sec corr coeffs) A k)),
+          (x.2.2 = some (.dealerShareTo p) ∧ x.2.1.dealerSent p = true ∧
+              x.2.1.dealerMessages p ≠ none) ∨
+          (x.2.2 ≠ some (.dealerShareTo p) ∧
+              x.2.1.dealerSent p = (FinPrefix.currentState x.1).dealerSent p ∧
+              x.2.1.dealerMessages p = (FinPrefix.currentState x.1).dealerMessages p) :=
+      Measure.ae_compProd_of_ae_ae MeasurableSet.of_discrete h_inner
+    rw [hk] at hjoint
+    rw [ae_map_iff hmeas_pair.aemeasurable MeasurableSet.of_discrete] at hjoint
+    -- Bridge: `FinPrefix.currentState (Preorder.frestrictLe k ω) = (ω k).1`.
+    have h_bridge : ∀ ω : Π _ : ℕ, AVSSState n t F × Option (AVSSAction n F),
+        FinPrefix.currentState
+            (Preorder.frestrictLe (π := fun _ : ℕ =>
+              AVSSState n t F × Option (AVSSAction n F)) k ω) = (ω k).1 := by
+      intro ω; rfl
+    have hjoint' :
+        ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
+          ((ω (k+1)).2 = some (.dealerShareTo p) ∧
+              (ω (k+1)).1.dealerSent p = true ∧
+              (ω (k+1)).1.dealerMessages p ≠ none) ∨
+          ((ω (k+1)).2 ≠ some (.dealerShareTo p) ∧
+              (ω (k+1)).1.dealerSent p = (ω k).1.dealerSent p ∧
+              (ω (k+1)).1.dealerMessages p = (ω k).1.dealerMessages p) := by
+      filter_upwards [hjoint] with ω hω
+      rcases hω with ⟨h1, h2, h3⟩ | ⟨h1, h2, h3⟩
+      · left; exact ⟨h1, h2, h3⟩
+      · right
+        rw [h_bridge ω] at h2 h3
+        exact ⟨h1, h2, h3⟩
+    -- Combine the IH and the kernel-AE step.
+    filter_upwards [ih, hjoint'] with ω h_ih h_kernel
+    rcases h_ih with h_left | h_right
+    · -- Pre at k is left: gate open, no firing in [1, k].
+      rcases h_kernel with ⟨h_act, h_ds, h_dm⟩ | ⟨h_nact, h_ds_eq, h_dm_eq⟩
+      · -- Action label fires dealerShareTo p at k+1: move to right.
+        right
+        refine ⟨h_ds, h_dm, k + 1, by omega, le_refl _, h_act⟩
+      · -- Action does not fire dealerShareTo p; state preserved, no new firing.
+        left
+        refine ⟨?_, ?_, ?_⟩
+        · rw [h_ds_eq]; exact h_left.1
+        · rw [h_dm_eq]; exact h_left.2.1
+        · intro j hj1 hjk
+          rcases Nat.lt_or_ge j (k + 1) with hjlt | hjge
+          · exact h_left.2.2 j hj1 (Nat.lt_succ_iff.mp hjlt)
+          · -- j ≥ k+1 and j ≤ k+1, so j = k+1.
+            have hj_eq : j = k + 1 := le_antisymm hjk hjge
+            subst hj_eq
+            exact h_nact
+    · -- Pre at k is right: post-share already, witness in prefix.
+      obtain ⟨h_ds_pre, h_dm_pre, j, hj1, hjk, hj_act⟩ := h_right
+      rcases h_kernel with ⟨h_act, h_ds, h_dm⟩ | ⟨h_nact, h_ds_eq, h_dm_eq⟩
+      · -- Action also fires at k+1: carry through.
+        right
+        exact ⟨h_ds, h_dm, j, hj1, le_trans hjk (Nat.le_succ k), hj_act⟩
+      · -- Action does not fire; carry witness, state preserved.
+        right
+        refine ⟨?_, ?_, j, hj1, le_trans hjk (Nat.le_succ k), hj_act⟩
+        · rw [h_ds_eq]; exact h_ds_pre
+        · rw [h_dm_eq]; exact h_dm_pre
+
+/-- **Discharge of `dealerShareTo_continuously_enabled_AE`** via the
+kernel-history lift `traceDist_dealerShareTo_history_AE`. -/
+theorem dealerShareTo_continuously_enabled_AE_of_initPred
+    (sec : F) (corr : Finset (Fin n)) (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) (p : Fin n) :
+    dealerShareTo_continuously_enabled_AE sec corr coeffs μ₀ A p := by
+  classical
+  unfold dealerShareTo_continuously_enabled_AE
+  rw [ae_all_iff]
+  intro k
+  filter_upwards [traceDist_dealerShareTo_history_AE sec corr coeffs μ₀ h_init A p k]
+    with ω hω h_no_share
+  rcases hω with hL | hR
+  · exact hL.1
+  · -- Right branch: ∃ j ∈ [1, k] with firing — contradicts h_no_share.
+    obtain ⟨_, _, j, hj1, hjk, hj_act⟩ := hR
+    -- j ≥ 1 means j = (j - 1) + 1, and (j - 1) ≤ k.
+    have hj_pred : j - 1 ≤ k := by omega
+    have hj_succ : (j - 1) + 1 = j := by omega
+    have h_contra := h_no_share (j - 1) hj_pred
+    rw [hj_succ] at h_contra
+    exact absurd hj_act h_contra
+
+/-- **Discharge of `dealerShareTo_post_persists_AE`** via the
+kernel-history lift `traceDist_dealerShareTo_history_AE`.
+
+The post-condition's target step `k'` (the step at which we want
+`dealerSent p = true ∧ dealerMessages p ≠ none`) drives our use of
+the history at step `k'`: the right branch gives the post-condition,
+and the left branch contradicts the firing assumption at `k+1 ≤ k'`. -/
+theorem dealerShareTo_post_persists_AE_of_initPred
+    (sec : F) (corr : Finset (Fin n)) (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
+    (A : Adversary (AVSSState n t F) (AVSSAction n F)) (p : Fin n) :
+    dealerShareTo_post_persists_AE sec corr coeffs μ₀ A p := by
+  classical
+  unfold dealerShareTo_post_persists_AE
+  -- Reorder: ∀ k', ∀ k, AE; the AE-history at the *target step* k' is
+  -- what gives both branches.
+  -- Push the inner ∀ k' through to AE-quantification level via `ae_all_iff`.
+  -- Strategy: prove the universal-over-k' AE statement directly, then
+  -- combine via filter_upwards.
+  have h_per_target : ∀ k' : ℕ,
+      ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
+        ∀ k, (ω (k + 1)).2 = some (AVSSAction.dealerShareTo p) →
+          k' ≥ k + 1 →
+          (ω k').1.dealerSent p = true ∧
+            (ω k').1.dealerMessages p ≠ none := by
+    intro k'
+    filter_upwards [traceDist_dealerShareTo_history_AE sec corr coeffs μ₀ h_init A p k']
+      with ω hω k h_fire hk'_ge
+    rcases hω with hL | hR
+    · -- Left at k': no firing in [1, k'], but firing at k+1 ≤ k' contradicts.
+      exfalso
+      have h_no := hL.2.2 (k + 1) (by omega) hk'_ge
+      exact h_no h_fire
+    · -- Right at k': directly gives the post-condition.
+      exact ⟨hR.1, hR.2.1⟩
+  -- Combine via `ae_all_iff` to commute the outer ∀ k' inside the AE.
+  have h_combined :
+      ∀ᵐ ω ∂(traceDist (avssSpec (t := t) sec corr coeffs) A μ₀),
+        ∀ k', ∀ k, (ω (k + 1)).2 = some (AVSSAction.dealerShareTo p) →
+          k' ≥ k + 1 →
+          (ω k').1.dealerSent p = true ∧
+            (ω k').1.dealerMessages p ≠ none :=
+    ae_all_iff.mpr h_per_target
+  filter_upwards [h_combined] with ω hω k h_fire k' hk'_ge
+  exact hω k' k h_fire hk'_ge
+
+/-- **§16-β-γ closure** — `atomic_broadcast_AE` from per-action
+progress alone (the trace-level continuous-enabling and
+post-firing hypotheses are now discharged from `h_init` by the
+kernel-history lift `traceDist_dealerShareTo_history_AE`). -/
+theorem atomic_broadcast_AE_of_avssFair_per_action_progress_initPred
+    (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
+    (A : Leslie.Prob.TrajectoryFairAdversary
+            (avssSpec (t := t) sec corr coeffs) avssFair μ₀)
+    (h_per_action :
+      Leslie.Prob.FairASTCertificate.TrajectoryFairProgressPerAction
+        (avssSpec (t := t) sec corr coeffs) avssFair μ₀ A.toFair) :
+    atomic_broadcast_AE sec corr coeffs μ₀ A.toAdversary :=
+  atomic_broadcast_AE_of_avssFair_per_action_progress sec corr coeffs μ₀ A
+    h_per_action
+    (fun p _ => dealerShareTo_continuously_enabled_AE_of_initPred
+      sec corr coeffs μ₀ h_init A.toAdversary p)
+    (fun p _ => dealerShareTo_post_persists_AE_of_initPred
+      sec corr coeffs μ₀ h_init A.toAdversary p)
+
+/-- **§16-β-γ closure** — unconditional honest-dealer termination
+from `avssFair` + per-action progress, with the §16-β-β trace
+hypotheses now discharged. -/
+theorem avss_termination_AS_fair_honest_dealer_unconditional_initPred
+    (sec : F) (corr : Finset (Fin n)) (h_corr : corr.card ≤ t)
+    (coeffs : Fin (t+1) → Fin (t+1) → F)
+    (μ₀ : Measure (AVSSState n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
+    (A : Leslie.Prob.TrajectoryFairAdversary
+            (avssSpec (t := t) sec corr coeffs) avssFair μ₀)
+    (h_per_action :
+      Leslie.Prob.FairASTCertificate.TrajectoryFairProgressPerAction
+        (avssSpec (t := t) sec corr coeffs) avssFair μ₀ A.toFair)
+    (h_drop_io : ∀ N : ℕ, FairASTCertificate.TrajectoryFairRunningMinDropIO
+        (avssSpec (t := t) sec corr coeffs) avssFair
+        (avssCert (t := t) sec corr coeffs h_corr) μ₀ A.toFair N) :
+    AlmostDiamond (avssSpec (t := t) sec corr coeffs) A.toAdversary μ₀ terminated :=
+  avss_termination_AS_fair_under_atomic_broadcast sec corr h_corr coeffs μ₀ h_init A
+    (atomic_broadcast_AE_of_avssFair_per_action_progress_initPred
+      sec corr coeffs μ₀ h_init A h_per_action)
+    h_drop_io
+
 /-! ### Phase 8.5c — `TrivialView` and `coalitionTrivialView`
 
 Phase 8.5b-α weakened `corruptLocalInv` to drop the
