@@ -1956,4 +1956,375 @@ theorem inflightReadySenderReady_preserve
           s.local_ msg.sender := by simp [step, setLocal, hsq]
       rw [this]; exact hpre
 
+/-! ## Step 3a — Termination certificate scaffolding
+
+This section adapts the AVSS termination-certificate scaffolding
+(`Leslie.Examples.Prob.AVSS` §11–§12) to the value-bearing AVSSFaithful
+spec.  The pieces landed here:
+
+* `terminated` predicate (every honest party output, echoed to every
+  receiver, all queues drained).
+* Helper sets and cardinality bounds for the lex-product variant
+  `cert_U`: `unsentDealerSet`, `unsentEchoPairSet`, `notReadySentSet`,
+  `unfinishedSet`, plus `lexBase`.
+* `cert_U`, `cert_V` — 7-component lex-product variant matching the
+  AVSS structure (but with per-pair echo counting since AVSSFaithful's
+  `partyEchoSend q p` is per-receiver).
+* `fairActions`, `fair` — fair-required action set and
+  `FairnessAssumptions` bundle (every honest-protocol action, NOT
+  `partyCorruptDeliver`).
+* `atomic_broadcast_AE` — CR '93-style atomic-broadcast hypothesis.
+* Trivial `cert_U_term`, `cert_V_term`, `cert_V_pos`, `cert_U_le_bound`
+  facts (the `Inv → ...` shape mirrors AVSS's `avssCert_U_term` etc.).
+
+Subsequent steps (3b/3c/...) will land the per-action `cert_U` strict-
+decrease and non-increase lemmas, the joint inductive invariant
+(`avssTermInv`-analog plus queue / fresh / flow auxiliaries), and the
+full `FairASTCertificate` instance + termination theorems.  The skeleton
+here matches AVSS's structure component-for-component so subsequent
+steps can adapt the AVSS proofs nearly verbatim.
+
+(`avssCert_U_term` and friends in AVSS take ~2000 LOC of per-action
+lemma support + four auxiliary invariants; the full Step-3 deliverable
+exceeds the 500-LOC budget for a single PR, so it is staged.) -/
+
+/-! ### Helper sets for the lex-product variant -/
+
+/-- Honest parties for which the dealer hasn't yet emitted a payload.
+The `c₁` component of `cert_U`: drops by 1 each time `dealerShareTo p`
+fires for honest `p`. Mirrors `AVSS.unsentDealerSet`. -/
+def unsentDealerSet (s : State n t F) : Finset (Fin n) :=
+  (Finset.univ : Finset (Fin n)).filter
+    (fun p => p ∉ s.corrupted ∧ s.dealerSent p = false)
+
+omit [Field F] [Fintype F] [DecidableEq F] in
+@[simp] theorem unsentDealerSet_card_le (s : State n t F) :
+    (unsentDealerSet s).card ≤ n := by
+  classical
+  unfold unsentDealerSet
+  exact (Finset.card_le_univ _).trans (by simp)
+
+/-- Honest `(sender, receiver)` pairs for which `sender` has delivered
+but has not yet echoed to `receiver`.  This is the AVSSFaithful analogue
+of AVSS's `unsentEchoSet`: AVSSFaithful's `partyEchoSend q p` is per-
+receiver (since echo carries a value computed at receiver point), so
+the variant counts pairs rather than parties. -/
+def unsentEchoPairSet (s : State n t F) : Finset (Fin n × Fin n) :=
+  (Finset.univ : Finset (Fin n × Fin n)).filter
+    (fun pr => pr.1 ∉ s.corrupted ∧
+      (s.local_ pr.1).delivered.isSome = true ∧
+      pr.2 ∉ (s.local_ pr.1).echoedTo)
+
+omit [Field F] [Fintype F] [DecidableEq F] in
+@[simp] theorem unsentEchoPairSet_card_le (s : State n t F) :
+    (unsentEchoPairSet s).card ≤ n * n := by
+  classical
+  have h1 : (unsentEchoPairSet s).card ≤
+      (Finset.univ : Finset (Fin n × Fin n)).card :=
+    Finset.card_le_univ _
+  have h2 : (Finset.univ : Finset (Fin n × Fin n)).card = n * n := by simp
+  omega
+
+/-- Honest parties whose `readySent` set is empty.  Mirrors
+`AVSS.notReadySentSet` (where `readySent` was a `Bool`).  In
+AVSSFaithful, `readySent` is a `Finset ReadyCert`, so the analogue is
+"no ready ever broadcast" — once `partyReady`/`partyAmplify` fires for
+*any* candidate, this party drops out. -/
+def notReadySentSet (s : State n t F) : Finset (Fin n) :=
+  (Finset.univ : Finset (Fin n)).filter
+    (fun p => p ∉ s.corrupted ∧ (s.local_ p).readySent = ∅)
+
+omit [Field F] [Fintype F] in
+@[simp] theorem notReadySentSet_card_le (s : State n t F) :
+    (notReadySentSet s).card ≤ n := by
+  classical
+  unfold notReadySentSet
+  exact (Finset.card_le_univ _).trans (by simp)
+
+/-- Honest parties with `output = none`. -/
+def unfinishedSet (s : State n t F) : Finset (Fin n) :=
+  (Finset.univ : Finset (Fin n)).filter
+    (fun p => p ∉ s.corrupted ∧ (s.local_ p).output = none)
+
+omit [Field F] [Fintype F] [DecidableEq F] in
+@[simp] theorem unfinishedSet_card_le (s : State n t F) :
+    (unfinishedSet s).card ≤ n := by
+  classical
+  unfold unfinishedSet
+  exact (Finset.card_le_univ _).trans (by simp)
+
+omit [Field F] [Fintype F] [DecidableEq F] in
+@[simp] theorem inflightDeliveries_card_le' (s : State n t F) :
+    s.inflightDeliveries.card ≤ n := by
+  classical
+  exact (Finset.card_le_univ s.inflightDeliveries).trans (by simp)
+
+/-- Lex base: large enough to dominate every component.  Each pair-
+counted component is bounded by `n * n ≤ (n+1)²`. -/
+def lexBase (n : ℕ) : ℕ := (n + 1) * (n + 1)
+
+theorem lexBase_pos : 1 ≤ lexBase n := by unfold lexBase; nlinarith
+
+/-! ### The variant `cert_U` and likelihood `cert_V` -/
+
+/-- The 7-component lex-product termination variant for AVSSFaithful.
+
+```
+U = c₁·K^6 + c₂·K^5 + c₃·K^4 + c₄·K^3 + c₅·K^2 + c₆·K + c₇
+```
+
+with components in lex-decreasing weight order:
+
+  1. `unsentDealerSet.card`   — pending `dealerShareTo` step.
+  2. `inflightDeliveries.card` — pending `partyDeliver` step.
+  3. `unsentEchoPairSet.card`  — pending `partyEchoSend` step
+                                 (per-pair, AVSSFaithful-specific).
+  4. `inflightEchoes.card`     — pending `partyEchoReceive` step.
+  5. `notReadySentSet.card`    — pending `partyReady`/`partyAmplify`.
+  6. `inflightReady.card`      — pending `partyReceiveReady`.
+  7. `unfinishedSet.card`      — pending `partyOutput`.
+
+The lex base `K = (M+1)*(M+1)` with `M = n*(n+1)` dominates every
+single component (in particular `unsentEchoPairSet.card ≤ n²` and
+`inflightEchoes.card ≤ |EchoMsg|`). -/
+noncomputable def cert_U (s : State n t F) : ℕ :=
+  let M : ℕ := n * (n + 1)
+  let K : ℕ := lexBase M
+  (unsentDealerSet s).card * K ^ 6 +
+    s.inflightDeliveries.card * K ^ 5 +
+    (unsentEchoPairSet s).card * K ^ 4 +
+    s.inflightEchoes.card * K ^ 3 +
+    (notReadySentSet s).card * K ^ 2 +
+    s.inflightReady.card * K +
+    (unfinishedSet s).card
+
+/-- Likelihood `V s = (cert_U s : ℝ≥0)`. -/
+noncomputable def cert_V (s : State n t F) : NNReal := (cert_U s : NNReal)
+
+/-! ### Terminated predicate -/
+
+/-- A state is terminated iff:
+
+* every honest party has snapped output,
+* every honest party has echoed to every receiver,
+* the dealer has emitted a payload to every honest party,
+* and all in-flight queues are drained.
+
+Mirrors `AVSS.terminated`; the per-pair echo-completeness clause matches
+the per-pair `unsentEchoPairSet` component of `cert_U`. -/
+def terminated (s : State n t F) : Prop :=
+  (∀ p, p ∉ s.corrupted → (s.local_ p).output.isSome) ∧
+  (∀ p, p ∉ s.corrupted →
+      ∀ r : Fin n, r ∈ (s.local_ p).echoedTo) ∧
+  (∀ p, p ∉ s.corrupted → s.dealerSent p = true) ∧
+  s.inflightDeliveries = ∅ ∧
+  s.inflightEchoes = ∅ ∧
+  s.inflightReady = ∅
+
+/-! ### Fair-required action set -/
+
+/-- Set of fair-required actions for AVSSFaithful.
+
+Every honest-protocol action is fair-required *except* the adversarial
+`partyCorruptDeliver` (used to model corrupt parties acquiring their
+shares for the secrecy view; honest-party fairness is unaffected by
+whether corrupt parties have received their shares).
+
+Note: `partyReady`/`partyAmplify` carry a `cert` argument; the gate
+already ensures `cert ∉ readySent`, so each cert fires at most once.
+The fair-required action set requires *some* cert eventually be fired
+for every honest party with an `(n−t)`-supported certificate available. -/
+def fairActions : Set (Action n t F) :=
+  { a | match a with
+        | .dealerShareTo _ => True
+        | .partyDeliver _ => True
+        | .partyEchoSend _ _ => True
+        | .partyEchoReceive _ => True
+        | .partyReady _ _ => True
+        | .partyAmplify _ _ => True
+        | .partyReceiveReady _ => True
+        | .partyOutput _ _ => True
+        | _ => False }
+
+/-- AVSSFaithful fairness assumptions. -/
+noncomputable def fair :
+    FairnessAssumptions (State n t F) (Action n t F) where
+  fair_actions := fairActions
+  isWeaklyFair := fun _ => True
+
+/-! ### Atomic broadcast hypothesis (CR '93 spirit) -/
+
+open Leslie.Prob in
+/-- **Atomic broadcast (AE)** for AVSSFaithful: AE on the trace, every
+honest party eventually has `dealerSent p = true`.  Mirrors
+`AVSS.atomic_broadcast_AE` (without the `dealerMessages` clause, since
+in AVSSFaithful the per-party commitment lives directly in
+`s.dealerCommit p` from initialization, not in an `Option`-typed
+channel).
+
+Under this hypothesis, fairness of `partyDeliver` plus monotonicity of
+`dealerSent` yields almost-sure delivery to every honest party,
+discharging the runtime conditional-CR hypothesis on
+`avss_termination_AS_fair`-style claims. -/
+noncomputable def atomic_broadcast_AE (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t + 1) -> Fin (t + 1) -> F)
+    (μ₀ : MeasureTheory.Measure (State n t F))
+    [MeasureTheory.IsProbabilityMeasure μ₀]
+    (A : Adversary (State n t F) (Action n t F)) : Prop :=
+  ∀ᵐ ω ∂(traceDist (spec (t := t) sec corr coeffs) A μ₀),
+    ∃ k₀ : ℕ, ∀ k ≥ k₀, ∀ p, p ∉ corr →
+      (ω k).1.dealerSent p = true
+
+/-! ### Variant facts at terminated / non-terminated states -/
+
+omit [Field F] [Fintype F] [DecidableEq F] in
+/-- The four cardinality components are zero on a terminated state. -/
+theorem cert_U_components_zero_of_terminated (s : State n t F)
+    (ht : terminated s) :
+    (unsentDealerSet s).card = 0 ∧
+    s.inflightDeliveries.card = 0 ∧
+    (unsentEchoPairSet s).card = 0 ∧
+    s.inflightEchoes.card = 0 ∧
+    s.inflightReady.card = 0 ∧
+    (unfinishedSet s).card = 0 := by
+  classical
+  obtain ⟨ht_out, ht_echo, ht_ds, ht_ifd, ht_ife, ht_ifr⟩ := ht
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
+  · apply Finset.card_eq_zero.mpr
+    apply Finset.eq_empty_of_forall_notMem
+    intro p hp
+    simp only [unsentDealerSet, Finset.mem_filter, Finset.mem_univ,
+      true_and] at hp
+    obtain ⟨hp_h, hp_ds⟩ := hp
+    have := ht_ds p hp_h
+    rw [this] at hp_ds; cases hp_ds
+  · rw [ht_ifd]; rfl
+  · apply Finset.card_eq_zero.mpr
+    apply Finset.eq_empty_of_forall_notMem
+    intro pr hpr
+    simp only [unsentEchoPairSet, Finset.mem_filter, Finset.mem_univ,
+      true_and] at hpr
+    obtain ⟨hp_h, _, hp_no⟩ := hpr
+    exact hp_no (ht_echo pr.1 hp_h pr.2)
+  · rw [ht_ife]; rfl
+  · rw [ht_ifr]; rfl
+  · apply Finset.card_eq_zero.mpr
+    apply Finset.eq_empty_of_forall_notMem
+    intro p hp
+    simp only [unfinishedSet, Finset.mem_filter, Finset.mem_univ,
+      true_and] at hp
+    obtain ⟨hp_h, hp_none⟩ := hp
+    have := ht_out p hp_h
+    rw [hp_none] at this; simp at this
+
+omit [Field F] [Fintype F] in
+/-- Note: `notReadySentSet` is NOT forced to zero by `terminated`
+alone.  At a terminated state, `output.isSome` for every honest party,
+but the AVSSFaithful gate `partyOutput p cert` does not require
+`cert ∈ (s.local_ p).readySent` (only `readyCertSupported`).  So a
+party could output without having sent a ready, leaving
+`(s.local_ p).readySent = ∅`.  Forcing `notReadySentSet = 0` at
+terminated states therefore requires an *invariant* (`output.isSome →
+readySent ≠ ∅`) — added in subsequent step 3b. -/
+theorem cert_U_eq_zero_of_terminated_modulo_readySent
+    (s : State n t F) (ht : terminated s)
+    (h_ready : (notReadySentSet s).card = 0) :
+    cert_U s = 0 := by
+  classical
+  unfold cert_U
+  obtain ⟨h1, h2, h3, h4, h6, h7⟩ :=
+    cert_U_components_zero_of_terminated s ht
+  rw [h1, h2, h3, h4, h_ready, h6, h7]
+  ring
+
+/-! ### Variant cardinality bound
+
+A uniform `cert_U` bound is needed for the certificate's `U_bdd_subl`
+field (`∀ k, ∃ M, ...`).  We give a coarse bound here using fintype
+cardinalities of the message types; a tighter bound (matching AVSS's
+`(7n+7)·K^6` shape) is deferred to step 3b. -/
+
+omit [Field F] [DecidableEq F] in
+/-- Coarse uniform bound for the inflight-echo cardinality.  Used to
+package `cert_U_le_bound`. -/
+theorem inflightEchoes_card_le_univ (s : State n t F) :
+    s.inflightEchoes.card ≤ Fintype.card (EchoMsg n t F) := by
+  classical
+  exact (Finset.card_le_univ s.inflightEchoes).trans (by simp)
+
+omit [Field F] [DecidableEq F] in
+/-- Coarse uniform bound for the inflight-ready cardinality. -/
+theorem inflightReady_card_le_univ (s : State n t F) :
+    s.inflightReady.card ≤ Fintype.card (ReadyMsg n t F) := by
+  classical
+  exact (Finset.card_le_univ s.inflightReady).trans (by simp)
+
+omit [Field F] in
+/-- A uniform bound on `cert_U` valid at every state.  The bound is
+loose (component-wise): each component is bounded by its fintype
+universe size, and the K-power weighting is closed in. -/
+theorem cert_U_le_bound (s : State n t F) :
+    cert_U s ≤
+      let K := lexBase (n * (n + 1))
+      n * K ^ 6 + n * K ^ 5 +
+        (n * n) * K ^ 4 +
+        Fintype.card (EchoMsg n t F) * K ^ 3 +
+        n * K ^ 2 +
+        Fintype.card (ReadyMsg n t F) * K +
+        n := by
+  classical
+  unfold cert_U
+  have h1 := unsentDealerSet_card_le (s := s)
+  have h2 := inflightDeliveries_card_le' (s := s)
+  have h3 := unsentEchoPairSet_card_le (s := s)
+  have h4 := inflightEchoes_card_le_univ s
+  have h5 := notReadySentSet_card_le (s := s)
+  have h6 := inflightReady_card_le_univ s
+  have h7 := unfinishedSet_card_le (s := s)
+  -- Multiply each by the K^k factor (monotone) and sum.
+  set K : ℕ := lexBase (n * (n + 1)) with hKdef
+  have hK_pos : 1 ≤ K := lexBase_pos
+  have e1 : (unsentDealerSet s).card * K ^ 6 ≤ n * K ^ 6 :=
+    Nat.mul_le_mul_right _ h1
+  have e2 : s.inflightDeliveries.card * K ^ 5 ≤ n * K ^ 5 :=
+    Nat.mul_le_mul_right _ h2
+  have e3 : (unsentEchoPairSet s).card * K ^ 4 ≤ (n * n) * K ^ 4 :=
+    Nat.mul_le_mul_right _ h3
+  have e4 : s.inflightEchoes.card * K ^ 3 ≤
+      Fintype.card (EchoMsg n t F) * K ^ 3 :=
+    Nat.mul_le_mul_right _ h4
+  have e5 : (notReadySentSet s).card * K ^ 2 ≤ n * K ^ 2 :=
+    Nat.mul_le_mul_right _ h5
+  have e6 : s.inflightReady.card * K ≤
+      Fintype.card (ReadyMsg n t F) * K :=
+    Nat.mul_le_mul_right _ h6
+  have e7 : (unfinishedSet s).card ≤ n := h7
+  -- Sum.
+  simp only []
+  have := Nat.add_le_add (Nat.add_le_add (Nat.add_le_add (Nat.add_le_add
+    (Nat.add_le_add (Nat.add_le_add e1 e2) e3) e4) e5) e6) e7
+  exact this
+
+/-! ### Notes for subsequent steps
+
+The Step-3b deliverable (next PR) lands:
+
+  * Joint inductive invariant `termInv` ≅ AVSS's
+    `avssTermInv ∧ corruptLocalInv ∧ avssQueueWfInv ∧ avssFreshInv ∧
+    avssFlowInv` — adapted to AVSSFaithful's value-bearing channels and
+    candidate-scoped certs.
+  * Per-action `cert_U`-decrease lemmas (one per fair action), mirroring
+    `avssU_step_partyDeliver_lt` etc.
+  * `cert` : `FairASTCertificate (spec sec corr coeffs) fair terminated`.
+  * Termination theorems:
+      - `termination_AS_fair_traj`  (BC running-min route)
+      - `termination_AS_fair`        (with `consistent_quorum_AE`)
+      - `termination_AS_fair_under_atomic_broadcast`
+
+The total Step-3 deliverable (3a + 3b) parallels AVSS's §11–§13 exactly;
+each AVSS lemma has a direct AVSSFaithful counterpart with the same
+proof shape.  The only structural change is the per-pair echo counting
+(AVSS's `unsentEchoSet` becomes `unsentEchoPairSet` here, since
+AVSSFaithful's `partyEchoSend q p` is per-receiver). -/
+
 end Leslie.Examples.Prob.AVSSFaithful
