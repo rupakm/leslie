@@ -1570,7 +1570,7 @@ for archaeological context.
 | **8.6** | Operational secrecy under full adversary (post-8.5d-α/β/γ) | Re-prove `avss_secrecy_AS_view_rushing` against the post-8.5d adversary.  Consists of (a) the +200 LOC row + column secrecy form (deferred since `SyncVSS.lean §10` — full polynomial-manipulation step in two directions), and (b) wiring the row+col form into a strengthened headline conclusion. | ✅ **landed**. **(a)** Phase 11-δ (PR #75): `Leslie.Prob.Polynomial.bivariate_evals_uniform_row_col` (statement + full proof via `bivariate_evals_uniform_full` + constant-fiber projection) and the AVSS-side wrappers `avss_bivariate_corrGrid_uniform` / `avss_bivariate_corrGrid_sec_invariant`.  **(b)** Phase 11-δ-followup (this PR): sibling theorem `avss_secrecy_AS_view_rushing_bivariate` in §19.7 of `AVSS.lean` — bundles the existing operational headline and the bivariate corrupt-grid sec-invariance into a single citation-ready conjunction.  The original `avss_secrecy_AS_view_rushing` is unchanged (backward-compat).  All five load-bearing AVSS theorems remain `[propext, Classical.choice, Quot.sound]`-axiom-clean; zero sorries. |
 | **8.7** | Adapter retirement / cleanup | **Likely empty.** The 8.5b/c/d chain edited the model in place; there is no parallel pre-Phase-8 form to retire (no compatibility shim was kept).  Documented here as a finding — if a deprecation-shim layer is needed for downstream consumers, that work would be added back; otherwise this row is closeable as a no-op. | 🟡 likely no-op |
 | **8.8 (Fix 1, post-PR `#77`)** | **Rename** misleadingly-named commitment headline from `avss_commitment_AS_corrupt_dealer` to `avss_commitment_AS_existential` (mirroring sibling `avss_correctness_AS_existential` pattern). | The old name claimed "corrupt-dealer commitment" but the conclusion has been honest-dealer-conditional since Phase 8.5d-β migrated `s.coeffs → μ₀` (the Vandermonde extraction route requires `outputDeterminedInv coeffs s`, which is honest-dealer-conditional). All four variants (`*`, `*_rushing`, `*_randomised`, `*_rushing_randomised`) renamed. Theorem statements unchanged — pure rename + docstring refresh. Queues §16 (Phase 8.6 Bracha amplification) as the proper corrupt-dealer fix. | ✅ landed |
-| **8.6 (renumbered)** | Genuine corrupt-dealer commitment via Bracha echo+ready amplification | **First attempt failed.** Worker 1 (PR #88, `feature/phase8-6`) did the model surgery for echo type expansion (~1086 LOC, 4 compile errors at handoff).  Worker 2 (PR #95, `feature/phase8-6-step2`) rebased onto current main, then **stopped** — the planned `echoValid` + `simSyncInv.local_honest_rowPoly_eq` path is structurally unsound under the bivariate-Shamir secrecy pairing (would force `c = c'`, trivialising secrecy).  Both PRs preserved as record (not merged); see `STEP2-BLOCKED.md` on Worker 2's branch for the structural diagnosis.  Phase 8.6 redesign required — see §12.6 below. | ❌ **structural mismatch** — see §12.6 |
+| **8.6 (renumbered)** | Genuine corrupt-dealer commitment via Bracha echo+ready amplification | **Three attempts each surfaced a deeper structural blocker.** PR #88 (Worker 1): 1086 LOC echo type surgery; halted at 4 compile errors. PR #95 (Worker 2): proposed `simSyncInv.local_honest_rowPoly_eq` strengthening would force `c = c'` and trivialise secrecy. PR #103 (Worker 1' rebooted): Path X-lite closes errors 1–3 in ~30 LOC, but Path Y attempt revealed corrupt-receiver / honest-sender interaction violates `simSyncInv.local_corrupt_eq` under C1+C2. The C1+C2 closures (Phase 8.5b) interact non-trivially with value-bearing echoes; each fix relocates the unsoundness one layer deeper.  See §12.6. | ❌ **deferred indefinitely** — accepted as honest-dealer-conditional |
 | **8.8** | MODEL_NOTES rewrite | Subsumed by **8.5d-δ** (this PR).  The original "comprehensive rewrite" scope is replaced by the targeted §11 / §12 / §13 reconciliation here. | 🟢 subsumed by 8.5d-δ |
 
 ### 12.2. Sequencing — actual landed order
@@ -1782,12 +1782,55 @@ Error 4's structural shape: honest `q`'s rowPoly legitimately differs across sim
 
 **Implication for the chain**: Step 1 must combine Path X+Y in a single PR.  Splitting into "Step 1 = Path X only" (as my initial scoping suggested) leaves error 4 unresolved.  Worker 1 stopped at the rebase-clean baseline rather than ship a partial fix; full diagnosis preserved in PR #101's `STEP1-BLOCKED.md`.  Branch `feature/8.6-with-experiment` (local) holds the cherry-pick + 4-error reproduction for forensics.
 
-#### Status of artefacts
+#### Empirical confirmation 2 (PR #103 — Worker 1' rebooted, combined X+Y attempt)
 
-  * **PR #88**: open, broken (4 errors), CONFLICTING with main.  Preserved as record of Worker 1's analysis + 1086 LOC of model surgery work.  **Closed** when (Z) chosen, or **superseded** when X+Y land.
-  * **PR #95**: open, contains Worker 2's structural-blocker analysis (`STEP2-BLOCKED.md`).  Preserved as canonical record of why the *original* plan (`simSyncInv` strengthening) failed.  **Closed** alongside PR #88.
-  * **PR #101**: open, contains Worker 1' rebooted's empirical confirmation (`STEP1-BLOCKED.md`) that Path X alone is insufficient.  Findings folded into this section; PR closeable as superseded.
-  * **Branches**: `feature/phase8-6`, `feature/phase8-6-step2`, `feature/8.6`, `feature/8.6-blocked`, `feature/8.6-with-experiment` retained for forensics; can be deleted if/when (Z) chosen.
+A second attempt with the corrected scope (combined Path X+Y in a single PR) was dispatched.  The worker delivered two unexpected discoveries:
+
+**Discovery 1: Path X is ~20× cheaper than estimated.**  The original §12.6 estimate of "Path X 600–900 LOC" turned out to be ~30 LOC via a "Path X-lite" approach: extend `TrivialView` to carry full `Finset (Fin n × F)` (instead of projecting via `.image Prod.fst`), drop the projection in `coalitionTrivialView` / `simTrivialView`, and strengthen `corrupt_local_state_uniqueness` to full state equality.  Errors 1–3 closed cleanly.
+
+**Discovery 2: Path Y hits a deeper structural blocker than §12.6 anticipated.**  Empirical attempt at Path Y was implemented and reverted after the worker surfaced a new issue:
+
+> Under the C1+C2 model, corrupt receivers can fire `partyEchoReceive` with honest senders, causing receiver-state value divergence across traces.
+
+This is the same structural-unsoundness pattern §12.6 already documented — manifesting one layer deeper.  The C1+C2 closures (Phase 8.5b) allow corrupt parties to fire actions independently of honest dealer prerequisites.  Under value-bearing echoes, a corrupt receiver receiving an honest-sender echo carries `bivEval rowPoly (partyPoint q) 0`, a value that legitimately differs across simulating traces.  This violates `simSyncInv.local_corrupt_eq` (which says corrupt-party state agrees pointwise across traces).
+
+Path Y's revised cost estimate after this empirical attempt: **~700–1100 LOC**, not the §12.6 figure of 250–400.
+
+#### Final disposition (post-PR #103) — **Phase 8.6 deferred indefinitely**
+
+After three attempts (PR #88, PR #95, PR #103), each surfacing a deeper structural blocker, we declare Phase 8.6 **deferred indefinitely**.
+
+The accumulated evidence:
+
+| Attempt | Surfaced blocker |
+|---|---|
+| PR #88 (Worker 1) | 4 compile errors at echo-value reconstruction in §17/§19 secrecy abstractions |
+| PR #95 (Worker 2) | The proposed `simSyncInv.local_honest_rowPoly_eq` strengthening would force `c = c'` and trivialise secrecy |
+| PR #103 (Worker 1' rebooted) | Path Y attempt revealed corrupt-receiver / honest-sender interaction violates `simSyncInv.local_corrupt_eq` under C1+C2 |
+
+The pattern: the C1+C2 closures (Phase 8.5b — corrupt-fire freedom on send-class actions) interact non-trivially with value-bearing echoes (Phase 8.6's required model surgery).  Each fix relocates the unsoundness one layer deeper.
+
+Closing this would require either:
+
+  * **Reverting C1+C2** — restores caveats C1 and C2 (corrupt-party send actions blocked under non-trivial dealer state); unacceptable since those closures were a literature-faithfulness improvement.
+
+  * **A fundamentally different proof architecture** — UC-style simulation with explicit ideal functionalities, where the bivariate-Shamir secrecy is consumed as a black-box property of the ideal functionality rather than threaded through the protocol's state simulation.  This is essentially Phase 12's territory and would replace, not extend, the current secrecy proof.
+
+We accept the honest-dealer-conditional commitment (post-Fix 1 `_existential` form) as the formalisation's bound on commitment.  This is honestly stated in the theorem name and docstring.
+
+#### Implications for §16 audit
+
+§16-β ("Bracha 'any-or-all' amplification → discharge `consistent_quorum_AE`") shares structural machinery with Phase 8.6 (both rely on threshold counting at the echo+ready level).  However, §16-β's goal is different — it's about discharging `consistent_quorum_AE` from `avssFair` + broadcast atomicity, not about pinning honest outputs to a single bivariate.  The C1+C2-vs-value-bearing-echoes interaction does NOT block §16-β if §16-β doesn't introduce value-bearing echoes (i.e., it could potentially be done without echo type expansion).
+
+Whether §16-β is independently achievable is a separate question — see §16.6's recommendation table for current status (still queued, not attempted).
+
+#### Status of artefacts (final)
+
+  * **PR #88**: open, broken (4 errors), CONFLICTING with main.  **Close as superseded** — preserved here as a historical record of the first attempt (1086 LOC of model surgery analysis).
+  * **PR #95**: open, contains Worker 2's structural-blocker analysis (`STEP2-BLOCKED.md`).  **Close as superseded** — preserved here as the canonical record of why `simSyncInv` strengthening fails.
+  * **PR #101**: closed as superseded by PR #102 (which folded the analysis into this §12.6).
+  * **PR #103**: open, broken build, contains Path X-lite + Path Y attempt + `STEP1-NEW-BLOCKER.md`.  **Close as superseded** — but Path X-lite (~30 LOC of `TrivialView` extension) is a useful proof-engineering improvement that could be salvaged in a separate small PR if desired.
+  * **Branches**: `feature/phase8-6`, `feature/phase8-6-step2`, `feature/8.6`, `feature/8.6-blocked`, `feature/8.6-with-experiment`, `feature/8.6-step1-combined` retained for forensics.  Safe to delete after Phase 8.6 is finalised as deferred.
 
 ## 13. Phase 9 — Randomised adversary support (independent of Phase 8)
 
@@ -2914,22 +2957,31 @@ Once proven, `consistent_quorum_AE` could be discharged from
 | **Fairness**: weak fairness (every fair action eventually fires) | ✅ via `avssFair` |
 | **Termination**: every honest party eventually outputs | ✅ conditional on `consistent_quorum_AE` (which CR '93 derives from broadcast + fairness; we leave as runtime hypothesis) |
 | **Correctness** (honest dealer): every honest output equals `bivEval coeffs (partyPoint p) 0` | ✅ existential-witness form |
-| **Commitment** (corrupt dealer): all honest outputs jointly determined | ⚠️ honest-dealer-conditional after Phase 8.5d-β; queued Phase 8.6 (Bracha amplification) drops the guard |
+| **Commitment** (corrupt dealer): all honest outputs jointly determined | ❌ **honest-dealer-conditional** after Phase 8.5d-β; Phase 8.6 (Bracha amplification) **deferred indefinitely** after three attempts (see §12.6 final disposition).  Accepted as the formalisation's bound on commitment. |
 | **Secrecy**: `t`-coalition view independent of secret | ✅ operational view, dealerHonest-INDEPENDENT |
 | **Reconstruction**: `t + 1` honest shares recover the secret | ✅ as Lagrange lemma (not a protocol phase) |
 | **Bracha "any-or-all"** amplification | ❌ not formalised; replaced by `consistent_quorum_AE` runtime hypothesis |
 | **Adaptive corruption** | ❌ static only; gap |
 | **Dealer broadcast** (atomic) | ⚠️ permissive: per-party `dealerShareTo p` actions; closes caveat C4 but introduces `consistent_quorum_AE` hypothesis |
 
-**Verdict**: **CR '93 property parity**, with two structural gaps:
+**Verdict**: **CR '93 property parity for honest-dealer-conditional commitment**, with three accepted structural gaps:
 
-  1. **Bracha "any-or-all" amplification** (§16.4) — replaced by
+  1. **Corrupt-dealer commitment** (§12.6) — Phase 8.6 deferred
+     indefinitely after three attempts.  The post-C1+C2 model
+     (corrupt-fire freedom on send actions, Phase 8.5b) interacts
+     non-trivially with the value-bearing echoes that Bracha
+     amplification requires.  Accepted as the formalisation's bound
+     on commitment.  The current `_existential` form (post-Fix 1)
+     is honest about its content.
+
+  2. **Bracha "any-or-all" amplification** (§16.4) — replaced by
      `consistent_quorum_AE` runtime hypothesis.  Closing this would
      also let us drop the `consistent_quorum_AE` hypothesis on
      `avss_termination_AS_fair`, recovering CR '93's unconditional
-     fair-AST.
+     fair-AST.  Independent of the Phase 8.6 obstruction (does not
+     require value-bearing echoes).
 
-  2. **Adaptive corruption** — our model is static; CR '93 is
+  3. **Adaptive corruption** — our model is static; CR '93 is
      adaptive.  Closing this requires substantial state surgery
      (~600–1000 LOC) and is a known modern-formalisation
      simplification.
@@ -2946,9 +2998,10 @@ signatures, drop unused but document-aligned, ~20 LOC.
 
 ### 16.6. Recommended follow-ups (queued)
 
-| # | Follow-up | Scope | LOC |
-|---|---|---|---|
-| **16-α** | Add `n ≥ 3 * t + 1` hypothesis to headline theorems for self-documentation | Light-touch, signature surgery | ~20 |
-| **16-β** | Formalise Bracha "any-or-all" amplification → discharge `consistent_quorum_AE` from `avssFair` + broadcast | Substantive | ~150–250 |
-| **16-γ** | Adaptive corruption support | Substantial state surgery | ~600–1000 |
+| # | Follow-up | Scope | LOC | Status |
+|---|---|---|---|---|
+| **16-α** | Add `n ≥ 3 * t + 1` hypothesis to headline theorems for self-documentation | Light-touch, signature surgery | ~20 | queued |
+| **16-β** | Formalise Bracha "any-or-all" amplification → discharge `consistent_quorum_AE` from `avssFair` + broadcast | Substantive; **independent of Phase 8.6 obstruction** (does not require value-bearing echoes) | ~150–250 | queued |
+| **16-γ** | Adaptive corruption support | Substantial state surgery | ~600–1000 | queued |
+| ~~Phase 8.6 / corrupt-dealer commitment~~ | (originally queued) | (originally ~200–400; revised to ~2386–3186 after empirical analysis) | **❌ deferred indefinitely** — see §12.6 final disposition |
 
