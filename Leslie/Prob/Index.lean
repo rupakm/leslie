@@ -39,12 +39,13 @@ Builds every `Leslie.Prob.*` library module and every
 ## What's excluded
 
   * `Leslie.Prob.Spike.*` — M0 spike / calibration files. `ASTSanity`
-    carries a known sorry that is M3-tracked separately. Spike files
+    carries a known proof placeholder that is M3-tracked separately. Spike files
     are intentionally not part of the production build.
 -/
 
 -- Mathlib-upstream candidate (parameterised Ionescu–Tulcea trajectory)
 import Leslie.Mathlib.Probability.Kernel.IonescuTulcea.Bind
+import Leslie.Mathlib.Probability.Kernel.IonescuTulcea.InfinitePiFubini
 
 -- Library
 import Leslie.Prob.Action
