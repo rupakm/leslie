@@ -2885,4 +2885,283 @@ theorem cert_U_step_partyOutput_lt
   rw [h_uds, h_ifd, h_uep, h_ife, h_ifr]
   omega
 
+/-! ### Step 3b checkpoint C — `cert_U` positivity at non-terminated states -/
+
+omit [Fintype F] in
+/-- At a non-terminated state with the joint invariant, `cert_U` is
+positive.  This is the contrapositive of "`cert_U = 0 → terminated`",
+proved by decomposing the 6-component sum and chaining the cert_Inv
+fields (`out_delivered`, etc.) to the `terminated` definition. -/
+theorem cert_U_pos_of_not_terminated (s : State n t F)
+    (hinv : cert_Inv coeffs s) (hnt : ¬ terminated s) : 0 < cert_U s := by
+  classical
+  by_contra hbad
+  push_neg at hbad
+  have hU0 : cert_U s = 0 := Nat.le_zero.mp hbad
+  apply hnt
+  simp only [cert_U] at hU0
+  set K := lexBase (n * (n + 1)) with hKdef
+  have hK_pos : 1 ≤ K := lexBase_pos
+  have hK_pow_pos : ∀ k, 1 ≤ K ^ k := fun k => Nat.one_le_pow _ _ hK_pos
+  have h_each : (unsentDealerSet s).card * K ^ 6 = 0 ∧
+                s.inflightDeliveries.card * K ^ 5 = 0 ∧
+                (unsentEchoPairSet s).card * K ^ 4 = 0 ∧
+                s.inflightEchoes.card * K ^ 3 = 0 ∧
+                s.inflightReady.card * K = 0 ∧
+                (unfinishedSet s).card = 0 := by omega
+  obtain ⟨e1, e2, e3, e4, e6, e7⟩ := h_each
+  have h_uds : (unsentDealerSet s).card = 0 := by
+    have := hK_pow_pos 6; rcases Nat.mul_eq_zero.mp e1 with h | h
+    · exact h
+    · omega
+  have h_ifd : s.inflightDeliveries.card = 0 := by
+    have := hK_pow_pos 5; rcases Nat.mul_eq_zero.mp e2 with h | h
+    · exact h
+    · omega
+  have h_uep : (unsentEchoPairSet s).card = 0 := by
+    have := hK_pow_pos 4; rcases Nat.mul_eq_zero.mp e3 with h | h
+    · exact h
+    · omega
+  have h_ife : s.inflightEchoes.card = 0 := by
+    have := hK_pow_pos 3; rcases Nat.mul_eq_zero.mp e4 with h | h
+    · exact h
+    · omega
+  have h_ifr : s.inflightReady.card = 0 := by
+    rcases Nat.mul_eq_zero.mp e6 with h | h
+    · exact h
+    · omega
+  have h_unfin : (unfinishedSet s).card = 0 := e7
+  have h_ifd_emp : s.inflightDeliveries = ∅ := Finset.card_eq_zero.mp h_ifd
+  have h_ife_emp : s.inflightEchoes = ∅ := Finset.card_eq_zero.mp h_ife
+  have h_ifr_emp : s.inflightReady = ∅ := Finset.card_eq_zero.mp h_ifr
+  have h_unfin_emp : unfinishedSet s = ∅ := Finset.card_eq_zero.mp h_unfin
+  have h_uds_emp : unsentDealerSet s = ∅ := Finset.card_eq_zero.mp h_uds
+  have h_uep_emp : unsentEchoPairSet s = ∅ := Finset.card_eq_zero.mp h_uep
+  have h_out : ∀ p, p ∉ s.corrupted → (s.local_ p).output.isSome := by
+    intro p hp
+    by_contra hsome_neg
+    have hp_in : p ∈ unfinishedSet s := by
+      simp only [unfinishedSet, Finset.mem_filter, Finset.mem_univ, true_and]
+      refine ⟨hp, ?_⟩
+      cases hop : (s.local_ p).output with
+      | none => rfl
+      | some _ => simp [hop] at hsome_neg
+    rw [h_unfin_emp] at hp_in; exact (Finset.notMem_empty _) hp_in
+  have h_ds : ∀ p, p ∉ s.corrupted → s.dealerSent p = true := by
+    intro p hp
+    by_contra hbadds
+    have hf : s.dealerSent p = false := by
+      cases hd : s.dealerSent p with
+      | true => exact absurd hd hbadds
+      | false => rfl
+    have hp_in : p ∈ unsentDealerSet s := by
+      simp [unsentDealerSet, hp, hf]
+    rw [h_uds_emp] at hp_in; exact (Finset.notMem_empty _) hp_in
+  have h_echoed : ∀ p, p ∉ s.corrupted → ∀ r : Fin n, r ∈ (s.local_ p).echoedTo := by
+    intro p hp r
+    by_contra hr_notin
+    have hp_some : (s.local_ p).output.isSome := h_out p hp
+    have hp_del : (s.local_ p).delivered.isSome := hinv.out_delivered p hp_some
+    have hpr_in : (p, r) ∈ unsentEchoPairSet s := by
+      simp [unsentEchoPairSet, hp, hp_del, hr_notin]
+    rw [h_uep_emp] at hpr_in; exact (Finset.notMem_empty _) hpr_in
+  exact ⟨h_out, h_echoed, h_ds, h_ifd_emp, h_ife_emp, h_ifr_emp⟩
+
+/-! ### Naive uniform bound on `cert_U` -/
+
+/-- A noncomputable naive uniform bound on `cert_U` valid at every state.
+Pulled out of the `cert.U_bdd_subl` / `V_init_bdd` fields so the inline
+expression doesn't trigger `LE Type` synthesis errors. -/
+noncomputable def cert_U_naive_bound : ℕ :=
+  let K := lexBase (n * (n + 1))
+  n * K ^ 6 + n * K ^ 5 + (n * n) * K ^ 4 +
+    Fintype.card (EchoMsg n t F) * K ^ 3 +
+    Fintype.card (ReadyMsg n t F) * K + n
+
+theorem cert_U_le_naive_bound (s : State n t F) :
+    cert_U s ≤ cert_U_naive_bound (n := n) (t := t) (F := F) :=
+  cert_U_le_bound s
+
+/-! ### Step 3b checkpoint C — `FairASTCertificate` instance -/
+
+open Leslie.Prob in
+/-- The `FairASTCertificate` instance for AVSSFaithful.  Takes an
+external **fair-action-enabled-at-non-terminated** witness `h_progress`
+mirroring AVSS's `avssFairActionEnabled_at_non_terminated`; for
+AVSSFaithful, the analog cascade additionally has to dispatch the
+`partyEchoReceive` validity check on echoes and is deferred. -/
+noncomputable def cert (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t + 1) -> Fin (t + 1) -> F)
+    (h_progress : ∀ (s : State n t F), cert_Inv coeffs s → ¬ terminated s →
+                  ∃ j ∈ (fairActions : Set (Action n t F)), gate j s) :
+    FairASTCertificate (spec (t := t) sec corr coeffs) fair terminated where
+  Inv := cert_Inv coeffs
+  V := cert_V
+  U := cert_U
+  inv_init := fun s hinit => cert_Inv_init sec corr coeffs s hinit
+  inv_step := fun a s h hinv s' hs' => by
+    have heff : ((spec (t := t) sec corr coeffs).actions a).effect s h =
+        PMF.pure (step a s) := rfl
+    rw [heff, PMF.support_pure, Set.mem_singleton_iff] at hs'
+    subst hs'
+    exact cert_Inv_preserve coeffs a s h hinv
+  V_term := fun s _ ht => by
+    show (cert_U s : NNReal) = 0
+    rw [cert_U_eq_zero_of_terminated s ht]; simp
+  V_pos := fun s hinv hnt => by
+    show 0 < (cert_U s : NNReal)
+    have hpos : 0 < cert_U s := cert_U_pos_of_not_terminated s hinv hnt
+    exact_mod_cast hpos
+  V_super := fun a s h hinv hnt => by
+    classical
+    have heff : ((spec (t := t) sec corr coeffs).actions a).effect s h =
+        PMF.pure (step a s) := rfl
+    by_cases hpost : terminated (step a s)
+    · left
+      rw [heff, tsum_eq_single (step a s)]
+      · rw [PMF.pure_apply, if_pos rfl, one_mul]
+        have h_post : cert_U (step a s) = 0 := cert_U_eq_zero_of_terminated _ hpost
+        unfold cert_V
+        rw [h_post]; simp
+      · intro b hb
+        rw [PMF.pure_apply, if_neg hb, zero_mul]
+    · right
+      intro s' hs'
+      rw [heff, PMF.support_pure, Set.mem_singleton_iff] at hs'
+      subst hs'
+      exact h_progress _ (cert_Inv_preserve coeffs a s h hinv) hpost
+  V_super_fair := fun a s h _hfair hinv hnt => by
+    classical
+    have heff : ((spec (t := t) sec corr coeffs).actions a).effect s h =
+        PMF.pure (step a s) := rfl
+    by_cases hpost : terminated (step a s)
+    · left
+      rw [heff, tsum_eq_single (step a s)]
+      · rw [PMF.pure_apply, if_pos rfl, one_mul]
+        have h_post : cert_U (step a s) = 0 := cert_U_eq_zero_of_terminated _ hpost
+        have h_pre : 0 < cert_U s := cert_U_pos_of_not_terminated s hinv hnt
+        unfold cert_V
+        rw [h_post]
+        exact_mod_cast h_pre
+      · intro b hb
+        rw [PMF.pure_apply, if_neg hb, zero_mul]
+    · right
+      intro s' hs'
+      rw [heff, PMF.support_pure, Set.mem_singleton_iff] at hs'
+      subst hs'
+      exact h_progress _ (cert_Inv_preserve coeffs a s h hinv) hpost
+  U_term := fun s _ ht => cert_U_eq_zero_of_terminated s ht
+  U_dec_det := fun a s h _hfair hinv hnt s' hs' => by
+    classical
+    have heff : ((spec (t := t) sec corr coeffs).actions a).effect s h =
+        PMF.pure (step a s) := rfl
+    rw [heff, PMF.support_pure, Set.mem_singleton_iff] at hs'
+    subst hs'
+    by_cases hpost : terminated (step a s)
+    · left
+      have h_post : cert_U (step a s) = 0 := cert_U_eq_zero_of_terminated _ hpost
+      have h_pre : 0 < cert_U s := cert_U_pos_of_not_terminated s hinv hnt
+      omega
+    · right
+      exact h_progress _ (cert_Inv_preserve coeffs a s h hinv) hpost
+  U_bdd_subl := fun _ => ⟨cert_U_naive_bound, fun s _ _ => cert_U_le_bound s⟩
+  V_init_bdd :=
+    ⟨((@cert_U_naive_bound n t F _ : ℕ) : NNReal),
+      fun s _ => by
+        show ((cert_U s : ℕ) : NNReal) ≤ ((@cert_U_naive_bound n t F _ : ℕ) : NNReal)
+        exact_mod_cast cert_U_le_bound s⟩
+
+/-! ### Step 3b checkpoint C — termination theorems -/
+
+open Leslie.Prob MeasureTheory in
+/-- **Trajectory-form termination via the BC running-min route**.
+Every fair execution almost-surely reaches a terminated state.  Takes
+the fair-action-enabled-at-non-terminated witness `h_progress` and the
+trajectory running-min-drop hypothesis `h_drop_io` as parameters. -/
+theorem termination_AS_fair_traj
+    (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t + 1) -> Fin (t + 1) -> F)
+    (μ₀ : Measure (State n t F)) [IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
+    (h_progress : ∀ (s : State n t F), cert_Inv coeffs s → ¬ terminated s →
+                  ∃ j ∈ (fairActions : Set (Action n t F)), gate j s)
+    (A : Leslie.Prob.TrajectoryFairAdversary
+            (spec (t := t) sec corr coeffs) fair μ₀)
+    (h_drop_io : ∀ N : ℕ, FairASTCertificate.TrajectoryFairRunningMinDropIO
+        (spec (t := t) sec corr coeffs) fair
+        (cert sec corr coeffs h_progress) μ₀ A.toFair N) :
+    AlmostDiamond (spec (t := t) sec corr coeffs) A.toAdversary μ₀ terminated := by
+  have h_init_inv : ∀ᵐ s ∂μ₀, (cert sec corr coeffs h_progress).Inv s := by
+    filter_upwards [h_init] with s hs
+    exact (cert sec corr coeffs h_progress).inv_init s hs
+  set certX := cert sec corr coeffs h_progress with hcertdef
+  unfold AlmostDiamond
+  have hbounded_or_unbounded :
+      ∀ ω : Trace (State n t F) (Action n t F),
+        (∃ N : ℕ, ∀ k, certX.V (ω k).1 ≤ ((N : ℕ) : NNReal)) ∨
+        (∀ N : ℕ, ¬ (∀ k, certX.V (ω k).1 ≤ ((N : ℕ) : NNReal))) := by
+    intro ω
+    by_cases h : ∃ N : ℕ, ∀ k, certX.V (ω k).1 ≤ ((N : ℕ) : NNReal)
+    · exact .inl h
+    · refine .inr ?_
+      intro N hbnd
+      exact h ⟨N, hbnd⟩
+  have h_inf_null :
+      ∀ᵐ ω ∂(traceDist (spec (t := t) sec corr coeffs) A.toAdversary μ₀),
+      ¬ (∀ N : ℕ, ¬ (∀ k, certX.V (ω k).1 ≤ ((N : ℕ) : NNReal))) := by
+    rw [ae_iff]
+    have heq :
+        {a : Trace (State n t F) (Action n t F) |
+            ¬ ¬ ∀ N : ℕ, ¬ (∀ k, certX.V (a k).1 ≤ ((N : ℕ) : NNReal))} =
+        {ω : Trace (State n t F) (Action n t F) |
+            ∀ N : ℕ, ¬ (∀ k, certX.V (ω k).1 ≤ ((N : ℕ) : NNReal))} := by
+      ext ω; simp
+    rw [heq]
+    exact FairASTCertificate.pi_infty_zero_fair certX μ₀ h_init_inv A.toFair
+  have h_each_N : ∀ N : ℕ,
+      ∀ᵐ ω ∂(traceDist (spec (t := t) sec corr coeffs) A.toAdversary μ₀),
+        (∀ k, certX.V (ω k).1 ≤ ((N : ℕ) : NNReal)) → ∃ k, terminated (ω k).1 :=
+    fun N => FairASTCertificate.pi_n_AST_fair_with_progress_bc_of_running_min_drops
+      certX μ₀ h_init_inv A.toFair N (h_drop_io N)
+  rw [← MeasureTheory.ae_all_iff] at h_each_N
+  filter_upwards [h_each_N, h_inf_null] with ω hN h_inf
+  rcases hbounded_or_unbounded ω with ⟨N, hbnd⟩ | hunb
+  · exact hN N hbnd
+  · exact absurd hunb h_inf
+
+/-- Termination as `AlmostDiamond` under a trajectory-fair adversary. -/
+theorem termination_AS_fair
+    (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t + 1) -> Fin (t + 1) -> F)
+    (μ₀ : MeasureTheory.Measure (State n t F))
+    [MeasureTheory.IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
+    (h_progress : ∀ (s : State n t F), cert_Inv coeffs s → ¬ terminated s →
+                  ∃ j ∈ (fairActions : Set (Action n t F)), gate j s)
+    (A : Leslie.Prob.TrajectoryFairAdversary
+            (spec (t := t) sec corr coeffs) fair μ₀)
+    (h_drop_io : ∀ N : ℕ, FairASTCertificate.TrajectoryFairRunningMinDropIO
+        (spec (t := t) sec corr coeffs) fair
+        (cert sec corr coeffs h_progress) μ₀ A.toFair N) :
+    AlmostDiamond (spec (t := t) sec corr coeffs) A.toAdversary μ₀ terminated :=
+  termination_AS_fair_traj sec corr coeffs μ₀ h_init h_progress A h_drop_io
+
+/-- **Termination under atomic broadcast (CR '93 spirit).** -/
+theorem termination_AS_fair_under_atomic_broadcast
+    (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t + 1) -> Fin (t + 1) -> F)
+    (μ₀ : MeasureTheory.Measure (State n t F))
+    [MeasureTheory.IsProbabilityMeasure μ₀]
+    (h_init : ∀ᵐ s ∂μ₀, initPred sec corr coeffs s)
+    (h_progress : ∀ (s : State n t F), cert_Inv coeffs s → ¬ terminated s →
+                  ∃ j ∈ (fairActions : Set (Action n t F)), gate j s)
+    (A : Leslie.Prob.TrajectoryFairAdversary
+            (spec (t := t) sec corr coeffs) fair μ₀)
+    (_h_atomic : atomic_broadcast_AE sec corr coeffs μ₀ A.toAdversary)
+    (h_drop_io : ∀ N : ℕ, FairASTCertificate.TrajectoryFairRunningMinDropIO
+        (spec (t := t) sec corr coeffs) fair
+        (cert sec corr coeffs h_progress) μ₀ A.toFair N) :
+    AlmostDiamond (spec (t := t) sec corr coeffs) A.toAdversary μ₀ terminated :=
+  termination_AS_fair sec corr coeffs μ₀ h_init h_progress A h_drop_io
+
 end Leslie.Examples.Prob.AVSSFaithful
