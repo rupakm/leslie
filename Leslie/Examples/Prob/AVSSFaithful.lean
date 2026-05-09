@@ -2067,20 +2067,24 @@ theorem lexBase_pos : 1 ≤ lexBase n := by unfold lexBase; nlinarith
 
 /-! ### The variant `cert_U` and likelihood `cert_V` -/
 
-/-- The 7-component lex-product termination variant for AVSSFaithful.
+/-- The 6-component lex-product termination variant for AVSSFaithful.
 
 ```
-U = c₁·K^6 + c₂·K^5 + c₃·K^4 + c₄·K^3 + c₅·K^2 + c₆·K + c₇
+U = c₁·K^6 + c₂·K^5 + c₃·K^4 + c₄·K^3 + c₆·K + c₇
 ```
 
-with components in lex-decreasing weight order:
+with components in lex-decreasing weight order (`notReadySentSet` is
+intentionally omitted; AVSSFaithful's `partyOutput` gate doesn't require
+`cert ∈ readySent`, so the `output ⇒ readySent ≠ ∅` invariant is not
+preservable, hence we drop the `notReadySentSet` component and let
+`partyReady`/`partyAmplify` go through the disjunctive `Or.inr` arm of
+the certificate's `U_dec_det`):
 
   1. `unsentDealerSet.card`   — pending `dealerShareTo` step.
   2. `inflightDeliveries.card` — pending `partyDeliver` step.
   3. `unsentEchoPairSet.card`  — pending `partyEchoSend` step
                                  (per-pair, AVSSFaithful-specific).
   4. `inflightEchoes.card`     — pending `partyEchoReceive` step.
-  5. `notReadySentSet.card`    — pending `partyReady`/`partyAmplify`.
   6. `inflightReady.card`      — pending `partyReceiveReady`.
   7. `unfinishedSet.card`      — pending `partyOutput`.
 
@@ -2094,7 +2098,6 @@ noncomputable def cert_U (s : State n t F) : ℕ :=
     s.inflightDeliveries.card * K ^ 5 +
     (unsentEchoPairSet s).card * K ^ 4 +
     s.inflightEchoes.card * K ^ 3 +
-    (notReadySentSet s).card * K ^ 2 +
     s.inflightReady.card * K +
     (unfinishedSet s).card
 
@@ -2228,13 +2231,28 @@ terminated states therefore requires an *invariant* (`output.isSome →
 readySent ≠ ∅`) — added in subsequent step 3b. -/
 theorem cert_U_eq_zero_of_terminated_modulo_readySent
     (s : State n t F) (ht : terminated s)
-    (h_ready : (notReadySentSet s).card = 0) :
+    (_h_ready : (notReadySentSet s).card = 0) :
     cert_U s = 0 := by
   classical
   unfold cert_U
   obtain ⟨h1, h2, h3, h4, h6, h7⟩ :=
     cert_U_components_zero_of_terminated s ht
-  rw [h1, h2, h3, h4, h_ready, h6, h7]
+  rw [h1, h2, h3, h4, h6, h7]
+  ring
+
+omit [Field F] [Fintype F] [DecidableEq F] in
+/-- `cert_U s = 0` at every terminated state.  Step 3b refinement:
+dropping the `notReadySentSet` component from `cert_U` makes this
+unconditional (the `_modulo_readySent` form above takes a now-redundant
+hypothesis). -/
+theorem cert_U_eq_zero_of_terminated
+    (s : State n t F) (ht : terminated s) :
+    cert_U s = 0 := by
+  classical
+  unfold cert_U
+  obtain ⟨h1, h2, h3, h4, h6, h7⟩ :=
+    cert_U_components_zero_of_terminated s ht
+  rw [h1, h2, h3, h4, h6, h7]
   ring
 
 /-! ### Variant cardinality bound
@@ -2269,7 +2287,6 @@ theorem cert_U_le_bound (s : State n t F) :
       n * K ^ 6 + n * K ^ 5 +
         (n * n) * K ^ 4 +
         Fintype.card (EchoMsg n t F) * K ^ 3 +
-        n * K ^ 2 +
         Fintype.card (ReadyMsg n t F) * K +
         n := by
   classical
@@ -2278,10 +2295,8 @@ theorem cert_U_le_bound (s : State n t F) :
   have h2 := inflightDeliveries_card_le' (s := s)
   have h3 := unsentEchoPairSet_card_le (s := s)
   have h4 := inflightEchoes_card_le_univ s
-  have h5 := notReadySentSet_card_le (s := s)
   have h6 := inflightReady_card_le_univ s
   have h7 := unfinishedSet_card_le (s := s)
-  -- Multiply each by the K^k factor (monotone) and sum.
   set K : ℕ := lexBase (n * (n + 1)) with hKdef
   have hK_pos : 1 ≤ K := lexBase_pos
   have e1 : (unsentDealerSet s).card * K ^ 6 ≤ n * K ^ 6 :=
@@ -2293,16 +2308,13 @@ theorem cert_U_le_bound (s : State n t F) :
   have e4 : s.inflightEchoes.card * K ^ 3 ≤
       Fintype.card (EchoMsg n t F) * K ^ 3 :=
     Nat.mul_le_mul_right _ h4
-  have e5 : (notReadySentSet s).card * K ^ 2 ≤ n * K ^ 2 :=
-    Nat.mul_le_mul_right _ h5
   have e6 : s.inflightReady.card * K ≤
       Fintype.card (ReadyMsg n t F) * K :=
     Nat.mul_le_mul_right _ h6
   have e7 : (unfinishedSet s).card ≤ n := h7
-  -- Sum.
   simp only []
   have := Nat.add_le_add (Nat.add_le_add (Nat.add_le_add (Nat.add_le_add
-    (Nat.add_le_add (Nat.add_le_add e1 e2) e3) e4) e5) e6) e7
+    (Nat.add_le_add e1 e2) e3) e4) e6) e7
   exact this
 
 /-! ### Joint inductive invariant (Step 3b checkpoint A)
@@ -2357,22 +2369,520 @@ theorem cert_Inv_preserve
     ife_sender_del := inflightEchoesSenderDelivered_preserve a s hgate h.ife_sender_del
     ifr_sender_ready := inflightReadySenderReady_preserve a s hgate h.ifr_sender_ready }
 
-/-! ### Notes for subsequent steps
+/-! ### `isHonestFire` predicate (Step 3b) -/
 
-The Step-3b deliverable (next PR) lands:
+/-- Honest-fired action: the owning party (if any) is honest. -/
+def isHonestFire (a : Action n t F) (s : State n t F) : Prop :=
+  match a with
+  | .dealerShareTo p => p ∉ s.corrupted
+  | .partyEchoSend q _ => q ∉ s.corrupted
+  | .partyReady p _ => p ∉ s.corrupted
+  | .partyAmplify p _ => p ∉ s.corrupted
+  | _ => True
 
-  * Per-action `cert_U`-decrease lemmas (one per fair action), mirroring
-    `avssU_step_partyDeliver_lt` etc.
-  * `cert` : `FairASTCertificate (spec sec corr coeffs) fair terminated`.
-  * Termination theorems:
-      - `termination_AS_fair_traj`  (BC running-min route)
-      - `termination_AS_fair`        (with `consistent_quorum_AE`)
-      - `termination_AS_fair_under_atomic_broadcast`
+/-! ### Useful constants -/
 
-The total Step-3 deliverable (3a + 3b) parallels AVSS's §11–§13 exactly;
-each AVSS lemma has a direct AVSSFaithful counterpart with the same
-proof shape.  The only structural change is the per-pair echo counting
-(AVSS's `unsentEchoSet` becomes `unsentEchoPairSet` here, since
-AVSSFaithful's `partyEchoSend q p` is per-receiver). -/
+omit [Field F] [Fintype F] [DecidableEq F] in
+/-- The lex base `K` exceeds `n + 1`. -/
+theorem cert_K_ge_succ : n + 1 ≤ lexBase (n * (n + 1)) := by
+  unfold lexBase
+  have h1 : n + 1 ≤ n * (n + 1) + 1 := by nlinarith
+  have h2 : n * (n + 1) + 1 ≤ (n * (n + 1) + 1) * (n * (n + 1) + 1) := by
+    have : 1 ≤ n * (n + 1) + 1 := by omega
+    nlinarith
+  omega
+
+omit [Field F] [Fintype F] [DecidableEq F] in
+theorem cert_K_pos' : 1 ≤ lexBase (n * (n + 1)) := lexBase_pos
+
+/-! ### Per-action `cert_U` strict decrease lemmas (Step 3b checkpoint B)
+
+For each fair action fired at an honest party, `cert_U` strictly
+decreases.  Six lemmas; the two omitted (`partyReady` /  `partyAmplify`)
+go through the disjunctive `Or.inr` arm of the certificate's
+`U_dec_det` field (the dropped `notReadySentSet` component means there
+is no counterweight against the K-weight `inflightReady` growth on
+ready/amplify firings — see the docstring on `cert_U`). -/
+
+omit [Fintype F] in
+/-- `dealerShareTo p` for honest `p`: c1 drops by 1 (weight K⁶), c2
+grows by 1 (weight K⁵).  Net decrease ≥ K⁶ - K⁵ > 0. -/
+theorem cert_U_step_dealerShareTo_lt
+    (s : State n t F) (p : Fin n)
+    (hgate : gate (.dealerShareTo p) s)
+    (hinv : cert_Inv coeffs s)
+    (hp : p ∉ s.corrupted) :
+    cert_U (step (.dealerShareTo p) s) < cert_U s := by
+  classical
+  have hK_pos : 1 ≤ lexBase (n * (n + 1)) := cert_K_pos'
+  have hds_pre : s.dealerSent p = false := hgate
+  have hp_notin_ifd : p ∉ s.inflightDeliveries := by
+    intro hin
+    have := hinv.ifd_wf p hin
+    rw [hds_pre] at this; cases this.1
+  have hp_in_uds : p ∈ unsentDealerSet s := by
+    simp [unsentDealerSet, hp, hds_pre]
+  have h_uds_eq : unsentDealerSet (step (.dealerShareTo p) s) =
+      (unsentDealerSet s).erase p := by
+    ext q
+    simp only [unsentDealerSet, Finset.mem_filter, Finset.mem_univ, true_and,
+      Finset.mem_erase]
+    have hcorr : (step (.dealerShareTo p) s).corrupted = s.corrupted := by simp [step]
+    rw [hcorr]
+    by_cases hqp : q = p
+    · subst hqp
+      have : (step (.dealerShareTo q) s).dealerSent q = true := by
+        simp [step, Function.update_self]
+      rw [this]; simp
+    · have : (step (.dealerShareTo p) s).dealerSent q = s.dealerSent q := by
+        show (Function.update s.dealerSent p true) q = s.dealerSent q
+        rw [Function.update_apply]; rw [if_neg hqp]
+      rw [this]; tauto
+  have h_uds_pos : 1 ≤ (unsentDealerSet s).card :=
+    Finset.card_pos.mpr ⟨p, hp_in_uds⟩
+  have h_uds_card : (unsentDealerSet (step (.dealerShareTo p) s)).card + 1 =
+      (unsentDealerSet s).card := by
+    rw [h_uds_eq, Finset.card_erase_of_mem hp_in_uds]; omega
+  have h_ifd_eq : (step (.dealerShareTo p) s).inflightDeliveries =
+      insert p s.inflightDeliveries := by simp [step, hp]
+  have h_ifd_card : (step (.dealerShareTo p) s).inflightDeliveries.card =
+      s.inflightDeliveries.card + 1 := by
+    rw [h_ifd_eq, Finset.card_insert_of_notMem hp_notin_ifd]
+  have h_uep : unsentEchoPairSet (step (.dealerShareTo p) s) =
+      unsentEchoPairSet s := by ext pr; simp [unsentEchoPairSet, step]
+  have h_ife : (step (.dealerShareTo p) s).inflightEchoes = s.inflightEchoes := by
+    simp [step]
+  have h_ifr : (step (.dealerShareTo p) s).inflightReady = s.inflightReady := by
+    simp [step]
+  have h_unfin : unfinishedSet (step (.dealerShareTo p) s) = unfinishedSet s := by
+    ext q; simp [unfinishedSet, step]
+  -- K^6 ≥ K^5 + K^5 (when K ≥ 2). For n=0, K=1; we handle with general K^6 ≥ K^5+1 (K≥2 gives this; K=1 gives K^6=K^5=1, but uds_card ≥ 1 from p ∈, so the c1 drop dominates).
+  -- Actually in all cases K ≥ 1, so K^6 ≥ K^5 ≥ 1.  But we need K^6 - K^5 ≥ 1 for the strict decrease.
+  -- If K = 1, K^6 = K^5 = 1, c1 drops by 1 (weight 1), c2 grows by 1 (weight 1). Net 0.  Need K ≥ 2.
+  -- For n ≥ 1, K = (n²+n+1)² ≥ 9 ≥ 2.  For n = 0, K = 1.  But n = 0 means Fin 0 is empty, so p doesn't exist.
+  have hK_ge_2 : n ≥ 1 → 2 ≤ lexBase (n * (n + 1)) := by
+    intro hn
+    unfold lexBase
+    have hM : 2 ≤ n * (n + 1) := by nlinarith
+    have : 9 ≤ (n * (n + 1) + 1) * (n * (n + 1) + 1) := by nlinarith
+    omega
+  have hn_pos : n ≥ 1 := by
+    by_contra hbad; push_neg at hbad
+    interval_cases n
+    exact (Fin.elim0 p)
+  have hKge2 : 2 ≤ lexBase (n * (n + 1)) := hK_ge_2 hn_pos
+  have hKpow_diff : (lexBase (n * (n + 1))) ^ 5 + 1 ≤ (lexBase (n * (n + 1))) ^ 6 := by
+    have hK5 : 1 ≤ (lexBase (n * (n + 1))) ^ 5 := Nat.one_le_pow _ _ hK_pos
+    have h_eq : (lexBase (n * (n + 1))) ^ 6 = (lexBase (n * (n + 1))) ^ 5 *
+        lexBase (n * (n + 1)) := by ring
+    rw [h_eq]; nlinarith [hKge2, hK5]
+  simp only [cert_U]
+  rw [h_uep, h_ife, h_ifr, h_unfin, h_ifd_card]
+  set c := (unsentDealerSet (step (.dealerShareTo p) s)).card
+  have h_uds_pre : (unsentDealerSet s).card = c + 1 := h_uds_card.symm
+  rw [h_uds_pre]
+  set K := lexBase (n * (n + 1))
+  -- LHS = c·K^6 + (ifd+1)·K^5 + rest
+  -- RHS = (c+1)·K^6 + ifd·K^5 + rest
+  -- Diff: K^6 - K^5 ≥ 1.
+  have hLHS : c * K ^ 6 + (s.inflightDeliveries.card + 1) * K ^ 5 +
+      (unsentEchoPairSet s).card * K ^ 4 + s.inflightEchoes.card * K ^ 3 +
+      s.inflightReady.card * K + (unfinishedSet s).card =
+      c * K ^ 6 + s.inflightDeliveries.card * K ^ 5 + K ^ 5 +
+      (unsentEchoPairSet s).card * K ^ 4 + s.inflightEchoes.card * K ^ 3 +
+      s.inflightReady.card * K + (unfinishedSet s).card := by ring
+  have hRHS : (c + 1) * K ^ 6 + s.inflightDeliveries.card * K ^ 5 +
+      (unsentEchoPairSet s).card * K ^ 4 + s.inflightEchoes.card * K ^ 3 +
+      s.inflightReady.card * K + (unfinishedSet s).card =
+      c * K ^ 6 + K ^ 6 + s.inflightDeliveries.card * K ^ 5 +
+      (unsentEchoPairSet s).card * K ^ 4 + s.inflightEchoes.card * K ^ 3 +
+      s.inflightReady.card * K + (unfinishedSet s).card := by ring
+  rw [hLHS, hRHS]; linarith [hKpow_diff]
+
+omit [Fintype F] in
+/-- `partyDeliver p`: c2 drops by 1 (K⁵), c3 grows by ≤ n (K⁴). -/
+theorem cert_U_step_partyDeliver_lt
+    (s : State n t F) (p : Fin n)
+    (hgate : gate (.partyDeliver p) s)
+    (_hinv : cert_Inv coeffs s) :
+    cert_U (step (.partyDeliver p) s) < cert_U s := by
+  classical
+  obtain ⟨_, _hp, hp_in_ifd, _hp_del⟩ := hgate
+  have hK_pos : 1 ≤ lexBase (n * (n + 1)) := cert_K_pos'
+  have hK_ns : n + 1 ≤ lexBase (n * (n + 1)) := cert_K_ge_succ
+  have h_uds : unsentDealerSet (step (.partyDeliver p) s) = unsentDealerSet s := by
+    ext q; simp [unsentDealerSet, step, setLocal]
+  have h_ifd : (step (.partyDeliver p) s).inflightDeliveries =
+      s.inflightDeliveries.erase p := by simp [step, setLocal]
+  have h_ifd_card : (step (.partyDeliver p) s).inflightDeliveries.card + 1 =
+      s.inflightDeliveries.card := by
+    have h_pos : 1 ≤ s.inflightDeliveries.card :=
+      Finset.card_pos.mpr ⟨p, hp_in_ifd⟩
+    rw [h_ifd, Finset.card_erase_of_mem hp_in_ifd]; omega
+  have h_uep_card : (unsentEchoPairSet (step (.partyDeliver p) s)).card ≤
+      (unsentEchoPairSet s).card + n := by
+    have hsub : unsentEchoPairSet (step (.partyDeliver p) s) ⊆
+        unsentEchoPairSet s ∪
+          ((Finset.univ : Finset (Fin n)).image (fun r => (p, r))) := by
+      intro pr hpr
+      simp only [unsentEchoPairSet, Finset.mem_filter, Finset.mem_univ,
+        true_and] at hpr
+      obtain ⟨hpr_h, hpr_del, hpr_ne⟩ := hpr
+      simp only [Finset.mem_union, Finset.mem_image, Finset.mem_univ, true_and]
+      by_cases hpq : pr.1 = p
+      · right; exact ⟨pr.2, by simp [hpq, Prod.ext_iff]⟩
+      · left
+        simp only [unsentEchoPairSet, Finset.mem_filter, Finset.mem_univ, true_and]
+        have hcorr : (step (.partyDeliver p) s).corrupted = s.corrupted := by simp [step, setLocal]
+        have hloc : (step (.partyDeliver p) s).local_ pr.1 = s.local_ pr.1 := by
+          simp [step, setLocal, hpq]
+        rw [hcorr] at hpr_h
+        rw [hloc] at hpr_del hpr_ne
+        exact ⟨hpr_h, hpr_del, hpr_ne⟩
+    have h_card_le := Finset.card_le_card hsub
+    have h_card_union :
+        (unsentEchoPairSet s ∪
+            ((Finset.univ : Finset (Fin n)).image (fun r => (p, r)))).card ≤
+        (unsentEchoPairSet s).card +
+            ((Finset.univ : Finset (Fin n)).image (fun r => (p, r))).card :=
+      Finset.card_union_le _ _
+    have h_image_card :
+        ((Finset.univ : Finset (Fin n)).image (fun r => (p, r))).card ≤ n := by
+      have := Finset.card_image_le (s := (Finset.univ : Finset (Fin n)))
+        (f := fun r : Fin n => (p, r))
+      simp at this; exact this
+    omega
+  have h_ife : (step (.partyDeliver p) s).inflightEchoes = s.inflightEchoes := by
+    simp [step, setLocal]
+  have h_ifr : (step (.partyDeliver p) s).inflightReady = s.inflightReady := by
+    simp [step, setLocal]
+  have h_unfin : unfinishedSet (step (.partyDeliver p) s) = unfinishedSet s := by
+    ext q
+    simp only [unfinishedSet, Finset.mem_filter, Finset.mem_univ, true_and]
+    have hcorr : (step (.partyDeliver p) s).corrupted = s.corrupted := by simp [step, setLocal]
+    rw [hcorr]
+    by_cases hqp : q = p
+    · subst hqp
+      have hloc : (step (.partyDeliver q) s).local_ q =
+          { s.local_ q with delivered := some (s.dealerCommit q) } := by
+        simp [step, setLocal]
+      rw [hloc]
+    · have hloc : (step (.partyDeliver p) s).local_ q = s.local_ q := by
+        simp [step, setLocal, hqp]
+      rw [hloc]
+  -- Key inequality: K^5 ≥ (n+1) * K^4.
+  have hK4_pos : 0 < (lexBase (n * (n + 1))) ^ 4 :=
+    Nat.pow_pos (by omega)
+  have hKpow_gap : (n + 1) * (lexBase (n * (n + 1))) ^ 4 ≤
+      (lexBase (n * (n + 1))) ^ 5 := by
+    have h_eq : (lexBase (n * (n + 1))) ^ 5 = lexBase (n * (n + 1)) *
+        (lexBase (n * (n + 1))) ^ 4 := by ring
+    rw [h_eq]
+    exact Nat.mul_le_mul_right _ hK_ns
+  simp only [cert_U]
+  rw [h_uds, h_ife, h_ifr, h_unfin]
+  set K := lexBase (n * (n + 1))
+  set c2_post := (step (.partyDeliver p) s).inflightDeliveries.card
+  set c3_post := (unsentEchoPairSet (step (.partyDeliver p) s)).card
+  set c3_pre := (unsentEchoPairSet s).card
+  have h_c2pre : s.inflightDeliveries.card = c2_post + 1 := h_ifd_card.symm
+  rw [h_c2pre]
+  have h_c3 : c3_post * K ^ 4 ≤ c3_pre * K ^ 4 + n * K ^ 4 := by
+    have h1 := Nat.mul_le_mul_right (K ^ 4) h_uep_card
+    rw [Nat.add_mul] at h1; exact h1
+  nlinarith [hKpow_gap, hK4_pos]
+
+omit [Fintype F] in
+/-- `partyEchoSend q p` for honest `q`: c3 drops by 1 (K⁴), c4 grows by ≤ 1 (K³). -/
+theorem cert_U_step_partyEchoSend_lt
+    (s : State n t F) (q p : Fin n)
+    (hgate : gate (.partyEchoSend q p) s)
+    (_hinv : cert_Inv coeffs s)
+    (hq : q ∉ s.corrupted) :
+    cert_U (step (.partyEchoSend q p) s) < cert_U s := by
+  classical
+  obtain ⟨hq_del, hp_notin⟩ := hgate
+  have hK_pos : 1 ≤ lexBase (n * (n + 1)) := cert_K_pos'
+  have h_uds : unsentDealerSet (step (.partyEchoSend q p) s) = unsentDealerSet s := by
+    ext r; simp [unsentDealerSet, step, setLocal]
+  have h_ifd : (step (.partyEchoSend q p) s).inflightDeliveries = s.inflightDeliveries := by
+    simp [step, setLocal]
+  have hqp_in : (q, p) ∈ unsentEchoPairSet s := by
+    simp [unsentEchoPairSet, hq, hq_del, hp_notin]
+  have h_uep : unsentEchoPairSet (step (.partyEchoSend q p) s) =
+      (unsentEchoPairSet s).erase (q, p) := by
+    ext pr
+    simp only [unsentEchoPairSet, Finset.mem_filter, Finset.mem_univ, true_and,
+      Finset.mem_erase]
+    have hcorr : (step (.partyEchoSend q p) s).corrupted = s.corrupted := by
+      simp [step, setLocal]
+    rw [hcorr]
+    by_cases hpq : pr.1 = q
+    · subst hpq
+      have hloc : (step (.partyEchoSend pr.1 p) s).local_ pr.1 =
+          { s.local_ pr.1 with echoedTo := insert p (s.local_ pr.1).echoedTo } := by
+        simp [step, setLocal]
+      rw [hloc]
+      simp only [Finset.mem_insert]
+      constructor
+      · rintro ⟨hpr_h, hpr_del, hpr_ne⟩
+        push_neg at hpr_ne
+        refine ⟨?_, hpr_h, hpr_del, hpr_ne.2⟩
+        intro habs
+        rw [Prod.ext_iff] at habs
+        exact hpr_ne.1 habs.2
+      · rintro ⟨hne, hpr_h, hpr_del, hpr_ne⟩
+        refine ⟨hpr_h, hpr_del, ?_⟩
+        push_neg
+        refine ⟨?_, hpr_ne⟩
+        intro habs
+        apply hne; rw [Prod.ext_iff]; exact ⟨rfl, habs⟩
+    · have hloc : (step (.partyEchoSend q p) s).local_ pr.1 = s.local_ pr.1 := by
+        simp [step, setLocal, hpq]
+      rw [hloc]
+      constructor
+      · rintro ⟨hpr_h, hpr_del, hpr_ne⟩
+        refine ⟨?_, hpr_h, hpr_del, hpr_ne⟩
+        intro habs; rw [Prod.ext_iff] at habs; exact hpq habs.1
+      · rintro ⟨_, hpr_h, hpr_del, hpr_ne⟩; exact ⟨hpr_h, hpr_del, hpr_ne⟩
+  have h_uep_card : (unsentEchoPairSet (step (.partyEchoSend q p) s)).card + 1 =
+      (unsentEchoPairSet s).card := by
+    have h_pos : 1 ≤ (unsentEchoPairSet s).card :=
+      Finset.card_pos.mpr ⟨(q, p), hqp_in⟩
+    rw [h_uep, Finset.card_erase_of_mem hqp_in]; omega
+  have h_ife_card : (step (.partyEchoSend q p) s).inflightEchoes.card ≤
+      s.inflightEchoes.card + 1 := by
+    simp only [step]; exact Finset.card_insert_le _ _
+  have h_ifr : (step (.partyEchoSend q p) s).inflightReady = s.inflightReady := by
+    simp [step, setLocal]
+  have h_unfin : unfinishedSet (step (.partyEchoSend q p) s) = unfinishedSet s := by
+    ext r
+    simp only [unfinishedSet, Finset.mem_filter, Finset.mem_univ, true_and]
+    have hcorr : (step (.partyEchoSend q p) s).corrupted = s.corrupted := by
+      simp [step, setLocal]
+    rw [hcorr]
+    by_cases hrq : r = q
+    · subst hrq
+      have hloc : (step (.partyEchoSend r p) s).local_ r =
+          { s.local_ r with echoedTo := insert p (s.local_ r).echoedTo } := by
+        simp [step, setLocal]
+      rw [hloc]
+    · have hloc : (step (.partyEchoSend q p) s).local_ r = s.local_ r := by
+        simp [step, setLocal, hrq]
+      rw [hloc]
+  have hK3_pos : 0 < (lexBase (n * (n + 1))) ^ 3 :=
+    Nat.pow_pos (by omega)
+  have hKpow_gap : 2 * (lexBase (n * (n + 1))) ^ 3 ≤
+      (lexBase (n * (n + 1))) ^ 4 := by
+    have hKge2 : 2 ≤ lexBase (n * (n + 1)) := by
+      by_cases hn : n ≥ 1
+      · unfold lexBase
+        have hM : 2 ≤ n * (n + 1) := by nlinarith
+        have : 9 ≤ (n * (n + 1) + 1) * (n * (n + 1) + 1) := by nlinarith
+        omega
+      · push_neg at hn; interval_cases n
+        exfalso; exact (Fin.elim0 q)
+    have h_eq : (lexBase (n * (n + 1))) ^ 4 = lexBase (n * (n + 1)) *
+        (lexBase (n * (n + 1))) ^ 3 := by ring
+    rw [h_eq]; nlinarith [hKge2, hK3_pos]
+  simp only [cert_U]
+  rw [h_uds, h_ifd, h_ifr, h_unfin]
+  set K := lexBase (n * (n + 1))
+  set c3_post := (unsentEchoPairSet (step (.partyEchoSend q p) s)).card
+  set c4_post := (step (.partyEchoSend q p) s).inflightEchoes.card
+  have h_c3pre : (unsentEchoPairSet s).card = c3_post + 1 := h_uep_card.symm
+  rw [h_c3pre]
+  have h_c4 : c4_post * K ^ 3 ≤ s.inflightEchoes.card * K ^ 3 + K ^ 3 := by
+    have h1 := Nat.mul_le_mul_right (K ^ 3) h_ife_card
+    rw [Nat.add_mul] at h1; simpa using h1
+  nlinarith [hKpow_gap, hK3_pos]
+
+omit [Fintype F] in
+/-- `partyEchoReceive msg`: c4 drops by 1. -/
+theorem cert_U_step_partyEchoReceive_lt
+    (s : State n t F) (msg : EchoMsg n t F)
+    (hgate : gate (.partyEchoReceive msg) s)
+    (_hinv : cert_Inv coeffs s) :
+    cert_U (step (.partyEchoReceive msg) s) < cert_U s := by
+  classical
+  obtain ⟨hmsg_in, _⟩ := hgate
+  have hK_pos : 1 ≤ lexBase (n * (n + 1)) := cert_K_pos'
+  have h_uds : unsentDealerSet (step (.partyEchoReceive msg) s) = unsentDealerSet s := by
+    ext r; simp [unsentDealerSet, step, setLocal]
+  have h_ifd : (step (.partyEchoReceive msg) s).inflightDeliveries =
+      s.inflightDeliveries := by simp [step, setLocal]
+  have h_uep : unsentEchoPairSet (step (.partyEchoReceive msg) s) =
+      unsentEchoPairSet s := by
+    ext pr
+    simp only [unsentEchoPairSet, Finset.mem_filter, Finset.mem_univ, true_and]
+    have hcorr : (step (.partyEchoReceive msg) s).corrupted = s.corrupted := by
+      simp [step, setLocal]
+    rw [hcorr]
+    by_cases hpr : pr.1 = msg.receiver
+    · have hloc : (step (.partyEchoReceive msg) s).local_ pr.1 =
+          { s.local_ pr.1 with
+            acceptedEchoes := insert msg (s.local_ pr.1).acceptedEchoes } := by
+        rw [hpr]; simp [step, setLocal]
+      rw [hloc]
+    · have hloc : (step (.partyEchoReceive msg) s).local_ pr.1 = s.local_ pr.1 := by
+        simp [step, setLocal, hpr]
+      rw [hloc]
+  have h_ife : (step (.partyEchoReceive msg) s).inflightEchoes =
+      s.inflightEchoes.erase msg := by simp [step, setLocal]
+  have h_ife_card : (step (.partyEchoReceive msg) s).inflightEchoes.card + 1 =
+      s.inflightEchoes.card := by
+    have h_pos : 1 ≤ s.inflightEchoes.card :=
+      Finset.card_pos.mpr ⟨msg, hmsg_in⟩
+    rw [h_ife, Finset.card_erase_of_mem hmsg_in]; omega
+  have h_ifr : (step (.partyEchoReceive msg) s).inflightReady = s.inflightReady := by
+    simp [step, setLocal]
+  have h_unfin : unfinishedSet (step (.partyEchoReceive msg) s) = unfinishedSet s := by
+    ext r
+    simp only [unfinishedSet, Finset.mem_filter, Finset.mem_univ, true_and]
+    have hcorr : (step (.partyEchoReceive msg) s).corrupted = s.corrupted := by
+      simp [step, setLocal]
+    rw [hcorr]
+    by_cases hrr : r = msg.receiver
+    · have hloc : (step (.partyEchoReceive msg) s).local_ r =
+          { s.local_ r with
+            acceptedEchoes := insert msg (s.local_ r).acceptedEchoes } := by
+        rw [hrr]; simp [step, setLocal]
+      rw [hloc]
+    · have hloc : (step (.partyEchoReceive msg) s).local_ r = s.local_ r := by
+        simp [step, setLocal, hrr]
+      rw [hloc]
+  have hK3_pos : 0 < (lexBase (n * (n + 1))) ^ 3 :=
+    Nat.pow_pos (by omega)
+  simp only [cert_U]
+  rw [h_uds, h_ifd, h_uep, h_ifr, h_unfin]
+  set c4_post := (step (.partyEchoReceive msg) s).inflightEchoes.card
+  have h_pre : s.inflightEchoes.card = c4_post + 1 := h_ife_card.symm
+  rw [h_pre]
+  nlinarith [hK3_pos]
+
+omit [Fintype F] in
+/-- `partyReceiveReady msg`: c6 drops by 1. -/
+theorem cert_U_step_partyReceiveReady_lt
+    (s : State n t F) (msg : ReadyMsg n t F)
+    (hgate : gate (.partyReceiveReady msg) s)
+    (_hinv : cert_Inv coeffs s) :
+    cert_U (step (.partyReceiveReady msg) s) < cert_U s := by
+  classical
+  obtain ⟨hmsg_in, _⟩ := hgate
+  have hK_pos : 1 ≤ lexBase (n * (n + 1)) := cert_K_pos'
+  have h_uds : unsentDealerSet (step (.partyReceiveReady msg) s) = unsentDealerSet s := by
+    ext r; simp [unsentDealerSet, step, setLocal]
+  have h_ifd : (step (.partyReceiveReady msg) s).inflightDeliveries =
+      s.inflightDeliveries := by simp [step, setLocal]
+  have h_uep : unsentEchoPairSet (step (.partyReceiveReady msg) s) =
+      unsentEchoPairSet s := by
+    ext pr
+    simp only [unsentEchoPairSet, Finset.mem_filter, Finset.mem_univ, true_and]
+    have hcorr : (step (.partyReceiveReady msg) s).corrupted = s.corrupted := by
+      simp [step, setLocal]
+    rw [hcorr]
+    by_cases hpr : pr.1 = msg.receiver
+    · have hloc : (step (.partyReceiveReady msg) s).local_ pr.1 =
+          { s.local_ pr.1 with
+            readyReceived := insert msg (s.local_ pr.1).readyReceived } := by
+        rw [hpr]; simp [step, setLocal]
+      rw [hloc]
+    · have hloc : (step (.partyReceiveReady msg) s).local_ pr.1 = s.local_ pr.1 := by
+        simp [step, setLocal, hpr]
+      rw [hloc]
+  have h_ife : (step (.partyReceiveReady msg) s).inflightEchoes =
+      s.inflightEchoes := by simp [step, setLocal]
+  have h_ifr : (step (.partyReceiveReady msg) s).inflightReady =
+      s.inflightReady.erase msg := by simp [step, setLocal]
+  have h_ifr_card : (step (.partyReceiveReady msg) s).inflightReady.card + 1 =
+      s.inflightReady.card := by
+    have h_pos : 1 ≤ s.inflightReady.card :=
+      Finset.card_pos.mpr ⟨msg, hmsg_in⟩
+    rw [h_ifr, Finset.card_erase_of_mem hmsg_in]; omega
+  have h_unfin : unfinishedSet (step (.partyReceiveReady msg) s) = unfinishedSet s := by
+    ext r
+    simp only [unfinishedSet, Finset.mem_filter, Finset.mem_univ, true_and]
+    have hcorr : (step (.partyReceiveReady msg) s).corrupted = s.corrupted := by
+      simp [step, setLocal]
+    rw [hcorr]
+    by_cases hrr : r = msg.receiver
+    · have hloc : (step (.partyReceiveReady msg) s).local_ r =
+          { s.local_ r with
+            readyReceived := insert msg (s.local_ r).readyReceived } := by
+        rw [hrr]; simp [step, setLocal]
+      rw [hloc]
+    · have hloc : (step (.partyReceiveReady msg) s).local_ r = s.local_ r := by
+        simp [step, setLocal, hrr]
+      rw [hloc]
+  simp only [cert_U]
+  rw [h_uds, h_ifd, h_uep, h_ife, h_unfin]
+  set c6_post := (step (.partyReceiveReady msg) s).inflightReady.card
+  have h_pre : s.inflightReady.card = c6_post + 1 := h_ifr_card.symm
+  rw [h_pre]
+  nlinarith [hK_pos]
+
+omit [Fintype F] in
+/-- `partyOutput p cert`: c7 drops by 1. -/
+theorem cert_U_step_partyOutput_lt
+    (s : State n t F) (p : Fin n) (cert : ReadyCert n t F)
+    (hgate : gate (.partyOutput p cert) s)
+    (_hinv : cert_Inv coeffs s) :
+    cert_U (step (.partyOutput p cert) s) < cert_U s := by
+  classical
+  have hp : p ∉ s.corrupted := hgate.1
+  have hp_out : (s.local_ p).output = none := hgate.2.1
+  have h_uds : unsentDealerSet (step (.partyOutput p cert) s) = unsentDealerSet s := by
+    ext r; simp [unsentDealerSet, step, setLocal]
+  have h_ifd : (step (.partyOutput p cert) s).inflightDeliveries = s.inflightDeliveries := by
+    simp [step, setLocal]
+  have h_uep : unsentEchoPairSet (step (.partyOutput p cert) s) =
+      unsentEchoPairSet s := by
+    ext pr
+    simp only [unsentEchoPairSet, Finset.mem_filter, Finset.mem_univ, true_and]
+    have hcorr : (step (.partyOutput p cert) s).corrupted = s.corrupted := by
+      simp [step, setLocal]
+    rw [hcorr]
+    by_cases hpr : pr.1 = p
+    · subst hpr
+      have hloc : (step (.partyOutput pr.1 cert) s).local_ pr.1 =
+          { s.local_ pr.1 with
+            output := some (AVSS.evalRowPoly cert.candidate.rowPoly 0) } := by
+        simp [step, setLocal]
+      rw [hloc]
+    · have hloc : (step (.partyOutput p cert) s).local_ pr.1 = s.local_ pr.1 := by
+        simp [step, setLocal, hpr]
+      rw [hloc]
+  have h_ife : (step (.partyOutput p cert) s).inflightEchoes = s.inflightEchoes := by
+    simp [step, setLocal]
+  have h_ifr : (step (.partyOutput p cert) s).inflightReady = s.inflightReady := by
+    simp [step, setLocal]
+  have hp_in : p ∈ unfinishedSet s := by simp [unfinishedSet, hp, hp_out]
+  have h_unfin : unfinishedSet (step (.partyOutput p cert) s) =
+      (unfinishedSet s).erase p := by
+    ext r
+    simp only [unfinishedSet, Finset.mem_filter, Finset.mem_univ, true_and,
+      Finset.mem_erase]
+    have hcorr : (step (.partyOutput p cert) s).corrupted = s.corrupted := by
+      simp [step, setLocal]
+    rw [hcorr]
+    by_cases hrp : r = p
+    · subst hrp
+      have hloc : (step (.partyOutput r cert) s).local_ r =
+          { s.local_ r with
+            output := some (AVSS.evalRowPoly cert.candidate.rowPoly 0) } := by
+        simp [step, setLocal]
+      rw [hloc]; simp
+    · have hloc : (step (.partyOutput p cert) s).local_ r = s.local_ r := by
+        simp [step, setLocal, hrp]
+      rw [hloc]; tauto
+  have h_unfin_card_pos : 1 ≤ (unfinishedSet s).card :=
+    Finset.card_pos.mpr ⟨p, hp_in⟩
+  have h_unfin_card : (unfinishedSet (step (.partyOutput p cert) s)).card + 1 =
+      (unfinishedSet s).card := by
+    rw [h_unfin, Finset.card_erase_of_mem hp_in]; omega
+  -- Reduce to arithmetic.
+  simp only [cert_U]
+  rw [h_uds, h_ifd, h_uep, h_ife, h_ifr]
+  omega
 
 end Leslie.Examples.Prob.AVSSFaithful
