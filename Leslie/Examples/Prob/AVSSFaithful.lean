@@ -2305,14 +2305,62 @@ theorem cert_U_le_bound (s : State n t F) :
     (Nat.add_le_add (Nat.add_le_add e1 e2) e3) e4) e5) e6) e7
   exact this
 
+/-! ### Joint inductive invariant (Step 3b checkpoint A)
+
+Bundles every Step-1 and Step-2 invariant into a single structure. Adding
+new conjuncts is a non-breaking change (new fields don't break existing
+field accesses), per `CLAUDE.md`'s guideline. -/
+
+/-- Joint inductive invariant for AVSSFaithful termination. -/
+structure cert_Inv (coeffs : Fin (t + 1) -> Fin (t + 1) -> F)
+    (s : State n t F) : Prop where
+  honest_commit : honestDealerCommitInv coeffs s
+  delivered_sent : deliveredImpliesDealerSent s
+  echoed_delivered : echoedToImpliesDelivered s
+  ifd_wf : inflightDeliveriesWf s
+  ifcd_wf : inflightCorruptDeliveriesWf s
+  out_delivered : outputImpliesDelivered s
+  echo_addr : acceptedEchoesAddressed s
+  ife_sender_del : inflightEchoesSenderDelivered s
+  ifr_sender_ready : inflightReadySenderReady s
+
+omit [Fintype F] [DecidableEq F] in
+/-- The joint invariant holds at every initial state. -/
+theorem cert_Inv_init (sec : F) (corr : Finset (Fin n))
+    (coeffs : Fin (t + 1) -> Fin (t + 1) -> F) (s : State n t F)
+    (h : initPred sec corr coeffs s) :
+    cert_Inv coeffs s :=
+  { honest_commit := honestDealerCommitInv_init sec corr coeffs s h
+    delivered_sent := deliveredImpliesDealerSent_init sec corr coeffs s h
+    echoed_delivered := echoedToImpliesDelivered_init sec corr coeffs s h
+    ifd_wf := inflightDeliveriesWf_init sec corr coeffs s h
+    ifcd_wf := inflightCorruptDeliveriesWf_init sec corr coeffs s h
+    out_delivered := outputImpliesDelivered_init sec corr coeffs s h
+    echo_addr := acceptedEchoesAddressed_init sec corr coeffs s h
+    ife_sender_del := inflightEchoesSenderDelivered_init sec corr coeffs s h
+    ifr_sender_ready := inflightReadySenderReady_init sec corr coeffs s h }
+
+omit [Fintype F] in
+/-- The joint invariant is preserved by every gated `step`. -/
+theorem cert_Inv_preserve
+    (coeffs : Fin (t + 1) -> Fin (t + 1) -> F)
+    (a : Action n t F) (s : State n t F)
+    (hgate : gate a s) (h : cert_Inv coeffs s) :
+    cert_Inv coeffs (step a s) :=
+  { honest_commit := honestDealerCommitInv_preserve coeffs a s h.honest_commit
+    delivered_sent := deliveredImpliesDealerSent_preserve a s hgate h.delivered_sent
+    echoed_delivered := echoedToImpliesDelivered_preserve a s hgate h.echoed_delivered
+    ifd_wf := inflightDeliveriesWf_preserve a s hgate h.delivered_sent h.ifd_wf
+    ifcd_wf := inflightCorruptDeliveriesWf_preserve a s hgate h.delivered_sent h.ifcd_wf
+    out_delivered := outputImpliesDelivered_preserve a s hgate h.out_delivered
+    echo_addr := acceptedEchoesAddressed_preserve a s hgate h.echo_addr
+    ife_sender_del := inflightEchoesSenderDelivered_preserve a s hgate h.ife_sender_del
+    ifr_sender_ready := inflightReadySenderReady_preserve a s hgate h.ifr_sender_ready }
+
 /-! ### Notes for subsequent steps
 
 The Step-3b deliverable (next PR) lands:
 
-  * Joint inductive invariant `termInv` ≅ AVSS's
-    `avssTermInv ∧ corruptLocalInv ∧ avssQueueWfInv ∧ avssFreshInv ∧
-    avssFlowInv` — adapted to AVSSFaithful's value-bearing channels and
-    candidate-scoped certs.
   * Per-action `cert_U`-decrease lemmas (one per fair action), mirroring
     `avssU_step_partyDeliver_lt` etc.
   * `cert` : `FairASTCertificate (spec sec corr coeffs) fair terminated`.
