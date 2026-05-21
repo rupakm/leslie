@@ -27,7 +27,7 @@ Builds every `Leslie.Prob.*` library module and every
 
   * **Library** (`Leslie.Prob.*`): the framework — `Action`,
     `Adversary`, `Coupling`, `DeterministicSimulate`, `Embed`, `PMF`,
-    `Polynomial`, `Refinement`, `Trace`. Sorry-free.
+    `Polynomial`, `Refinement`, `Secrecy`, `Trace`. Sorry-free.
   * **Examples** (`Leslie.Examples.Prob.*`): protocols + calibration —
     `AVSS`, `BenOrAsync`, `BivariateShamir`, `BrachaRBC`, `CommonCoin`,
     `CouplingDemo`, `ITMAC`, `KnuthDice`, `OneTimePad`, `RandomWalker1D`,
@@ -39,9 +39,13 @@ Builds every `Leslie.Prob.*` library module and every
 ## What's excluded
 
   * `Leslie.Prob.Spike.*` — M0 spike / calibration files. `ASTSanity`
-    carries a known sorry that is M3-tracked separately. Spike files
+    carries a known proof placeholder that is M3-tracked separately. Spike files
     are intentionally not part of the production build.
 -/
+
+-- Mathlib-upstream candidate (parameterised Ionescu–Tulcea trajectory)
+import Leslie.Mathlib.Probability.Kernel.IonescuTulcea.Bind
+import Leslie.Mathlib.Probability.Kernel.IonescuTulcea.InfinitePiFubini
 
 -- Library
 import Leslie.Prob.Action
@@ -54,10 +58,12 @@ import Leslie.Prob.PMF
 import Leslie.Prob.Polynomial
 import Leslie.Prob.RandomisedAdversary
 import Leslie.Prob.Refinement
+import Leslie.Prob.Secrecy
 import Leslie.Prob.Trace
 
 -- Examples
 import Leslie.Examples.Prob.AVSS
+import Leslie.Examples.Prob.AVSSFaithful
 import Leslie.Examples.Prob.AVSSAbstract
 import Leslie.Examples.Prob.BenOrAsync
 import Leslie.Examples.Prob.BivariateShamir

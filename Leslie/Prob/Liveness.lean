@@ -108,15 +108,6 @@ structure ASTCertificate
   U_term : ∀ s, Inv s → terminated s → U s = 0
   /-- `U` is bounded on every sublevel set of `V`. -/
   U_bdd_subl : ∀ k : ℝ≥0, ∃ M : ℕ, ∀ s, Inv s → V s ≤ k → U s ≤ M
-  /-- `U` decreases with positive probability under any action that
-  fires from a non-terminated state. The minimum decrease probability
-  on any sublevel set is uniformly bounded below. -/
-  U_dec_prob : ∀ k : ℝ≥0, ∃ p : ℝ≥0, 0 < p ∧
-    ∀ (i : ι) (s : σ) (h : (spec.actions i).gate s),
-      Inv s → ¬ terminated s → V s ≤ k →
-      p ≤ ∑' s' : σ,
-        ((spec.actions i).effect s h) s' *
-          (if U s' < U s then 1 else 0)
   /-- `V` is uniformly bounded on the invariant set.
 
   **Why this field is needed.** Without a uniform bound, the
@@ -232,19 +223,49 @@ structure FairASTCertificate
   V_term : ∀ s, Inv s → terminated s → V s = 0
   /-- `V` positive on non-terminated. -/
   V_pos : ∀ s, Inv s → ¬ terminated s → 0 < V s
-  /-- Supermartingale condition (unconditional: every gated step is
-  weakly non-increasing in `V` regardless of fairness; fairness
-  only matters for variant decrease, not for the supermartingale
-  bound). -/
+  /-- Supermartingale condition. Disjunct form (POPL 2026 fair extension,
+  Phase 8.5b framework relaxation): at every gated step, *either* the
+  expected next-state `V` is at most the current `V` (the standard
+  supermartingale bound — this is the historical strict form), *or*
+  every state in the post-state support has a fair-required action
+  enabled (so fairness will eventually fire to make progress).
+
+  The disjunct mirrors `U_dec_det`'s structure (variant decrease *or*
+  another fair action becomes enabled). It is strictly weaker than the
+  pure non-increase condition: existing certificates whose actions all
+  satisfy the strict bound discharge the field via `Or.inl`. The
+  disjunct accommodates protocols where adversarial actions may
+  temporarily increase `V` between fair firings (e.g., AVSS Phase 8.5b
+  corrupt-party `partyEchoSend`/`partyReady` where corrupt sends bump
+  the honest-only variant components), as long as a fair action remains
+  enabled at every reachable post-state to drive eventual progress.
+
+  No soundness theorem in this file consumes `V_super` directly — it
+  is a structural certificate field reflecting the POPL 2026 rule's
+  hypothesis shape; the AE-trajectory soundness route (`pi_n_AST_fair`)
+  takes its non-increase witness via `TrajectoryUMono`. -/
   V_super : ∀ (i : ι) (s : σ) (h : (spec.actions i).gate s),
     Inv s → ¬ terminated s →
-    ∑' s' : σ, ((spec.actions i).effect s h) s' * V s' ≤ V s
-  /-- Strict supermartingale on fair-actions: when a fair-required
-  action fires, `V` strictly decreases in expectation. This is the
-  fairness payoff that the demonic rule lacks. -/
+    (∑' s' : σ, ((spec.actions i).effect s h) s' * V s' ≤ V s) ∨
+    (∀ s' ∈ ((spec.actions i).effect s h).support,
+      ∃ j ∈ F.fair_actions, (spec.actions j).gate s')
+  /-- Strict supermartingale on fair-actions. Disjunct form (matching
+  `V_super`): when a fair-required action fires, *either* `V` strictly
+  decreases in expectation (the historical strict form — the fairness
+  payoff the demonic rule lacks), *or* every post-state in the support
+  has a fair-required action enabled (so the chain of fair actions
+  continues, mirroring `U_dec_det`).
+
+  Strictly weaker than the pure-strict form; existing certificates
+  discharge via `Or.inl`. Accommodates protocols where a fair-required
+  action's post-state may not strictly decrease `V` itself (because
+  adversarial fair actions in the same set bump the honest-only variant
+  components) but does enable another fair action to fire next. -/
   V_super_fair : ∀ (i : ι) (s : σ) (h : (spec.actions i).gate s),
     i ∈ F.fair_actions → Inv s → ¬ terminated s →
-    ∑' s' : σ, ((spec.actions i).effect s h) s' * V s' < V s
+    (∑' s' : σ, ((spec.actions i).effect s h) s' * V s' < V s) ∨
+    (∀ s' ∈ ((spec.actions i).effect s h).support,
+      ∃ j ∈ F.fair_actions, (spec.actions j).gate s')
   /-- `U` zero on terminated. -/
   U_term : ∀ s, Inv s → terminated s → U s = 0
   /-- Deterministic-decrease pattern: when a fair-required action
@@ -256,14 +277,6 @@ structure FairASTCertificate
       U s' < U s ∨ ∃ j ∈ F.fair_actions, (spec.actions j).gate s'
   /-- `U` bounded on every sublevel set of `V`. -/
   U_bdd_subl : ∀ k : ℝ≥0, ∃ M : ℕ, ∀ s, Inv s → V s ≤ k → U s ≤ M
-  /-- Probabilistic decrease under fair scheduling: with positive
-  probability, `U` decreases in finitely many steps. -/
-  U_dec_prob : ∀ k : ℝ≥0, ∃ p : ℝ≥0, 0 < p ∧
-    ∀ (i : ι) (s : σ) (h : (spec.actions i).gate s),
-      i ∈ F.fair_actions → Inv s → ¬ terminated s → V s ≤ k →
-      p ≤ ∑' s' : σ,
-        ((spec.actions i).effect s h) s' *
-          (if U s' < U s then 1 else 0)
   /-- `V` is uniformly bounded on the invariant set. Same role as
   `ASTCertificate.V_init_bdd`: makes the trajectory `liftV` uniformly
   bounded, so the soundness proof skips Doob's convergence theorem
@@ -385,6 +398,29 @@ def TrajectoryFairProgress (spec : ProbActionSpec σ ι)
     (A : FairAdversary σ ι F) : Prop :=
   ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
     ∀ N : ℕ, ∃ n ≥ N, ∃ i ∈ F.fair_actions, (ω (n + 1)).2 = some i
+
+/-- **Per-action AE-fairness predicate** (§16-β-β).
+
+For each fair-required action `a`, AE on the trace, either `a` fires
+infinitely often, or `a` is eventually disabled (its gate fails forever
+beyond some point).
+
+This is the trajectory-form of weak fairness applied per-action: every
+specific weakly-fair action either fires i.o. or is eventually disabled,
+ruling out the situation where `a` is continuously enabled forever
+without ever firing.
+
+This is strictly stronger than `TrajectoryFairProgress` (which gives only
+"some fair action fires i.o."). It is the witness needed to derive
+"if `a` is continuously enabled then `a` fires AE eventually". -/
+def TrajectoryFairProgressPerAction (spec : ProbActionSpec σ ι)
+    (F : FairnessAssumptions σ ι)
+    (μ₀ : Measure σ) [IsProbabilityMeasure μ₀]
+    (A : FairAdversary σ ι F) : Prop :=
+  ∀ a ∈ F.fair_actions,
+    ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+      (∃ N : ℕ, ∀ n : ℕ, n ≥ N → ¬ (spec.actions a).gate (ω n).1) ∨
+      (∀ N : ℕ, ∃ n ≥ N, (ω (n + 1)).2 = some a)
 
 /-- A fair-required action fires between trace positions `n` and
 `n + 1`. -/
@@ -1747,6 +1783,77 @@ def toAdversary (A : TrajectoryFairAdversary spec F μ₀) :
   A.toFair.toAdversary
 
 end TrajectoryFairAdversary
+
+/-! ### §16-β-β — Fair-action eventually fires under continuous enabling
+
+Framework-level "every fair-required, continuously-enabled action
+eventually fires" lemma.  Given:
+
+  * `a ∈ F.fair_actions` (fair-required),
+  * `TrajectoryFairProgressPerAction` providing the trajectory-form
+    weak-fairness witness for `a` (i.o. fire or eventually disabled),
+  * an AE-trace property `P` such that:
+      - `P s → (spec.actions a).gate s` (`P` implies `a` is enabled),
+      - AE on the trace, `P` holds at every prefix where `a` has not
+        yet fired (continuous enabling under `P`),
+
+we conclude that AE on the trace, `a` fires eventually.
+
+The proof is a straightforward case analysis on the disjunction in
+`TrajectoryFairProgressPerAction`: the i.o. branch immediately gives
+the conclusion; the eventually-disabled branch contradicts continuous
+enabling under `P`.
+
+This composes with `TrajectoryFairAdversary` (which carries the weaker
+`TrajectoryFairProgress`) by taking the per-action witness as a
+separate hypothesis — `FairnessAssumptions.isWeaklyFair` is opaque, so
+this stronger trajectory predicate cannot be derived from
+`A.toFair.fair` alone, but concrete protocols whose schedules
+realize per-action weak fairness supply it directly. -/
+
+/-- §16-β-β framework lemma: a continuously-enabled fair-required
+action fires AE eventually.
+
+`P` is a "still-enabled" property: it implies the gate of `a` and is
+preserved along every trajectory prefix on which `a` has not yet
+fired.  Combined with the per-action progress witness, this forces
+`a` to fire on AE every trace. -/
+theorem fair_action_eventually_fires_of_continuously_enabled
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+    {spec : ProbActionSpec σ ι} {F : FairnessAssumptions σ ι}
+    {μ₀ : Measure σ} [IsProbabilityMeasure μ₀]
+    {A : FairAdversary σ ι F}
+    (h_per_action : FairASTCertificate.TrajectoryFairProgressPerAction spec F μ₀ A)
+    (a : ι) (h_fair : a ∈ F.fair_actions)
+    (P : σ → Prop)
+    (h_P_implies_gate : ∀ s, P s → (spec.actions a).gate s)
+    (h_continuous : ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+        ∀ k : ℕ, (∀ j : ℕ, j ≤ k → (ω (j + 1)).2 ≠ some a) → P (ω k).1) :
+    ∀ᵐ ω ∂(traceDist spec A.toAdversary μ₀),
+      ∃ k : ℕ, (ω (k + 1)).2 = some a := by
+  have h_action_progress := h_per_action a h_fair
+  filter_upwards [h_action_progress, h_continuous] with ω hprog hcont
+  rcases hprog with ⟨N, hdisabled⟩ | hio
+  · -- Eventually-disabled branch: derive a contradiction with continuous enabling.
+    -- Either `a` fires at some step ≤ N (done), or it never fires up to N
+    -- and then continuous-enabling forces the gate to hold at step N — contra.
+    by_cases hfired : ∃ k ≤ N, (ω (k + 1)).2 = some a
+    · obtain ⟨k, _, hk⟩ := hfired
+      exact ⟨k, hk⟩
+    · push_neg at hfired
+      -- `a` has not fired up to step N; by continuous enabling P (ω N).1.
+      have hP_N : P (ω N).1 := by
+        apply hcont N
+        intro j hj
+        exact hfired j hj
+      have hgate_N : (spec.actions a).gate (ω N).1 := h_P_implies_gate _ hP_N
+      have hdis_N : ¬ (spec.actions a).gate (ω N).1 := hdisabled N le_rfl
+      exact absurd hgate_N hdis_N
+  · -- Infinitely-often branch: pick any firing.
+    obtain ⟨n, _, hn⟩ := hio 0
+    exact ⟨n, hn⟩
 
 /-! ### `sound_traj_det` deferred
 

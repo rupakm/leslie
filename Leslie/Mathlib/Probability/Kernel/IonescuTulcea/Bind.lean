@@ -341,7 +341,8 @@ theorem trajMeasure_measurable
     [hCount : ∀ (n : ℕ), Countable (Π i : Iic n, X i)]
     [hSing : ∀ (n : ℕ), MeasurableSingletonClass (Π i : Iic n, X i)]
     (h_meas : ∀ (n : ℕ) (h : Π i : Iic n, X i) {s : Set (X (n + 1))},
-        MeasurableSet s → Measurable (fun b ↦ (κ b n) h s)) :
+        MeasurableSet s → Measurable (fun b ↦ (κ b n) h s))
+    [IsProbabilityMeasure μ₀] :
     Measurable (fun b ↦ trajMeasure μ₀ (κ b)) := by
   -- Reduce to: for every measurable `s`, `b ↦ trajMeasure μ₀ (κ b) s` is measurable.
   apply Measure.measurable_of_measurable_coe
@@ -352,13 +353,13 @@ theorem trajMeasure_measurable
       ∫⁻ x₀, traj (κ b) 0 x₀ s
         ∂(μ₀.map (MeasurableEquiv.piUnique (fun i : Iic 0 => X i)).symm) := by
     intro b
-    rw [trajMeasure, Measure.bind_apply hs (Kernel.aemeasurable _)]
+    rw [trajMeasure, Measure.bind_apply hs (Kernel.aemeasurable _)]; rfl
   simp_rw [heq, traj_apply]
   have he_meas : Measurable (MeasurableEquiv.piUnique (fun i : Iic 0 => X i)).symm :=
     (MeasurableEquiv.piUnique _).symm.measurable
   have hμ' : IsProbabilityMeasure
       (μ₀.map (MeasurableEquiv.piUnique (fun i : Iic 0 => X i)).symm) :=
-    Measure.isProbabilityMeasure_map he_meas.aemeasurable
+    Measure.isProbabilityMeasure_map (μ := μ₀) he_meas.aemeasurable
   -- Apply `Measurable.lintegral_prod_left` (from `MeasureTheory.Measure.Prod`):
   -- the integral over a fixed measure of a jointly measurable function is
   -- measurable in the free parameter.
@@ -424,7 +425,7 @@ lemma trajMeasure_map_frestrictLe
       (partialTraj κ 0 n) ∘ₘ
         (μ₀.map (MeasurableEquiv.piUnique (fun i : Iic 0 ↦ X i)).symm) := by
   unfold trajMeasure
-  rw [Measure.map_comp _ _ (by fun_prop), traj_map_frestrictLe]
+  rw [Measure.map_comp _ _ (by fun_prop), traj_map_frestrictLe]; rfl
 
 /-- `Measure.bind` commutes with measure pushforward under measurability of the bind family. -/
 lemma map_bind_eq_bind_map {α γ : Type*} [MeasurableSpace α] [MeasurableSpace γ]

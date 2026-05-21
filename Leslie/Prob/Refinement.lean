@@ -368,7 +368,7 @@ theorem AlmostBox_of_pure_inductive
         · -- Gate-pass case: `(PMF.pure (det_step i ..)).toMeasure.map (·, some i)`.
           simp only [hgate, dite_true]
           rw [h_pure i h.currentState hgate, PMF.toMeasure_pure,
-              Measure.map_dirac (by fun_prop)]
+              Measure.map_dirac]
           rw [ae_dirac_iff hPset]
           exact h_step i h.currentState hgate hPcurr
         · -- Gate-fail case: stutter again.

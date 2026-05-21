@@ -349,7 +349,7 @@ private theorem stepKernel_AE_simulate
       simp only [hgate, dite_true]
       rw [show (D.toProbActionSpec.actions i).effect h.currentState hgate
             = PMF.pure (D.step i h.currentState) from rfl,
-          PMF.toMeasure_pure, Measure.map_dirac (by fun_prop), ae_dirac_iff hPset]
+          PMF.toMeasure_pure, Measure.map_dirac, ae_dirac_iff hPset]
       intro hQ
       obtain ⟨h_toList, h_curr⟩ := h_pred_consequences hQ
       rw [simulateTrace_succ_eq]

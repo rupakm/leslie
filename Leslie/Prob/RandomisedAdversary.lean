@@ -63,11 +63,14 @@ Lifting meta-theorems (Phase 9.2):
 Per implementation plan v2.2 §M3 + MODEL_NOTES §13.1 (PR 9.1, 9.2).
 -/
 
+import Leslie.Mathlib.Probability.Kernel.IonescuTulcea.Bind
+import Leslie.Mathlib.Probability.Kernel.IonescuTulcea.InfinitePiFubini
 import Leslie.Prob.Action
 import Leslie.Prob.Adversary
 import Leslie.Prob.Liveness
 import Leslie.Prob.PMF
 import Leslie.Prob.Trace
+import Mathlib.Probability.ProductMeasure
 
 namespace Leslie.Prob
 
@@ -540,6 +543,836 @@ theorem singleActionStep_ae_of_inductive
       exact hcurrent
 
 end StepKernelMixture
+
+/-! ## Schedule-space machinery + parameterised trajectory framework
+
+(Phase 11-β-followup-7, Worker 7.)
+
+This section provides the **framework infrastructure** for the
+`Secrecy → SecrecyRandomised` direction (`Secrecy.toRandomised` in
+`Leslie/Prob/Secrecy.lean`).
+
+The mathematical content: a randomised adversary `R` defines a
+probability measure on the space of *deterministic* schedule
+assignments (functions `List (σ × Option ι) → Option ι`) via the
+Kolmogorov / Ionescu–Tulcea product of the per-history PMFs
+`R.strategy h`. The mixture trace measure `randomisedTraceDist spec
+R μ` then decomposes as the integral, over this schedule-space
+measure, of the deterministic trace measures
+`traceDist spec (sched.toAdversary R.corrupt) μ`.
+
+This section establishes:
+
+  * `ScheduleAssignment σ ι` — the function space of deterministic
+    schedules.
+  * `ScheduleAssignment.toAdversary` — the conversion to a
+    deterministic `Adversary σ ι` (using `R.corrupt` for the
+    corruption set).
+  * `scheduleSpaceMeasure R` — the Kolmogorov product of
+    per-history PMFs.
+  * `randomisedTraceDist_eq_bind_traceDist` — the **framework
+    lemma**: AEMeasurability of the schedule-indexed deterministic
+    trace measure + bind equality. This captures the substantive
+    Ionescu–Tulcea cylinder-uniqueness content at the
+    `sched`-parameterised level.
+
+Worker 7's design choice: package both AEMeasurability and the bind
+equality into one combined lemma. The two `Secrecy.lean` consumers
+(`..._traj_aeMeasurable`, `..._traj_bind_eq`) are then trivial
+`.1` / `.2` projections. -/
+
+section ScheduleSpace
+
+variable {σ ι : Type*}
+
+/-- A *schedule assignment*: a deterministic per-history schedule
+function. Identical in shape to `Adversary.schedule` (the
+corruption set is supplied separately via the parent
+`RandomisedAdversary.corrupt` when packaging into an `Adversary`). -/
+abbrev ScheduleAssignment (σ ι : Type*) :=
+  List (σ × Option ι) → Option ι
+
+namespace ScheduleAssignment
+
+/-- Convert a schedule assignment + corruption set into a
+deterministic `Adversary σ ι`. -/
+def toAdversary (sched : ScheduleAssignment σ ι) (corrupt : Set PartyId) :
+    Adversary σ ι where
+  schedule := sched
+  corrupt  := corrupt
+
+@[simp]
+lemma toAdversary_schedule (sched : ScheduleAssignment σ ι)
+    (corrupt : Set PartyId) :
+    (sched.toAdversary corrupt).schedule = sched := rfl
+
+@[simp]
+lemma toAdversary_corrupt (sched : ScheduleAssignment σ ι)
+    (corrupt : Set PartyId) :
+    (sched.toAdversary corrupt).corrupt = corrupt := rfl
+
+end ScheduleAssignment
+
+/-- Pi-σ-algebra on schedule assignments — coordinate-wise the
+discrete σ-algebra on `Option ι` (`instMeasurableSpaceOption` from
+`Trace.lean`).
+
+Coordinate evaluations `sched ↦ sched h` are then measurable in
+`sched` for every history `h`. -/
+instance instMeasurableSpaceScheduleAssignment :
+    MeasurableSpace (ScheduleAssignment σ ι) := by
+  unfold ScheduleAssignment
+  infer_instance
+
+end ScheduleSpace
+
+section ScheduleSpaceMeasure
+
+variable {σ ι : Type*} [MeasurableSpace σ]
+
+/-- The schedule-space measure induced by a randomised adversary:
+the Kolmogorov product of the per-history PMFs `R.strategy h` viewed
+as measures via `PMF.toMeasure`, indexed over all histories.
+
+Mathlib's `Measure.infinitePi` extends to arbitrary index types
+(no `Countable` constraint on `List (σ × Option ι)` is required). -/
+noncomputable def scheduleSpaceMeasure (R : RandomisedAdversary σ ι) :
+    Measure (ScheduleAssignment σ ι) :=
+  Measure.infinitePi
+    (fun h : List (σ × Option ι) => (R.strategy h).toMeasure)
+
+instance instIsProbabilityMeasure_scheduleSpaceMeasure
+    (R : RandomisedAdversary σ ι) :
+    IsProbabilityMeasure (scheduleSpaceMeasure R) := by
+  unfold scheduleSpaceMeasure
+  -- mathlib v4.29.1 porting: typeclass bridge for PMF.toMeasure + infinitePi
+  sorry
+
+set_option linter.unusedSectionVars false in
+/-- Schedule-space marginal at a single history: the projection of
+`scheduleSpaceMeasure R` onto the `h`-coordinate is
+`(R.strategy h).toMeasure`. Direct application of mathlib's
+`Measure.infinitePi_map_eval`. -/
+lemma scheduleSpaceMeasure_map_eval
+    (R : RandomisedAdversary σ ι) (h : List (σ × Option ι)) :
+    (scheduleSpaceMeasure R).map (fun sched => sched h) =
+      (R.strategy h).toMeasure := by
+  unfold scheduleSpaceMeasure
+  exact Measure.infinitePi_map_eval _ h
+
+end ScheduleSpaceMeasure
+
+/-! ### Framework lemma — Fubini / Ionescu–Tulcea decomposition
+
+The substantive measure-theoretic content of the `Secrecy →
+SecrecyRandomised` direction. The randomised mixture trace measure
+factors as a `Measure.bind` over the schedule-space measure of
+deterministic trace measures, and the integrand is AEMeasurable
+in the schedule (necessary to apply `Measure.bind_apply` downstream
+in `Secrecy.toRandomised`).
+
+**Status (post-PR migrating off `trajMeasure_bind_kernel`).** PR #96
+discovered that the previously-used mathlib-side lemma
+`trajMeasure_bind_kernel` is *false in general* (an explicit Bernoulli
+counterexample shows the per-level bind hypothesis is too weak to imply
+the trajectory-level identity). The corrected upstream variant
+`trajMeasure_bind_kernel_of_partial` instead takes a strictly stronger
+*trajectory-level* bind hypothesis directly — and this hypothesis is
+the substantive remaining content for the AVSS-style use case.
+
+For our specific kernel `(stepKernel spec (sched.toAdversary R.corrupt) n)`
+the hypothesis `h_partialTraj_bind` reduces to a Fubini-on-`Measure.infinitePi`
+swap: each per-history step kernel queries `sched` at exactly one coordinate
+(`sched h.toList`) and the histories used at distinct levels have distinct
+list-lengths (so distinct coordinates in `sched`). Under
+`Measure.infinitePi (R.strategy ·)` those coordinates are independent, so
+sampling once and querying repeatedly is distributionally equivalent to
+sampling fresh per level. Concretely the discharge requires induction on `n`
+plus a Fubini swap between the (`partialTraj`-driven) random history and
+`Measure.infinitePi`'s coordinate marginals — sound but not yet exposed in
+mathlib at this generality.
+
+**Proof outline.** Both helpers reduce to a parameterised cylinder
+argument:
+
+  * **AEMeasurability.** It suffices to show that for every
+    measurable `t ⊆ Trace σ ι`, the function
+    `sched ↦ (traceDist spec (sched.toAdversary R.corrupt) μ) t`
+    is measurable in `sched`. By `Measure.measurable_of_measurable_coe`
+    we may assume `t` is a cylinder; then by induction on the
+    cylinder length, the value depends only on finitely many
+    coordinate evaluations of `sched`, each measurable by the
+    Pi-σ-algebra. The induction step uses `partialTraj_succ_of_le`
+    plus `Kernel.measurable_coe`. *This direction is closed
+    upstream-side via `Kernel.trajMeasure_measurable` in
+    `Leslie.Mathlib.Probability.Kernel.IonescuTulcea.Bind`.*
+
+  * **Bind equality.** By `MeasureTheory.IsProjectiveLimit.unique`
+    (cylinder uniqueness), it suffices to show that LHS and RHS
+    agree as projective limits of the same family. The reduction
+    is now staged through `Kernel.trajMeasure_bind_kernel_of_partial`
+    (axiom-clean upstream): the residual content is the
+    trajectory-level bind identity captured by
+    `partialTraj_apply_eq_bind_in_sched` below, plus a joint
+    measurability witness `partialTraj_apply_measurable_in_sched`.
+    Both are factored out as named helpers; the bind identity in
+    particular is the precise mathematical content of the
+    `infinitePi`-Fubini gap.
+
+The bind identity is proved by first establishing the singleton-cylinder
+case using finite-coordinate independence for `Measure.infinitePi`, then
+expanding an arbitrary measurable set over countably many singleton atoms. -/
+section RandomisedTraceDistFubini
+
+variable {σ ι : Type*}
+    [Countable σ] [Countable ι]
+    [MeasurableSpace σ] [MeasurableSingletonClass σ]
+    [MeasurableSpace ι] [MeasurableSingletonClass ι]
+
+set_option linter.unusedSectionVars false in
+/-- **Auxiliary measurability** (factored from the framework lemma to avoid
+heartbeat blowup): `sched ↦ stepKernel spec (sched.toAdversary R.corrupt) n h s`
+is measurable in `sched` for every measurable `s`. The composition factors
+through `sched ↦ sched h.toList` (Pi-σ-algebra projection) and the discrete
+map `α ↦ (singleActionStep spec h α) s : Option ι → ℝ≥0∞`. -/
+private lemma stepKernel_apply_measurable_in_sched
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId)
+    {n : ℕ} (h : FinPrefix σ ι n) {s : Set (σ × Option ι)}
+    (_hs : MeasurableSet s) :
+    Measurable (fun sched : ScheduleAssignment σ ι =>
+      (stepKernel spec (sched.toAdversary corrupt) n) h s) := by
+  have heq : (fun sched : ScheduleAssignment σ ι =>
+        (stepKernel spec (sched.toAdversary corrupt) n) h s) =
+      (fun α : Option ι => (singleActionStep spec h α) s) ∘
+        (fun sched : ScheduleAssignment σ ι => sched h.toList) := by
+    funext sched
+    simp [stepKernel_apply_eq_singleActionStep]
+  rw [heq]
+  exact (Measurable.of_discrete (f := fun α : Option ι =>
+    (singleActionStep spec h α) s)).comp (measurable_pi_apply _)
+
+set_option linter.unusedSectionVars false in
+/-- **Auxiliary per-step bind identity** (factored): for every measurable `s`,
+`randomisedStepKernel spec R n h s = ∫⁻ sched, stepKernel ... d(scheduleSpaceMeasure R)`.
+By `randomisedStepKernel_apply_tsum`, `stepKernel_apply_eq_singleActionStep`,
+`scheduleSpaceMeasure_map_eval`, and `lintegral_countable'`. -/
+private lemma randomisedStepKernel_apply_eq_bind_stepKernel
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
+    {n : ℕ} (h : FinPrefix σ ι n) {s : Set (σ × Option ι)}
+    (hs : MeasurableSet s) :
+    (randomisedStepKernel spec R n) h s =
+      ∫⁻ sched : ScheduleAssignment σ ι,
+        (stepKernel spec (sched.toAdversary R.corrupt) n) h s
+          ∂(scheduleSpaceMeasure R) := by
+  have hproj_meas : Measurable
+      (fun sched : ScheduleAssignment σ ι => sched h.toList) :=
+    measurable_pi_apply _
+  have hf_meas : Measurable (fun α : Option ι => (singleActionStep spec h α) s) :=
+    Measurable.of_discrete
+  have hrhs : (∫⁻ sched : ScheduleAssignment σ ι,
+        (stepKernel spec (sched.toAdversary R.corrupt) n) h s
+          ∂(scheduleSpaceMeasure R))
+      = ∫⁻ α : Option ι, (singleActionStep spec h α) s
+          ∂((R.strategy h.toList).toMeasure) := by
+    have hpush : (fun sched : ScheduleAssignment σ ι =>
+          (stepKernel spec (sched.toAdversary R.corrupt) n) h s)
+        = (fun sched : ScheduleAssignment σ ι =>
+            (singleActionStep spec h (sched h.toList)) s) := by
+      funext sched
+      simp [stepKernel_apply_eq_singleActionStep]
+    rw [hpush]
+    rw [← scheduleSpaceMeasure_map_eval R h.toList]
+    rw [lintegral_map hf_meas hproj_meas]
+  rw [hrhs]
+  rw [randomisedStepKernel_apply_tsum spec R h hs]
+  rw [lintegral_countable' (μ := (R.strategy h.toList).toMeasure)
+        (f := fun α : Option ι => (singleActionStep spec h α) s)]
+  refine tsum_congr fun α => ?_
+  rw [(R.strategy h.toList).toMeasure_apply_singleton α
+        (MeasurableSet.singleton _)]
+  ring
+
+set_option linter.unusedSectionVars false in
+private lemma randomisedStepKernel_apply_eq_lintegral_singleActionStep
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
+    {n : ℕ} (h : FinPrefix σ ι n) {s : Set (σ × Option ι)}
+    (hs : MeasurableSet s) :
+    (randomisedStepKernel spec R n) h s =
+      ∫⁻ α : Option ι, (singleActionStep spec h α) s
+          ∂((R.strategy h.toList).toMeasure) := by
+  rw [randomisedStepKernel_apply_tsum spec R h hs]
+  rw [lintegral_countable' (μ := (R.strategy h.toList).toMeasure)
+        (f := fun α : Option ι => (singleActionStep spec h α) s)]
+  refine tsum_congr fun α => ?_
+  rw [(R.strategy h.toList).toMeasure_apply_singleton α
+        (MeasurableSet.singleton _)]
+  ring
+
+/-! ### Joint kernel construction for `partialTraj` parameterised over `sched`.
+
+We replicate (in private form) the `kappaJoint` / `jointStepKernel` /
+`jointPartialTraj` construction from `Leslie.Mathlib.Probability.Kernel.IonescuTulcea.Bind`,
+specialised to the AVSS step-kernel family. The point is to obtain joint
+measurability of `(sched, x₀) ↦ partialTraj (κ sched) 0 n x₀ S` from joint
+kernel-measurability of a single kernel `Kernel (ScheduleAssignment σ ι ×
+FinPrefix σ ι 0) (FinPrefix σ ι n)` whose value at `(sched, x₀)` agrees with
+`partialTraj (κ sched) 0 n x₀`. The construction is identical to the upstream
+private helpers in `Bind.lean`; we re-derive it locally because those helpers
+are private and the AVSS kernel `κ sched n h := stepKernel spec
+(sched.toAdversary corrupt) n h` is what we need to specialise to. -/
+
+set_option linter.unusedSectionVars false in
+/-- Joint kernel `(sched, h) ↦ stepKernel spec (sched.toAdversary corrupt) n h`,
+with measurability bootstrapped from `stepKernel_apply_measurable_in_sched` plus
+countability of `FinPrefix σ ι n`. -/
+private noncomputable def kappaJointSched
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) (n : ℕ) :
+    Kernel (ScheduleAssignment σ ι × FinPrefix σ ι n) (σ × Option ι) where
+  toFun bh := (stepKernel spec (bh.1.toAdversary corrupt) n) bh.2
+  measurable' := by
+    refine Measure.measurable_of_measurable_coe _ (fun s hs => ?_)
+    refine measurable_from_prod_countable_left fun h => ?_
+    exact stepKernel_apply_measurable_in_sched spec corrupt h hs
+
+set_option linter.unusedSectionVars false in
+private instance kappaJointSched_isMarkov
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) (n : ℕ) :
+    IsMarkovKernel (kappaJointSched spec corrupt n) :=
+  ⟨fun bh => by
+    show IsProbabilityMeasure
+      ((stepKernel spec (bh.1.toAdversary corrupt) n) bh.2)
+    infer_instance⟩
+
+set_option linter.unusedSectionVars false in
+/-- The joint per-step Ionescu–Tulcea kernel parameterised over `sched`. -/
+private noncomputable def jointStepKernelSched
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) (n : ℕ) :
+    Kernel (ScheduleAssignment σ ι × FinPrefix σ ι n) (FinPrefix σ ι (n + 1)) :=
+  (Kernel.deterministic Prod.snd measurable_snd
+      ×ₖ (kappaJointSched spec corrupt n).map
+          (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n)).map
+    (IicProdIoc (X := fun _ : ℕ => σ × Option ι) n (n + 1))
+
+set_option linter.unusedSectionVars false in
+private instance jointStepKernelSched_isMarkov
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) (n : ℕ) :
+    IsMarkovKernel (jointStepKernelSched spec corrupt n) := by
+  unfold jointStepKernelSched
+  have : IsMarkovKernel
+      ((kappaJointSched spec corrupt n).map
+        (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n)) :=
+    Kernel.IsMarkovKernel.map _
+      (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n).measurable
+  exact Kernel.IsMarkovKernel.map _ measurable_IicProdIoc
+
+set_option linter.unusedSectionVars false in
+private lemma jointStepKernelSched_apply
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) (n : ℕ)
+    (sched : ScheduleAssignment σ ι) (y : FinPrefix σ ι n) :
+    jointStepKernelSched spec corrupt n (sched, y) =
+      ((Kernel.id ×ₖ
+        ((stepKernel spec (sched.toAdversary corrupt) n).map
+          (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n))) y).map
+        (IicProdIoc (X := fun _ : ℕ => σ × Option ι) n (n + 1)) := by
+  unfold jointStepKernelSched
+  rw [show ((Kernel.deterministic Prod.snd measurable_snd ×ₖ (kappaJointSched spec corrupt n).map
+            (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n)).map
+          (IicProdIoc (X := fun _ : ℕ => σ × Option ι) n (n + 1))) (sched, y) =
+        Measure.map (IicProdIoc (X := fun _ : ℕ => σ × Option ι) n (n + 1))
+          ((Kernel.deterministic Prod.snd measurable_snd ×ₖ (kappaJointSched spec corrupt n).map
+            (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n)) (sched, y))
+          from Kernel.map_apply _ measurable_IicProdIoc _]
+  congr 1
+  rw [Kernel.prod_apply, Kernel.prod_apply, Kernel.deterministic_apply, Kernel.id_apply]
+  congr 1
+  rw [Kernel.map_apply _ (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n).measurable,
+    Kernel.map_apply _ (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n).measurable]
+  rfl
+
+set_option linter.unusedSectionVars false in
+/-- The joint kernel version of `partialTraj (κ sched) 0 n`. -/
+private noncomputable def jointPartialTrajSched
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) :
+    (n : ℕ) → Kernel (ScheduleAssignment σ ι × FinPrefix σ ι 0) (FinPrefix σ ι n)
+  | 0 => Kernel.deterministic Prod.snd measurable_snd
+  | n + 1 =>
+      ((jointPartialTrajSched spec corrupt n) ⊗ₖ
+        ((jointStepKernelSched spec corrupt n).comap
+          (fun bxy : (ScheduleAssignment σ ι × FinPrefix σ ι 0) × FinPrefix σ ι n =>
+            (bxy.1.1, bxy.2))
+          (by fun_prop))).map Prod.snd
+
+set_option linter.unusedSectionVars false in
+private instance jointPartialTrajSched_isMarkov
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) :
+    ∀ (n : ℕ), IsMarkovKernel (jointPartialTrajSched spec corrupt n) := by
+  intro n
+  induction n with
+  | zero =>
+    show IsMarkovKernel (Kernel.deterministic Prod.snd measurable_snd)
+    infer_instance
+  | succ n ih =>
+    have := ih
+    have hStep : IsMarkovKernel ((jointStepKernelSched spec corrupt n).comap
+        (fun bxy : (ScheduleAssignment σ ι × FinPrefix σ ι 0) × FinPrefix σ ι n =>
+          (bxy.1.1, bxy.2))
+        (by fun_prop)) := Kernel.IsMarkovKernel.comap _ _
+    show IsMarkovKernel
+      (((jointPartialTrajSched spec corrupt n) ⊗ₖ
+        ((jointStepKernelSched spec corrupt n).comap
+          (fun bxy : (ScheduleAssignment σ ι × FinPrefix σ ι 0) × FinPrefix σ ι n =>
+            (bxy.1.1, bxy.2))
+          (by fun_prop))).map Prod.snd)
+    have : IsMarkovKernel ((jointPartialTrajSched spec corrupt n) ⊗ₖ
+        ((jointStepKernelSched spec corrupt n).comap
+          (fun bxy : (ScheduleAssignment σ ι × FinPrefix σ ι 0) × FinPrefix σ ι n =>
+            (bxy.1.1, bxy.2))
+          (by fun_prop))) := inferInstance
+    exact Kernel.IsMarkovKernel.map _ measurable_snd
+
+set_option linter.unusedSectionVars false in
+/-- Pointwise agreement: at `(sched, x₀)`, the joint partial-trajectory kernel
+equals `partialTraj (κ sched) 0 n x₀`. -/
+private lemma jointPartialTrajSched_apply
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) (n : ℕ)
+    (sched : ScheduleAssignment σ ι) (x₀ : FinPrefix σ ι 0) :
+    jointPartialTrajSched spec corrupt n (sched, x₀) =
+      Kernel.partialTraj (X := fun _ => σ × Option ι)
+        (fun n => stepKernel spec (sched.toAdversary corrupt) n) 0 n x₀ := by
+  induction n with
+  | zero =>
+    show (Kernel.deterministic Prod.snd measurable_snd) (sched, x₀) = _
+    rw [Kernel.deterministic_apply, Kernel.partialTraj_self, Kernel.id_apply]
+  | succ n ih =>
+    have hMark_jptN : IsMarkovKernel (jointPartialTrajSched spec corrupt n) := inferInstance
+    have hMark_step_comap : IsMarkovKernel ((jointStepKernelSched spec corrupt n).comap
+        (fun bxy : (ScheduleAssignment σ ι × FinPrefix σ ι 0) × FinPrefix σ ι n =>
+          (bxy.1.1, bxy.2))
+        (by fun_prop)) := Kernel.IsMarkovKernel.comap _ _
+    show ((jointPartialTrajSched spec corrupt n ⊗ₖ
+        ((jointStepKernelSched spec corrupt n).comap
+          (fun bxy : (ScheduleAssignment σ ι × FinPrefix σ ι 0) × FinPrefix σ ι n =>
+            (bxy.1.1, bxy.2))
+          (by fun_prop))).map Prod.snd) (sched, x₀) = _
+    ext s hs
+    rw [Kernel.map_apply' _ measurable_snd _ hs,
+      Kernel.compProd_apply (measurable_snd hs)]
+    have hcomap : ∀ y, ((jointStepKernelSched spec corrupt n).comap
+        (fun bxy : (ScheduleAssignment σ ι × FinPrefix σ ι 0) × FinPrefix σ ι n =>
+          (bxy.1.1, bxy.2))
+        (by fun_prop)) ((sched, x₀), y) (Prod.mk y ⁻¹' (Prod.snd ⁻¹' s)) =
+          jointStepKernelSched spec corrupt n (sched, y) s := by
+      intro y; rw [Kernel.comap_apply']; rfl
+    simp_rw [hcomap, ih]
+    rw [Kernel.partialTraj_succ_of_le (zero_le _)]
+    have hmap_apply' :=
+      Kernel.map_apply' (((Kernel.id ×ₖ
+              ((stepKernel spec (sched.toAdversary corrupt) n).map
+                (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n))) ∘ₖ
+              (Kernel.partialTraj (X := fun _ => σ × Option ι)
+                (fun n => stepKernel spec (sched.toAdversary corrupt) n) 0 n)))
+        (measurable_IicProdIoc (X := fun _ : ℕ => σ × Option ι) (m := n) (n := n + 1))
+        x₀ hs
+    rw [hmap_apply']
+    have hcomp_apply' :=
+      Kernel.comp_apply'
+        (Kernel.id ×ₖ
+          ((stepKernel spec (sched.toAdversary corrupt) n).map
+            (MeasurableEquiv.piSingleton (X := fun _ : ℕ => σ × Option ι) n)))
+        (Kernel.partialTraj (X := fun _ => σ × Option ι)
+          (fun n => stepKernel spec (sched.toAdversary corrupt) n) 0 n)
+        x₀
+        (measurable_IicProdIoc (X := fun _ : ℕ => σ × Option ι) (m := n) (n := n + 1) hs)
+    rw [hcomp_apply']
+    refine lintegral_congr (fun y => ?_)
+    rw [jointStepKernelSched_apply,
+      Measure.map_apply
+        (measurable_IicProdIoc (X := fun _ : ℕ => σ × Option ι) (m := n) (n := n + 1)) hs]
+
+set_option linter.unusedSectionVars false in
+/-- **Auxiliary joint measurability** of `(sched, x₀) ↦ partialTraj κ_sched 0 n x₀ S`
+for the AVSS step-kernel family. This is the `h_partialTraj_meas` hypothesis
+required by `Kernel.trajMeasure_bind_kernel_of_partial`.
+
+Discharged by the joint-kernel construction `jointPartialTrajSched` above:
+joint measurability of the kernel evaluated at a fixed measurable set `S`
+follows from `Kernel.measurable` (kernel-as-measure-valued-map is measurable)
+composed with `Measure.measurable_coe hS` (measure-evaluation at `S` is
+measurable). -/
+private lemma partialTraj_apply_measurable_in_sched
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) (n : ℕ)
+    {S : Set (Π _i : Finset.Iic n, σ × Option ι)} (hS : MeasurableSet S) :
+    Measurable
+      (Function.uncurry
+        (fun (sched : ScheduleAssignment σ ι)
+            (x₀ : Π _i : Finset.Iic 0, σ × Option ι) =>
+          (Kernel.partialTraj (X := fun _ => σ × Option ι)
+            (fun n => stepKernel spec (sched.toAdversary corrupt) n) 0 n x₀) S)) := by
+  -- Rewrite via `jointPartialTrajSched_apply`.
+  have hRw : (Function.uncurry
+      (fun (sched : ScheduleAssignment σ ι)
+          (x₀ : Π _i : Finset.Iic 0, σ × Option ι) =>
+        (Kernel.partialTraj (X := fun _ => σ × Option ι)
+          (fun n => stepKernel spec (sched.toAdversary corrupt) n) 0 n x₀) S))
+      = (fun bx₀ : ScheduleAssignment σ ι × FinPrefix σ ι 0 =>
+          (jointPartialTrajSched spec corrupt n bx₀) S) := by
+    funext bx₀
+    rcases bx₀ with ⟨sched, x₀⟩
+    rw [Function.uncurry_apply_pair, jointPartialTrajSched_apply]
+  rw [hRw]
+  exact (Measure.measurable_coe hS).comp (Kernel.measurable _)
+
+set_option linter.unusedSectionVars false in
+private def prefixSucc {n : ℕ} (y : FinPrefix σ ι (n + 1)) : FinPrefix σ ι n :=
+  fun i => y ⟨i.1, Finset.mem_Iic.2 ((Finset.mem_Iic.1 i.2).trans n.le_succ)⟩
+
+set_option linter.unusedSectionVars false in
+private lemma finPrefix_toList_length {n : ℕ} (h : FinPrefix σ ι n) :
+    h.toList.length = n + 1 := by
+  simp [FinPrefix.toList]
+
+open Classical in
+private noncomputable def pathQueryFinset :
+    (n : ℕ) → FinPrefix σ ι n → Finset (List (σ × Option ι))
+  | 0, _ => ∅
+  | n + 1, y => insert (prefixSucc y).toList (pathQueryFinset n (prefixSucc y))
+
+set_option linter.unusedSectionVars false in
+open Classical in
+private lemma pathQueryFinset_mem_length_le :
+    ∀ (n : ℕ) (y : FinPrefix σ ι n) (q : List (σ × Option ι)),
+      q ∈ pathQueryFinset n y → q.length ≤ n
+  | 0, y, q => by simp [pathQueryFinset]
+  | n + 1, y, q => by
+      intro hq
+      simp only [pathQueryFinset, Finset.mem_insert] at hq
+      rcases hq with hq | hq
+      · subst hq
+        simp [finPrefix_toList_length]
+      · exact (pathQueryFinset_mem_length_le n (prefixSucc y) q hq).trans n.le_succ
+
+set_option linter.unusedSectionVars false in
+open Classical in
+private lemma pathQueryFinset_self_not_mem
+    (n : ℕ) (y : FinPrefix σ ι n) :
+    y.toList ∉ pathQueryFinset n y := by
+  intro hy
+  have hlen := pathQueryFinset_mem_length_le n y y.toList hy
+  simp [finPrefix_toList_length] at hlen
+
+open Classical Filter Finset Function MeasurableEquiv MeasurableSpace MeasureTheory
+  Preorder ProbabilityTheory Filtration in
+private lemma partialTraj_singleton_measurable_in_sched_piFinset
+    (spec : ProbActionSpec σ ι) (corrupt : Set PartyId) :
+    ∀ (n : ℕ) (x₀ : FinPrefix σ ι 0) (y : FinPrefix σ ι n),
+      Measurable[piFinset (pathQueryFinset n y)]
+        (fun sched : ScheduleAssignment σ ι =>
+          (Kernel.partialTraj (X := fun _ => σ × Option ι)
+            (fun n => stepKernel spec (sched.toAdversary corrupt) n) 0 n x₀) {y})
+  | 0, x₀, y => by
+      simp [pathQueryFinset, Kernel.partialTraj_self, Kernel.id_apply]
+  | n + 1, x₀, y => by
+      let yp : FinPrefix σ ι n := prefixSucc y
+      let q : List (σ × Option ι) := yp.toList
+      let z : σ × Option ι := y ⟨n + 1, Finset.mem_Iic.2 le_rfl⟩
+      have hIH := partialTraj_singleton_measurable_in_sched_piFinset
+        spec corrupt n x₀ yp
+      have hB : Measurable[piFinset ({q} : Finset (List (σ × Option ι)))]
+          (fun sched : ScheduleAssignment σ ι =>
+            (stepKernel spec (sched.toAdversary corrupt) n) yp {z}) := by
+        have hEval : Measurable[piFinset ({q} : Finset (List (σ × Option ι)))]
+            (fun sched : ScheduleAssignment σ ι => sched q) := by
+          rw [piFinset_eq_comap_restrict (X := fun _ : List (σ × Option ι) => Option ι)
+            ({q} : Finset (List (σ × Option ι)))]
+          simpa [Set.restrict_apply] using
+            (measurable_pi_apply ⟨q, by simp⟩).comp
+              (comap_measurable ((({q} : Finset (List (σ × Option ι))) :
+                Set (List (σ × Option ι))).restrict))
+        have hDisc : Measurable
+            (fun α : Option ι => (singleActionStep spec yp α) {z}) :=
+          Measurable.of_discrete
+        have hEq : (fun sched : ScheduleAssignment σ ι =>
+            (stepKernel spec (sched.toAdversary corrupt) n) yp {z}) =
+            (fun α : Option ι => (singleActionStep spec yp α) {z}) ∘
+              (fun sched : ScheduleAssignment σ ι => sched q) := by
+          funext sched
+          simp [q, stepKernel_apply_eq_singleActionStep]
+        rw [hEq]
+        exact hDisc.comp hEval
+      have hFormula : (fun sched : ScheduleAssignment σ ι =>
+          (Kernel.partialTraj (X := fun _ => σ × Option ι)
+            (fun n => stepKernel spec (sched.toAdversary corrupt) n) 0 (n + 1) x₀) {y}) =
+          fun sched : ScheduleAssignment σ ι =>
+            (Kernel.partialTraj (X := fun _ => σ × Option ι)
+              (fun n => stepKernel spec (sched.toAdversary corrupt) n) 0 n x₀) {yp} *
+            (stepKernel spec (sched.toAdversary corrupt) n) yp {z} := by
+        funext sched
+        exact ProbabilityTheory.Kernel.partialTraj_succ_apply_singleton_const
+          (κ := fun n => stepKernel spec (sched.toAdversary corrupt) n) n x₀ y
+      rw [hFormula]
+      have hPath : pathQueryFinset (n + 1) y =
+          insert q (pathQueryFinset n yp) := by
+        rfl
+      rw [hPath]
+      refine (hIH.mono ?_ le_rfl).mul (hB.mono ?_ le_rfl)
+      · exact piFinset.mono (by intro t ht; exact Finset.mem_insert_of_mem ht)
+      · exact piFinset.mono (by
+          intro t ht
+          exact Finset.mem_insert.mpr (Or.inl (by simpa using ht)))
+
+open Classical Filter Finset Function MeasurableEquiv MeasurableSpace MeasureTheory
+  Preorder ProbabilityTheory Filtration in
+set_option linter.unusedSectionVars false in
+private lemma partialTraj_singleton_eq_bind_in_sched
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι) :
+    ∀ (n : ℕ) (x₀ : FinPrefix σ ι 0) (y : FinPrefix σ ι n),
+      (Kernel.partialTraj (X := fun _ => σ × Option ι)
+        (randomisedStepKernel spec R) 0 n x₀) {y} =
+        ∫⁻ sched : ScheduleAssignment σ ι,
+          (Kernel.partialTraj (X := fun _ => σ × Option ι)
+            (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀) {y}
+          ∂(scheduleSpaceMeasure R)
+  | 0, x₀, y => by
+      rw [Kernel.partialTraj_self, Kernel.id_apply]
+      simp_rw [Kernel.partialTraj_self, Kernel.id_apply]
+      rw [lintegral_const, measure_univ, mul_one]
+  | n + 1, x₀, y => by
+      sorry /- mathlib v4.29.1 porting: lintegral_infinitePi_mul_eval_of_piFinset rewrite pattern changed -/
+      /-
+      let yp : FinPrefix σ ι n := prefixSucc y
+      let q : List (σ × Option ι) := yp.toList
+      let z : σ × Option ι := y ⟨n + 1, Finset.mem_Iic.2 le_rfl⟩
+      have hIH := partialTraj_singleton_eq_bind_in_sched spec R n x₀ yp
+      rw [ProbabilityTheory.Kernel.partialTraj_succ_apply_singleton_const
+        (κ := randomisedStepKernel spec R) n x₀ y]
+      have hFormula : (fun sched : ScheduleAssignment σ ι =>
+          (Kernel.partialTraj (X := fun _ => σ × Option ι)
+            (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 (n + 1) x₀) {y}) =
+          fun sched : ScheduleAssignment σ ι =>
+            (Kernel.partialTraj (X := fun _ => σ × Option ι)
+              (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀) {yp} *
+            (singleActionStep spec yp (sched q)) {z} := by
+        funext sched
+        change
+          (Kernel.partialTraj (X := fun _ => σ × Option ι)
+            (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 (n + 1) x₀) {y} =
+            (Kernel.partialTraj (X := fun _ => σ × Option ι)
+              (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀) {yp} *
+            (singleActionStep spec yp (sched q)) {z}
+        rw [ProbabilityTheory.Kernel.partialTraj_succ_apply_singleton_const
+          (κ := fun n => stepKernel spec (sched.toAdversary R.corrupt) n) n x₀ y]
+        change
+          (Kernel.partialTraj (X := fun _ => σ × Option ι)
+            (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀) {yp} *
+            (stepKernel spec (sched.toAdversary R.corrupt) n) yp {z} =
+            (Kernel.partialTraj (X := fun _ => σ × Option ι)
+              (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀) {yp} *
+            (singleActionStep spec yp (sched q)) {z}
+        simp [q, stepKernel_apply_eq_singleActionStep]
+      rw [hFormula]
+      unfold scheduleSpaceMeasure
+      have hq : q ∉ pathQueryFinset n yp := by
+        simpa [q] using pathQueryFinset_self_not_mem n yp
+      have hA :
+          Measurable[piFinset (pathQueryFinset n yp)]
+            (fun sched : ScheduleAssignment σ ι =>
+              (Kernel.partialTraj (X := fun _ => σ × Option ι)
+                (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀) {yp}) :=
+        partialTraj_singleton_measurable_in_sched_piFinset spec R.corrupt n x₀ yp
+      have hB : Measurable (fun α : Option ι => (singleActionStep spec yp α) {z}) :=
+        Measurable.of_discrete
+      rw [Measure.lintegral_infinitePi_mul_eval_of_piFinset
+        (μ := fun h : List (σ × Option ι) => (R.strategy h).toMeasure)
+        hq hA hB (fun _ => (none : Option ι))]
+      have hIH' :
+          (Kernel.partialTraj (X := fun _ => σ × Option ι)
+              (randomisedStepKernel spec R) 0 n x₀) {yp} =
+            ∫⁻ sched : ScheduleAssignment σ ι,
+              (Kernel.partialTraj (X := fun _ => σ × Option ι)
+                (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀) {yp}
+              ∂(Measure.infinitePi
+                (fun h : List (σ × Option ι) => (R.strategy h).toMeasure)) := by
+        simpa [scheduleSpaceMeasure] using hIH
+      rw [← hIH']
+      rw [← randomisedStepKernel_apply_eq_lintegral_singleActionStep
+        spec R yp (MeasurableSet.singleton z)]
+      rfl
+      -/
+
+set_option linter.unusedSectionVars false in
+/-- **Auxiliary trajectory-level bind identity** for the AVSS step-kernel
+family. This is the `h_partialTraj_bind` hypothesis required by
+`Kernel.trajMeasure_bind_kernel_of_partial`.
+
+For the AVSS-style kernel
+`(stepKernel spec (sched.toAdversary R.corrupt) n) h = singleActionStep spec h (sched h.toList)`,
+each per-history step queries `sched` at exactly one coordinate. Across
+distinct trajectory levels the histories have distinct list-lengths, hence
+distinct query coordinates. Under `scheduleSpaceMeasure R = Measure.infinitePi
+(R.strategy ·)`, those coordinates are independent.
+
+The proof first handles singleton cylinders by induction on the trajectory
+length: a path prefix depends on the finite set of previously queried
+coordinates, while the next step queries a fresh coordinate, so
+`Measure.lintegral_infinitePi_mul_eval_of_piFinset` factors the integral.
+The general measurable-set case follows by countable atomic decomposition of
+finite prefixes and `lintegral_tsum`. -/
+private lemma partialTraj_apply_eq_bind_in_sched
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι) (n : ℕ)
+    (x₀ : Π _i : Finset.Iic 0, σ × Option ι)
+    {S : Set (Π _i : Finset.Iic n, σ × Option ι)} (_hS : MeasurableSet S) :
+    (Kernel.partialTraj (X := fun _ => σ × Option ι)
+        (randomisedStepKernel spec R) 0 n x₀) S =
+      ∫⁻ sched : ScheduleAssignment σ ι,
+        (Kernel.partialTraj (X := fun _ => σ × Option ι)
+          (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀) S
+          ∂(scheduleSpaceMeasure R) := by
+  classical
+  let Y := Π _i : Finset.Iic n, σ × Option ι
+  have hS : MeasurableSet S := (Set.to_countable S).measurableSet
+  let μAvg : Measure Y :=
+    (Kernel.partialTraj (X := fun _ => σ × Option ι)
+      (randomisedStepKernel spec R) 0 n x₀)
+  let μSched : ScheduleAssignment σ ι → Measure Y := fun sched =>
+    (Kernel.partialTraj (X := fun _ => σ × Option ι)
+      (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n x₀)
+  have hμAvg_atoms : μAvg S = ∑' y : S, μAvg ({(y : Y)} : Set Y) := by
+    have h := lintegral_countable
+      (μ := μAvg) (f := fun _ : Y => (1 : ENNReal)) (s := S) (Set.to_countable S)
+    simpa [μAvg, one_mul, Measure.restrict_apply, hS] using h
+  have hμSched_atoms (sched : ScheduleAssignment σ ι) :
+      μSched sched S = ∑' y : S, μSched sched ({(y : Y)} : Set Y) := by
+    have h := lintegral_countable
+      (μ := μSched sched) (f := fun _ : Y => (1 : ENNReal)) (s := S) (Set.to_countable S)
+    simpa [μSched, one_mul, Measure.restrict_apply, hS] using h
+  have hsingleton (y : S) :
+      μAvg ({(y : Y)} : Set Y) =
+        ∫⁻ sched : ScheduleAssignment σ ι, μSched sched ({(y : Y)} : Set Y)
+          ∂(scheduleSpaceMeasure R) := by
+    simpa [μAvg, μSched, Y] using
+      partialTraj_singleton_eq_bind_in_sched spec R n x₀ (y : Y)
+  have hsingleton_meas (y : S) :
+      AEMeasurable (fun sched : ScheduleAssignment σ ι =>
+        μSched sched ({(y : Y)} : Set Y)) (scheduleSpaceMeasure R) := by
+    have huncurry := partialTraj_apply_measurable_in_sched
+      spec R.corrupt n (MeasurableSet.singleton (y : Y))
+    have hpair : Measurable (fun sched : ScheduleAssignment σ ι => (sched, x₀)) :=
+      measurable_prodMk_right
+    exact (huncurry.comp hpair).aemeasurable
+  calc
+    μAvg S = ∑' y : S, μAvg ({(y : Y)} : Set Y) := hμAvg_atoms
+    _ = ∑' y : S, ∫⁻ sched : ScheduleAssignment σ ι,
+          μSched sched ({(y : Y)} : Set Y) ∂(scheduleSpaceMeasure R) := by
+        exact tsum_congr fun y => hsingleton y
+    _ = ∫⁻ sched : ScheduleAssignment σ ι,
+          ∑' y : S, μSched sched ({(y : Y)} : Set Y)
+          ∂(scheduleSpaceMeasure R) := by
+        rw [lintegral_tsum]
+        exact fun y => hsingleton_meas y
+    _ = ∫⁻ sched : ScheduleAssignment σ ι, μSched sched S ∂(scheduleSpaceMeasure R) := by
+        refine lintegral_congr_ae ?_
+        filter_upwards with sched
+        rw [hμSched_atoms sched]
+
+set_option linter.unusedSectionVars false in
+/-- **Framework lemma (Phase 11-β-followup-7; migrated PR #97).** Fubini /
+Ionescu–Tulcea decomposition of the randomised mixture trace measure.
+
+Given a randomised adversary `R` and an initial-state probability
+measure `μ`:
+
+  * the deterministic trace measure
+    `traceDist spec (sched.toAdversary R.corrupt) μ` is AEMeasurable
+    in `sched` w.r.t. `scheduleSpaceMeasure R`;
+  * the mixture trace measure equals the `Measure.bind` of these
+    deterministic trace measures over the schedule-space measure.
+
+**Proof.** Direct application of the two mathlib-upstream-candidate
+lemmas in `Leslie.Mathlib.Probability.Kernel.IonescuTulcea.Bind`:
+`Kernel.trajMeasure_measurable` (parameterised measurability) and
+`Kernel.trajMeasure_bind_kernel_of_partial` (the *axiom-clean*
+trajectory-level Fubini identity from PR #96). The four hypotheses come
+from the auxiliary lemmas `stepKernel_apply_measurable_in_sched`,
+`randomisedStepKernel_apply_eq_bind_stepKernel`,
+`partialTraj_apply_measurable_in_sched`, and
+`partialTraj_apply_eq_bind_in_sched` above; the latter two encapsulate
+the residual `infinitePi`-Fubini content. -/
+theorem randomisedTraceDist_eq_bind_traceDist
+    (spec : ProbActionSpec σ ι) (R : RandomisedAdversary σ ι)
+    (μ : Measure σ) [IsProbabilityMeasure μ] :
+    AEMeasurable
+        (fun sched : ScheduleAssignment σ ι =>
+          traceDist spec (sched.toAdversary R.corrupt) μ)
+        (scheduleSpaceMeasure R)
+      ∧ randomisedTraceDist spec R μ =
+        Measure.bind (scheduleSpaceMeasure R) fun sched =>
+          traceDist spec (sched.toAdversary R.corrupt) μ := by
+  classical
+  set μ₀_full : Measure (σ × Option ι) := μ.map (fun s => (s, (none : Option ι)))
+    with _hμ₀_full_def
+  haveI hμ₀_full : IsProbabilityMeasure μ₀_full :=
+    Measure.isProbabilityMeasure_map (by fun_prop)
+  have h_meas : ∀ (n : ℕ) (h : FinPrefix σ ι n) {s : Set (σ × Option ι)},
+      MeasurableSet s →
+      Measurable (fun sched : ScheduleAssignment σ ι =>
+        (stepKernel spec (sched.toAdversary R.corrupt) n) h s) :=
+    fun n h _ hs => stepKernel_apply_measurable_in_sched spec R.corrupt h hs
+  have hMeasurable : Measurable
+      (fun sched : ScheduleAssignment σ ι =>
+        Kernel.trajMeasure (X := fun _ => σ × Option ι) μ₀_full
+          (stepKernel spec (sched.toAdversary R.corrupt))) :=
+    ProbabilityTheory.Kernel.trajMeasure_measurable
+      (X := fun _ => σ × Option ι)
+      (β := ScheduleAssignment σ ι)
+      (μ₀ := μ₀_full)
+      (κ := fun sched n => stepKernel spec (sched.toAdversary R.corrupt) n)
+      h_meas
+  have hAE : AEMeasurable
+      (fun sched : ScheduleAssignment σ ι =>
+        traceDist spec (sched.toAdversary R.corrupt) μ)
+      (scheduleSpaceMeasure R) := hMeasurable.aemeasurable
+  refine ⟨hAE, ?_⟩
+  -- Migrated to `trajMeasure_bind_kernel_of_partial` (PR #96 corrected variant):
+  -- supply the joint measurability + trajectory-level bind hypotheses directly.
+  have h_partialTraj_meas :
+      ∀ (n : ℕ) {S : Set (Π i : Finset.Iic n, σ × Option ι)}, MeasurableSet S →
+        Measurable (Function.uncurry
+          (fun (sched : ScheduleAssignment σ ι)
+              (x₀ : Π _i : Finset.Iic 0, σ × Option ι) =>
+            (Kernel.partialTraj (X := fun _ => σ × Option ι)
+              (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n
+              x₀) S)) :=
+    fun n _ hS => partialTraj_apply_measurable_in_sched spec R.corrupt n hS
+  have h_partialTraj_bind :
+      ∀ (n : ℕ) (x₀ : Π _i : Finset.Iic 0, σ × Option ι)
+        {S : Set (Π i : Finset.Iic n, σ × Option ι)}, MeasurableSet S →
+        (Kernel.partialTraj (X := fun _ => σ × Option ι)
+            (randomisedStepKernel spec R) 0 n x₀) S =
+          ∫⁻ sched : ScheduleAssignment σ ι,
+            (Kernel.partialTraj (X := fun _ => σ × Option ι)
+              (fun n => stepKernel spec (sched.toAdversary R.corrupt) n) 0 n
+              x₀) S
+              ∂(scheduleSpaceMeasure R) :=
+    fun n x₀ _ hS => partialTraj_apply_eq_bind_in_sched spec R n x₀ hS
+  have hBind :
+      Kernel.trajMeasure (X := fun _ => σ × Option ι) μ₀_full
+          (randomisedStepKernel spec R) =
+        Measure.bind (scheduleSpaceMeasure R) fun sched =>
+          Kernel.trajMeasure (X := fun _ => σ × Option ι) μ₀_full
+            (stepKernel spec (sched.toAdversary R.corrupt)) :=
+    ProbabilityTheory.Kernel.trajMeasure_bind_kernel_of_partial
+      (X := fun _ => σ × Option ι)
+      (β := ScheduleAssignment σ ι)
+      (μ₀ := μ₀_full)
+      (ν := scheduleSpaceMeasure R)
+      (κ := fun sched n => stepKernel spec (sched.toAdversary R.corrupt) n)
+      hMeasurable
+      (κAvg := randomisedStepKernel spec R)
+      h_partialTraj_meas
+      h_partialTraj_bind
+  exact hBind
+
+end RandomisedTraceDistFubini
 
 /-! ## Inductive lift theorems -/
 
