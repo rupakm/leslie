@@ -3447,7 +3447,7 @@ theorem decide_delivery_binary (hn : n > 3 * f)
     refine ⟨0, Or.inl ?_⟩
     cases hd : ((exec.drop k e 0).local_ q).decided with
     | none => exact absurd hd hdec_now
-    | some v => exact ⟨v, hd⟩
+    | some v => simp only [Option.some.injEq, exists_eq']
 
 /-- `⊥` decide delivery: a correct `q` that has approved two distinct
     values `v₁ ≠ v₂` and has ≥ `n − f` total vote receipts over some
@@ -3488,7 +3488,7 @@ theorem decide_delivery_none (hn : n > 3 * f)
   · refine ⟨0, Or.inl ?_⟩
     cases hd : ((exec.drop k e 0).local_ q).decided with
     | none => exact absurd hd hdec_now
-    | some v => exact ⟨v, hd⟩
+    | some v => simp only [Option.some.injEq, exists_eq']
 
 /-! ## Cascade lemmas
 
