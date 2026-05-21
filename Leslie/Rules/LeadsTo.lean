@@ -83,7 +83,7 @@ theorem leads_to_or {Γ p1 p2 q : pred σ}
 /-- Trivial leads-to: p ↝ p. -/
 theorem leads_to_refl (Γ p : pred σ) :
     pred_implies Γ (leads_to p p) :=
-  fun _ _ _k hp => ⟨0, (exec.drop_zero _).symm ▸ hp⟩
+  fun _ _ _k hp => ⟨0, hp⟩
 
 /-! ### Well-founded induction for leads-to
 

@@ -79,26 +79,27 @@ structure WF1Premises (p q : pred σ) (next a : action σ) (e : exec σ) : Prop 
 
 /-- Apply `wf1` using structured premises. This is the recommended way to use WF1
     in liveness proofs: instantiate `WF1Premises` with named fields, then call this. -/
+private theorem nat_rw1 (k : Nat) : 0 + k = k := Nat.zero_add k
+private theorem nat_rw2 (k : Nat) : 1 + k = k + 1 := Nat.add_comm 1 k
+
 theorem wf1_apply {p q : pred σ} {next a : action σ} {e : exec σ}
     (h : WF1Premises p q next a e) : leads_to p q e := by
-  apply wf1 p q next a e
-  refine ⟨?_, ?_, ?_, h.always_next, h.fair⟩
-  · intro k ⟨hp, hnext⟩
-    simp only [action_pred, exec.drop] at hnext
-    have hsafe := h.safety k hp hnext
-    -- Goal: later p (e.drop k) ∨ later q (e.drop k)
-    -- = p ((e.drop k).drop 1) ∨ q ((e.drop k).drop 1)
-    -- = p (e.drop (k + 1)) ∨ q (e.drop (k + 1))  [by exec.drop_drop]
-    rcases hsafe with hp' | hq'
+  have hsafety : e |=tla= p ∧ ⟨next⟩ ⇒ ◯ p ∨ ◯ q := by
+    intro k ⟨hp, hnext⟩
+    simp only [action_pred, exec.drop, nat_rw1, nat_rw2] at hnext
+    rcases h.safety k hp hnext with hp' | hq'
     · left ; show p ((e.drop k).drop 1) ; rw [exec.drop_drop] ; exact hp'
     · right ; show q ((e.drop k).drop 1) ; rw [exec.drop_drop] ; exact hq'
-  · intro k ⟨hp, hnext, ha⟩
-    simp only [action_pred, exec.drop] at hnext ha
-    have hprog := h.progress k hp hnext ha
-    show q ((e.drop k).drop 1) ; rw [exec.drop_drop] ; exact hprog
-  · intro k hp
-    simp only [tla_enabled, state_pred, exec.drop, tla_or]
+  have hprogress : e |=tla= p ∧ ⟨next⟩ ∧ ⟨a⟩ ⇒ ◯ q := by
+    intro k ⟨hp, hnext, ha⟩
+    simp only [action_pred, exec.drop, nat_rw1, nat_rw2] at hnext ha
+    show q ((e.drop k).drop 1) ; rw [exec.drop_drop] ; exact h.progress k hp hnext ha
+  have henablement : e |=tla= p ⇒ Enabled a ∨ q := by
+    intro k hp
+    simp only [tla_enabled, state_pred, exec.drop, tla_or, enabled, nat_rw1]
     exact h.enablement k hp
+  have := wf1 p q next a
+  exact this e ⟨hsafety, hprogress, henablement, h.always_next, h.fair⟩
 
 /-- A (relatively) original presentation of the `wf1` rule. -/
 theorem wf1_original (p q : pred σ) (next a : action σ) :
