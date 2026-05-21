@@ -1493,8 +1493,8 @@ theorem avssU_step_partyOutput_lt (s : AVSSState n t F) (p : Fin n)
   have hds : (avssStep (AVSSAction.partyOutput p) s).dealerSent =
       s.dealerSent := by simp [avssStep, setLocal]
   have huds : unsentDealerSet (avssStep (AVSSAction.partyOutput p) s) =
-      unsentDealerSet s :=
-    by simp [unsentDealerSet, avssStep, setLocal]
+      unsentDealerSet s := by
+    simp only [unsentDealerSet]; congr 1 <;> simp [avssStep, setLocal]
   have hcorr : (avssStep (AVSSAction.partyOutput p) s).corrupted =
       s.corrupted := by simp [avssStep, setLocal]
   have hifd : (avssStep (AVSSAction.partyOutput p) s).inflightDeliveries =
@@ -1592,7 +1592,7 @@ theorem avssU_step_partyReceiveReady_lt (s : AVSSState n t F) (p q : Fin n)
       s.dealerSent := by simp [avssStep, setLocal]
   have huds : unsentDealerSet (avssStep (AVSSAction.partyReceiveReady p q) s) =
       unsentDealerSet s :=
-    by simp [unsentDealerSet, avssStep, setLocal]
+    by simp only [unsentDealerSet]; congr 1 <;> simp [avssStep, setLocal]
   have hcorr : (avssStep (AVSSAction.partyReceiveReady p q) s).corrupted =
       s.corrupted := by simp [avssStep, setLocal]
   have hifd : (avssStep (AVSSAction.partyReceiveReady p q) s).inflightDeliveries =
@@ -1699,7 +1699,7 @@ theorem avssU_step_partyReady_lt (s : AVSSState n t F) (p : Fin n)
       s.dealerSent := by simp [avssStep, setLocal]
   have huds : unsentDealerSet (avssStep (AVSSAction.partyReady p) s) =
       unsentDealerSet s :=
-    by simp [unsentDealerSet, avssStep, setLocal]
+    by simp only [unsentDealerSet]; congr 1 <;> simp [avssStep, setLocal]
   have hcorr : (avssStep (AVSSAction.partyReady p) s).corrupted =
       s.corrupted := by simp [avssStep, setLocal]
   have hifd : (avssStep (AVSSAction.partyReady p) s).inflightDeliveries =
@@ -1829,7 +1829,7 @@ theorem avssU_step_partyAmplify_lt (s : AVSSState n t F) (p : Fin n)
       s.dealerSent := by simp [avssStep, setLocal]
   have huds : unsentDealerSet (avssStep (AVSSAction.partyAmplify p) s) =
       unsentDealerSet s :=
-    by simp [unsentDealerSet, avssStep, setLocal]
+    by simp only [unsentDealerSet]; congr 1 <;> simp [avssStep, setLocal]
   have hcorr : (avssStep (AVSSAction.partyAmplify p) s).corrupted =
       s.corrupted := by simp [avssStep, setLocal]
   have hifd : (avssStep (AVSSAction.partyAmplify p) s).inflightDeliveries =
@@ -1941,7 +1941,7 @@ theorem avssU_step_partyEchoReceive_lt (s : AVSSState n t F) (p q : Fin n)
       s.dealerSent := by simp [avssStep, setLocal]
   have huds : unsentDealerSet (avssStep (AVSSAction.partyEchoReceive p q) s) =
       unsentDealerSet s :=
-    by simp [unsentDealerSet, avssStep, setLocal]
+    by simp only [unsentDealerSet]; congr 1 <;> simp [avssStep, setLocal]
   have hcorr : (avssStep (AVSSAction.partyEchoReceive p q) s).corrupted =
       s.corrupted := by simp [avssStep, setLocal]
   have hifd : (avssStep (AVSSAction.partyEchoReceive p q) s).inflightDeliveries =
@@ -2043,7 +2043,7 @@ theorem avssU_step_partyDeliver_lt (s : AVSSState n t F) (p : Fin n)
       s.dealerSent := by simp [avssStep, setLocal]
   have huds : unsentDealerSet (avssStep (AVSSAction.partyDeliver p) s) =
       unsentDealerSet s :=
-    by simp [unsentDealerSet, avssStep, setLocal]
+    by simp only [unsentDealerSet]; congr 1 <;> simp [avssStep, setLocal]
   have hcorr : (avssStep (AVSSAction.partyDeliver p) s).corrupted =
       s.corrupted := by simp [avssStep, setLocal]
   have hifd : (avssStep (AVSSAction.partyDeliver p) s).inflightDeliveries =
@@ -2171,7 +2171,7 @@ theorem avssU_step_partyCorruptDeliver_eq (s : AVSSState n t F) (p : Fin n)
       s.dealerSent := by simp [avssStep, setLocal]
   have huds : unsentDealerSet (avssStep (AVSSAction.partyCorruptDeliver p) s) =
       unsentDealerSet s :=
-    by simp [unsentDealerSet, avssStep, setLocal]
+    by simp only [unsentDealerSet]; congr 1 <;> simp [avssStep, setLocal]
   have hcorr : (avssStep (AVSSAction.partyCorruptDeliver p) s).corrupted =
       s.corrupted := by simp [avssStep, setLocal]
   have hifd : (avssStep (AVSSAction.partyCorruptDeliver p) s).inflightDeliveries =
@@ -2246,7 +2246,7 @@ theorem avssU_step_partyEchoSend_lt (s : AVSSState n t F) (p : Fin n)
       s.dealerSent := by simp [avssStep, setLocal]
   have huds : unsentDealerSet (avssStep (AVSSAction.partyEchoSend p) s) =
       unsentDealerSet s :=
-    by simp [unsentDealerSet, avssStep, setLocal]
+    by simp only [unsentDealerSet]; congr 1 <;> simp [avssStep, setLocal]
   have hcorr : (avssStep (AVSSAction.partyEchoSend p) s).corrupted =
       s.corrupted := by simp [avssStep, setLocal]
   have hifd : (avssStep (AVSSAction.partyEchoSend p) s).inflightDeliveries =
@@ -8438,7 +8438,9 @@ private theorem avssSpec_stepKernel_coalitionGrid_AE
       simp only [hgate, dite_true]
       rw [show ((avssSpec (t := t) sec corr coeffs).actions i).effect h.currentState hgate
             = PMF.pure (avssStep i h.currentState) from rfl,
-          PMF.toMeasure_pure, Measure.map_dirac (by fun_prop), ae_dirac_iff hPset]
+          PMF.toMeasure_pure]
+      simp only [Measure.map_dirac]
+      rw [ae_dirac_iff hPset]
       exact avssStep_coalitionGrid_invariant coeffs i h.currentState C D
     · -- Gate-fail stutter.
       simp only [hgate, dite_false]
@@ -8883,7 +8885,9 @@ private theorem avssSpec_stepKernel_partyPoint_AE
     · simp only [hgate, dite_true]
       rw [show ((avssSpec (t := t) sec corr coeffs).actions i).effect h.currentState hgate
             = PMF.pure (avssStep i h.currentState) from rfl,
-          PMF.toMeasure_pure, Measure.map_dirac (by fun_prop), ae_dirac_iff hPset]
+          PMF.toMeasure_pure]
+      simp only [Measure.map_dirac]
+      rw [ae_dirac_iff hPset]
       exact avssStep_partyPoint_invariant i h.currentState
     · simp only [hgate, dite_false]
       rw [ae_dirac_iff hPset]
@@ -8907,7 +8911,9 @@ private theorem avssSpec_stepKernel_corrupted_AE
     · simp only [hgate, dite_true]
       rw [show ((avssSpec (t := t) sec corr coeffs).actions i).effect h.currentState hgate
             = PMF.pure (avssStep i h.currentState) from rfl,
-          PMF.toMeasure_pure, Measure.map_dirac (by fun_prop), ae_dirac_iff hPset]
+          PMF.toMeasure_pure]
+      simp only [Measure.map_dirac]
+      rw [ae_dirac_iff hPset]
       exact avssStep_corrupted_invariant i h.currentState
     · simp only [hgate, dite_false]
       rw [ae_dirac_iff hPset]
@@ -9024,7 +9030,9 @@ private theorem avssSpec_stepKernel_dealerHonest_AE
     · simp only [hgate, dite_true]
       rw [show ((avssSpec (t := t) sec corr coeffs).actions i).effect h.currentState hgate
             = PMF.pure (avssStep i h.currentState) from rfl,
-          PMF.toMeasure_pure, Measure.map_dirac (by fun_prop), ae_dirac_iff hPset]
+          PMF.toMeasure_pure]
+      simp only [Measure.map_dirac]
+      rw [ae_dirac_iff hPset]
       exact avssStep_dealerHonest_invariant i h.currentState
     · simp only [hgate, dite_false]
       rw [ae_dirac_iff hPset]
@@ -9096,7 +9104,9 @@ private theorem avssSpec_stepKernel_dealerCommit_AE
     · simp only [hgate, dite_true]
       rw [show ((avssSpec (t := t) sec corr coeffs).actions i).effect h.currentState hgate
             = PMF.pure (avssStep i h.currentState) from rfl,
-          PMF.toMeasure_pure, Measure.map_dirac (by fun_prop), ae_dirac_iff hPset]
+          PMF.toMeasure_pure]
+      simp only [Measure.map_dirac]
+      rw [ae_dirac_iff hPset]
       exact avssStep_dealerCommit_invariant i h.currentState
     · simp only [hgate, dite_false]
       rw [ae_dirac_iff hPset]
@@ -9289,7 +9299,9 @@ private theorem avssSpec_stepKernel_dealerShareTo_track_AE
     · simp only [hgate, dite_true]
       rw [show ((avssSpec (t := t) sec corr coeffs).actions i).effect h.currentState hgate
             = PMF.pure (avssStep i h.currentState) from rfl,
-          PMF.toMeasure_pure, Measure.map_dirac (by fun_prop), ae_dirac_iff hPset]
+          PMF.toMeasure_pure]
+      simp only [Measure.map_dirac]
+      rw [ae_dirac_iff hPset]
       -- y = (avssStep i h.currentState, some i). Case on `i = dealerShareTo p`.
       by_cases hi : i = .dealerShareTo p
       · subst hi
@@ -13896,7 +13908,7 @@ theorem avssInitMeasure_simView_factors_through_corrRow
     Classical.epsilon_spec h_witness
   exact (h_eps ⟨p, hp⟩).symm
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 800000 in
 /-- **Step B — sec-invariance of the joint marginal.**
 
 Combine Step A with `corrRowMap_uniform_sec_invariant` to conclude
@@ -14084,7 +14096,7 @@ theorem avssInitMeasure_simViewExt_factors_through_corrRow
     Classical.epsilon_spec h_witness
   exact (h_eps ⟨p, hp⟩).symm
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 800000 in
 /-- **Step B (Ext form, 8.5c) — sec-invariance of the Ext joint marginal.** -/
 theorem avssInitMeasure_simViewExt_sec_invariant
     (sec sec' : F) {corr : Finset (Fin n)}

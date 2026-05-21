@@ -14,6 +14,17 @@ open TLA
 
 namespace PetersonLiveness
 
+private theorem nat_rw1 (k : Nat) : 0 + k = k := Nat.zero_add k
+private theorem nat_rw2 (k : Nat) : 1 + k = k + 1 := Nat.add_comm 1 k
+
+/-- Convert `f (e (k + j))` to `state_pred f (e.drop k |>.drop j)` -/
+private theorem mk_sp_drop {f : PState → Prop} {e : exec PState} {k j : Nat}
+    (h : f (e (k + j))) : state_pred f ((e.drop k).drop j) := by
+  simp only [state_pred, exec.drop]
+  -- goal: f (e (0 + j + k))
+  have : 0 + j + k = k + j := by omega
+  rw [this]; exact h
+
 open Peterson
 
 /-! ### Fair specification -/
@@ -48,15 +59,15 @@ theorem always_inv : pred_implies Γ [tlafml| □ ⌜ inv ⌝] := by
 
 private theorem inv_at (e : exec PState) (hinv : e |=tla= [tlafml| □ ⌜inv⌝]) (k : Nat) :
     inv (e k) := by
-  have := hinv k ; simp only [state_pred, exec.drop, Nat.add_zero] at this ; exact this
+  have := hinv k ; simp only [state_pred, exec.drop, nat_rw1] at this ; exact this
 
 private theorem mk_sp {f : PState → Prop} {e : exec PState} {k : Nat}
     (h : f (e k)) : state_pred f (e.drop k) := by
-  simp [state_pred, exec.drop, Nat.add_zero]; exact h
+  simp [state_pred, exec.drop]; exact h
 
 private theorem un_sp {f : PState → Prop} {e : exec PState} {k : Nat}
     (h : state_pred f (e.drop k)) : f (e k) := by
-  simp [state_pred, exec.drop, Nat.add_zero] at h; exact h
+  simp [state_pred, exec.drop] at h; exact h
 
 /-! ### WF1 step lemmas -/
 
@@ -71,16 +82,16 @@ theorem cs1_leads_to_flag1_false :
   apply wf1_apply (a := (peterson.actions .exit1).toAction) ⟨?_, ?_, ?_,
     extractNext e hspec, extractWF e hspec .exit1⟩
   · intro k hp hnext
-    simp only [state_pred, exec.drop, Nat.add_zero] at *
+    simp only [state_pred, exec.drop, nat_rw1] at *
     have hi := inv_at e hinv k
     obtain ⟨i, hfire⟩ := hnext
     cases i <;> simp_all [peterson, GatedAction.fires, inv]
   · intro k hp hnext ha
-    simp only [state_pred, exec.drop, Nat.add_zero, GatedAction.toAction, GatedAction.fires] at *
+    simp only [state_pred, exec.drop, nat_rw1, GatedAction.toAction, GatedAction.fires] at *
     obtain ⟨_, ht⟩ := ha
     simp_all [peterson]
   · intro k hp
-    simp only [state_pred, exec.drop, Nat.add_zero, GatedAction.toAction] at *
+    simp only [state_pred, exec.drop, nat_rw1, GatedAction.toAction] at *
     left
     exact ⟨{ (e k) with flag1 := false, pc1 := .idle },
       ⟨by simp [peterson, GatedAction.fires, hp.2], by simp [peterson]⟩⟩
@@ -96,16 +107,16 @@ theorem flagged1_leads_to_turn_false :
   apply wf1_apply (a := (peterson.actions .setTurn1).toAction) ⟨?_, ?_, ?_,
     extractNext e hspec, extractWF e hspec .setTurn1⟩
   · intro k hp hnext
-    simp only [state_pred, exec.drop, Nat.add_zero] at *
+    simp only [state_pred, exec.drop, nat_rw1] at *
     have hi := inv_at e hinv k
     obtain ⟨i, hfire⟩ := hnext
     cases i <;> simp_all [peterson, GatedAction.fires, inv]
   · intro k hp hnext ha
-    simp only [state_pred, exec.drop, Nat.add_zero, GatedAction.toAction, GatedAction.fires] at *
+    simp only [state_pred, exec.drop, nat_rw1, GatedAction.toAction, GatedAction.fires] at *
     obtain ⟨_, ht⟩ := ha
     simp_all [peterson]
   · intro k hp
-    simp only [state_pred, exec.drop, Nat.add_zero, GatedAction.toAction] at *
+    simp only [state_pred, exec.drop, nat_rw1, GatedAction.toAction] at *
     left
     exact ⟨{ (e k) with turn := false, pc1 := .waiting },
       ⟨by simp [peterson, GatedAction.fires, hp.2.1], by simp [peterson]⟩⟩
@@ -121,16 +132,16 @@ theorem waiting1_true_leads_to_cs1 :
   apply wf1_apply (a := (peterson.actions .enter1).toAction) ⟨?_, ?_, ?_,
     extractNext e hspec, extractWF e hspec .enter1⟩
   · intro k hp hnext
-    simp only [state_pred, exec.drop, Nat.add_zero] at *
+    simp only [state_pred, exec.drop, nat_rw1] at *
     have hi := inv_at e hinv k
     obtain ⟨i, hfire⟩ := hnext
     cases i <;> simp_all [peterson, GatedAction.fires, inv]
   · intro k hp hnext ha
-    simp only [state_pred, exec.drop, Nat.add_zero, GatedAction.toAction, GatedAction.fires] at *
+    simp only [state_pred, exec.drop, nat_rw1, GatedAction.toAction, GatedAction.fires] at *
     obtain ⟨_, ht⟩ := ha
     simp_all [peterson]
   · intro k hp
-    simp only [state_pred, exec.drop, Nat.add_zero, GatedAction.toAction] at *
+    simp only [state_pred, exec.drop, nat_rw1, GatedAction.toAction] at *
     left
     exact ⟨{ (e k) with pc1 := .cs },
       ⟨by simp [peterson, GatedAction.fires, hp.2.1, hp.2.2], by simp [peterson]⟩⟩
@@ -146,16 +157,16 @@ theorem turn_false_leads_to_cs0 :
   apply wf1_apply (a := (peterson.actions .enter0).toAction) ⟨?_, ?_, ?_,
     extractNext e hspec, extractWF e hspec .enter0⟩
   · intro k hp hnext
-    simp only [state_pred, exec.drop, Nat.add_zero] at *
+    simp only [state_pred, exec.drop, nat_rw1] at *
     have hi := inv_at e hinv k
     obtain ⟨i, hfire⟩ := hnext
     cases i <;> simp_all [peterson, GatedAction.fires, inv]
   · intro k hp hnext ha
-    simp only [state_pred, exec.drop, Nat.add_zero, GatedAction.toAction, GatedAction.fires] at *
+    simp only [state_pred, exec.drop, nat_rw1, GatedAction.toAction, GatedAction.fires] at *
     obtain ⟨_, ht⟩ := ha
     simp_all [peterson]
   · intro k hp
-    simp only [state_pred, exec.drop, Nat.add_zero, GatedAction.toAction] at *
+    simp only [state_pred, exec.drop, nat_rw1, GatedAction.toAction] at *
     left
     exact ⟨{ (e k) with pc0 := .cs },
       ⟨by simp [peterson, GatedAction.fires, hp.1, hp.2], by simp [peterson]⟩⟩
@@ -170,7 +181,7 @@ private theorem idle1_to_cs0 (e : exec PState) (hspec : Γ e) (k : Nat)
     ∃ j, (e (k + j)).pc0 = .cs := by
   have hinv := always_inv e hspec
   have hnext_k := extractNext e hspec k
-  simp only [action_pred, exec.drop, Nat.add_zero] at hnext_k
+  simp only [action_pred, exec.drop, nat_rw1, nat_rw2] at hnext_k
   obtain ⟨i, hfire⟩ := hnext_k
   have hi := inv_at e hinv k
   have hfire_cases : (i = .enter0 ∨ i = .setFlag1) := by
@@ -191,17 +202,19 @@ private theorem idle1_to_cs0 (e : exec PState) (hspec : Γ e) (k : Nat)
       have h1 := turn_false_leads_to_cs0 e hspec (k + 1)
         (mk_sp ⟨hk1_pc0, by rw [hk1_turn]; exact hturn⟩)
       obtain ⟨j1, hj1⟩ := h1
-      simp only [state_pred, exec.drop, Nat.add_zero] at hj1
+      rw [exec.drop_drop] at hj1
+      simp only [state_pred, exec.drop, nat_rw1] at hj1
       exact ⟨1 + j1, by simp only [Nat.add_assoc] at hj1 ⊢; exact hj1⟩
     · -- turn=true → flagged1 chain
       simp only [Bool.not_eq_false] at hturn
       have h1 := flagged1_leads_to_turn_false e hspec (k + 1)
         (mk_sp ⟨hk1_pc0, hk1_pc1, by rw [hk1_turn]; exact hturn⟩)
       obtain ⟨j1, hj1⟩ := h1
-      simp only [exec.drop_drop] at hj1
+      rw [exec.drop_drop] at hj1
       have h2 := turn_false_leads_to_cs0 e hspec (k + 1 + j1) hj1
       obtain ⟨j2, hj2⟩ := h2
-      simp only [state_pred, exec.drop, Nat.add_zero] at hj2
+      rw [exec.drop_drop] at hj2
+      simp only [state_pred, exec.drop, nat_rw1] at hj2
       exact ⟨1 + j1 + j2, by simp only [Nat.add_assoc] at hj2 ⊢; exact hj2⟩
 
 /-! ### Main theorem: starvation freedom -/
@@ -227,7 +240,7 @@ theorem starvation_freedom_0 :
         have h := hi.2.1; by_contra hne; exact absurd (h.mpr hne) (by simp_all)
       have h := idle1_to_cs0 e hspec k hp' hf1 hpc1_idle
       obtain ⟨j, hj⟩ := h
-      exact ⟨j, mk_sp hj⟩
+      exact ⟨j, mk_sp_drop hj⟩
     · -- flag1=true → pc1 ≠ idle
       simp only [Bool.not_eq_false] at hf1
       have hpc1_ne_idle : (e k).pc1 ≠ .idle :=
@@ -236,25 +249,26 @@ theorem starvation_freedom_0 :
       · -- pc1=cs → exit1 → flag1=false → idle1 → cs0
         have h1 := cs1_leads_to_flag1_false e hspec k (mk_sp ⟨hp', hpc1_cs⟩)
         obtain ⟨j1, hj1⟩ := h1
-        simp only [state_pred, exec.drop, Nat.add_zero] at hj1
+        rw [exec.drop_drop] at hj1
+        simp only [state_pred, exec.drop, nat_rw1] at hj1
         -- At k+j1: pc0=waiting, flag1=false → use idle1_to_cs0
         have hi' := inv_at e hinv (k + j1)
         have hpc1_idle : (e (k + j1)).pc1 = .idle := by
           have h := hi'.2.1; by_contra hne; exact absurd (h.mpr hne) (by simp_all)
         have h2 := idle1_to_cs0 e hspec (k + j1) hj1.1 hj1.2 hpc1_idle
         obtain ⟨j2, hj2⟩ := h2
-        exact ⟨j1 + j2, by simp only [Nat.add_assoc] at hj2 ⊢; exact mk_sp hj2⟩
+        exact ⟨j1 + j2, by rw [Nat.add_assoc] at hj2; exact mk_sp_drop hj2⟩
       · by_cases hpc1_flagged : (e k).pc1 = .flagged
         · -- pc1=flagged, turn=true → setTurn1 → turn=false → cs0
           have h1 := flagged1_leads_to_turn_false e hspec k
             (mk_sp ⟨hp', hpc1_flagged, hturn⟩)
           obtain ⟨j1, hj1⟩ := h1
-          simp only [exec.drop_drop] at hj1
+          rw [exec.drop_drop] at hj1
           have h2 := turn_false_leads_to_cs0 e hspec (k + j1) hj1
           obtain ⟨j2, hj2⟩ := h2
-          simp only [exec.drop_drop] at hj2
+          rw [exec.drop_drop] at hj2
           exact ⟨j1 + j2, by
-            simp only [exec.drop_drop, Nat.add_assoc] at hj2 ⊢; exact hj2⟩
+            rw [exec.drop_drop]; rw [Nat.add_assoc] at hj2; exact hj2⟩
         · -- pc1=waiting, turn=true → enter1 → pc1=cs → cs1 → flag1=false → idle1 → cs0
           have hpc1_waiting : (e k).pc1 = .waiting := by
             cases h : (e k).pc1 <;> simp_all
@@ -262,12 +276,14 @@ theorem starvation_freedom_0 :
           have h1 := waiting1_true_leads_to_cs1 e hspec k
             (mk_sp ⟨hp', hpc1_waiting, hturn⟩)
           obtain ⟨j1, hj1⟩ := h1
-          simp only [state_pred, exec.drop, Nat.add_zero] at hj1
+          rw [exec.drop_drop] at hj1
+          simp only [state_pred, exec.drop, nat_rw1] at hj1
           -- Step 2: cs1 → flag1=false
           have h2 := cs1_leads_to_flag1_false e hspec (k + j1)
             (mk_sp hj1)
           obtain ⟨j2, hj2⟩ := h2
-          simp only [state_pred, exec.drop, Nat.add_zero] at hj2
+          rw [exec.drop_drop] at hj2
+          simp only [state_pred, exec.drop, nat_rw1] at hj2
           -- Step 3: flag1=false → idle1 → cs0
           have hi' := inv_at e hinv (k + j1 + j2)
           have hpc1_idle : (e (k + j1 + j2)).pc1 = .idle := by
@@ -275,6 +291,7 @@ theorem starvation_freedom_0 :
           have h3 := idle1_to_cs0 e hspec (k + j1 + j2) hj2.1 hj2.2 hpc1_idle
           obtain ⟨j3, hj3⟩ := h3
           exact ⟨j1 + j2 + j3, by
-            simp only [Nat.add_assoc] at hj3 ⊢; exact mk_sp hj3⟩
+            have : k + j1 + j2 + j3 = k + (j1 + j2 + j3) := by omega
+            rw [this] at hj3; exact mk_sp_drop hj3⟩
 
 end PetersonLiveness

@@ -18,7 +18,7 @@ namespace TileLink.MultiLine
 open TLA SymShared TileLink.Messages ProductSpec
 
 /-- Multi-line TileLink: `numAddrs` independent copies of the single-line model. -/
-def tlMultiLine (numAddrs n : Nat) : Spec (Fin numAddrs → SymState HomeState NodeState n) :=
+noncomputable def tlMultiLine (numAddrs n : Nat) : Spec (Fin numAddrs → SymState HomeState NodeState n) :=
   product ((tlMessages.toSpec n)) numAddrs
 
 /-- Per-address refinement invariant is an invariant of the multi-line model. -/
@@ -31,18 +31,22 @@ theorem multi_line_refinementInv (numAddrs n : Nat) (addr : Fin numAddrs) :
   · intro s s' hrefInv hnext
     exact refinementInv_preserved n s s' hrefInv hnext
 
+/-- Per-address read coherence helper predicate. -/
+def readCoherencePred (n : Nat) (i : Fin n)
+    (s : SymState HomeState NodeState n) : Prop :=
+  forwardSimInv n s →
+  (s.locals i).line.perm.allowsRead →
+  (s.locals i).line.valid = true →
+  s.shared.currentTxn = none →
+  (s.locals i).releaseInFlight = false →
+  (s.locals i).line.data = (refMap n s).shared.mem
+
 /-- Per-address read coherence: a readable node at any address returns
     the logical value for that address. -/
 theorem multi_line_read_coherence (numAddrs n : Nat) (addr : Fin numAddrs)
     (i : Fin n) :
     pred_implies (tlMultiLine numAddrs n).safety
-      [tlafml| □ ⌜ fun s =>
-        ForwardSimInv n (s addr) →
-        (s addr |>.locals i).line.perm.allowsRead →
-        (s addr |>.locals i).line.valid = true →
-        (s addr |>.shared.currentTxn = none) →
-        (s addr |>.locals i).releaseInFlight = false →
-        (s addr |>.locals i).line.data = (refMap n (s addr)).shared.mem ⌝] := by
+      [tlafml| □ ⌜ fun s => readCoherencePred n i (s addr) ⌝] := by
   apply product_invariant_lift
   · intro s hinit
     intro hfwd hperm hvalid htxn hflight

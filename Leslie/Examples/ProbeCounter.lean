@@ -19,6 +19,9 @@ open TLA
 
 namespace ProbeCounter
 
+private theorem nat_rw1 (k : Nat) : 0 + k = k := Nat.zero_add k
+private theorem nat_rw2 (k : Nat) : 1 + k = k + 1 := Nat.add_comm 1 k
+
 /-! ### Spec: state = Nat, action = decrement -/
 
 def decrement (s s' : Nat) : Prop := s > 0 ∧ s' = s - 1
@@ -64,7 +67,7 @@ theorem countdown_reaches_zero :
       refine ⟨?_, ?_, ?_, hnext, hwf⟩
       · -- Safety: p ∧ next → ◯p ∨ ◯q. After decrement, counter changes → always ◯q.
         intro m ⟨⟨hp', hcount⟩, hstep⟩
-        simp only [action_pred, exec.drop, later, Nat.add_zero, tla_or, decrement] at *
+        simp only [action_pred, exec.drop, later, nat_rw1, nat_rw2, tla_or, decrement] at *
         rcases hstep with ⟨hpos, hs'⟩
         right
         by_cases h0 : e m - 1 = 0
@@ -72,7 +75,7 @@ theorem countdown_reaches_zero :
         · right; rw [hs', hcount]; omega
       · -- Progress: p ∧ next ∧ a → ◯q
         intro m ⟨⟨hp', hcount⟩, _, hstep⟩
-        simp only [action_pred, exec.drop, later, Nat.add_zero, tla_or, decrement] at *
+        simp only [action_pred, exec.drop, later, nat_rw1, nat_rw2, tla_or, decrement] at *
         rcases hstep with ⟨hpos, hs'⟩
         by_cases h0 : e m - 1 = 0
         · left; rw [hs']; exact h0
@@ -110,6 +113,9 @@ end ProbeCounter
 
 namespace StutterDecrement
 
+private theorem nat_rw1 (k : Nat) : 0 + k = k := Nat.zero_add k
+private theorem nat_rw2 (k : Nat) : 1 + k = k + 1 := Nat.add_comm 1 k
+
 def stutter (s s' : Nat) : Prop := s' = s
 def decrement (s s' : Nat) : Prop := s > 0 ∧ s' = s - 1
 def next (s s' : Nat) : Prop := stutter s s' ∨ decrement s s'
@@ -140,7 +146,7 @@ theorem countdown_reaches_zero :
       refine ⟨?_, ?_, ?_, hnext, hwf⟩
       · -- Safety: stutter preserves p; decrement gives q
         intro m ⟨⟨hp', hcount⟩, hstep⟩
-        simp only [action_pred, exec.drop, later, Nat.add_zero, tla_or, next] at *
+        simp only [action_pred, exec.drop, later, nat_rw1, nat_rw2, tla_or, next] at *
         rcases hstep with hstut | hdec
         · -- Stutter: s' = s → p preserved
           left; rw [stutter] at hstut; rw [hstut]; exact ⟨hp', hcount⟩
@@ -151,7 +157,7 @@ theorem countdown_reaches_zero :
           · right; rw [hs', hcount]; omega
       · -- Progress: decrement fires → q
         intro m ⟨⟨hp', hcount⟩, _, hstep⟩
-        simp only [action_pred, exec.drop, later, Nat.add_zero, tla_or, decrement] at *
+        simp only [action_pred, exec.drop, later, nat_rw1, nat_rw2, tla_or, decrement] at *
         rcases hstep with ⟨hpos, hs'⟩
         by_cases h0 : e m - 1 = 0
         · left; rw [hs']; exact h0
@@ -185,6 +191,9 @@ end StutterDecrement
 
 namespace NondetDecrement
 
+private theorem nat_rw1 (k : Nat) : 0 + k = k := Nat.zero_add k
+private theorem nat_rw2 (k : Nat) : 1 + k = k + 1 := Nat.add_comm 1 k
+
 def stutter (s s' : Nat) : Prop := s' = s
 def ndDecrement (s s' : Nat) : Prop := ∃ d, d ≥ 1 ∧ d ≤ s ∧ s' = s - d
 def next (s s' : Nat) : Prop := stutter s s' ∨ ndDecrement s s'
@@ -214,7 +223,7 @@ theorem countdown_reaches_zero :
       refine ⟨?_, ?_, ?_, hnext, hwf⟩
       · -- Safety: stutter preserves p; ndDecrement gives q
         intro m ⟨⟨hp', hcount⟩, hstep⟩
-        simp only [action_pred, exec.drop, later, Nat.add_zero, tla_or, next] at *
+        simp only [action_pred, exec.drop, later, nat_rw1, nat_rw2, tla_or, next] at *
         rcases hstep with hstut | hdec
         · -- Stutter: p preserved
           left; rw [stutter] at hstut; rw [hstut]; exact ⟨hp', hcount⟩
@@ -226,7 +235,7 @@ theorem countdown_reaches_zero :
           · right; rw [hs', hcount]; omega
       · -- Progress: ndDecrement fires → q
         intro m ⟨⟨hp', hcount⟩, _, hstep⟩
-        simp only [action_pred, exec.drop, later, Nat.add_zero, tla_or, ndDecrement] at *
+        simp only [action_pred, exec.drop, later, nat_rw1, nat_rw2, tla_or, ndDecrement] at *
         obtain ⟨d, hd1, hd2, hs'⟩ := hstep
         by_cases h0 : e m - d = 0
         · left; rw [hs']; exact h0
@@ -261,6 +270,9 @@ end NondetDecrement
     This is the canonical lexicographic ranking example. -/
 
 namespace LexCountdown
+
+private theorem nat_rw1 (k : Nat) : 0 + k = k := Nat.zero_add k
+private theorem nat_rw2 (k : Nat) : 1 + k = k + 1 := Nat.add_comm 1 k
 
 abbrev LState := Nat × Nat
 
@@ -309,7 +321,7 @@ theorem lex_countdown :
       refine ⟨?_, ?_, ?_, hnext, hwf⟩
       · -- Safety: stutter preserves p; decX/decY give q
         intro m ⟨⟨hnd, hx, hy⟩, hstep⟩
-        simp only [action_pred, exec.drop, later, Nat.add_zero, tla_or, nextL,
+        simp only [action_pred, exec.drop, later, nat_rw1, nat_rw2, tla_or, nextL,
           stutterL, decX, decY] at hnd hx hy hstep ⊢
         rcases hstep with hstut | ⟨hxp, hx'⟩ | ⟨hyp, hx', hy'⟩
         · -- Stutter: s' = s → p preserved
@@ -330,7 +342,7 @@ theorem lex_countdown :
             exact ⟨by omega, by omega⟩
       · -- Progress: decX or decY → q
         intro m ⟨⟨hnd, hx, hy⟩, _, hstep⟩
-        simp only [action_pred, exec.drop, later, Nat.add_zero, tla_or, progress,
+        simp only [action_pred, exec.drop, later, nat_rw1, nat_rw2, tla_or, progress,
           decX, decY] at hnd hx hy hstep ⊢
         rcases hstep with ⟨hxp, hx'⟩ | ⟨hyp, hx', hy'⟩
         · by_cases hnd' : (e (m + 1)).1 > 0 ∨ (e (m + 1)).2 > 0

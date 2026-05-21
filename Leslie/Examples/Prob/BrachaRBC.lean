@@ -161,6 +161,11 @@ def brbStep (sender : Fin n) (_val : Value)
         local_ := fun p => if p = i
           then { s.local_ i with returned := some mv }
           else s.local_ p }
+  | .set_broadcast i v =>
+      { s with
+        local_ := fun p => if p = i
+          then { s.local_ i with broadcastVal := some v }
+          else s.local_ p }
 
 /-! ## Action gates
 
@@ -168,7 +173,7 @@ The same gate predicates as `(brb n f Value sender val).actions a` —
 inlined so we don't need to import the relational spec. -/
 
 /-- The gate predicate for action `a` in state `s`. Identical to
-`((brb n f Value sender val).actions a).gate s` upstream. -/
+`((brb n f Value sender).actions a).gate s` upstream. -/
 def actionGate (sender : Fin n) (val : Value)
     (a : Action n Value) (s : State n Value) : Prop :=
   match a with
@@ -178,7 +183,7 @@ def actionGate (sender : Fin n) (val : Value)
       src ∈ s.corrupted ∨
       (isCorrect n Value s src ∧ (s.local_ src).sent dst t mv = false ∧
         match t with
-        | .init => src = sender ∧ mv = val
+        | .init => src = sender ∧ (s.local_ src).broadcastVal = some mv
         | .echo =>
             (s.local_ src).echoed = some mv
             ∨ ((s.local_ src).echoed = none ∧ (s.local_ src).sendRecv = some mv)
@@ -192,6 +197,8 @@ def actionGate (sender : Fin n) (val : Value)
       isCorrect n Value s i ∧
       (s.local_ i).returned = none ∧
       countVoteRecv n Value (s.local_ i) mv ≥ returnThreshold n f
+  | .set_broadcast i _v =>
+      (s.local_ i).broadcastVal = none
 
 /-- The initial-state predicate: empty local states, empty buffer,
 no corruptions. Identical to `(brb …).init` upstream. -/
@@ -303,27 +310,32 @@ noncomputable instance : Fintype (Action n Value) := by
   classical
   exact Fintype.ofEquiv
     (Fin n ⊕ (Fin n × Fin n × MsgType × Value)
-      ⊕ (Fin n × Fin n × MsgType × Value) ⊕ (Fin n × Value))
+      ⊕ (Fin n × Fin n × MsgType × Value) ⊕ (Fin n × Value)
+      ⊕ (Fin n × Value))
     { toFun := fun
         | .inl i => .corrupt i
         | .inr (.inl ⟨src, dst, t, v⟩) => .send src dst t v
         | .inr (.inr (.inl ⟨src, dst, t, v⟩)) => .recv src dst t v
-        | .inr (.inr (.inr ⟨i, v⟩)) => .doReturn i v
+        | .inr (.inr (.inr (.inl ⟨i, v⟩))) => .doReturn i v
+        | .inr (.inr (.inr (.inr ⟨i, v⟩))) => .set_broadcast i v
       invFun := fun
         | .corrupt i => .inl i
         | .send src dst t v => .inr (.inl ⟨src, dst, t, v⟩)
         | .recv src dst t v => .inr (.inr (.inl ⟨src, dst, t, v⟩))
-        | .doReturn i v => .inr (.inr (.inr ⟨i, v⟩))
+        | .doReturn i v => .inr (.inr (.inr (.inl ⟨i, v⟩)))
+        | .set_broadcast i v => .inr (.inr (.inr (.inr ⟨i, v⟩)))
       left_inv := fun
         | .inl _ => rfl
         | .inr (.inl _) => rfl
         | .inr (.inr (.inl _)) => rfl
-        | .inr (.inr (.inr _)) => rfl
+        | .inr (.inr (.inr (.inl _))) => rfl
+        | .inr (.inr (.inr (.inr _))) => rfl
       right_inv := fun
         | .corrupt _ => rfl
         | .send _ _ _ _ => rfl
         | .recv _ _ _ _ => rfl
-        | .doReturn _ _ => rfl }
+        | .doReturn _ _ => rfl
+        | .set_broadcast _ _ => rfl }
 
 instance : Countable (Action n Value) := Finite.to_countable
 
@@ -337,18 +349,18 @@ noncomputable instance : Fintype (Message n Value) := by
       left_inv := fun _ => rfl
       right_inv := fun _ => rfl }
 
-/-- `LocalState n Value` is `Fintype`: a 7-fold record, every field
+/-- `LocalState n Value` is `Fintype`: an 8-fold record, every field
 finite under `[Fintype Value]`. -/
 noncomputable instance : Fintype (LocalState n Value) := by
   classical
   exact Fintype.ofEquiv
-    ((Fin n → MsgType → Value → Bool) × Option Value
+    (Option Value × (Fin n → MsgType → Value → Bool) × Option Value
       × (Fin n → Value → Bool) × (Fin n → Value → Bool)
       × Option Value × (Value → Bool) × Option Value)
-    { toFun := fun ⟨a, b, c, d, e, f, g⟩ =>
-        ⟨a, b, c, d, e, f, g⟩
+    { toFun := fun ⟨a, b, c, d, e, f, g, h⟩ =>
+        ⟨a, b, c, d, e, f, g, h⟩
       invFun := fun ls =>
-        (ls.sent, ls.sendRecv, ls.echoRecv, ls.voteRecv,
+        (ls.broadcastVal, ls.sent, ls.sendRecv, ls.echoRecv, ls.voteRecv,
          ls.echoed, ls.voted, ls.returned)
       left_inv := fun _ => rfl
       right_inv := fun _ => rfl }
@@ -392,6 +404,9 @@ theorem brbStep_preserves_budget
       simp only [brbStep]
       exact hbudget
   | doReturn i mv =>
+      simp only [brbStep]
+      exact hbudget
+  | set_broadcast i v =>
       simp only [brbStep]
       exact hbudget
 
@@ -459,14 +474,14 @@ theorem actionGate_iff_brb_gate
     (sender : Fin n) (val : Value)
     (a : Action n Value) (s : State n Value) :
     actionGate n f Value sender val a s ↔
-      ((brb n f Value sender val).actions a).gate s := by
+      ((brb n f Value sender).actions a).gate s := by
   cases a <;> rfl
 
 omit [Fintype Value] in
 theorem brbStep_eq_brb_transition
     (sender : Fin n) (val : Value)
     (a : Action n Value) (s : State n Value) :
-    ((brb n f Value sender val).actions a).transition s
+    ((brb n f Value sender).actions a).transition s
       (brbStep n Value sender val a s) := by
   cases a <;> rfl
 
@@ -525,7 +540,8 @@ theorem brbProb_validity_AS
     (A : Adversary (State n Value) (Action n Value))
     (_h_sender_honest : (sender.val : PartyId) ∉ A.corrupt) :
     AlmostBox (brbProb n f Value sender val) A μ₀
-      (fun s => isCorrect n Value s sender →
+      (fun s => (s.local_ sender).broadcastVal = some val →
+        isCorrect n Value s sender →
         ∀ p v, isCorrect n Value s p →
           (s.local_ p).returned = some v → v = val) := by
   have h_pure : ∀ (a : Action n Value) (s : State n Value)
@@ -547,9 +563,9 @@ theorem brbProb_validity_AS
       μ₀ h_init' A
   -- Read off conjunct 6 (`local_consistent`, the validity clause).
   unfold AlmostBox at h_inv ⊢
-  filter_upwards [h_inv] with ω hinv k hsender p v hp hret
-  obtain ⟨_, _, _, _, _, hcond, _, _, _, _⟩ := hinv k
-  exact (hcond hsender).1 p hp |>.2.2.2.2 v hret
+  filter_upwards [h_inv] with ω hinv k hbv hsender p v hp hret
+  obtain ⟨_, _, _, _, _, hcond, _, _, _, _, _⟩ := hinv k
+  exact (hcond hbv hsender).1 p hp |>.2.2.2.2 v hret
 
 /-! ## §7. Agreement (AlmostBox formulation)
 
@@ -599,7 +615,7 @@ theorem brbProb_agreement_AS
   -- Pigeonhole on conjuncts 1, 4, 7, 8 (mirrors upstream `brb_agreement`).
   unfold AlmostBox at h_inv ⊢
   filter_upwards [h_inv] with ω hinv k p q vp vq hp hq hretp hretq
-  obtain ⟨hbudget, _, _, hvtrace, _, _, hvotes, hvagree, _, _⟩ := hinv k
+  obtain ⟨hbudget, _, _, hvtrace, _, _, hvotes, hvagree, _, _, _⟩ := hinv k
   -- p returned vp with ≥ n−f votes; n − f > f ≥ |corrupted| → correct voter.
   have hvp := hvotes p vp hretp
   have hgt_p : ((ω k).1).corrupted.length <
@@ -607,7 +623,7 @@ theorem brbProb_agreement_AS
     calc ((ω k).1).corrupted.length ≤ f := hbudget
       _ < n - f := by omega
       _ ≤ _ := hvp
-  obtain ⟨rp, hrp_vote, hrp_corr⟩ := pigeonhole_filter n
+  obtain ⟨rp, hrp_vote, hrp_corr⟩ := pigeonhole_filter
     (((ω k).1).local_ p |>.voteRecv · vp) ((ω k).1).corrupted hgt_p
   have hvq := hvotes q vq hretq
   have hgt_q : ((ω k).1).corrupted.length <
@@ -615,7 +631,7 @@ theorem brbProb_agreement_AS
     calc ((ω k).1).corrupted.length ≤ f := hbudget
       _ < n - f := by omega
       _ ≤ _ := hvq
-  obtain ⟨rq, hrq_vote, hrq_corr⟩ := pigeonhole_filter n
+  obtain ⟨rq, hrq_vote, hrq_corr⟩ := pigeonhole_filter
     (((ω k).1).local_ q |>.voteRecv · vq) ((ω k).1).corrupted hgt_q
   have hrp_voted := hvtrace p rp vp hrp_corr hrp_vote
   have hrq_voted := hvtrace q rq vq hrq_corr hrq_vote

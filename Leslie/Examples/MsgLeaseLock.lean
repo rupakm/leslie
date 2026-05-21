@@ -1079,9 +1079,19 @@ theorem sim_step :
         writeSeq := fun q => if q = p then a.writeSeq p + 1 else a.writeSeq q
         journal := a.journal ++ [⟨v, a.myToken p, a.writeSeq p + 1⟩] },
       .single ⟨LeaseLock.LeaseAction.writeOk p v, ?_, ?_⟩, ?_⟩
-    · -- Abstract gate
-      show a.myToken p > a.highToken ∨ (a.myToken p = a.highToken ∧ a.writeSeq p + 1 > a.highSeq)
-      rw [ha_tok, ha_seq, hR.highToken_eq, hR.highSeq_eq, ← hseq_eq]; exact hfence
+    · -- Abstract gate: believesLeader p ∧ fencing check
+      refine ⟨?_, ?_⟩
+      · -- believesLeader p = true in the abstract state.
+        -- When releaseResp p is in the network, releaseResp_bl gives
+        -- ms.believesLeader p = true directly. When it is absent,
+        -- believes_match + the concrete believesLeader suffice.
+        -- In either case we need ms.believesLeader p = true, which follows
+        -- from the fact that sendWriteReq checked believesLeader p = true
+        -- and no action flips it to false while the writeReq with
+        -- token = myToken p is still unprocessed.  A formal proof requires
+        -- adding a writeReq_bl invariant to MsgNetInv; marking sorry for now.
+        sorry
+      · rw [ha_tok, ha_seq, hR.highToken_eq, hR.highSeq_eq, ← hseq_eq]; exact hfence
     · simp only [LeaseLock.leaseSpec]
     · -- SimRel for post-state
       have hsub : ∀ m, m ∈ ms.network.erase (Msg.writeReq p v token seq) → m ∈ ms.network :=

@@ -487,11 +487,16 @@ theorem phaseCounter_after_steps_eq {n m : Nat} (ballot : Fin m → Nat) :
     ∀ {s s' : PaxosState n m} {acts : List (PaxosAction n m)},
       StepsFrom (boundedPaxos n m ballot) s acts s' →
       phaseCounter s' = phaseCounter s + acts.length
-  | _, _, _, .nil _ => by simp
-  | _, _, _, .cons act acts hstep hrest => by
+  | _, _, _, .nil _ => by rfl
+  | x, _, _, .cons act acts hstep hrest => by
     have hab := phaseCounter_step ballot _ _ act hstep
     have ih := phaseCounter_after_steps_eq ballot hrest
-    simp [ih, hab, List.length_cons]; omega
+    simp only [ih, hab]
+    show _ = _ + (act :: acts).length
+    change _ = _ + (acts.length + 1)
+    rw [← Nat.add_comm 1 acts.length]
+    apply Nat.add_assoc (phaseCounter x) 1 acts.length
+
 
 /-- `StepsFrom_append` helper (concatenation of multi-step traces). -/
 theorem stepsFrom_append {P : PhaseCountingSystem}

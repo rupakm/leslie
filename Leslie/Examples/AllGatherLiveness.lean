@@ -20,6 +20,9 @@ open TLA
 
 namespace AllGatherLiveness
 
+private theorem nat_rw1 (k : Nat) : 0 + k = k := Nat.zero_add k
+private theorem nat_rw2 (k : Nat) : 1 + k = k + 1 := Nat.add_comm 1 k
+
 variable (n : Nat)
 
 /-! ### Fair spec -/
@@ -73,13 +76,13 @@ theorem round_progress :
     -- p ∧ ⟨next⟩ ⇒ ◯p ∨ ◯q
     intro m ⟨hp, hstep⟩
     have hinc := agNext_inc_round n hstep
-    simp only [state_pred, later, tla_or, exec.drop, Nat.add_zero] at hp hinc ⊢
+    simp only [state_pred, later, tla_or, exec.drop, nat_rw1, nat_rw2] at hp hinc ⊢
     right ; omega
   case progress =>
     -- p ∧ ⟨next⟩ ∧ ⟨a⟩ ⇒ ◯q
     intro m ⟨hp, _, hstep⟩
     have hinc := agNext_inc_round n hstep
-    simp only [state_pred, later, exec.drop, Nat.add_zero] at hp hinc ⊢
+    simp only [state_pred, later, exec.drop, nat_rw1, nat_rw2] at hp hinc ⊢
     omega
   case enablement =>
     intro m _
@@ -104,8 +107,9 @@ theorem ag_eventually_complete :
     exact ⟨hinit, hnext⟩
   have hinv := AllGather.ag_completeness n e hsafety
   refine ⟨j, ?_⟩
+  rw [exec.drop_drop] at hge ⊢
   have hinv_at := hinv (k + j)
-  simp only [state_pred, exec.drop, Nat.add_zero] at hinv_at hge ⊢
+  simp only [state_pred, exec.drop, nat_rw1] at hinv_at hge ⊢
   exact hinv_at.2 hge
 
 end AllGatherLiveness
