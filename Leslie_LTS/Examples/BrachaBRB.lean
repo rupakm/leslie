@@ -1,0 +1,1078 @@
+import Leslie_LTS.Framework
+import Leslie_LTS.Examples.UtilityByzantine
+
+/-! # Byzantine Reliable Broadcast (Bracha) — LTS Formulation
+
+  Bracha's BRB for `n` processes with at most `f` Byzantine faults (`n > 3f`).
+-/
+
+open LTS
+
+namespace BRB_LTS
+
+/-! ### Messages -/
+
+/-- The three types of protocol messages. -/
+inductive MsgType where
+  | init | echo | vote
+  deriving DecidableEq
+
+/-- A protocol message: source, destination, type, and carried value. -/
+structure Message (n : Nat) (Value : Type) where
+  src : Fin n
+  dst : Fin n
+  type : MsgType
+  val : Value
+  deriving DecidableEq
+
+/-! ### Local State -/
+
+/-- Per-process local state. -/
+structure LocalState (n : Nat) (Value : Type) where
+  /-- The value this process will broadcast (only meaningful for the sender). -/
+  broadcastVal : Option Value
+  /-- `sent dst t v = true` iff this process has sent message (t, v) to dst. -/
+  sent : Fin n → MsgType → Value → Bool
+  /-- Value received via SEND from the designated sender (at most one). -/
+  sendRecv : Option Value
+  /-- Received ECHO(v) from process j. -/
+  echoRecv : Fin n → Value → Bool
+  /-- Received VOTE(v) from process j. -/
+  voteRecv : Fin n → Value → Bool
+  /-- Value echoed (at most one). -/
+  echoed : Option Value
+  /-- `voted v = true` iff this process has voted for value v. -/
+  voted : Value → Bool
+  /-- Value returned (at most one). -/
+  returned : Option Value
+
+/-! ### Global State -/
+
+/-- The global system state. -/
+structure State (n : Nat) (Value : Type) where
+  /-- Per-process local state. -/
+  local_ : Fin n → LocalState n Value
+  /-- Network buffer: pending messages in transit. -/
+  buffer : Message n Value → Bool
+  /-- List of corrupted (Byzantine) processes. -/
+  corrupted : List (Fin n)
+
+/-! ### Labels (Actions) -/
+
+/-- The labels of the BRB LTS. -/
+inductive Label (n : Nat) (Value : Type) where
+  /-- The adversary corrupts a process. -/
+  | corrupt (i : Fin n)
+  /-- Process `src` sends a message of type `t` with value `v` to `dst`. -/
+  | send (src dst : Fin n) (t : MsgType) (v : Value)
+  /-- Process `dst` receives a message of type `t` with value `v` from `src`. -/
+  | recv (src dst : Fin n) (t : MsgType) (v : Value)
+  /-- Correct process `i` returns value `v`. -/
+  | output (i : Fin n) (v : Value)
+  /-- The environment sets the broadcast value for process `i`. -/
+  | input (i : Fin n) (v : Value)
+
+instance {Value : Type} [Inhabited (Fin n)] [Inhabited Value] : Inhabited (Label n Value) :=
+  ⟨.send default default .init default⟩
+
+/-! ### Helpers -/
+
+variable (n f : Nat) (Value : Type) [DecidableEq Value]
+
+/-- A process is correct if it has not been corrupted. -/
+def isCorrect (s : State n Value) (p : Fin n) : Prop := p ∉ s.corrupted
+
+/-- Count of distinct sources from which ECHO(v) was received. -/
+def countEchoRecv (ls : LocalState n Value) (v : Value) : Nat :=
+  (List.finRange n).filter (ls.echoRecv · v) |>.length
+
+/-- Count of distinct sources from which VOTE(v) was received. -/
+def countVoteRecv (ls : LocalState n Value) (v : Value) : Nat :=
+  (List.finRange n).filter (ls.voteRecv · v) |>.length
+
+/-- Threshold for echoes: n − f. -/
+def echoThreshold : Nat := n - f
+
+/-- Threshold for vote amplification: f + 1. -/
+def voteThreshold : Nat := f + 1
+
+/-- Threshold for returning: n − f. -/
+def returnThreshold : Nat := n - f
+
+/-- Default initial local state: everything empty/none. -/
+def LocalState.init : LocalState n Value where
+  broadcastVal := none
+  sent := fun _ _ _ => false
+  sendRecv := none
+  echoRecv := fun _ _ => false
+  voteRecv := fun _ _ => false
+  echoed := none
+  voted := fun _ => false
+  returned := none
+
+/-! ### The BRB System as an LTS -/
+
+/-- The BRB system as a labelled transition system. -/
+def brb (sender : Fin n) : System (State n Value) (Label n Value) where
+  init := fun s =>
+    (∀ p, s.local_ p = LocalState.init n Value) ∧
+    (∀ m, s.buffer m = false) ∧
+    s.corrupted = []
+  step := fun s lbl s' =>
+    match lbl with
+    | .corrupt i =>
+        isCorrect n Value s i ∧
+        s.corrupted.length + 1 ≤ f ∧
+        s' = { s with corrupted := i :: s.corrupted }
+    | .input i v =>
+        i = sender ∧
+        (s.local_ sender).broadcastVal = none ∧
+        s' = { s with
+          local_ := fun p => if p = sender
+            then { s.local_ sender with broadcastVal := some v }
+            else s.local_ p }
+    | .send src dst t mv =>
+        (src ∈ s.corrupted ∨
+         (isCorrect n Value s src ∧ (s.local_ src).sent dst t mv = false ∧
+           match t with
+           | .init => src = sender ∧ (s.local_ src).broadcastVal = some mv
+           | .echo =>
+             (s.local_ src).echoed = some mv
+             ∨ ((s.local_ src).echoed = none ∧ (s.local_ src).sendRecv = some mv)
+           | .vote =>
+             (s.local_ src).voted mv = true ∨
+             countEchoRecv n Value (s.local_ src) mv ≥ echoThreshold n f ∨
+             countVoteRecv n Value (s.local_ src) mv ≥ voteThreshold f)) ∧
+        let msg : Message n Value := ⟨src, dst, t, mv⟩
+        s' = { s with
+          buffer := fun m => if m = msg then true else s.buffer m
+          local_ := fun p => if p = src then
+            { s.local_ src with
+              sent := fun d t' w => if d = dst ∧ t' = t ∧ w = mv then true
+                else (s.local_ src).sent d t' w
+              echoed := match t with
+                | .echo => if src ∉ s.corrupted then some mv
+                           else (s.local_ src).echoed
+                | _ => (s.local_ src).echoed
+              voted := match t with
+                | .vote => if src ∉ s.corrupted
+                  then fun w => if w = mv then true else (s.local_ src).voted w
+                  else (s.local_ src).voted
+                | _ => (s.local_ src).voted }
+            else s.local_ p }
+    | .recv src dst t mv =>
+        s.buffer ⟨src, dst, t, mv⟩ = true ∧
+        let msg : Message n Value := ⟨src, dst, t, mv⟩
+        let ls := s.local_ dst
+        s' = { s with
+          buffer := fun m => if m = msg then false else s.buffer m
+          local_ := fun p => if p = dst then
+            match t with
+            | .init =>
+              if src = sender ∧ ls.sendRecv = none
+              then { ls with sendRecv := some mv }
+              else ls
+            | .echo =>
+              if ls.echoRecv src mv = false
+              then { ls with
+                echoRecv := fun q w => if q = src ∧ w = mv then true
+                  else ls.echoRecv q w }
+              else ls
+            | .vote =>
+              if ls.voteRecv src mv = false
+              then { ls with
+                voteRecv := fun q w => if q = src ∧ w = mv then true
+                  else ls.voteRecv q w }
+              else ls
+            else s.local_ p }
+    | .output i mv =>
+        isCorrect n Value s i ∧
+        (s.local_ i).returned = none ∧
+        countVoteRecv n Value (s.local_ i) mv ≥ returnThreshold n f ∧
+        s' = { s with
+          local_ := fun p => if p = i
+            then { s.local_ i with returned := some mv }
+            else s.local_ p }
+
+/-! ### Internal / External Labelling -/
+
+/-- `corrupt`, `input`, `output` are external; `send`, `recv` are internal. -/
+def brb_labelling [Inhabited (Fin n)] [Inhabited Value] : Labelling (Label n Value) where
+  is_internal := fun l =>
+    match l with
+    | .corrupt _ => false
+    | .send .. => true
+    | .recv .. => true
+    | .output _ _ => false
+    | .input _ _ => false
+  tau := .send default default .init default
+  tau_internal := rfl
+
+/-! ### Safety Properties (label-based)
+
+    Properties are expressed purely in terms of the observable label
+    trace, without inspecting internal state. -/
+
+/-- Validity: if sender is never corrupted, outputs match sender input. -/
+def validity (sender : Fin n) : TraceProp (State n Value) (Label n Value) :=
+  fun e _pos =>
+    (∀ k, e.labels k ≠ .corrupt sender) →
+    ∀ k i v, e.labels k = .output i v →
+      ∃ k', e.labels k' = .input sender v
+
+/-- **Agreement** (label-based): all output values in the trace agree. -/
+def agreement : TraceProp (State n Value) (Label n Value) :=
+  fun e _pos => ∀ k₁ k₂ p q vp vq,
+    e.labels k₁ = .output p vp →
+    e.labels k₂ = .output q vq →
+    vp = vq
+
+/-! ### Projection Lemmas
+
+    These lemmas extract field equalities from the step relation,
+    avoiding the need to substitute with large structure literals. -/
+
+section mechanical_helpers
+variable {n f : Nat} {Value : Type} [DecidableEq Value]
+
+/-- For any step, the local state of a process `p` that is NOT the "affected"
+    process of the transition is entirely unchanged. The affected process is:
+    - `src` for send, `dst` for recv, `i` for output/input, nobody for corrupt.
+    This subsumes many per-field projections. -/
+theorem step_local_other {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s') (p : Fin n)
+    (hp : match l with
+      | .send src _ _ _ => p ≠ src
+      | .recv _ dst _ _ => p ≠ dst
+      | .output i _ => p ≠ i
+      | .input i _ => p ≠ i
+      | .corrupt _ => True) :
+    s'.local_ p = s.local_ p := by
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := h; rfl
+  | .send src _ _ _ => obtain ⟨_, rfl⟩ := h; simp [hp]
+  | .recv _ dst _ _ => obtain ⟨_, rfl⟩ := h; simp [hp]
+  | .output i _ => obtain ⟨_, _, _, rfl⟩ := h; simp [hp]
+  | .input i _ =>
+    obtain ⟨rfl, _, rfl⟩ := h; simp [hp]
+
+
+/-- Correct in post-state implies correct in pre-state. -/
+theorem step_correct_prev {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (hstep : (brb n f Value sender).step s l s')
+    (p : Fin n) (hp : isCorrect n Value s' p) :
+    isCorrect n Value s p := by
+  match l with
+  | .corrupt i =>
+    obtain ⟨_, _, rfl⟩ := hstep
+    simp only [isCorrect, List.mem_cons, not_or] at hp ⊢; exact hp.2
+  | .send .. => obtain ⟨_, rfl⟩ := hstep; exact hp
+  | .recv .. => obtain ⟨_, rfl⟩ := hstep; exact hp
+  | .output .. => obtain ⟨_, _, _, rfl⟩ := hstep; exact hp
+  | .input i _ =>
+    obtain ⟨rfl, _, rfl⟩ := hstep; exact hp
+
+theorem corrupt_corrupted {s s' : State n Value} {i} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.corrupt i) s') :
+    s'.corrupted = i :: s.corrupted := by
+  obtain ⟨_, _, rfl⟩ := h; rfl
+
+theorem corrupt_local {s s' : State n Value} {i} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.corrupt i) s') (p : Fin n) :
+    s'.local_ p = s.local_ p := by
+  obtain ⟨_, _, rfl⟩ := h; rfl
+
+theorem corrupt_isCorrect {s s' : State n Value} {i} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.corrupt i) s') :
+    isCorrect n Value s i := by
+  obtain ⟨hc, _, _⟩ := h; exact hc
+
+theorem corrupt_budget {s s' : State n Value} {i} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.corrupt i) s') :
+    s.corrupted.length + 1 ≤ f := by
+  obtain ⟨_, hb, _⟩ := h; exact hb
+
+
+theorem recv_init_corrupted {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.recv src dst .init v) s') :
+    s'.corrupted = s.corrupted := by
+  obtain ⟨_, rfl⟩ := h; rfl
+
+theorem recv_init_returned {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.recv src dst .init v) s') (p : Fin n) :
+    (s'.local_ p).returned = (s.local_ p).returned := by
+  obtain ⟨_, rfl⟩ := h; simp; by_cases hp : p = dst <;> simp [hp]
+  by_cases hc : src = sender ∧ (s.local_ dst).sendRecv = none <;> simp [hc]
+
+theorem recv_init_broadcastVal {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.recv src dst .init v) s') (p : Fin n) :
+    (s'.local_ p).broadcastVal = (s.local_ p).broadcastVal := by
+  obtain ⟨_, rfl⟩ := h; simp; by_cases hp : p = dst <;> simp [hp]
+  by_cases hc : src = sender ∧ (s.local_ dst).sendRecv = none <;> simp [hc]
+
+theorem recv_init_sendRecv_some {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.recv src dst .init v) s')
+    (p : Fin n) (w : Value) (hw : (s.local_ p).sendRecv = some w) :
+    (s'.local_ p).sendRecv = some w := by
+  obtain ⟨_, hs'⟩ := h; subst hs'; simp only
+  by_cases heq : p = dst
+  · subst heq; simp only
+    by_cases hcond : src = sender ∧ (s.local_ p).sendRecv = none
+    · rw [hw] at hcond; exact absurd hcond.2 (by simp)
+    · simp only [hcond]; exact hw
+  · simp only [heq]; exact hw
+
+theorem recv_init_sendRecv_other {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.recv src dst .init v) s')
+    (p : Fin n) (w : Value) (hw : w ≠ v)
+    (hw' : (s'.local_ p).sendRecv = some w) :
+    (s.local_ p).sendRecv = some w := by
+  obtain ⟨_, hs'⟩ := h; subst hs'; simp only at hw'
+  by_cases heq : p = dst
+  · subst heq; simp only at hw'
+    by_cases hcond : src = sender ∧ (s.local_ p).sendRecv = none
+    · simp [hcond] at hw'; exact absurd hw'.symm hw
+    · simp only [hcond] at hw'; exact hw'
+  · simp only [heq] at hw'; exact hw'
+
+/-- If `recv init v` sets `sendRecv` of `dst`, then `src = sender` and `p = dst`. -/
+theorem recv_init_src_eq_sender {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.recv src dst .init v) s')
+    (p : Fin n)
+    (hbefore : (s.local_ p).sendRecv = none)
+    (hafter : (s'.local_ p).sendRecv = some v) :
+    src = sender ∧ p = dst := by
+  obtain ⟨_, hs'⟩ := h; subst hs'; simp only at hafter
+  by_cases heq : p = dst
+  · subst heq; simp only at hafter
+    by_cases hcond : src = sender ∧ (s.local_ p).sendRecv = none
+    · exact ⟨hcond.1, rfl⟩
+    · simp only [↓reduceIte, hcond] at hafter; rw [hafter] at hbefore; contradiction
+  · simp only [heq, ↓reduceIte] at hafter; rw [hafter] at hbefore; contradiction
+
+
+theorem send_corrupted {s s' : State n Value} {src dst t v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.send src dst t v) s') :
+    s'.corrupted = s.corrupted := by
+  obtain ⟨_, rfl⟩ := h; rfl
+
+theorem send_returned {s s' : State n Value} {src dst t v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.send src dst t v) s') (p : Fin n) :
+    (s'.local_ p).returned = (s.local_ p).returned := by
+  obtain ⟨_, rfl⟩ := h; simp; by_cases hp : p = src <;> simp [hp]
+
+theorem send_sendRecv {s s' : State n Value} {src dst t v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.send src dst t v) s') (p : Fin n) :
+    (s'.local_ p).sendRecv = (s.local_ p).sendRecv := by
+  obtain ⟨_, rfl⟩ := h; simp; by_cases hp : p = src <;> simp [hp]
+
+theorem send_broadcastVal {s s' : State n Value} {src dst t v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.send src dst t v) s') (p : Fin n) :
+    (s'.local_ p).broadcastVal = (s.local_ p).broadcastVal := by
+  obtain ⟨_, rfl⟩ := h; simp; by_cases hp : p = src <;> simp [hp]
+
+
+theorem recv_echo_corrupted {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.recv src dst .echo v) s') :
+    s'.corrupted = s.corrupted := by
+  obtain ⟨_, rfl⟩ := h; rfl
+
+theorem recv_echo_returned {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.recv src dst .echo v) s') (p : Fin n) :
+    (s'.local_ p).returned = (s.local_ p).returned := by
+  obtain ⟨_, rfl⟩ := h; simp; by_cases hp : p = dst <;> simp [hp]
+  by_cases hc : (s.local_ dst).echoRecv src v = false <;> simp [hc]
+
+theorem recv_echo_sendRecv {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.recv src dst .echo v) s') (p : Fin n) :
+    (s'.local_ p).sendRecv = (s.local_ p).sendRecv := by
+  obtain ⟨_, rfl⟩ := h; simp; by_cases hp : p = dst <;> simp [hp]
+  by_cases hc : (s.local_ dst).echoRecv src v = false <;> simp [hc]
+
+theorem recv_echo_broadcastVal {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.recv src dst .echo v) s') (p : Fin n) :
+    (s'.local_ p).broadcastVal = (s.local_ p).broadcastVal := by
+  obtain ⟨_, rfl⟩ := h; simp; by_cases hp : p = dst <;> simp [hp]
+  by_cases hc : (s.local_ dst).echoRecv src v = false <;> simp [hc]
+
+
+theorem recv_vote_corrupted {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.recv src dst .vote v) s') :
+    s'.corrupted = s.corrupted := by
+  obtain ⟨_, rfl⟩ := h; rfl
+
+theorem recv_vote_returned {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.recv src dst .vote v) s') (p : Fin n) :
+    (s'.local_ p).returned = (s.local_ p).returned := by
+  obtain ⟨_, rfl⟩ := h; simp; by_cases hp : p = dst <;> simp [hp]
+  by_cases hc : (s.local_ dst).voteRecv src v = false <;> simp [hc]
+
+theorem recv_vote_sendRecv {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.recv src dst .vote v) s') (p : Fin n) :
+    (s'.local_ p).sendRecv = (s.local_ p).sendRecv := by
+  obtain ⟨_, rfl⟩ := h; simp; by_cases hp : p = dst <;> simp [hp]
+  by_cases hc : (s.local_ dst).voteRecv src v = false <;> simp [hc]
+
+theorem recv_vote_broadcastVal {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.recv src dst .vote v) s') (p : Fin n) :
+    (s'.local_ p).broadcastVal = (s.local_ p).broadcastVal := by
+  obtain ⟨_, rfl⟩ := h; simp; by_cases hp : p = dst <;> simp [hp]
+  by_cases hc : (s.local_ dst).voteRecv src v = false <;> simp [hc]
+
+
+theorem input_corrupted {s s' : State n Value} {i v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.input i v) s') :
+    s'.corrupted = s.corrupted := by
+  obtain ⟨_, _, rfl⟩ := h; rfl
+
+theorem input_eq_sender {s s' : State n Value} {i v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.input i v) s') :
+    i = sender :=
+  h.1
+
+theorem input_returned {s s' : State n Value} {i v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.input i v) s') (p : Fin n) :
+    (s'.local_ p).returned = (s.local_ p).returned := by
+  have := input_eq_sender h; subst this
+  obtain ⟨_, _, rfl⟩ := h; simp; by_cases hp : p = i <;> simp [hp]
+
+theorem input_sendRecv {s s' : State n Value} {i v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.input i v) s') (p : Fin n) :
+    (s'.local_ p).sendRecv = (s.local_ p).sendRecv := by
+  have := input_eq_sender h; subst this
+  obtain ⟨_, _, rfl⟩ := h; simp; by_cases hp : p = i <;> simp [hp]
+
+theorem input_broadcastVal {s s' : State n Value} {i v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.input i v) s') :
+    (s'.local_ sender).broadcastVal = some v := by
+  have := input_eq_sender h; subst this
+  obtain ⟨_, _, rfl⟩ := h; simp
+
+
+theorem output_corrupted {s s' : State n Value} {i v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.output i v) s') :
+    s'.corrupted = s.corrupted := by
+  obtain ⟨_, _, _, rfl⟩ := h; rfl
+
+/-- `output i v` sets `returned i := some v` and preserves `returned p` for `p ≠ i`. -/
+theorem output_returned {s s' : State n Value} {i v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.output i v) s') (p : Fin n) :
+    (s'.local_ p).returned = if p = i then some v else (s.local_ p).returned := by
+  obtain ⟨_, _, _, rfl⟩ := h; simp; by_cases hp : p = i <;> simp [hp]
+
+/-- `output` preserves `sendRecv` for all processes. -/
+theorem output_sendRecv {s s' : State n Value} {i v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.output i v) s') (p : Fin n) :
+    (s'.local_ p).sendRecv = (s.local_ p).sendRecv := by
+  obtain ⟨_, _, _, rfl⟩ := h; simp; by_cases hp : p = i <;> simp [hp]
+
+/-- `output` preserves `broadcastVal` for all processes. -/
+theorem output_broadcastVal {s s' : State n Value} {i v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.output i v) s') (p : Fin n) :
+    (s'.local_ p).broadcastVal = (s.local_ p).broadcastVal := by
+  obtain ⟨_, _, _, rfl⟩ := h; simp; by_cases hp : p = i <;> simp [hp]
+
+
+/-- After a `send`, a message is in the buffer iff it was just sent or was already there. -/
+theorem send_buffer {s s' : State n Value} {src dst t v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.send src dst t v) s') (m : Message n Value) :
+    s'.buffer m = true → m = ⟨src, dst, t, v⟩ ∨ s.buffer m = true := by
+  obtain ⟨_, rfl⟩ := h; simp
+
+/-- `recv init` only removes the consumed message from the buffer. -/
+theorem recv_init_buffer {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.recv src dst .init v) s') (m : Message n Value) :
+    s'.buffer m = true → m ≠ ⟨src, dst, .init, v⟩ ∧ s.buffer m = true := by
+  obtain ⟨_, rfl⟩ := h; simp
+
+/-- `recv echo` only removes the consumed message from the buffer. -/
+theorem recv_echo_buffer {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.recv src dst .echo v) s') (m : Message n Value) :
+    s'.buffer m = true → m ≠ ⟨src, dst, .echo, v⟩ ∧ s.buffer m = true := by
+  obtain ⟨_, rfl⟩ := h; simp
+
+/-- `recv vote` only removes the consumed message from the buffer. -/
+theorem recv_vote_buffer {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.recv src dst .vote v) s') (m : Message n Value) :
+    s'.buffer m = true → m ≠ ⟨src, dst, .vote, v⟩ ∧ s.buffer m = true := by
+  obtain ⟨_, rfl⟩ := h; simp
+
+/-- `corrupt` preserves the buffer. -/
+theorem corrupt_buffer {s s' : State n Value} {i} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.corrupt i) s') (m : Message n Value) :
+    s'.buffer m = s.buffer m := by
+  obtain ⟨_, _, rfl⟩ := h; rfl
+
+/-- `output` preserves the buffer. -/
+theorem output_buffer {s s' : State n Value} {i v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.output i v) s') (m : Message n Value) :
+    s'.buffer m = s.buffer m := by
+  obtain ⟨_, _, _, rfl⟩ := h; rfl
+
+/-- `input` preserves the buffer. -/
+theorem input_buffer {s s' : State n Value} {i v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.input i v) s') (m : Message n Value) :
+    s'.buffer m = s.buffer m := by
+  have := input_eq_sender h; subst this
+  obtain ⟨_, _, rfl⟩ := h; rfl
+
+/-! #### Unified mechanical helpers
+
+    These merge all the per-label helpers into one lemma per field.
+    Each lemma does a `match` on the label internally. -/
+
+/-- `corrupted` is unchanged by all non-corrupt labels. For corrupt, it grows by one. -/
+theorem step_corrupted {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s') :
+    s'.corrupted = match l with
+      | .corrupt i => i :: s.corrupted
+      | _ => s.corrupted := by
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := h; rfl
+  | .send .. => obtain ⟨_, rfl⟩ := h; rfl
+  | .recv .. => obtain ⟨_, rfl⟩ := h; rfl
+  | .output .. => obtain ⟨_, _, _, rfl⟩ := h; rfl
+  | .input _ _ => have := input_eq_sender h; subst this; obtain ⟨_, _, rfl⟩ := h; rfl
+
+/-- `returned p` is unchanged by all non-output labels. For output, only process `i` changes. -/
+theorem step_returned {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s') (p : Fin n)
+    (hl : ∀ i v, l = .output i v → p ≠ i) :
+    (s'.local_ p).returned = (s.local_ p).returned := by
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := h; rfl
+  | .send src .. => exact (send_returned h p)
+  | .recv _ _ .init _ => exact (recv_init_returned h p)
+  | .recv _ _ .echo _ => exact (recv_echo_returned h p)
+  | .recv _ _ .vote _ => exact (recv_vote_returned h p)
+  | .output i v =>
+    have hne := hl i v rfl
+    obtain ⟨_, _, _, rfl⟩ := h; simp [hne]
+  | .input _ _ => exact (input_returned h p)
+
+/-- `sendRecv p` is unchanged by all non-recv-init labels. -/
+theorem step_sendRecv {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s') (p : Fin n)
+    (hl : ∀ src dst v, l ≠ .recv src dst .init v) :
+    (s'.local_ p).sendRecv = (s.local_ p).sendRecv := by
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := h; rfl
+  | .send .. => exact (send_sendRecv h p)
+  | .recv _ _ .init _ => exact absurd rfl (hl _ _ _)
+  | .recv _ _ .echo _ => exact (recv_echo_sendRecv h p)
+  | .recv _ _ .vote _ => exact (recv_vote_sendRecv h p)
+  | .output .. => exact (output_sendRecv h p)
+  | .input .. => exact (input_sendRecv h p)
+
+/-- `broadcastVal p` is unchanged by all non-input labels. -/
+theorem step_broadcastVal {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s') (p : Fin n)
+    (hl : ∀ i v, l ≠ .input i v) :
+    (s'.local_ p).broadcastVal = (s.local_ p).broadcastVal := by
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := h; rfl
+  | .send .. => exact (send_broadcastVal h p)
+  | .recv _ _ .init _ => exact (recv_init_broadcastVal h p)
+  | .recv _ _ .echo _ => exact (recv_echo_broadcastVal h p)
+  | .recv _ _ .vote _ => exact (recv_vote_broadcastVal h p)
+  | .output .. => exact (output_broadcastVal h p)
+  | .input _ _ => exact absurd rfl (hl _ _)
+
+/-- Buffer is unchanged by corrupt, output, input. For send it adds, for recv it removes. -/
+theorem step_buffer_preserved {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s') (m : Message n Value)
+    (hl : (∀ src dst t v, l ≠ .send src dst t v) ∧ (∀ src dst t v, l ≠ .recv src dst t v)) :
+    s'.buffer m = s.buffer m := by
+  match l with
+  | .corrupt _ => exact (corrupt_buffer h m)
+  | .send .. => exact absurd rfl (hl.1 _ _ _ _)
+  | .recv .. => exact absurd rfl (hl.2 _ _ _ _)
+  | .output .. => exact (output_buffer h m)
+  | .input .. => exact (input_buffer h m)
+
+/-- `voted p v` is monotone across steps. -/
+theorem step_voted {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s')
+    (p : Fin n) (v : Value)
+    (hvoted : (s.local_ p).voted v = true) :
+    (s'.local_ p).voted v = true := by
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := h; exact hvoted
+  | .send src dst t mv =>
+    obtain ⟨_, rfl⟩ := h; simp only
+    by_cases hp : p = src <;> simp only [hp]
+    · subst hp; match t with
+      | .init | .echo => exact hvoted
+      | .vote =>
+        by_cases hcorr : p ∈ s.corrupted <;> simp only [hcorr]
+        · exact hvoted
+        · by_cases hv : v = mv <;> simp [hv, hvoted]
+    · exact hvoted
+  | .recv src dst .init _ =>
+    obtain ⟨_, rfl⟩ := h; simp only
+    by_cases hp : p = dst <;> simp only [hp]
+    · by_cases hc : (src : Fin n) = sender ∧ (s.local_ dst).sendRecv = none
+      · simp only [hc]; rw [← hp]; exact hvoted
+      · simp only [hc]; rw [← hp]; exact hvoted
+    · exact hvoted
+  | .recv src dst .echo mv =>
+    obtain ⟨_, rfl⟩ := h; simp only
+    by_cases hp : p = dst <;> simp only [hp]
+    · subst hp
+      by_cases hc : (s.local_ p).echoRecv src mv = false
+      · simp only [hc]; exact hvoted
+      · simp only [hc]; exact hvoted
+    · exact hvoted
+  | .recv src dst .vote mv =>
+    obtain ⟨_, rfl⟩ := h; simp only
+    by_cases hp : p = dst <;> simp only [hp]
+    · subst hp
+      by_cases hc : (s.local_ p).voteRecv src mv = false
+      · simp only [hc]; exact hvoted
+      · simp only [hc]; exact hvoted
+    · exact hvoted
+  | .output i _ =>
+    obtain ⟨_, _, _, rfl⟩ := h; simp only
+    by_cases hp : p = i <;> simp only [hp]
+    · subst hp; exact hvoted
+    · exact hvoted
+  | .input i _ =>
+    have := input_eq_sender h; subst this
+    obtain ⟨_, _, rfl⟩ := h; simp only
+    by_cases hp : p = i <;> simp only [hp]
+    · subst hp; exact hvoted
+    · exact hvoted
+
+/-- `voted p v` traced to previous state when step is not `send vote v` by `p`. -/
+theorem step_voted_prev {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s')
+    (p : Fin n) (v : Value)
+    (hvoted : (s'.local_ p).voted v = true)
+    (hl : ∀ dst, l ≠ .send p dst .vote v) :
+    (s.local_ p).voted v = true := by
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := h; exact hvoted
+  | .send src dst t mv =>
+    obtain ⟨_, rfl⟩ := h; simp only at hvoted
+    by_cases hp : p = src <;> simp only [hp] at hvoted
+    · subst hp; match t with
+      | .init | .echo => exact hvoted
+      | .vote =>
+        by_cases hcorr : p ∈ s.corrupted <;> simp only [hcorr] at hvoted
+        · exact hvoted
+        · by_cases hv : v = mv
+          · subst hv; exact absurd rfl (hl dst)
+          · simp only [↓reduceIte, Bool.if_true_left, Bool.decide_and, not_false_eq_true, hv,
+            decide_false, Bool.false_or] at hvoted; exact hvoted
+    · exact hvoted
+  | .recv src dst .init _ =>
+    obtain ⟨_, rfl⟩ := h; simp only at hvoted
+    by_cases hp : p = dst <;> simp only [hp] at hvoted
+    · subst hp
+      by_cases hc : (src : Fin n) = sender ∧ (s.local_ p).sendRecv = none
+      · simp only [hc] at hvoted; exact hvoted
+      · simp only [hc] at hvoted; exact hvoted
+    · exact hvoted
+  | .recv src dst .echo mv =>
+    obtain ⟨_, rfl⟩ := h; simp only at hvoted
+    by_cases hp : p = dst <;> simp only [hp] at hvoted
+    · subst hp
+      by_cases hc : (s.local_ p).echoRecv src mv = false
+      · simp only [hc] at hvoted; exact hvoted
+      · simp only [hc] at hvoted; exact hvoted
+    · exact hvoted
+  | .recv src dst .vote mv =>
+    obtain ⟨_, rfl⟩ := h; simp only at hvoted
+    by_cases hp : p = dst <;> simp only [hp] at hvoted
+    · subst hp
+      by_cases hc : (s.local_ p).voteRecv src mv = false
+      · simp only [hc] at hvoted; exact hvoted
+      · simp only [hc] at hvoted; exact hvoted
+    · exact hvoted
+  | .output i _ =>
+    obtain ⟨_, _, _, rfl⟩ := h; simp only at hvoted
+    by_cases hp : p = i <;> simp only [hp] at hvoted
+    · subst hp; exact hvoted
+    · exact hvoted
+  | .input i _ =>
+    have := input_eq_sender h; subst this
+    obtain ⟨_, _, rfl⟩ := h; simp only at hvoted
+    by_cases hp : p = i <;> simp only [hp] at hvoted
+    · subst hp; exact hvoted
+    · exact hvoted
+
+/-- `echoRecv p q v` is monotone: if true before a step, still true after. -/
+theorem step_echoRecv {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s')
+    (p q : Fin n) (v : Value)
+    (hrecv : (s.local_ p).echoRecv q v = true) :
+    (s'.local_ p).echoRecv q v = true := by
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := h; exact hrecv
+  | .send src _ _ _ =>
+    obtain ⟨_, rfl⟩ := h; simp only
+    by_cases hp : p = src <;> simp only [hp]
+    · subst hp; exact hrecv
+    · exact hrecv
+  | .recv src dst .init _ =>
+    obtain ⟨_, rfl⟩ := h; simp only
+    by_cases hp : p = dst <;> simp only [hp]
+    · subst hp
+      by_cases hc : (src : Fin n) = sender ∧ (s.local_ p).sendRecv = none
+      · simp only [hc]; exact hrecv
+      · simp only [hc]; exact hrecv
+    · exact hrecv
+  | .recv src dst .echo mv =>
+    obtain ⟨_, rfl⟩ := h; simp only
+    by_cases hp : p = dst <;> simp only [hp]
+    · subst hp
+      by_cases hc : (s.local_ p).echoRecv src mv = false
+      · simp only [hc]; by_cases hqv : q = src ∧ v = mv
+        · simp [hqv]
+        · simp only [↓reduceIte, Bool.if_true_left, Bool.decide_and, Bool.or_eq_true,
+          Bool.and_eq_true, decide_eq_true_eq, hqv, false_or]; exact hrecv
+      · simp only [hc]; exact hrecv
+    · exact hrecv
+  | .recv src dst .vote mv =>
+    obtain ⟨_, rfl⟩ := h; simp only
+    by_cases hp : p = dst <;> simp only [hp]
+    · subst hp
+      by_cases hc : (s.local_ p).voteRecv src mv = false
+      · simp only [hc]; exact hrecv
+      · simp only [hc]; exact hrecv
+    · exact hrecv
+  | .output i _ =>
+    obtain ⟨_, _, _, rfl⟩ := h; simp only
+    by_cases hp : p = i <;> simp only [hp]
+    · subst hp; exact hrecv
+    · exact hrecv
+  | .input i _ =>
+    have := input_eq_sender h; subst this
+    obtain ⟨_, _, rfl⟩ := h; simp only
+    by_cases hp : p = i <;> simp only [hp]
+    · subst hp; exact hrecv
+    · exact hrecv
+
+/-- `echoed p` is monotone across steps. -/
+theorem step_echoed {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s')
+    (p : Fin n) (v : Value)
+    (hechoed : (s.local_ p).echoed = some v) :
+    (s'.local_ p).echoed = some v := by
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := h; exact hechoed
+  | .send src _ t _ =>
+    have hstep' := h
+    obtain ⟨hgate, rfl⟩ := h; simp only
+    by_cases hp : p = src <;> simp only [hp]
+    · subst hp; match t with
+      | .init | .vote => exact hechoed
+      | .echo =>
+        by_cases hcorr : p ∈ s.corrupted <;> simp only [↓reduceIte, Bool.if_true_left,
+          Bool.decide_and, hcorr, not_false_eq_true, Option.some.injEq]
+        · exact hechoed
+        · rcases hgate with hbyz | ⟨_, _, hecho_reason⟩
+          · exact absurd hbyz hcorr
+          · rcases hecho_reason with hev | ⟨hnone, _⟩
+            · rw [hechoed] at hev; exact (Option.some.inj hev).symm
+            · rw [hechoed] at hnone; exact absurd hnone (by simp)
+    · exact hechoed
+  | .recv src dst .init mv =>
+    obtain ⟨_, rfl⟩ := h; simp only
+    by_cases hp : p = dst <;> simp only [hp]
+    · subst hp
+      by_cases hc : src = sender ∧ (s.local_ p).sendRecv = none
+      · simp only [hc]; exact hechoed
+      · simp only [hc]; exact hechoed
+    · exact hechoed
+  | .recv src dst .echo mv =>
+    obtain ⟨_, rfl⟩ := h; simp only
+    by_cases hp : p = dst <;> simp only [hp]
+    · subst hp
+      by_cases hc : (s.local_ p).echoRecv src mv = false
+      · simp only [hc]; exact hechoed
+      · simp only [hc]; exact hechoed
+    · exact hechoed
+  | .recv src dst .vote mv =>
+    obtain ⟨_, rfl⟩ := h; simp only
+    by_cases hp : p = dst <;> simp only [hp]
+    · subst hp
+      by_cases hc : (s.local_ p).voteRecv src mv = false
+      · simp only [hc]; exact hechoed
+      · simp only [hc]; exact hechoed
+    · exact hechoed
+  | .output i _ =>
+    obtain ⟨_, _, _, rfl⟩ := h; simp only
+    by_cases hp : p = i <;> simp only [hp]
+    · subst hp; exact hechoed
+    · exact hechoed
+  | .input i _ =>
+    have := input_eq_sender h; subst this
+    obtain ⟨_, _, rfl⟩ := h; simp only
+    by_cases hp : p = i <;> simp only [hp]
+    · subst hp; exact hechoed
+    · exact hechoed
+
+/-- `echoRecv p q v` traced to previous state when step is not matching `recv echo`. -/
+theorem step_echoRecv_prev {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s')
+    (p q : Fin n) (v : Value)
+    (hrecv : (s'.local_ p).echoRecv q v = true)
+    (hl : ∀ src dst mv, l = .recv src dst .echo mv → ¬(p = dst ∧ q = src ∧ v = mv)) :
+    (s.local_ p).echoRecv q v = true := by
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := h; exact hrecv
+  | .send src _ _ _ =>
+    obtain ⟨_, rfl⟩ := h; simp only at hrecv
+    by_cases hp : p = src <;> simp only [hp] at hrecv
+    · subst hp; exact hrecv
+    · exact hrecv
+  | .recv src dst .echo mv =>
+    obtain ⟨_, rfl⟩ := h; simp only at hrecv
+    by_cases hp : p = dst <;> simp only [hp] at hrecv
+    · subst hp
+      by_cases hc : (s.local_ p).echoRecv src mv = false
+      · simp only [hc] at hrecv
+        by_cases hqv : q = src ∧ v = mv
+        · exact (hl src p mv rfl ⟨rfl, hqv.1, hqv.2⟩).elim
+        · simp only [↓reduceIte, Bool.if_true_left, Bool.decide_and, Bool.or_eq_true,
+          Bool.and_eq_true, decide_eq_true_eq, hqv, false_or] at hrecv; exact hrecv
+      · simp only [hc] at hrecv; exact hrecv
+    · exact hrecv
+  | .recv src dst .init _ =>
+    obtain ⟨_, rfl⟩ := h; simp only at hrecv
+    by_cases hp : p = dst <;> simp only [hp] at hrecv
+    · subst hp
+      by_cases hc : src = sender ∧ (s.local_ p).sendRecv = none
+      · simp only [hc] at hrecv; exact hrecv
+      · simp only [hc] at hrecv; exact hrecv
+    · exact hrecv
+  | .recv src dst .vote mv =>
+    obtain ⟨_, rfl⟩ := h; simp only at hrecv
+    by_cases hp : p = dst <;> simp only [hp] at hrecv
+    · subst hp
+      by_cases hc : (s.local_ p).voteRecv src mv = false
+      · simp only [hc] at hrecv; exact hrecv
+      · simp only [hc] at hrecv; exact hrecv
+    · exact hrecv
+  | .output i _ =>
+    obtain ⟨_, _, _, rfl⟩ := h; simp only at hrecv
+    by_cases hp : p = i <;> simp only [hp] at hrecv
+    · subst hp; exact hrecv
+    · exact hrecv
+  | .input i _ =>
+    have := input_eq_sender h; subst this
+    obtain ⟨_, _, rfl⟩ := h; simp only at hrecv
+    by_cases hp : p = i <;> simp only [hp] at hrecv
+    · subst hp; exact hrecv
+    · exact hrecv
+
+/-- `voteRecv p q v` traced to previous state when step is not matching `recv vote`. -/
+theorem step_voteRecv_prev {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s')
+    (p q : Fin n) (v : Value)
+    (hrecv : (s'.local_ p).voteRecv q v = true)
+    (hl : ∀ src dst mv, l = .recv src dst .vote mv → ¬(p = dst ∧ q = src ∧ v = mv)) :
+    (s.local_ p).voteRecv q v = true := by
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := h; exact hrecv
+  | .send src _ _ _ =>
+    obtain ⟨_, rfl⟩ := h; simp only at hrecv
+    by_cases hp : p = src <;> simp only [hp] at hrecv
+    · subst hp; exact hrecv
+    · exact hrecv
+  | .recv src dst .vote mv =>
+    obtain ⟨_, rfl⟩ := h; simp only at hrecv
+    by_cases hp : p = dst <;> simp only [hp] at hrecv
+    · subst hp
+      by_cases hc : (s.local_ p).voteRecv src mv = false
+      · simp only [hc] at hrecv
+        by_cases hqv : q = src ∧ v = mv
+        · exact (hl src p mv rfl ⟨rfl, hqv.1, hqv.2⟩).elim
+        · simp only [↓reduceIte, Bool.if_true_left, Bool.decide_and, Bool.or_eq_true,
+          Bool.and_eq_true, decide_eq_true_eq, hqv, false_or] at hrecv; exact hrecv
+      · simp only [hc] at hrecv; exact hrecv
+    · exact hrecv
+  | .recv src dst .init _ =>
+    obtain ⟨_, rfl⟩ := h; simp only at hrecv
+    by_cases hp : p = dst <;> simp only [hp] at hrecv
+    · subst hp
+      by_cases hc : src = sender ∧ (s.local_ p).sendRecv = none
+      · simp only [hc] at hrecv; exact hrecv
+      · simp only [hc] at hrecv; exact hrecv
+    · exact hrecv
+  | .recv src dst .echo mv =>
+    obtain ⟨_, rfl⟩ := h; simp only at hrecv
+    by_cases hp : p = dst <;> simp only [hp] at hrecv
+    · subst hp
+      by_cases hc : (s.local_ p).echoRecv src mv = false
+      · simp only [hc] at hrecv; exact hrecv
+      · simp only [hc] at hrecv; exact hrecv
+    · exact hrecv
+  | .output i _ =>
+    obtain ⟨_, _, _, rfl⟩ := h; simp only at hrecv
+    by_cases hp : p = i <;> simp only [hp] at hrecv
+    · subst hp; exact hrecv
+    · exact hrecv
+  | .input i _ =>
+    have := input_eq_sender h; subst this
+    obtain ⟨_, _, rfl⟩ := h; simp only at hrecv
+    by_cases hp : p = i <;> simp only [hp] at hrecv
+    · subst hp; exact hrecv
+    · exact hrecv
+
+/-- `echoed p = some v` traced to previous state when step is not `send echo v` by `p`. -/
+theorem step_echoed_prev {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s')
+    (p : Fin n) (v : Value)
+    (hechoed : (s'.local_ p).echoed = some v)
+    (hl : ∀ dst, l ≠ .send p dst .echo v) :
+    (s.local_ p).echoed = some v := by
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := h; exact hechoed
+  | .send src dst t mv =>
+    obtain ⟨_, rfl⟩ := h; simp only at hechoed
+    by_cases hp : p = src <;> simp only [hp] at hechoed
+    · subst hp; match t with
+      | .init | .vote => exact hechoed
+      | .echo =>
+        by_cases hcorr : p ∈ s.corrupted <;> simp only [↓reduceIte, Bool.if_true_left,
+          Bool.decide_and, hcorr, not_false_eq_true, Option.some.injEq] at hechoed
+        · exact hechoed
+        · -- echoed set to some mv. Need v = mv to contradict hl.
+          by_cases hv : v = mv
+          · subst hv; exact absurd rfl (hl dst)
+          · exact absurd hechoed.symm hv
+    · exact hechoed
+  | .recv src dst .init _ =>
+    obtain ⟨_, rfl⟩ := h; simp only at hechoed
+    by_cases hp : p = dst <;> simp only [hp] at hechoed
+    · subst hp
+      by_cases hc : src = sender ∧ (s.local_ p).sendRecv = none
+      · simp only [hc] at hechoed; exact hechoed
+      · simp only [hc] at hechoed; exact hechoed
+    · exact hechoed
+  | .recv src dst .echo mv =>
+    obtain ⟨_, rfl⟩ := h; simp only at hechoed
+    by_cases hp : p = dst <;> simp only [hp] at hechoed
+    · subst hp
+      by_cases hc : (s.local_ p).echoRecv src mv = false
+      · simp only [hc] at hechoed; exact hechoed
+      · simp only [hc] at hechoed; exact hechoed
+    · exact hechoed
+  | .recv src dst .vote mv =>
+    obtain ⟨_, rfl⟩ := h; simp only at hechoed
+    by_cases hp : p = dst <;> simp only [hp] at hechoed
+    · subst hp
+      by_cases hc : (s.local_ p).voteRecv src mv = false
+      · simp only [hc] at hechoed; exact hechoed
+      · simp only [hc] at hechoed; exact hechoed
+    · exact hechoed
+  | .output i _ =>
+    obtain ⟨_, _, _, rfl⟩ := h; simp only at hechoed
+    by_cases hp : p = i <;> simp only [hp] at hechoed
+    · subst hp; exact hechoed
+    · exact hechoed
+  | .input i _ =>
+    have := input_eq_sender h; subst this
+    obtain ⟨_, _, rfl⟩ := h; simp only at hechoed
+    by_cases hp : p = i <;> simp only [hp] at hechoed
+    · subst hp; exact hechoed
+    · exact hechoed
+
+/-- `sendRecv p = some v` traced to previous state when step is not matching `recv init`. -/
+theorem step_sendRecv_prev {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s')
+    (p : Fin n) (v : Value)
+    (hrecv : (s'.local_ p).sendRecv = some v)
+    (hl : ∀ src dst mv, l = .recv src dst .init mv → ¬(p = dst ∧ v = mv)) :
+    (s.local_ p).sendRecv = some v := by
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := h; exact hrecv
+  | .send src _ _ _ =>
+    obtain ⟨_, rfl⟩ := h; simp only at hrecv
+    by_cases hp : p = src <;> simp only [hp] at hrecv
+    · subst hp; exact hrecv
+    · exact hrecv
+  | .recv src dst .init mv =>
+    obtain ⟨_, rfl⟩ := h; simp only at hrecv
+    by_cases hp : p = dst <;> simp only [hp] at hrecv
+    · subst hp
+      by_cases hc : src = sender ∧ (s.local_ p).sendRecv = none
+      · simp only [↓reduceIte, hc, and_self, Option.some.injEq] at hrecv
+        exact (hl src p mv rfl ⟨rfl, hrecv.symm⟩).elim
+      · simp only [hc] at hrecv; exact hrecv
+    · exact hrecv
+  | .recv src dst .echo mv =>
+    obtain ⟨_, rfl⟩ := h; simp only at hrecv
+    by_cases hp : p = dst <;> simp only [hp] at hrecv
+    · subst hp
+      by_cases hc : (s.local_ p).echoRecv src mv = false
+      · simp only [hc] at hrecv; exact hrecv
+      · simp only [hc] at hrecv; exact hrecv
+    · exact hrecv
+  | .recv src dst .vote mv =>
+    obtain ⟨_, rfl⟩ := h; simp only at hrecv
+    by_cases hp : p = dst <;> simp only [hp] at hrecv
+    · subst hp
+      by_cases hc : (s.local_ p).voteRecv src mv = false
+      · simp only [hc] at hrecv; exact hrecv
+      · simp only [hc] at hrecv; exact hrecv
+    · exact hrecv
+  | .output i _ =>
+    obtain ⟨_, _, _, rfl⟩ := h; simp only at hrecv
+    by_cases hp : p = i <;> simp only [hp] at hrecv
+    · subst hp; exact hrecv
+    · exact hrecv
+  | .input i _ =>
+    have := input_eq_sender h; subst this
+    obtain ⟨_, _, rfl⟩ := h; simp only at hrecv
+    by_cases hp : p = i <;> simp only [hp] at hrecv
+    · subst hp; exact hrecv
+    · exact hrecv
+
+/-- `sendRecv p` is monotone across steps. -/
+theorem step_sendRecv_mono {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s')
+    (p : Fin n) (v : Value)
+    (hrecv : (s.local_ p).sendRecv = some v) :
+    (s'.local_ p).sendRecv = some v := by
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := h; exact hrecv
+  | .send .. => rw [send_sendRecv h]; exact hrecv
+  | .recv _ _ .init _ => exact recv_init_sendRecv_some h p v hrecv
+  | .recv _ _ .echo _ => rw [recv_echo_sendRecv h]; exact hrecv
+  | .recv _ _ .vote _ => rw [recv_vote_sendRecv h]; exact hrecv
+  | .output .. => rw [output_sendRecv h]; exact hrecv
+  | .input .. => rw [input_sendRecv h]; exact hrecv
+
+/-- After `send echo v` by a correct process `src`, `echoed src = some v`. -/
+theorem send_echo_sets_echoed {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.send src dst .echo v) s')
+    (hcorr : isCorrect n Value s src) :
+    (s'.local_ src).echoed = some v := by
+  obtain ⟨_, rfl⟩ := h; simp only [isCorrect] at hcorr; simp only [↓reduceIte,
+    Bool.if_true_left, Bool.decide_and, hcorr, not_false_eq_true]
+
+/-- After `send vote v` by a correct process `src`, `voted src v = true`. -/
+theorem send_vote_sets_voted {s s' : State n Value} {src dst v} {sender : Fin n}
+    (h : (brb n f Value sender).step s (.send src dst .vote v) s')
+    (hcorr : isCorrect n Value s src) :
+    (s'.local_ src).voted v = true := by
+  obtain ⟨_, rfl⟩ := h; simp only [isCorrect] at hcorr; simp only [↓reduceIte,
+    Bool.if_true_left, Bool.decide_and, hcorr, not_false_eq_true, decide_true, Bool.true_or]
+
+/-- `countEchoRecv` is monotone across steps. -/
+theorem step_countEchoRecv_mono {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s') (q : Fin n) (v : Value) :
+    countEchoRecv n Value (s.local_ q) v ≤
+    countEchoRecv n Value (s'.local_ q) v := by
+  unfold countEchoRecv
+  apply filter_length_mono
+  intro r hr; simp only at hr ⊢
+  exact step_echoRecv h q r v hr
+
+end mechanical_helpers
+
+
+end BRB_LTS
