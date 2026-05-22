@@ -2,6 +2,7 @@ import Leslie_LTS.Framework.Basic
 import Leslie_LTS.Framework.Trace
 import Leslie_LTS.Framework.LTL
 import Leslie_LTS.Framework.Rules
+import Leslie_LTS.Framework.Liveness
 import Leslie_LTS.Framework.Simulation
 import Leslie_LTS.Framework.Composition
 import Leslie_LTS.Framework.Probabilistic

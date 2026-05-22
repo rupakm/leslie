@@ -139,12 +139,6 @@ def leads_to {State : Type u} {Label : Type v}
     (p q : TraceProp State Label) : TraceProp State Label :=
   always (tp_implies p (eventually q))
 
-/-- Weak fairness for a label: if `l` is continuously enabled, it
-    eventually fires. -/
-def weak_fairness {State : Type u} {Label : Type v}
-    (sys : System State Label) (l : Label) : TraceProp State Label :=
-  leads_to (state_prop (sys.enabled l)) (step_prop (fun _ l' _ => l = l'))
-
 /-! ## Satisfaction and Validity -/
 
 /-- An execution satisfies a trace property (evaluated at position 0). -/
