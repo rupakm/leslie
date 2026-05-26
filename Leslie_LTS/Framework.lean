@@ -8,4 +8,6 @@ import Leslie_LTS.Framework.Composition
 import Leslie_LTS.Framework.Probabilistic
 import Leslie_LTS.Framework.Adversary
 import Leslie_LTS.Framework.Secrecy
-import Leslie_LTS.Framework.ProbExec
+import Leslie_LTS.Framework.ProbSecrecy
+import Leslie_LTS.Framework.RandProbExec
+import Leslie_LTS.Framework.SecrecyTransfer

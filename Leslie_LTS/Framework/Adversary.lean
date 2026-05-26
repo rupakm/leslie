@@ -1,4 +1,5 @@
 import Leslie_LTS.Framework.Probabilistic
+import Mathlib.Probability.ProbabilityMassFunction.Constructions
 
 /-! # Adversary Models for PLTS
 
@@ -61,6 +62,20 @@ structure Observation.ExecView (StateSignal : Type w) (LabelSignal : Type x) whe
     own observation space. -/
 def Strategy (StateSignal : Type w) (LabelSignal : Type x) :=
   List (StateSignal × LabelSignal) → StateSignal → LabelSignal
+
+/-- A **randomised strategy**: at each step, the adversary observes the
+    signal history and current state-signal, and produces a probability
+    distribution over label-signals (rather than a single label-signal).
+    This generalises `Strategy` by allowing the adversary to flip coins. -/
+def RandomisedStrategy (StateSignal : Type w) (LabelSignal : Type x) :=
+  List (StateSignal × LabelSignal) → StateSignal → PMF LabelSignal
+
+/-- Embed a deterministic strategy as a randomised strategy via `PMF.pure`:
+    at each step, the distribution is concentrated on the single label-signal
+    that the deterministic strategy would choose. -/
+noncomputable def Strategy.toRandomised {SS : Type w} {LS : Type x}
+    (σ : Strategy SS LS) : RandomisedStrategy SS LS :=
+  fun hist ss => PMF.pure (σ hist ss)
 
 /-! ## Lifting Observations to Executions
 
@@ -335,6 +350,338 @@ theorem omniscientLTS_satisfies (sys : LTS.System State Label)
     (omniscientLTS sys).satisfies φ ↔ ∀ e, sys.valid_exec e → φ e := by
   simp only [omniscientLTS, omniscient_satisfies, toLTS_fromLTS_valid_exec]
 
+/-! ## Randomised Strategies
+
+    A randomised strategy generalises a deterministic strategy by allowing
+    the adversary to flip coins: at each step, instead of prescribing a
+    single label-signal, it prescribes a probability distribution over
+    label-signals. An execution is randomised-consistent if the observed
+    label-signal at each step lies in the support of the prescribed
+    distribution.
+
+    The key structural property is that randomised consistency depends
+    only on the adversary's view (observation sequences). This enables
+    lifting results from deterministic to randomised strategies. -/
+
+/-- An execution is **randomised-consistent** with a randomised strategy `ρ`
+    if at each step, the observed label-signal is in the support of the
+    distribution prescribed by `ρ` given the observation prefix. -/
+def Adversary.randomised_consistent (adv : Adversary State Label SS LS)
+    (ρ : RandomisedStrategy SS LS) (e : LTS.Execution State Label) : Prop :=
+  ∀ k, adv.obs.observe_label (e.states k) (e.labels k) ∈
+    (ρ (List.ofFn fun i : Fin k =>
+      (adv.obs.observe_state (e.states i.val),
+       adv.obs.observe_label (e.states i.val) (e.labels i.val)))
+    (adv.obs.observe_state (e.states k))).support
+
+/-- An execution is **randomised-admissible** for an adversary if there exists
+    some randomised strategy consistent with the execution. -/
+def Adversary.randomised_admissible (adv : Adversary State Label SS LS)
+    (e : LTS.Execution State Label) : Prop :=
+  ∃ ρ : RandomisedStrategy SS LS, adv.randomised_consistent ρ e
+
+/-- Deterministic consistency implies randomised consistency with the
+    lifted strategy: if `e` is consistent with `σ`, then `e` is
+    randomised-consistent with `σ.toRandomised`. -/
+theorem Adversary.consistent_toRandomised (adv : Adversary State Label SS LS)
+    (σ : Strategy SS LS) (e : LTS.Execution State Label)
+    (h : adv.consistent σ e) :
+    adv.randomised_consistent σ.toRandomised e := by
+  intro k
+  simp only [Strategy.toRandomised, PMF.mem_support_pure_iff]
+  exact h k
+
+/-- Every deterministic-admissible execution is randomised-admissible. -/
+theorem Adversary.randomised_admissible_of_admissible (adv : Adversary State Label SS LS)
+    (e : LTS.Execution State Label) (h : adv.admissible e) :
+    adv.randomised_admissible e := by
+  obtain ⟨σ, hσ⟩ := h
+  exact ⟨σ.toRandomised, adv.consistent_toRandomised σ e hσ⟩
+
+/-- Randomised consistency depends only on the adversary's view:
+    if two executions are indistinguishable (same state-signals and
+    label-signals at every step), then one is randomised-consistent
+    with `ρ` iff the other is. -/
+theorem Adversary.randomised_consistent_of_indistinguishable
+    (adv : Adversary State Label SS LS)
+    (ρ : RandomisedStrategy SS LS)
+    {e₁ e₂ : LTS.Execution State Label}
+    (h : adv.indistinguishable e₁ e₂)
+    (hcons : adv.randomised_consistent ρ e₁) :
+    adv.randomised_consistent ρ e₂ := by
+  intro k
+  have hhist : (List.ofFn fun i : Fin k =>
+      (adv.obs.observe_state (e₁.states i.val),
+       adv.obs.observe_label (e₁.states i.val) (e₁.labels i.val))) =
+    (List.ofFn fun i : Fin k =>
+      (adv.obs.observe_state (e₂.states i.val),
+       adv.obs.observe_label (e₂.states i.val) (e₂.labels i.val))) := by
+    congr 1; ext ⟨i, hi⟩ <;> simp [h.1 i, h.2 i]
+  rw [← h.2 k, ← h.1 k, ← hhist]
+  exact hcons k
+
+/-- From a randomised-consistent execution, extract a deterministic
+    strategy that the execution is (deterministic-)consistent with.
+    The extracted strategy simply replays the execution's actual
+    label-signals at each step. -/
+theorem Adversary.consistent_of_randomised_consistent
+    (adv : Adversary State Label SS LS)
+    (ρ : RandomisedStrategy SS LS)
+    (e : LTS.Execution State Label)
+    (_h : adv.randomised_consistent ρ e) :
+    ∃ σ : Strategy SS LS, adv.consistent σ e := by
+  refine ⟨fun hist _ => adv.obs.observe_label (e.states hist.length) (e.labels hist.length),
+    fun k => ?_⟩
+  simp only [List.length_ofFn]
+
+/-! ## Observation History and Cone Measures -/
+
+/-- The observation history of the first `k` steps of an execution:
+    the list of `(state-signal, label-signal)` pairs seen so far.
+    This is the information available to the strategy at step `k`. -/
+def obs_history (obs : Observation State Label SS LS)
+    (e : LTS.Execution State Label) (k : ℕ) : List (SS × LS) :=
+  List.ofFn fun i : Fin k =>
+    (obs.observe_state (e.states i.val),
+     obs.observe_label (e.states i.val) (e.labels i.val))
+
+/-- The label-signal prescribed by a strategy at step `k`. -/
+def prescribed_signal (adv : Adversary State Label SS LS)
+    (σ : Strategy SS LS) (e : LTS.Execution State Label) (k : ℕ) : LS :=
+  σ (obs_history adv.obs e k) (adv.obs.observe_state (e.states k))
+
+/-- An execution is consistent with a strategy at step `k` iff the
+    observed label-signal equals the prescribed one.
+    This is the pointwise version of `Adversary.consistent`. -/
+def consistent_at (adv : Adversary State Label SS LS)
+    (σ : Strategy SS LS) (e : LTS.Execution State Label) (k : ℕ) : Prop :=
+  adv.obs.observe_label (e.states k) (e.labels k) = prescribed_signal adv σ e k
+
+theorem consistent_iff_forall_consistent_at (adv : Adversary State Label SS LS)
+    (σ : Strategy SS LS) (e : LTS.Execution State Label) :
+    adv.consistent σ e ↔ ∀ k, consistent_at adv σ e k := by
+  simp only [Adversary.consistent, consistent_at, prescribed_signal, obs_history]
+
+/-! ## Step Probability -/
+
+open Classical in
+/-- The probability of the transition at step `k` of an execution under
+    strategy `σ`. Returns `μ(e.states (k+1))` where `μ` is a distribution
+    for the transition at `(e.states k, e.labels k)`, if the label matches
+    the scheduler's prescription and a valid transition exists.
+    Returns 0 otherwise.
+
+    Under `observation_resolving`, the distribution `μ` is unique,
+    so the result is independent of classical choice. -/
+noncomputable def step_prob (adv : Adversary State Label SS LS)
+    (σ : Strategy SS LS) (e : LTS.Execution State Label) (k : ℕ) : ENNReal :=
+  if consistent_at adv σ e k then
+    if h : ∃ μ, adv.sys.step (e.states k) (e.labels k) μ then
+      h.choose (e.states (k + 1))
+    else 0
+  else 0
+
+/-- Under the resolving condition, `step_prob` equals the PMF value for
+    the actual transition distribution, independently of classical choice. -/
+theorem step_prob_eq_of_resolving (adv : Adversary State Label SS LS)
+    (hres : adv.observation_resolving)
+    (σ : Strategy SS LS) (e : LTS.Execution State Label) (k : ℕ)
+    (μ : PMF State)
+    (hstep : adv.sys.step (e.states k) (e.labels k) μ)
+    (hcons : consistent_at adv σ e k) :
+    step_prob adv σ e k = μ (e.states (k + 1)) := by
+  classical
+  unfold step_prob
+  rw [if_pos hcons, dif_pos ⟨μ, hstep⟩]
+  exact congr_fun (congr_arg DFunLike.coe
+    (hres _ _ _ _ _ rfl (Exists.choose_spec ⟨μ, hstep⟩) hstep).2) _
+
+/-- `step_prob` is zero when the label is inconsistent with the strategy. -/
+theorem step_prob_eq_zero_of_inconsistent (adv : Adversary State Label SS LS)
+    (σ : Strategy SS LS) (e : LTS.Execution State Label) (k : ℕ)
+    (hinc : ¬consistent_at adv σ e k) :
+    step_prob adv σ e k = 0 := by
+  classical
+  unfold step_prob
+  rw [if_neg hinc]
+
+/-- `step_prob` is zero when no transition exists. -/
+theorem step_prob_eq_zero_of_no_step (adv : Adversary State Label SS LS)
+    (σ : Strategy SS LS) (e : LTS.Execution State Label) (k : ℕ)
+    (hno : ¬∃ μ, adv.sys.step (e.states k) (e.labels k) μ) :
+    step_prob adv σ e k = 0 := by
+  classical
+  unfold step_prob
+  simp [dif_neg hno]
+
+/-! ## Cone Measure -/
+
+open Classical in
+/-- The **cone measure**: probability that an execution matches the given
+    prefix of length `n`, under strategy `σ` from initial state `s₀`.
+
+    - At length 0: 1 if the initial state is `s₀`, else 0.
+    - At length `n + 1`: the cone measure at length `n` times the
+      step probability at step `n`. -/
+noncomputable def cone_prob (adv : Adversary State Label SS LS)
+    (σ : Strategy SS LS) (s₀ : State)
+    (e : LTS.Execution State Label) : ℕ → ENNReal
+  | 0 => if e.states 0 = s₀ then 1 else 0
+  | n + 1 => cone_prob adv σ s₀ e n * step_prob adv σ e n
+
+theorem cone_prob_succ (adv : Adversary State Label SS LS)
+    (σ : Strategy SS LS) (s₀ : State) (e : LTS.Execution State Label) (n : ℕ) :
+    cone_prob adv σ s₀ e (n + 1) = cone_prob adv σ s₀ e n * step_prob adv σ e n :=
+  rfl
+
+/-- The cone measure is zero if the initial state doesn't match. -/
+theorem cone_prob_eq_zero_of_ne (adv : Adversary State Label SS LS)
+    (σ : Strategy SS LS) (s₀ : State) (e : LTS.Execution State Label)
+    (h : e.states 0 ≠ s₀) (n : ℕ) :
+    cone_prob adv σ s₀ e n = 0 := by
+  induction n with
+  | zero =>
+    classical
+    exact if_neg h
+  | succ n ih => rw [cone_prob_succ, ih, zero_mul]
+
+/-- The cone measure is zero if the execution is inconsistent with
+    the strategy at any step before `n`. -/
+theorem cone_prob_eq_zero_of_inconsistent (adv : Adversary State Label SS LS)
+    (σ : Strategy SS LS) (s₀ : State) (e : LTS.Execution State Label)
+    (n : ℕ) {k : ℕ} (hk : k < n) (hinc : ¬consistent_at adv σ e k) :
+    cone_prob adv σ s₀ e n = 0 := by
+  induction n with
+  | zero => omega
+  | succ n ih =>
+    rw [cone_prob_succ]
+    rcases Nat.eq_or_lt_of_le (Nat.lt_succ_iff.mp hk) with rfl | hlt
+    · rw [step_prob_eq_zero_of_inconsistent _ _ _ _ hinc, mul_zero]
+    · rw [ih hlt, zero_mul]
+
+/-! ## Belief-State PLTS (Possible Worlds)
+
+    Given an adversary with `observation_resolving`, the **belief-state PLTS**
+    tracks the adversary's probabilistic knowledge about the system state.
+
+    States are pairs `(ss : SS, μ : PMF State)` where `μ` is a distribution
+    over original states, all having signal `ss`. This is the adversary's
+    **belief**: a probability distribution over which state the system is in,
+    given the observation history.
+
+    Under `observation_resolving`, each `(state, label-signal)` pair determines
+    a unique transition distribution. The belief update follows the Bayesian
+    rule: execute the resolved transition from each possible state, then
+    condition on the observed successor signal.
+
+    The internal/external classification lifts to signals via a compatibility
+    condition: internal labels produce internal signals and external labels
+    produce external signals. -/
+
+/-- A belief state: a state-signal paired with a distribution over original
+    states consistent with that signal. -/
+structure Adversary.BeliefState (State : Type u) (SS : Type w) where
+  /-- The state-signal observed by the adversary. -/
+  signal : SS
+  /-- Distribution over original states consistent with this signal. -/
+  belief : PMF State
+
+open Classical in
+/-- The joint distribution over successor states: mix the per-state
+    transition distributions according to the current belief.
+    Under resolving, each `(s, ls)` determines a unique `(l, ν)`.
+    If `s` has no matching transition, fall back to `PMF.pure s`. -/
+noncomputable def Adversary.beliefJoint (adv : Adversary State Label SS LS)
+    [Inhabited Label]
+    (_hres : adv.observation_resolving)
+    (μ : PMF State) (ls : LS) : PMF State :=
+  μ.bind fun s =>
+    if h : ∃ l ν, adv.obs.observe_label s l = ls ∧ adv.sys.step s l ν then
+      h.choose_spec.choose
+    else
+      PMF.pure s
+
+/-- The belief-state PLTS induced by an adversary under `observation_resolving`.
+
+    - **States**: `BeliefState State SS` — (signal, belief distribution)
+    - **Labels**: `LS` — label signals
+    - **Init**: `(ss, μ)` where all states in `μ.support` are initial with
+      signal `ss`
+    - **Step**: `(ss, μ) →[ls] ν_bs` where `ν_bs : PMF (BeliefState State SS)` is
+      the Bayesian-updated distribution over successor belief states.
+      Each `(ss', μ')` in `ν_bs.support` satisfies:
+      - `μ'` is `beliefJoint μ ls` conditioned on `{s' | observe_state s' = ss'}`
+      - `ν_bs(ss', μ')` is the marginal probability of observing `ss'` -/
+noncomputable def Adversary.beliefPLTS (adv : Adversary State Label SS LS)
+    (hres : adv.observation_resolving) [Inhabited Label] :
+    System (Adversary.BeliefState State SS) LS where
+  init := fun bs =>
+    (∀ s ∈ bs.belief.support, adv.sys.init s ∧
+      adv.obs.observe_state s = bs.signal)
+  step := fun bs ls ν_bs =>
+    let joint := adv.beliefJoint hres bs.belief ls
+    -- Every successor belief state in ν_bs's support is the posterior
+    -- of joint conditioned on the corresponding signal
+    ∀ bs' ∈ ν_bs.support,
+      -- All states in the posterior have the right signal
+      (∀ s' ∈ bs'.belief.support,
+        adv.obs.observe_state s' = bs'.signal) ∧
+      -- The posterior is joint conditioned on {s' | signal = ss'}
+      (∃ h : ∃ a ∈ {s' | adv.obs.observe_state s' = bs'.signal},
+          a ∈ joint.support,
+        bs'.belief = PMF.filter joint
+          {s' | adv.obs.observe_state s' = bs'.signal} h)
+
+/-- Signal-level labelling compatibility: the observation preserves the
+    internal/external classification of labels. -/
+structure Adversary.SignalLabelling (adv : Adversary State Label SS LS)
+    (lab : LTS.Labelling Label) where
+  /-- The induced labelling on label-signals. -/
+  sig_lab : LTS.Labelling LS
+  /-- Internal labels produce internal signals. -/
+  internal_preserved : ∀ s l,
+    lab.is_internal l = true →
+    sig_lab.is_internal (adv.obs.observe_label s l) = true
+  /-- External labels produce external signals. -/
+  external_preserved : ∀ s l,
+    lab.is_external l = true →
+    sig_lab.is_external (adv.obs.observe_label s l) = true
+
+/-- Project an execution to its observation: apply the observation at each step. -/
+def Adversary.projectExec (adv : Adversary State Label SS LS)
+    (e : LTS.Execution State Label) : LTS.Execution SS LS where
+  states := fun k => adv.obs.observe_state (e.states k)
+  labels := fun k => adv.obs.observe_label (e.states k) (e.labels k)
+
+/-- The projected execution's view agrees with the original execution's view.
+    Projection to signals IS the adversary's observation. -/
+theorem Adversary.projectExec_view (adv : Adversary State Label SS LS)
+    (e : LTS.Execution State Label) :
+    (adv.projectExec e).states = (adv.obs.view e).state_signals ∧
+    (adv.projectExec e).labels = (adv.obs.view e).label_signals :=
+  ⟨rfl, rfl⟩
+
+/-- The naive quotient LTS on signals. May have spurious executions but is
+    useful as a target for forward simulations between observation spaces. -/
+def Adversary.quotientLTS (adv : Adversary State Label SS LS) :
+    LTS.System SS LS where
+  init := fun ss => ∃ s, adv.sys.init s ∧ adv.obs.observe_state s = ss
+  step := fun ss ls ss' => ∃ s l s',
+    (toLTS adv.sys).step s l s' ∧
+    adv.obs.observe_state s = ss ∧
+    adv.obs.observe_label s l = ls ∧
+    adv.obs.observe_state s' = ss'
+
+/-- Every valid execution projects to a valid quotient execution. -/
+theorem Adversary.quotientLTS_project (adv : Adversary State Label SS LS)
+    (e : LTS.Execution State Label)
+    (hval : (toLTS adv.sys).valid_exec e) :
+    adv.quotientLTS.valid_exec (adv.projectExec e) := by
+  constructor
+  · exact ⟨e.states 0, hval.1, rfl⟩
+  · intro k
+    exact ⟨e.states k, e.labels k, e.states (k + 1), hval.2 k, rfl, rfl, rfl⟩
+
 /-! ## Backward-Compatible LTS Aliases -/
 
 end PLTS
@@ -353,6 +700,9 @@ end Observation
 
 /-- An LTS strategy (alias for the top-level `Strategy`). -/
 abbrev Strategy := _root_.Strategy
+
+/-- An LTS randomised strategy (alias for the top-level `RandomisedStrategy`). -/
+abbrev RandomisedStrategy := _root_.RandomisedStrategy
 
 /-- An LTS adversary is a PLTS adversary. -/
 abbrev Adversary := PLTS.Adversary
