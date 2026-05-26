@@ -867,6 +867,20 @@ def honestPreAuth : LTS.Execution (State p k) (Label p k) → Prop :=
             ¬(e.states n).buffer (.authData data)) ∧
           (e.states n).receiver.authData = none)
 
+/-- View-level version of `honestPreAuth`: the view is producible by
+    a valid execution satisfying `honestPreAuth`. -/
+def honestPreAuthView : Observation.ExecView (StateSignal p k) (LabelSignal p k) → Prop :=
+  fun v => ∃ e, (PLTS.toLTS (adversary p k).sys).valid_exec e ∧
+    (adversaryObs p k).view e = v ∧ honestPreAuth p k e
+
+/-- `honestPreAuth` on a valid execution implies `honestPreAuthView` on its view. -/
+theorem honestPreAuth_implies_view
+    (e : LTS.Execution (State p k) (Label p k))
+    (hvalid : (PLTS.toLTS (adversary p k).sys).valid_exec e)
+    (hpre : honestPreAuth p k e) :
+    honestPreAuthView p k ((adversaryObs p k).view e) :=
+  ⟨e, hvalid, rfl, hpre⟩
+
 /-! ### Secret Remap
 
     Given an execution with secret `s` and pairs `(b_i, y_i)`, we construct
@@ -1886,48 +1900,85 @@ theorem secret_monotone
       rw [hsec] at this; left; rw [hs₁, Option.some.inj this]
 
 /-- **Secrecy theorem**: For any secret value `s`, the property "the secret
-    is `s`" is a secret under `honestPreAuth` — the adversary cannot infer
+    is `s`" is a secret under `honestPreAuthView` — the adversary cannot infer
     the dealer's secret when dealer and intermediary are honest and
     authentication has not started. -/
 theorem secret_before_auth (hp2 : p ≥ 2) (s : V p) :
-    (adversary p k).possibilistic_secret (secretIs p k s) (honestPreAuth p k) := by
-  intro σ v ⟨e₀, hvalid₀p, hcons₀, hview₀, hpre₀⟩
-  have hvalid₀ := (PLTS.toLTS_fromLTS_valid_exec _ _).mp hvalid₀p
-  -- Extract components of honestPreAuth
-  have ⟨hinput₀, hhonest₀, hauth₀⟩ := hpre₀
-  -- e₀ has a defined secret (honestPreAuth guarantees input happened)
-  have hsec_def : ∃ n s₀, (e₀.states n).dealer.secret = some s₀ := by
-    obtain ⟨n, hlab⟩ := hinput₀
+    (adversary p k).possibilistic_secret (secretIs p k s) (honestPreAuthView p k) := by
+  apply PLTS.Adversary.possibilistic_secret_of_det
+  intro σ v hCv ⟨e₀, hvalid₀p, hcons₀, hview₀⟩
+  -- Extract the honestPreAuth witness from the view condition
+  obtain ⟨e_w, hvalid_w, hview_w, hpre_w⟩ := hCv
+  -- e_w has the same view as e₀ (both have view v)
+  have hview_w_eq : (adversaryObs p k).view e_w = (adversaryObs p k).view e₀ :=
+    hview_w.trans hview₀.symm
+  -- Work with e_w which satisfies honestPreAuth
+  have hvalid_w' := (PLTS.toLTS_fromLTS_valid_exec _ _).mp hvalid_w
+  have ⟨_hinput_w, hhonest_w, _hauth_w⟩ := hpre_w
+  -- e_w has a defined secret
+  have hsec_def : ∃ n s₀, (e_w.states n).dealer.secret = some s₀ := by
+    obtain ⟨n, hlab⟩ := hpre_w.1
     obtain ⟨s_val, hlabel⟩ := observeLabel_honest_input p k _ _ hlab
-    exact ⟨n + 1, s_val, input_step_defines_secret p k _ _ _ (hlabel ▸ hvalid₀.2 n)⟩
+    exact ⟨n + 1, s_val, input_step_defines_secret p k _ _ _ (hlabel ▸ hvalid_w'.2 n)⟩
   obtain ⟨n₀, s₀, hs₀⟩ := hsec_def
-  -- Secret is monotone: s₀ is the unique secret value
-  have hsecIs₀ : secretIs p k s₀ e₀ := by
+  have hsecIs_w : secretIs p k s₀ e_w := by
     intro m s₁ hs₁
-    have := secret_monotone p k e₀ hvalid₀ n₀ s₀ hs₀ m
+    have := secret_monotone p k e_w hvalid_w' n₀ s₀ hs₀ m
     cases this with
     | inl h => exact Option.some.inj (hs₁.symm.trans h)
     | inr h => exact absurd (hs₁.symm.trans h) nofun
+  -- Extract deterministic consistency for e_w from its view matching e₀
+  have hindist : (adversary p k).indistinguishable e₀ e_w :=
+    ⟨congr_fun (congr_arg Observation.ExecView.state_signals hview_w_eq.symm),
+     congr_fun (congr_arg Observation.ExecView.label_signals hview_w_eq.symm)⟩
+  have hcons₀_det : (adversary p k).consistent σ e₀ := by
+    intro k'
+    have h := hcons₀ k'
+    simp only [Strategy.toRandomised, PMF.mem_support_pure_iff] at h
+    exact h
+  have hcons_w : (adversary p k).consistent σ e_w := by
+    intro k'
+    have h₀ := hcons₀_det k'
+    have hhist : (List.ofFn fun i : Fin k' =>
+        ((adversary p k).obs.observe_state (e_w.states i.val),
+         (adversary p k).obs.observe_label (e_w.states i.val) (e_w.labels i.val))) =
+      (List.ofFn fun i : Fin k' =>
+        ((adversary p k).obs.observe_state (e₀.states i.val),
+         (adversary p k).obs.observe_label (e₀.states i.val) (e₀.labels i.val))) := by
+      congr 1; ext ⟨i, hi⟩ <;> simp [hindist.1 i, hindist.2 i]
+    show (adversary p k).obs.observe_label (e_w.states k') (e_w.labels k') = _
+    rw [← hindist.2 k', hhist, ← hindist.1 k']; exact h₀
   obtain ⟨s', hs'⟩ := exists_ne p hp2 s
   have cast_back := fun e => (PLTS.toLTS_fromLTS_valid_exec (system p k) e).mpr
   constructor
-  · -- ∃ execution with view v, honestPreAuth, and secretIs s
-    -- Remap s₀ → s
-    obtain ⟨hvalid₁, hcons₁, hview₁, hpre₁, hsec₁⟩ :=
-      observation_independent_of_secret p k s₀ s e₀ hvalid₀ hcons₀ hpre₀ hsecIs₀
-    exact ⟨_, cast_back _ hvalid₁, hcons₁, hview₁ ▸ hview₀, hpre₁, hsec₁⟩
-  · -- ∃ execution with view v, honestPreAuth, and ¬(secretIs s)
-    -- Remap s₀ → s' where s' ≠ s
-    obtain ⟨hvalid₁, hcons₁, hview₁, hpre₁, hsec₁⟩ :=
-      observation_independent_of_secret p k s₀ s' e₀ hvalid₀ hcons₀ hpre₀ hsecIs₀
-    refine ⟨_, cast_back _ hvalid₁, hcons₁, hview₁ ▸ hview₀, hpre₁, ?_⟩
-    -- ¬(secretIs s e'): e' has secret s', so if defined, it's s' ≠ s
-    intro hsec_s
-    -- Both secretIs s and secretIs s' on e' — contradiction at state n₀
-    have hsec_def' : ∃ n s₁, (remapState p k s₀ s' (e₀.states n)).dealer.secret = some s₁ := by
+  · -- ¬positively_inferable: remap e_w with s₀ → s'
+    obtain ⟨hvalid₁, hcons₁, hview₁, _hpre₁, hsec₁⟩ :=
+      observation_independent_of_secret p k s₀ s' e_w hvalid_w' hcons_w hpre_w hsecIs_w
+    intro hpos
+    -- The remapped execution
+    set e' : LTS.Execution (State p k) (Label p k) :=
+      ⟨fun n => remapState p k s₀ s' (e_w.states n),
+       fun n => remapLabel p k s₀ s' (e_w.states n) (e_w.labels n)⟩
+    have hview₁' : (adversaryObs p k).view e' = v := hview₁.symm.trans hview_w
+    have hcons₁' : (adversary p k).randomised_consistent σ.toRandomised e' :=
+      (adversary p k).consistent_toRandomised σ e' hcons₁
+    have hsec_s := hpos e' (cast_back _ hvalid₁) hcons₁' hview₁'
+    -- Both secretIs s and secretIs s' — contradiction
+    have hsec_def' : ∃ n s₁, (remapState p k s₀ s' (e_w.states n)).dealer.secret = some s₁ := by
       refine ⟨n₀, ?_⟩; simp only [remapState]; rw [hs₀]; simp
     obtain ⟨n₁, s₁, hs₁⟩ := hsec_def'
     exact hs' ((hsec₁ n₁ s₁ hs₁).symm.trans (hsec_s n₁ s₁ hs₁))
+  · -- ¬negatively_inferable: remap e_w with s₀ → s
+    obtain ⟨hvalid₁, hcons₁, hview₁, _hpre₁, hsec₁⟩ :=
+      observation_independent_of_secret p k s₀ s e_w hvalid_w' hcons_w hpre_w hsecIs_w
+    intro hneg
+    set e' : LTS.Execution (State p k) (Label p k) :=
+      ⟨fun n => remapState p k s₀ s (e_w.states n),
+       fun n => remapLabel p k s₀ s (e_w.states n) (e_w.labels n)⟩
+    have hview₁' : (adversaryObs p k).view e' = v := hview₁.symm.trans hview_w
+    have hcons₁' : (adversary p k).randomised_consistent σ.toRandomised e' :=
+      (adversary p k).consistent_toRandomised σ e' hcons₁
+    exact hneg e' (cast_back _ hvalid₁) hcons₁' hview₁' hsec₁
 
 /-! ### Secrecy via General Proof Rule
 
@@ -1968,24 +2019,10 @@ theorem secretIs_exclusive
   intro h₂
   exact hne ((h₁ (n + 1) s_val hsec_def).symm.trans (h₂ (n + 1) s_val hsec_def))
 
-/-- **Secrecy theorem (via proof rule)**: alternative proof using the general
-    `possibilistic_secret_by_remap` rule. -/
+/-- **Secrecy theorem (alternative)**: same result via `secret_before_auth`. -/
 theorem secret_before_auth' (hp2 : p ≥ 2) (s : V p) :
-    (adversary p k).possibilistic_secret (secretIs p k s) (honestPreAuth p k) :=
-  have cv := fun e => (PLTS.toLTS_fromLTS_valid_exec (system p k) e).mp
-  have cv' := fun e => (PLTS.toLTS_fromLTS_valid_exec (system p k) e).mpr
-  (adversary p k).possibilistic_secret_by_remap
-    (secretIs p k)
-    (honestPreAuth p k)
-    (fun e hval hC => honestPreAuth_has_secret p k e (cv e hval) hC)
-    (fun v₁ v₂ e _ hval hcons hC hsec =>
-      let ⟨hv, hc, hw, hC', hs⟩ :=
-        observation_independent_of_secret p k v₁ v₂ e (cv e hval) hcons hC hsec
-      ⟨_, cv' _ hv, hc, hw, hC', hs⟩)
-    (fun v₁ v₂ e hval hpre hne h₁ =>
-      secretIs_exclusive p k e (cv e hval) hpre v₁ v₂ hne h₁)
-    s
-    (exists_ne p hp2 s)
+    (adversary p k).possibilistic_secret (secretIs p k s) (honestPreAuthView p k) :=
+  secret_before_auth p k hp2 s
 
 /-! ### Isomorphic Secrecy
 

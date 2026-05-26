@@ -1,4 +1,4 @@
-import Leslie_LTS.Framework.ProbExec
+import Leslie_LTS.Framework.Adversary
 
 /-! # Secrecy Properties for PLTS Adversaries
 
@@ -19,16 +19,14 @@ variable {SS : Type w} {LS : Type x}
     adversary actually sees), we classify whether the adversary can infer
     whether `P` holds or not.
 
-    An execution is **consistent with an observation** if the adversary's
-    view of that execution matches the given observation.
+    The definitions use **randomised strategies** as the primary scheduling
+    model. Deterministic strategies are a special case via `Strategy.toRandomised`.
 
     - `P` is **positively inferable** from an observation if all valid
-      executions consistent with that observation satisfy `P`.
-    - `P` is **negatively inferable** from an observation if all valid
-      executions consistent with that observation do *not* satisfy `P`.
-    - `P` is **not inferable** if it is neither positively nor negatively
-      inferable — the adversary cannot determine from its observation
-      whether `P` holds. -/
+      randomised-consistent executions with that observation satisfy `P`.
+    - `P` is **negatively inferable** if all such executions do not satisfy `P`.
+    - `P` is **not inferable** if (given realizability) it is neither
+      positively nor negatively inferable. -/
 
 /-- An execution is consistent with an observation `v` if the adversary's
     view of the execution equals `v`. -/
@@ -36,145 +34,190 @@ def Adversary.consistent_with_view (adv : Adversary State Label SS LS)
     (e : LTS.Execution State Label) (v : Observation.ExecView SS LS) : Prop :=
   adv.obs.view e = v
 
-/-- A trace property `P` is **positively inferable** from observation `v`
-    under strategy `σ`: every system-valid execution that is consistent with
-    strategy `σ` and produces observation `v` satisfies `P`. -/
+/-- `P` is **positively inferable** from observation `v` under randomised
+    strategy `ρ`: every valid randomised-consistent execution with view `v`
+    satisfies `P`. -/
 def Adversary.positively_inferable (adv : Adversary State Label SS LS)
-    (σ : Strategy SS LS)
+    (ρ : RandomisedStrategy SS LS)
     (P : LTS.Execution State Label → Prop)
     (v : Observation.ExecView SS LS) : Prop :=
-  ∀ e, (toLTS adv.sys).valid_exec e → adv.consistent σ e →
+  ∀ e, (toLTS adv.sys).valid_exec e → adv.randomised_consistent ρ e →
     adv.consistent_with_view e v → P e
 
-/-- A trace property `P` is **negatively inferable** from observation `v`
-    under strategy `σ`: every system-valid execution consistent with `σ`
-    that produces observation `v` does *not* satisfy `P`. -/
+/-- `P` is **negatively inferable** from observation `v` under randomised
+    strategy `ρ`: every valid randomised-consistent execution with view `v`
+    does *not* satisfy `P`. -/
 def Adversary.negatively_inferable (adv : Adversary State Label SS LS)
-    (σ : Strategy SS LS)
+    (ρ : RandomisedStrategy SS LS)
     (P : LTS.Execution State Label → Prop)
     (v : Observation.ExecView SS LS) : Prop :=
-  ∀ e, (toLTS adv.sys).valid_exec e → adv.consistent σ e →
+  ∀ e, (toLTS adv.sys).valid_exec e → adv.randomised_consistent ρ e →
     adv.consistent_with_view e v → ¬P e
 
-/-- A trace property `P` is **not inferable** from observation `v`
-    under strategy `σ`: the adversary cannot determine from `v` and `σ`
-    whether `P` holds. -/
+/-- `P` is **not inferable** from observation `v` under randomised
+    strategy `ρ`: if the observation is realizable, then neither positive
+    nor negative inferability holds.
+
+    The realizability guard ensures vacuous truth for unrealizable
+    observations. -/
 def Adversary.not_inferable (adv : Adversary State Label SS LS)
-    (σ : Strategy SS LS)
+    (ρ : RandomisedStrategy SS LS)
     (P : LTS.Execution State Label → Prop)
     (v : Observation.ExecView SS LS) : Prop :=
-  ¬adv.positively_inferable σ P v ∧ ¬adv.negatively_inferable σ P v
+  (∃ e, (toLTS adv.sys).valid_exec e ∧ adv.randomised_consistent ρ e ∧
+    adv.consistent_with_view e v) →
+  ¬adv.positively_inferable ρ P v ∧ ¬adv.negatively_inferable ρ P v
 
-/-- If a property is not inferable under a strategy, there exist two
-    system-valid executions consistent with the strategy and observation
-    such that one satisfies `P` and the other does not. -/
+/-- If a property is not inferable and the observation is realizable,
+    there exist two valid randomised-consistent executions with that
+    observation: one satisfying `P` and one not. -/
 theorem Adversary.not_inferable_witnesses (adv : Adversary State Label SS LS)
-    (σ : Strategy SS LS)
+    (ρ : RandomisedStrategy SS LS)
     (P : LTS.Execution State Label → Prop)
     (v : Observation.ExecView SS LS)
-    (h : adv.not_inferable σ P v) :
-    (∃ e, (toLTS adv.sys).valid_exec e ∧ adv.consistent σ e ∧
+    (h : adv.not_inferable ρ P v)
+    (hreal : ∃ e, (toLTS adv.sys).valid_exec e ∧ adv.randomised_consistent ρ e ∧
+      adv.consistent_with_view e v) :
+    (∃ e, (toLTS adv.sys).valid_exec e ∧ adv.randomised_consistent ρ e ∧
       adv.consistent_with_view e v ∧ P e) ∧
-    (∃ e, (toLTS adv.sys).valid_exec e ∧ adv.consistent σ e ∧
+    (∃ e, (toLTS adv.sys).valid_exec e ∧ adv.randomised_consistent ρ e ∧
       adv.consistent_with_view e v ∧ ¬P e) := by
-  obtain ⟨hnpos, hnneg⟩ := h
+  obtain ⟨hnpos, hnneg⟩ := h hreal
   constructor
   · exact Classical.byContradiction fun hc =>
-      hnneg (fun e hv hσ hobs hp => hc ⟨e, hv, hσ, hobs, hp⟩)
+      hnneg (fun e hv hρ hobs hp => hc ⟨e, hv, hρ, hobs, hp⟩)
   · exact Classical.byContradiction fun hc =>
-      hnpos (fun e hv hσ hobs =>
-        Classical.byContradiction (fun hnp => hc ⟨e, hv, hσ, hobs, hnp⟩))
+      hnpos (fun e hv hρ hobs =>
+        Classical.byContradiction (fun hnp => hc ⟨e, hv, hρ, hobs, hnp⟩))
 
 /-- Positive and negative inferability are mutually exclusive
-    (assuming some execution is consistent with the strategy and observation). -/
+    (assuming some execution is consistent and produces the observation). -/
 theorem Adversary.not_both_inferable (adv : Adversary State Label SS LS)
-    (σ : Strategy SS LS)
+    (ρ : RandomisedStrategy SS LS)
     (P : LTS.Execution State Label → Prop)
     (v : Observation.ExecView SS LS)
     (e : LTS.Execution State Label)
-    (hv : (toLTS adv.sys).valid_exec e) (hσ : adv.consistent σ e)
+    (hv : (toLTS adv.sys).valid_exec e) (hρ : adv.randomised_consistent ρ e)
     (hobs : adv.consistent_with_view e v) :
-    ¬(adv.positively_inferable σ P v ∧ adv.negatively_inferable σ P v) := by
+    ¬(adv.positively_inferable ρ P v ∧ adv.negatively_inferable ρ P v) := by
   intro ⟨hpos, hneg⟩
-  exact hneg e hv hσ hobs (hpos e hv hσ hobs)
-
-/-! ## Secrets -/
-
-/-- A trace property `P` is a **secret** under observation property `P'`:
-    for every strategy `σ` and every observation `v` satisfying `P'`,
-    the property `P` is not inferable from `v` under `σ`. -/
-def Adversary.secret (adv : Adversary State Label SS LS)
-    (P : LTS.Execution State Label → Prop)
-    (P' : Observation.ExecView SS LS → Prop) : Prop :=
-  ∀ σ v, P' v → adv.not_inferable σ P v
-
-/-- If `P` is a secret under `P'`, then for every strategy and observation
-    satisfying `P'`, there exist two system-valid executions consistent with
-    the strategy and observation: one satisfying `P` and one not. -/
-theorem Adversary.secret_witnesses (adv : Adversary State Label SS LS)
-    (P : LTS.Execution State Label → Prop)
-    (P' : Observation.ExecView SS LS → Prop)
-    (hsec : adv.secret P P')
-    (σ : Strategy SS LS) (v : Observation.ExecView SS LS) (hv : P' v) :
-    (∃ e, (toLTS adv.sys).valid_exec e ∧ adv.consistent σ e ∧
-      adv.consistent_with_view e v ∧ P e) ∧
-    (∃ e, (toLTS adv.sys).valid_exec e ∧ adv.consistent σ e ∧
-      adv.consistent_with_view e v ∧ ¬P e) :=
-  adv.not_inferable_witnesses σ P v (hsec σ v hv)
+  exact hneg e hv hρ hobs (hpos e hv hρ hobs)
 
 /-! ## Possibilistic Secrecy
 
     Possibilistic secrecy (non-deducibility): the adversary cannot determine
-    whether a property holds from its observation — both outcomes are possible. -/
+    whether a property holds from its observation — both outcomes are possible.
+
+    The definition quantifies over all **randomised strategies**. Deterministic
+    strategies are a special case via `Strategy.toRandomised`. -/
 
 /-- Possibilistic secrecy: a trace property `P` is a **possibilistic secret**
-    under execution condition `P'` if, for every strategy and view realizable
-    by a `P'`-satisfying execution, there exist `P'`-satisfying executions
-    with that same view where `P` holds and where `P` doesn't hold.
-    The adversary cannot determine `P` from its view — both outcomes
-    are *possible*. This is also known as non-deducibility. -/
+    under observation condition `C` if, for every randomised strategy `ρ` and
+    every view `v` satisfying `C`, the property `P` is not inferable from `v` —
+    both `P` and `¬P` are compatible with the observation.
+    This is also known as non-deducibility. -/
 def Adversary.possibilistic_secret (adv : Adversary State Label SS LS)
     (P : LTS.Execution State Label → Prop)
-    (P' : LTS.Execution State Label → Prop) : Prop :=
-  ∀ σ v,
-    (∃ e, (toLTS adv.sys).valid_exec e ∧ adv.consistent σ e ∧
-      adv.obs.view e = v ∧ P' e) →
-    (∃ e, (toLTS adv.sys).valid_exec e ∧ adv.consistent σ e ∧
-      adv.obs.view e = v ∧ P' e ∧ P e) ∧
-    (∃ e, (toLTS adv.sys).valid_exec e ∧ adv.consistent σ e ∧
-      adv.obs.view e = v ∧ P' e ∧ ¬P e)
+    (C : Observation.ExecView SS LS → Prop) : Prop :=
+  ∀ ρ : RandomisedStrategy SS LS, ∀ v, C v → adv.not_inferable ρ P v
+
+/-- Possibilistic secrecy against deterministic strategies only.
+    This is weaker than `possibilistic_secret` (which quantifies over all
+    randomised strategies), but is often easier to prove directly.
+    Use `possibilistic_secret_of_det` to lift to the full definition. -/
+def Adversary.det_possibilistic_secret (adv : Adversary State Label SS LS)
+    (P : LTS.Execution State Label → Prop)
+    (C : Observation.ExecView SS LS → Prop) : Prop :=
+  ∀ σ : Strategy SS LS, ∀ v, C v → adv.not_inferable σ.toRandomised P v
+
+/-- **Lifting theorem**: possibilistic secrecy against deterministic
+    strategies implies possibilistic secrecy against all (randomised)
+    strategies.
+
+    Given a randomised-consistent execution `e₀`, we extract a deterministic
+    `σ` consistent with `e₀`, lift to `σ.toRandomised`-consistency, apply
+    `det_possibilistic_secret` to obtain witnesses sharing the same view,
+    then transfer randomised consistency from `e₀` to the witnesses via
+    `randomised_consistent_of_indistinguishable`. -/
+theorem Adversary.possibilistic_secret_of_det
+    (adv : Adversary State Label SS LS)
+    (P : LTS.Execution State Label → Prop)
+    (C : Observation.ExecView SS LS → Prop)
+    (h : adv.det_possibilistic_secret P C) :
+    adv.possibilistic_secret P C := by
+  intro ρ v hCv ⟨e₀, hval₀, hcons_r₀, hview₀⟩
+  -- Extract a deterministic strategy and lift to randomised
+  obtain ⟨σ, hcons₀⟩ := adv.consistent_of_randomised_consistent ρ e₀ hcons_r₀
+  have hcons_r₀' := adv.consistent_toRandomised σ e₀ hcons₀
+  -- Get witnesses from deterministic possibilistic secrecy
+  obtain ⟨⟨e₁, hval₁, _, hview₁, hp₁⟩, ⟨e₂, hval₂, _, hview₂, hp₂⟩⟩ :=
+    adv.not_inferable_witnesses σ.toRandomised P v (h σ v hCv)
+      ⟨e₀, hval₀, hcons_r₀', hview₀⟩
+  -- Same view → indistinguishable → transfer ρ-consistency from e₀
+  have mk_indist : ∀ e, adv.consistent_with_view e v →
+      adv.indistinguishable e₀ e := by
+    intro e hview
+    have hveq : adv.obs.view e₀ = adv.obs.view e := hview₀.trans hview.symm
+    exact ⟨congr_fun (congr_arg Observation.ExecView.state_signals hveq),
+           congr_fun (congr_arg Observation.ExecView.label_signals hveq)⟩
+  have hρ₁ := adv.randomised_consistent_of_indistinguishable ρ (mk_indist e₁ hview₁) hcons_r₀
+  have hρ₂ := adv.randomised_consistent_of_indistinguishable ρ (mk_indist e₂ hview₂) hcons_r₀
+  exact ⟨fun hpos => hp₂ (hpos e₂ hval₂ hρ₂ hview₂),
+         fun hneg => hneg e₁ hval₁ hρ₁ hview₁ hp₁⟩
 
 /-! ### Possibilistic Secrecy Proof Rule
 
     A general proof rule for establishing `possibilistic_secret` via a **remap**
     argument. -/
 
-/-- **Possibilistic secrecy by remap**. -/
+/-- **Possibilistic secrecy by remap**: given a family of secret predicates
+    indexed by `V`, an observation condition `C`, if every valid execution
+    whose view satisfies `C` has some secret value, the secret value can be
+    remapped while preserving validity and view, and distinct values are
+    exclusive, then `secret s` is a possibilistic secret under `C`.
+
+    The remap hypotheses are scheduling-model-independent: they only require
+    validity and view preservation. Randomised consistency of the remap
+    witnesses is obtained automatically via `randomised_consistent_of_indistinguishable`
+    (same view ⟹ indistinguishable ⟹ consistency transfers). -/
 theorem Adversary.possibilistic_secret_by_remap (adv : Adversary State Label SS LS)
     {V : Type _}
     (secret : V → LTS.Execution State Label → Prop)
-    (C : LTS.Execution State Label → Prop)
-    (hhas_secret : ∀ e, (toLTS adv.sys).valid_exec e → C e → ∃ v, secret v e)
-    (hremap : ∀ v₁ v₂ e (σ : Strategy SS LS),
-      (toLTS adv.sys).valid_exec e → adv.consistent σ e → C e → secret v₁ e →
-      ∃ e', (toLTS adv.sys).valid_exec e' ∧ adv.consistent σ e' ∧
-        adv.obs.view e = adv.obs.view e' ∧ C e' ∧ secret v₂ e')
-    (hexcl : ∀ v₁ v₂ e, (toLTS adv.sys).valid_exec e → C e →
-      v₁ ≠ v₂ → secret v₁ e → ¬secret v₂ e)
+    (C : Observation.ExecView SS LS → Prop)
+    (hhas_secret : ∀ e, (toLTS adv.sys).valid_exec e →
+      C (adv.obs.view e) → ∃ v, secret v e)
+    (hremap : ∀ v₁ v₂ e,
+      (toLTS adv.sys).valid_exec e → C (adv.obs.view e) → secret v₁ e →
+      ∃ e', (toLTS adv.sys).valid_exec e' ∧
+        adv.obs.view e = adv.obs.view e' ∧ secret v₂ e')
+    (hexcl : ∀ v₁ v₂ e, (toLTS adv.sys).valid_exec e →
+      C (adv.obs.view e) → v₁ ≠ v₂ → secret v₁ e → ¬secret v₂ e)
     (s : V) (hne : ∃ s', s' ≠ s) :
     adv.possibilistic_secret (secret s) C := by
-  intro σ v ⟨e₀, hvalid₀, hcons₀, hview₀, hC₀⟩
-  obtain ⟨v₀, hv₀⟩ := hhas_secret e₀ hvalid₀ hC₀
+  intro ρ v hCv ⟨e₀, hvalid₀, hcons_r₀, hview₀⟩
+  have hCe₀ : C (adv.obs.view e₀) := hview₀ ▸ hCv
+  obtain ⟨v₀, hv₀⟩ := hhas_secret e₀ hvalid₀ hCe₀
   obtain ⟨s', hs'⟩ := hne
+  -- Helper: same view as e₀ → indistinguishable → randomised-consistent with ρ
+  have transfer : ∀ e', adv.obs.view e₀ = adv.obs.view e' →
+      adv.randomised_consistent ρ e' := by
+    intro e' hveq
+    exact adv.randomised_consistent_of_indistinguishable ρ
+      ⟨congr_fun (congr_arg Observation.ExecView.state_signals hveq),
+       congr_fun (congr_arg Observation.ExecView.label_signals hveq)⟩ hcons_r₀
+  have view_eq : ∀ e', adv.obs.view e₀ = adv.obs.view e' →
+      adv.consistent_with_view e' v := fun e' hw' => hw'.symm.trans hview₀
   constructor
-  · -- Positive witness: remap v₀ → s
-    obtain ⟨e', hv', hc', hw', hC', hsec_s⟩ :=
-      hremap v₀ s e₀ σ hvalid₀ hcons₀ hC₀ hv₀
-    exact ⟨e', hv', hc', hw' ▸ hview₀, hC', hsec_s⟩
-  · -- Negative witness: remap v₀ → s' where s' ≠ s
-    obtain ⟨e', hv', hc', hw', hC', hsec'⟩ :=
-      hremap v₀ s' e₀ σ hvalid₀ hcons₀ hC₀ hv₀
-    exact ⟨e', hv', hc', hw' ▸ hview₀, hC', hexcl s' s e' hv' hC' hs' hsec'⟩
+  · -- ¬positively_inferable: exhibit execution with ¬(secret s)
+    obtain ⟨e', hv', hw', hsec'⟩ := hremap v₀ s' e₀ hvalid₀ hCe₀ hv₀
+    intro hpos
+    have hCe' : C (adv.obs.view e') := hw' ▸ hCe₀
+    exact hexcl s' s e' hv' hCe' hs' hsec'
+      (hpos e' hv' (transfer e' hw') (view_eq e' hw'))
+  · -- ¬negatively_inferable: exhibit execution with secret s
+    obtain ⟨e', hv', hw', hsec_s⟩ := hremap v₀ s e₀ hvalid₀ hCe₀ hv₀
+    intro hneg
+    exact hneg e' hv' (transfer e' hw') (view_eq e' hw') hsec_s
 
 /-! ## Isomorphic Secrecy
 
@@ -208,19 +251,18 @@ theorem Adversary.isomorphic_secret.to_possibilistic_secret
     (adv : Adversary State Label SS LS)
     {V : Type _}
     (secret : V → LTS.Execution State Label → Prop)
-    (C : LTS.Execution State Label → Prop)
-    (hits : adv.isomorphic_secret secret C)
-    (hhas_secret : ∀ e, (toLTS adv.sys).valid_exec e → C e → ∃ v, secret v e)
-    (hexcl : ∀ v₁ v₂ e, (toLTS adv.sys).valid_exec e → C e →
-      v₁ ≠ v₂ → secret v₁ e → ¬secret v₂ e)
+    (C : Observation.ExecView SS LS → Prop)
+    (hhas_secret : ∀ e, (toLTS adv.sys).valid_exec e →
+      C (adv.obs.view e) → ∃ v, secret v e)
+    (hremap : ∀ v₁ v₂ e,
+      (toLTS adv.sys).valid_exec e → C (adv.obs.view e) → secret v₁ e →
+      ∃ e', (toLTS adv.sys).valid_exec e' ∧
+        adv.obs.view e = adv.obs.view e' ∧ secret v₂ e')
+    (hexcl : ∀ v₁ v₂ e, (toLTS adv.sys).valid_exec e →
+      C (adv.obs.view e) → v₁ ≠ v₂ → secret v₁ e → ¬secret v₂ e)
     (s : V) (hne : ∃ s', s' ≠ s) :
-    adv.possibilistic_secret (secret s) C := by
-  obtain ⟨remap, hpres, _hinv⟩ := hits
-  exact adv.possibilistic_secret_by_remap secret C hhas_secret
-    (fun v₁ v₂ e σ hval hcons hC hsec =>
-      let ⟨hval', hcons', hview', hC', hsec'⟩ := hpres v₁ v₂ e σ hval hcons hC hsec
-      ⟨remap v₁ v₂ e, hval', hcons', hview', hC', hsec'⟩)
-    hexcl s hne
+    adv.possibilistic_secret (secret s) C :=
+  adv.possibilistic_secret_by_remap secret C hhas_secret hremap hexcl s hne
 
 /-- Establish isomorphic secrecy from a concrete remap with
     an invertibility certificate. -/
@@ -240,299 +282,5 @@ theorem Adversary.isomorphic_secret_by_remap (adv : Adversary State Label SS LS)
       remap v₂ v₁ (remap v₁ v₂ e) = e) :
     adv.isomorphic_secret secret C :=
   ⟨remap, hpres, hinv⟩
-
-/-! ## Probabilistic Possibilistic Secrecy
-
-    In an LTS, possibilistic secrecy relies on the scheduler *not* resolving
-    all nondeterminism: if it did, there would be a single execution per view,
-    and both outcomes could not coexist.
-
-    In a PLTS, even when the scheduler resolves all nondeterminism (fixing a
-    unique `(label, distribution)` at each step), multiple executions remain
-    possible because the distribution is *sampled*. The probabilistic outcomes
-    create uncertainty that the adversary cannot eliminate.
-
-    `prob_possibilistic_secret` uses `exec_measure` — the probability measure
-    on infinite state sequences induced by a resolving strategy via the
-    Ionescu-Tulcea theorem. Under `observation_resolving`, labels are
-    deterministic functions of the state sequence (via `reconstruct_labels`),
-    so an execution property `P` lifts to a set of state sequences via
-    `reconstructed_exec`. The definition asks that both `P` and `¬P` have
-    positive measure — a genuine probabilistic statement that handles both
-    finite-prefix properties and infinite-trace properties (e.g., "a label
-    appears infinitely often"). -/
-
-/-- Lift an execution property to a set of state sequences via
-    `reconstructed_exec`: the execution built by pairing the state sequence
-    with the labels uniquely determined by the resolving strategy. -/
-def Adversary.lift_to_states (adv : Adversary State Label SS LS)
-    (hres : adv.observation_resolving) [Inhabited Label]
-    (σ : Strategy SS LS) (P : LTS.Execution State Label → Prop) :
-    Set (ℕ → State) :=
-  {ω | P (reconstructed_exec adv hres σ ω)}
-
-/-- Probabilistic possibilistic secrecy: for every resolving strategy,
-    every initial state, and every realizable observation, the property `P`
-    holds with positive probability but not surely under the induced
-    execution measure.
-
-    The condition `C` restricts attention to a subset of executions (e.g.,
-    "at most `f` processes are corrupted"). The definition conditions on
-    observation `v`: whenever `C`-executions producing observation `v` have
-    positive measure, both `C ∧ P` and `C ∧ ¬P` have positive measure
-    among executions producing the same observation. The adversary cannot
-    determine `P` even knowing `C` and its observation.
-
-    Since `exec_measure` is a probability measure on infinite state sequences
-    (via Ionescu-Tulcea), this captures genuine probabilistic uncertainty —
-    including for infinite-trace properties like "a label appears infinitely
-    often." -/
-def Adversary.prob_possibilistic_secret (adv : Adversary State Label SS LS)
-    (hres : adv.observation_resolving) [Inhabited Label]
-    [MeasurableSpace State] [MeasurableSingletonClass State]
-    [Countable State] [Inhabited State]
-    (P : LTS.Execution State Label → Prop)
-    (C : LTS.Execution State Label → Prop) : Prop :=
-  ∀ σ s₀ v, adv.sys.init s₀ →
-    exec_measure adv hres σ s₀
-      (adv.lift_to_states hres σ (fun e => C e ∧ adv.obs.view e = v)) > 0 →
-    exec_measure adv hres σ s₀
-      (adv.lift_to_states hres σ (fun e => C e ∧ P e ∧ adv.obs.view e = v)) > 0 ∧
-    exec_measure adv hres σ s₀
-      (adv.lift_to_states hres σ (fun e => C e ∧ ¬P e ∧ adv.obs.view e = v)) > 0
-
-/-- `prob_possibilistic_secret` implies `possibilistic_secret`: positive
-    measure implies the set is non-empty (since `μ(∅) = 0`), giving
-    witness executions with the same observation.
-
-    The reconstructed execution from any state sequence `ω` is valid and
-    consistent by construction (`hrecon`). The side condition `hC_pos`
-    ensures that a valid consistent execution with `C` and observation `v`
-    implies positive measure for the set `C ∧ view = v`. -/
-theorem Adversary.prob_possibilistic_secret.to_possibilistic_secret
-    (adv : Adversary State Label SS LS)
-    (hres : adv.observation_resolving) [Inhabited Label]
-    [MeasurableSpace State] [MeasurableSingletonClass State]
-    [Countable State] [Inhabited State]
-    (P : LTS.Execution State Label → Prop)
-    (C : LTS.Execution State Label → Prop)
-    (hprob : adv.prob_possibilistic_secret hres P C)
-    (hrecon : ∀ (σ : Strategy SS LS) (ω : ℕ → State),
-      (toLTS adv.sys).valid_exec (reconstructed_exec adv hres σ ω) ∧
-      adv.consistent σ (reconstructed_exec adv hres σ ω))
-    (hC_pos : ∀ (σ : Strategy SS LS) (e : LTS.Execution State Label),
-      (toLTS adv.sys).valid_exec e → adv.consistent σ e → C e →
-      exec_measure adv hres σ (e.states 0)
-        (adv.lift_to_states hres σ
-          (fun e' => C e' ∧ adv.obs.view e' = adv.obs.view e)) > 0) :
-    adv.possibilistic_secret P C := by
-  intro σ v ⟨e, hval, hcons, hview, hC⟩
-  have hinit : adv.sys.init (e.states 0) := hval.1
-  have hCv_pos := hC_pos σ e hval hcons hC
-  rw [hview] at hCv_pos
-  obtain ⟨hP_pos, hNP_pos⟩ := hprob σ (e.states 0) v hinit hCv_pos
-  -- Positive measure → non-empty: μ(S) > 0 implies S ≠ ∅
-  have hne₁ := MeasureTheory.nonempty_of_measure_ne_zero hP_pos.ne'
-  have hne₂ := MeasureTheory.nonempty_of_measure_ne_zero hNP_pos.ne'
-  obtain ⟨ω₁, hC₁, hp₁, hw₁⟩ := hne₁
-  obtain ⟨ω₂, hC₂, hp₂, hw₂⟩ := hne₂
-  have ⟨hval₁, hcons₁⟩ := hrecon σ ω₁
-  have ⟨hval₂, hcons₂⟩ := hrecon σ ω₂
-  exact ⟨⟨_, hval₁, hcons₁, hw₁, hC₁, hp₁⟩, ⟨_, hval₂, hcons₂, hw₂, hC₂, hp₂⟩⟩
-
-/-- **Probabilistic possibilistic secrecy by remap**: if whenever
-    `C ∧ view = v` has positive measure under a resolving strategy, every
-    secret fiber `C ∧ secret sv ∧ view = v` also has positive measure,
-    then `secret sv` is a probabilistic possibilistic secret. -/
-theorem Adversary.prob_possibilistic_secret_by_remap (adv : Adversary State Label SS LS)
-    (hres : adv.observation_resolving) [Inhabited Label]
-    [MeasurableSpace State] [MeasurableSingletonClass State]
-    [Countable State] [Inhabited State]
-    {V : Type _}
-    (secret : V → LTS.Execution State Label → Prop)
-    (C : LTS.Execution State Label → Prop)
-    (hfiber_pos : ∀ w (σ : Strategy SS LS) (s₀ : State)
-      (v : Observation.ExecView SS LS),
-      adv.sys.init s₀ →
-      exec_measure adv hres σ s₀
-        (adv.lift_to_states hres σ (fun e => C e ∧ adv.obs.view e = v)) > 0 →
-      exec_measure adv hres σ s₀
-        (adv.lift_to_states hres σ
-          (fun e => C e ∧ secret w e ∧ adv.obs.view e = v)) > 0)
-    (hexcl : ∀ v₁ v₂ e, C e → v₁ ≠ v₂ → secret v₁ e → ¬secret v₂ e)
-    (sv : V) (hne : ∃ sv', sv' ≠ sv) :
-    adv.prob_possibilistic_secret hres (secret sv) C := by
-  intro σ s₀ v hinit hCv_pos
-  obtain ⟨sv', hsv'⟩ := hne
-  constructor
-  · exact hfiber_pos sv σ s₀ v hinit hCv_pos
-  · have hsv'_pos := hfiber_pos sv' σ s₀ v hinit hCv_pos
-    exact lt_of_lt_of_le hsv'_pos (MeasureTheory.measure_mono (fun ω hω => by
-      exact ⟨hω.1, hexcl sv' sv _ hω.1 hsv' hω.2.1, hω.2.2⟩))
-
-/-! ## Probabilistic Isomorphic Secrecy
-
-    The probabilistic analogue of `isomorphic_secret`. Instead of a remap
-    on executions preserving validity and consistency, the remap operates
-    on state sequences `ℕ → State` (since `exec_measure` is a measure on
-    state sequences). The invertibility condition of the non-probabilistic
-    version (bijection between fibers) becomes **measure preservation**:
-    the remap is a measurable bijection whose pushforward preserves the
-    execution measure. This ensures that the remap not only swaps secret
-    values but does so without distorting probabilities — the adversary
-    cannot distinguish secret values even by analyzing the probability
-    distribution over executions. -/
-
-/-- Probabilistic isomorphic secrecy: there exists a measurable,
-    measure-preserving, invertible remap on state sequences that swaps
-    secret values while preserving the condition `C` and the adversary's
-    observation.
-
-    Properties of the remap `f v₁ v₂`:
-    - **Secret swap**: maps `C ∧ secret v₁` to `C ∧ secret v₂`
-    - **View preservation**: the adversary's observation is unchanged
-    - **Invertibility**: `f v₂ v₁ ∘ f v₁ v₂ = id` on `C ∧ secret v₁`
-    - **Measure preservation**: the pushforward of `exec_measure` under
-      `f v₁ v₂` equals `exec_measure`, so probabilities are undistorted -/
-def Adversary.prob_isomorphic_secret (adv : Adversary State Label SS LS)
-    (hres : adv.observation_resolving) [Inhabited Label]
-    [MeasurableSpace State] [MeasurableSingletonClass State]
-    [Countable State] [Inhabited State]
-    {V : Type _}
-    (secret : V → LTS.Execution State Label → Prop)
-    (C : LTS.Execution State Label → Prop) : Prop :=
-  ∃ f : V → V → (ℕ → State) → (ℕ → State),
-    -- (1) Remap preserves condition, secret value, and view
-    (∀ v₁ v₂ ω σ,
-      C (reconstructed_exec adv hres σ ω) →
-      secret v₁ (reconstructed_exec adv hres σ ω) →
-      C (reconstructed_exec adv hres σ (f v₁ v₂ ω)) ∧
-      secret v₂ (reconstructed_exec adv hres σ (f v₁ v₂ ω)) ∧
-      adv.obs.view (reconstructed_exec adv hres σ ω) =
-        adv.obs.view (reconstructed_exec adv hres σ (f v₁ v₂ ω))) ∧
-    -- (2) Remap is invertible on fibers
-    (∀ v₁ v₂ ω σ,
-      C (reconstructed_exec adv hres σ ω) →
-      secret v₁ (reconstructed_exec adv hres σ ω) →
-      f v₂ v₁ (f v₁ v₂ ω) = ω) ∧
-    -- (3) Remap is measure-preserving
-    (∀ v₁ v₂ σ s₀,
-      adv.sys.init s₀ →
-      MeasureTheory.Measure.map (f v₁ v₂) (exec_measure adv hres σ s₀) =
-        exec_measure adv hres σ s₀)
-
-/-- Core transfer lemma: the measure-preserving remap shows that every
-    secret fiber has at least as much measure as any other fiber. -/
-private theorem fiber_measure_transfer
-    (adv : Adversary State Label SS LS)
-    (hres : adv.observation_resolving) [Inhabited Label]
-    [MeasurableSpace State] [MeasurableSingletonClass State]
-    [Countable State] [Inhabited State]
-    {V : Type _}
-    (secret : V → LTS.Execution State Label → Prop)
-    (C : LTS.Execution State Label → Prop)
-    (f : V → V → (ℕ → State) → (ℕ → State))
-    (hpres : ∀ v₁ v₂ ω σ,
-      C (reconstructed_exec adv hres σ ω) →
-      secret v₁ (reconstructed_exec adv hres σ ω) →
-      C (reconstructed_exec adv hres σ (f v₁ v₂ ω)) ∧
-      secret v₂ (reconstructed_exec adv hres σ (f v₁ v₂ ω)) ∧
-      adv.obs.view (reconstructed_exec adv hres σ ω) =
-        adv.obs.view (reconstructed_exec adv hres σ (f v₁ v₂ ω)))
-    (hmp : ∀ v₁ v₂ σ s₀, adv.sys.init s₀ →
-      MeasureTheory.Measure.map (f v₁ v₂) (exec_measure adv hres σ s₀) =
-        exec_measure adv hres σ s₀)
-    (hmeas_f : ∀ v₁ v₂, Measurable (f v₁ v₂))
-    (hmeas_set : ∀ v σ (v' : Observation.ExecView SS LS),
-      MeasurableSet (adv.lift_to_states hres σ
-        (fun e => C e ∧ secret v e ∧ adv.obs.view e = v')))
-    (w₁ w₂ : V) (σ : Strategy SS LS) (s₀ : State) (hinit : adv.sys.init s₀)
-    (v' : Observation.ExecView SS LS) :
-    exec_measure adv hres σ s₀
-      (adv.lift_to_states hres σ (fun e => C e ∧ secret w₁ e ∧ adv.obs.view e = v')) ≤
-    exec_measure adv hres σ s₀
-      (adv.lift_to_states hres σ (fun e => C e ∧ secret w₂ e ∧ adv.obs.view e = v')) := by
-  -- map (f w₁ w₂) μ = μ, so μ((f w₁ w₂)⁻¹ S) = μ(S) for measurable S
-  -- fiber w₁ ⊆ (f w₁ w₂)⁻¹(fiber w₂), so μ(fiber w₂) = μ((f w₁ w₂)⁻¹(fiber w₂)) ≥ μ(fiber w₁)
-  set μ := exec_measure adv hres σ s₀
-  set S := adv.lift_to_states hres σ
-    (fun e => C e ∧ secret w₂ e ∧ adv.obs.view e = v')
-  have hmap := hmp w₁ w₂ σ s₀ hinit
-  -- μ(S) = (map (f w₁ w₂) μ)(S) = μ((f w₁ w₂)⁻¹' S)
-  have hpreimage : μ ((f w₁ w₂) ⁻¹' S) = μ S := by
-    rw [← MeasureTheory.Measure.map_apply (hmeas_f w₁ w₂) (hmeas_set w₂ σ v'), hmap]
-  -- fiber w₁ ⊆ (f w₁ w₂)⁻¹' S
-  have hsub : adv.lift_to_states hres σ
-      (fun e => C e ∧ secret w₁ e ∧ adv.obs.view e = v') ⊆
-      (f w₁ w₂) ⁻¹' S := by
-    intro ω ⟨hC, hsec, hview⟩
-    obtain ⟨hC', hsec', hview'⟩ := hpres w₁ w₂ ω σ hC hsec
-    exact ⟨hC', hsec', hview ▸ hview'.symm⟩
-  calc μ (adv.lift_to_states hres σ
-        (fun e => C e ∧ secret w₁ e ∧ adv.obs.view e = v'))
-      ≤ μ ((f w₁ w₂) ⁻¹' S) := MeasureTheory.measure_mono hsub
-    _ = μ S := hpreimage
-
-/-- Probabilistic isomorphic secrecy implies probabilistic possibilistic
-    secrecy: the measure-preserving remap bijects `C ∧ secret v₁ ∧ view = v`
-    onto `C ∧ secret v₂ ∧ view = v`, preserving measure. So if one fiber
-    has positive measure, all fibers do. -/
-theorem Adversary.prob_isomorphic_secret.to_prob_possibilistic_secret
-    (adv : Adversary State Label SS LS)
-    (hres : adv.observation_resolving) [Inhabited Label]
-    [MeasurableSpace State] [MeasurableSingletonClass State]
-    [Countable State] [Inhabited State]
-    {V : Type _} [Countable V]
-    (secret : V → LTS.Execution State Label → Prop)
-    (C : LTS.Execution State Label → Prop)
-    (hits : adv.prob_isomorphic_secret hres secret C)
-    (hexcl : ∀ v₁ v₂ e, C e → v₁ ≠ v₂ → secret v₁ e → ¬secret v₂ e)
-    (hhas_secret : ∀ e, C e → ∃ v, secret v e)
-    (sv : V) (hne : ∃ sv', sv' ≠ sv)
-    (hmeas_f : ∀ (v₁ v₂ : V), Measurable (hits.choose v₁ v₂))
-    (hmeas : ∀ v σ (v' : Observation.ExecView SS LS),
-      MeasurableSet (adv.lift_to_states hres σ
-        (fun e => C e ∧ secret v e ∧ adv.obs.view e = v')))
-    :
-    adv.prob_possibilistic_secret hres (secret sv) C := by
-  set f := hits.choose with hf_def
-  have hpres := hits.choose_spec.1
-  have hinv := hits.choose_spec.2.1
-  have hmp := hits.choose_spec.2.2
-  obtain ⟨sv', hsv'⟩ := hne
-  -- Use the by_remap proof rule: need every fiber to have positive measure
-  apply adv.prob_possibilistic_secret_by_remap hres secret C _ hexcl sv ⟨sv', hsv'⟩
-  -- Goal: hfiber_pos — ∀ w σ s₀ v, ... → μ(C ∧ secret w ∧ view = v) > 0
-  intro w σ s₀ v hinit hCv_pos
-  -- Step 1: C ∧ view = v ⊆ ⋃_w₀, (C ∧ secret w₀ ∧ view = v)
-  have hcover : adv.lift_to_states hres σ (fun e => C e ∧ adv.obs.view e = v) ⊆
-      ⋃ w₀ : V, adv.lift_to_states hres σ
-        (fun e => C e ∧ secret w₀ e ∧ adv.obs.view e = v) := by
-    intro ω ⟨hC, hview⟩
-    obtain ⟨w₀, hw₀⟩ := hhas_secret _ hC
-    exact Set.mem_iUnion.mpr ⟨w₀, hC, hw₀, hview⟩
-  -- Step 2: Some fiber has positive measure (countable subadditivity)
-  have hsome_pos : ∃ w₀ : V, exec_measure adv hres σ s₀
-      (adv.lift_to_states hres σ
-        (fun e => C e ∧ secret w₀ e ∧ adv.obs.view e = v)) > 0 := by
-    by_contra hall
-    push Not at hall
-    have hall' : ∀ w₀, exec_measure adv hres σ s₀
-        (adv.lift_to_states hres σ
-          (fun e => C e ∧ secret w₀ e ∧ adv.obs.view e = v)) = 0 :=
-      fun w₀ => le_antisymm (hall w₀) (zero_le _)
-    have hle := (MeasureTheory.measure_mono hcover).trans
-      (MeasureTheory.measure_iUnion_le
-        (s := fun w₀ => adv.lift_to_states hres σ
-          (fun e => C e ∧ secret w₀ e ∧ adv.obs.view e = v))
-        (μ := exec_measure adv hres σ s₀))
-    simp only [hall'] at hle
-    rw [tsum_zero] at hle
-    exact absurd (le_antisymm hle (zero_le _)) hCv_pos.ne'
-  -- Step 3: Transfer to target fiber w
-  obtain ⟨w₀, hw₀_pos⟩ := hsome_pos
-  exact lt_of_lt_of_le hw₀_pos
-    (fiber_measure_transfer adv hres secret C f hpres hmp hmeas_f hmeas
-      w₀ w σ s₀ hinit v)
 
 end PLTS
