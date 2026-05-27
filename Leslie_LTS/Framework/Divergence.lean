@@ -46,24 +46,40 @@ def FairDiverges
 def FairDeadlock (sys : System S L) (fair_labels : S → L → Prop) (s : S) : Prop :=
   ∀ l s', sys.step s l s' → ¬ fair_labels s l
 
-/-- Reflexive-transitive closure of fair internal steps. -/
-inductive FairInternalStar
-    (sys : System S L) (lab : Labelling L) (fair_labels : S → L → Prop) :
-    S → S → Prop where
-  | refl : FairInternalStar sys lab fair_labels s s
-  | step : ∀ {s l s' s''}, sys.step s l s' →
-      lab.is_internal l = true → fair_labels s l →
-      FairInternalStar sys lab fair_labels s' s'' →
-      FairInternalStar sys lab fair_labels s s''
-
-/-- Fairly weakly diverges: either fair-diverges, or fair-internal-stars to a
-    fair deadlock. The fairness-aware analog of `WeaklyDiverges`, as used in
-    Gaspard CONCUR 2026 §6.4. -/
+/-- Fairly weakly diverges: either fair-diverges, or reaches a fair deadlock
+    via some τ-path. Per Gaspard CONCUR 2026 §6.4: "exists an execution …
+    whose trace is τ and which is either a fair divergence or reaches a fair
+    deadlock". The τ-path to the fair deadlock can use *any* internal labels
+    — it is the *destination* that must be a fair deadlock. -/
 def FairlyWeaklyDiverges
     (sys : System S L) (lab : Labelling L)
     (fair_labels : S → L → Prop) (s : S) : Prop :=
   FairDiverges sys lab fair_labels s ∨
-  (∃ s', FairInternalStar sys lab fair_labels s s' ∧
+  (∃ s', Nonempty (InternalStar sys lab s s') ∧
          FairDeadlock sys fair_labels s')
+
+/-! ## Lift lemma: prepending an `InternalStar` preserves fair-weak-divergence
+
+    Used in the soundness proof of `preserves_fair_weak_divergence` to lift
+    abstract divergence at a later state back to abstract divergence at the
+    starting state.
+
+    The deadlock case is immediate (transitivity of `InternalStar`). The
+    fair-divergence case requires constructing a new infinite execution by
+    splicing the finite prefix onto the infinite suffix; left as `sorry`
+    pending a `PrefixedExecution`-style helper in `Framework.Trace`. -/
+theorem FairlyWeaklyDiverges.lift
+    {sys : System S L} {lab : Labelling L} {fair_labels : S → L → Prop}
+    {s s' : S}
+    (hstar : InternalStar sys lab s s')
+    (h : FairlyWeaklyDiverges sys lab fair_labels s') :
+    FairlyWeaklyDiverges sys lab fair_labels s := by
+  rcases h with hdiv | ⟨s_dead, ⟨hpath⟩, hfd⟩
+  · -- Fair divergence at s' lifts to fair divergence at s by prepending.
+    -- Construction deferred: requires building an Execution from
+    -- (hstar : InternalStar s s') ++ (e' : Execution from s').
+    sorry
+  · -- Deadlock case: compose internal stars transitively.
+    exact Or.inr ⟨s_dead, ⟨hstar.trans hpath⟩, hfd⟩
 
 end LTS

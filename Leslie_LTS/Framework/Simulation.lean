@@ -1223,6 +1223,33 @@ structure ForwardSim.WeakDivPreserving
       FairDeadlock concrete fair_labels₁ s₁ →
       FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂
 
+namespace ForwardSim
+
+variable {S₁ : Type u₁} {L₁ : Type v₁} {S₂ : Type u₂} {L₂ : Type v₂}
+variable {concrete : System S₁ L₁} {lab₁ : Labelling L₁}
+variable {abstract : System S₂ L₂} {lab₂ : Labelling L₂}
+
+/-- Walk an `InternalStar` of concrete internal steps through the simulation:
+    each concrete internal step produces an abstract `InternalStar`, and these
+    compose into a single abstract `InternalStar` whose target is related to
+    the concrete target by `sim.R`. -/
+def walk_internal_star
+    (sim : ForwardSim concrete lab₁ abstract lab₂)
+    {s₁ s₁' : S₁} {s₂ : S₂}
+    (hreach : Reachable concrete s₁)
+    (hR : sim.R s₁ s₂)
+    (hstar : InternalStar concrete lab₁ s₁ s₁') :
+    Σ' s₂', InternalStar abstract lab₂ s₂ s₂' ×' sim.R s₁' s₂' :=
+  match hstar with
+  | .refl => ⟨s₂, .refl, hR⟩
+  | .step (l := l) (s' := s_mid) hint hstep rest =>
+      let mid := sim.step_internal s₁ l s_mid s₂ hreach hR hint hstep
+      let hreach_mid : Reachable concrete s_mid := .step hreach hstep
+      let tail := sim.walk_internal_star hreach_mid mid.2.2 rest
+      ⟨tail.1, mid.2.1.trans tail.2.1, tail.2.2⟩
+
+end ForwardSim
+
 namespace ForwardSim.WeakDivPreserving
 
 variable {S₁ : Type u₁} {L₁ : Type v₁} {S₂ : Type u₂} {L₂ : Type v₂}
@@ -1232,7 +1259,16 @@ variable {fair_labels₁ : S₁ → L₁ → Prop} {fair_labels₂ : S₂ → L�
 
 /-- **Soundness** (Gaspard Prop. 11 forward direction, §6.4 fair adaptation):
     a `WeakDivPreserving` witness lifts fairly weak divergence from concrete
-    to abstract. -/
+    to abstract.
+
+    The deadlock case (concrete reaches a fair deadlock via some τ-path) is
+    proven by walking the τ-path through the simulation and applying
+    `fair_deadlock_diverges` at the end, then lifting back with
+    `FairlyWeaklyDiverges.lift`.
+
+    The fair-divergence case is currently left as `sorry`; it requires
+    handling the well-founded induction on `rank` over the infinite concrete
+    execution and is the bulk of the soundness work. -/
 theorem preserves_fair_weak_divergence
     {sim : ForwardSim concrete lab₁ abstract lab₂}
     (wd : sim.WeakDivPreserving fair_labels₁ fair_labels₂)
@@ -1240,7 +1276,20 @@ theorem preserves_fair_weak_divergence
     (hreach : Reachable concrete s₁) (hR : sim.R s₁ s₂)
     (hdiv : FairlyWeaklyDiverges concrete lab₁ fair_labels₁ s₁) :
     FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂ := by
-  sorry
+  rcases hdiv with hfair_div | ⟨s_dead, ⟨hpath⟩, hfd⟩
+  · -- Fair-divergence case: deferred to a follow-up commit.
+    sorry
+  · -- Deadlock case: walk the τ-path through the simulation, then apply
+    -- the witness's `fair_deadlock_diverges`, then lift back.
+    let walk := sim.walk_internal_star hreach hR hpath
+    have hdead : FairlyWeaklyDiverges abstract lab₂ fair_labels₂ walk.1 := by
+      apply wd.fair_deadlock_diverges s_dead walk.1
+      · -- Reachable concrete s_dead
+        exact hpath.toStar.reachable hreach
+      · -- sim.R s_dead walk.1
+        exact walk.2.2
+      · exact hfd
+    exact FairlyWeaklyDiverges.lift walk.2.1 hdead
 
 /-- **Headline transfer.** A property provable on the abstract under
     fair-WF assumptions (via `assumes_fair_wf`) transfers to the concrete
