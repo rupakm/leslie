@@ -110,6 +110,20 @@ theorem InternalStar.toStar {sys : System State Label} {lab : Labelling Label}
   | refl => exact .refl
   | step _ hs _ ih => exact .step hs ih
 
+/-- Number of internal steps in this path. -/
+def InternalStar.length {sys : System State Label} {lab : Labelling Label} :
+    {a b : State} → InternalStar sys lab a b → Nat
+  | _, _, .refl       => 0
+  | _, _, .step _ _ rest => 1 + rest.length
+
+/-- The path is empty (length zero) — i.e. the abstract took no real step.
+    Note: this is NOT the same as `a = b`, because an internal cycle yields a
+    non-empty path with equal endpoints. -/
+def InternalStar.IsEmpty {sys : System State Label} {lab : Labelling Label} :
+    {a b : State} → InternalStar sys lab a b → Prop
+  | _, _, .refl       => True
+  | _, _, .step _ _ _ => False
+
 /-- `Reachable` is preserved by `Star` steps. -/
 theorem Star.reachable {sys : System State Label}
     (h : Star sys a b) (ha : Reachable sys a) : Reachable sys b := by

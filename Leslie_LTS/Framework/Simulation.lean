@@ -1,4 +1,6 @@
 import Leslie_LTS.Framework.Rules
+import Leslie_LTS.Framework.Divergence
+import Leslie_LTS.Framework.Liveness
 
 /-! # Simulation Relations for LTS
 
@@ -1170,5 +1172,116 @@ theorem ForwardSim.lift_external_trace_prop
   sim.preserves_external_trace_prop φ h_abs
     (fun e₁ hv₁ => sim.external_subseq_correspondence h_label_ext
       h_map_tau e₁ hv₁)
+
+/-! ## Weak-Divergence Preservation (Gaspard CONCUR 2026, §6.2 + §6.4)
+
+    A *witness* that an existing `ForwardSim` is weak-divergence-preserving
+    under fair scheduling. The witness packages:
+
+    * a well-founded `rank` on concrete states (the terminating relation `→`
+      from Prop. 11);
+    * a clause restricting `rank`'s discharge obligation to *fair* internal
+      elisions (the §6.4 adaptation);
+    * a fair-deadlock clause forcing the abstract to fairly weakly diverge
+      at any concrete fair-deadlock state.
+
+    From a witness, fair weak divergence transfers from concrete to abstract,
+    and consequently `assumes_fair_wf`-style liveness properties transfer
+    from abstract to concrete (see `transfers_satisfaction`).
+-/
+
+/-- Witness that a `ForwardSim` is weak-divergence-preserving under the
+    given fair-label classifications on each side. -/
+structure ForwardSim.WeakDivPreserving
+    {S₁ : Type u₁} {L₁ : Type v₁} {S₂ : Type u₂} {L₂ : Type v₂}
+    {concrete : System S₁ L₁} {lab₁ : Labelling L₁}
+    {abstract : System S₂ L₂} {lab₂ : Labelling L₂}
+    (sim : ForwardSim concrete lab₁ abstract lab₂)
+    (fair_labels₁ : S₁ → L₁ → Prop)
+    (fair_labels₂ : S₂ → L₂ → Prop)
+    where
+  /-- Well-founded "rank" on concrete states (Prop. 11's terminating relation). -/
+  rank : S₁ → S₁ → Prop
+  rank_wf : WellFounded rank
+  /-- Helpful directions: every fair concrete step strictly decreases `rank`. -/
+  rank_decreases : ∀ s l s', concrete.step s l s' → fair_labels₁ s l → rank s' s
+  /-- Prop. 11 §6.4 clause: when a fair internal step is elided by the abstract
+      (the `InternalStar` from `step_internal` is empty), either `rank` records
+      progress, or the abstract fairly weakly diverges. -/
+  fair_elision_progress :
+    ∀ s₁ l₁ s₁' s₂
+      (hreach : Reachable concrete s₁)
+      (hR : sim.R s₁ s₂)
+      (hint : lab₁.is_internal l₁ = true)
+      (hfair : fair_labels₁ s₁ l₁)
+      (hstep : concrete.step s₁ l₁ s₁'),
+      (sim.step_internal s₁ l₁ s₁' s₂ hreach hR hint hstep).2.1.IsEmpty →
+        rank s₁' s₁ ∨ FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂
+  /-- Fair-deadlock clause: a concrete fair-deadlock forces an abstract one. -/
+  fair_deadlock_diverges :
+    ∀ s₁ s₂, Reachable concrete s₁ → sim.R s₁ s₂ →
+      FairDeadlock concrete fair_labels₁ s₁ →
+      FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂
+
+namespace ForwardSim.WeakDivPreserving
+
+variable {S₁ : Type u₁} {L₁ : Type v₁} {S₂ : Type u₂} {L₂ : Type v₂}
+variable {concrete : System S₁ L₁} {lab₁ : Labelling L₁}
+variable {abstract : System S₂ L₂} {lab₂ : Labelling L₂}
+variable {fair_labels₁ : S₁ → L₁ → Prop} {fair_labels₂ : S₂ → L₂ → Prop}
+
+/-- **Soundness** (Gaspard Prop. 11 forward direction, §6.4 fair adaptation):
+    a `WeakDivPreserving` witness lifts fairly weak divergence from concrete
+    to abstract. -/
+theorem preserves_fair_weak_divergence
+    {sim : ForwardSim concrete lab₁ abstract lab₂}
+    (wd : sim.WeakDivPreserving fair_labels₁ fair_labels₂)
+    {s₁ : S₁} {s₂ : S₂}
+    (hreach : Reachable concrete s₁) (hR : sim.R s₁ s₂)
+    (hdiv : FairlyWeaklyDiverges concrete lab₁ fair_labels₁ s₁) :
+    FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂ := by
+  sorry
+
+/-- **Headline transfer.** A property provable on the abstract under
+    fair-WF assumptions (via `assumes_fair_wf`) transfers to the concrete
+    under the corresponding fair-WF assumptions, given:
+
+    * `h_fair_compat` — fair labels on the concrete side map to fair labels
+      on the abstract side via `sim.label_map` over related states;
+    * `h_prop_transfer` — the property at the abstract level entails the
+      property at the concrete level for any pair of executions related
+      pointwise by `sim.R`.
+
+    (The exact statement of `h_prop_transfer` is intentionally left raw here;
+    it will be specialised in client code via more ergonomic lemmas in
+    future commits.) -/
+theorem transfers_satisfaction
+    {sim : ForwardSim concrete lab₁ abstract lab₂}
+    (wd : sim.WeakDivPreserving fair_labels₁ fair_labels₂)
+    (h_fair_compat :
+      ∀ s₁ l₁ s₂, sim.R s₁ s₂ → fair_labels₁ s₁ l₁ →
+        fair_labels₂ s₂ (sim.label_map l₁))
+    (φ_abs : TraceProp S₂ L₂) (φ_con : TraceProp S₁ L₁)
+    (h_prop_transfer :
+      ∀ (e₁ : Execution S₁ L₁) (e₂ : Execution S₂ L₂),
+        concrete.valid_exec e₁ → abstract.valid_exec e₂ →
+        (∀ k, sim.R (e₁.states k) (e₂.states k)) →
+        φ_abs e₂ 0 → φ_con e₁ 0)
+    (h_abs :
+      abstract.satisfies (assumes_fair_wf abstract fair_labels₂ φ_abs)) :
+    concrete.satisfies (assumes_fair_wf concrete fair_labels₁ φ_con) := by
+  sorry
+
+/-- **Compositionality** (Gaspard Lemma 12). Optional for the first cut.
+    Under input-enabledness on `P₃`, `WeakDivPreserving` is preserved by
+    parallel composition. Signature left abstract here pending the precise
+    statement of input-enabledness / compatibility from `Composition.lean`. -/
+theorem compose_with_compatible
+    {sim : ForwardSim concrete lab₁ abstract lab₂}
+    (_wd : sim.WeakDivPreserving fair_labels₁ fair_labels₂) :
+    True := by
+  sorry
+
+end ForwardSim.WeakDivPreserving
 
 end LTS

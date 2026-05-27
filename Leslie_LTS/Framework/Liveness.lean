@@ -419,4 +419,25 @@ theorem weak_fairness_iff_alt (sys : System State Label) (l : Label)
       exact absurd (hen n) hdis
     · exact ⟨n, hfire⟩
 
+/-! ## Fairness assumptions over a label predicate -/
+
+/-- "Property `φ` holds under fair-WF assumptions for labels selected by
+    `fair_labels`". For each label `l`, we conjoin a state-aware weak-fairness
+    obligation: whenever `l` is continuously enabled *at states where
+    `fair_labels s l`*, it eventually fires.
+
+    This is the bridge between the state-dependent label selector used in
+    `ForwardSim.WeakDivPreserving` and the existing per-label TraceProp
+    `weak_fairness`. -/
+def assumes_fair_wf
+    (sys : System State Label)
+    (fair_labels : State → Label → Prop)
+    (φ : TraceProp State Label) : TraceProp State Label :=
+  tp_implies
+    (tp_forall (fun l =>
+      always (tp_implies
+        (always (state_prop (fun s => sys.enabled l s ∧ fair_labels s l)))
+        (eventually (step_prop (fun _ l' _ => l = l'))))))
+    φ
+
 end LTS
