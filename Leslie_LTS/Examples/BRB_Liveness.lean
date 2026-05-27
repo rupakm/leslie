@@ -25,22 +25,28 @@ variable (sender : Fin n)
 /-! ## Label-level fairness -/
 
 /-- A concrete BRB label is fair at state `s` iff every process it involves
-    is correct (uncorrupted) at `s`. `corrupt` moves are always unfair. -/
+    is correct (uncorrupted) at `s`. Following the Leslie/TLA-style BRB
+    fairness convention (`Leslie/Examples/ByzantineReliableBroadcast.lean`'s
+    `brb_fairness`), the environment-controlled `input` and adversary-
+    controlled `corrupt` are *not* fair — only protocol-internal progress
+    (send/recv) and externalisation (output) by correct processes is fair. -/
 def brb_fair_labels
     (s : BRB_LTS.State n Value) (l : BRB_LTS.Label n Value) : Prop :=
   match l with
   | .corrupt _          => False
-  | .input p _          => p ∉ s.corrupted
+  | .input _ _          => False           -- environment-controlled
   | .output p _         => p ∉ s.corrupted
   | .send src dst _ _   => src ∉ s.corrupted ∧ dst ∉ s.corrupted
   | .recv src dst _ _   => src ∉ s.corrupted ∧ dst ∉ s.corrupted
 
-/-- Matching fair-label predicate on the ideal side. -/
+/-- Matching fair-label predicate on the ideal side: `output` is fair for
+    correct processes; the internal `commit` is fair (it must fire when
+    enabled for the spec to be live); `corrupt` and `input` are unfair. -/
 def ideal_brb_fair_labels
     (s : IdealBRB.State n Value) (l : IdealBRB.Label n Value) : Prop :=
   match l with
   | .corrupt _   => False
-  | .input p _   => p ∉ s.corrupted
+  | .input _ _   => False
   | .output p _  => p ∉ s.corrupted
   | .commit _    => True
 
@@ -56,11 +62,6 @@ def brb_rank (s s' : BRB_LTS.State n Value) : Prop :=
 
 theorem brb_rank_wf :
     WellFounded (brb_rank n Value) := by sorry
-
-theorem brb_rank_decreases :
-    ∀ s l s', (BRB_LTS.brb n f Value sender).step s l s' →
-      brb_fair_labels n Value s l → brb_rank n Value s' s := by
-  sorry
 
 /-! ## No fair deadlock under `n > 3f` -/
 
@@ -83,7 +84,6 @@ noncomputable def brb_weak_div_witness (hn : n > 3 * f) :
       (ideal_brb_fair_labels n Value) where
   rank := brb_rank n Value
   rank_wf := brb_rank_wf n Value
-  rank_decreases := brb_rank_decreases n f Value sender
   fair_elision_progress := by sorry
   fair_deadlock_diverges := by
     intro s₁ s₂ hreach _hR hfd

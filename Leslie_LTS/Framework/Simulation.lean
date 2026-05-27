@@ -1200,11 +1200,13 @@ structure ForwardSim.WeakDivPreserving
     (fair_labels₁ : S₁ → L₁ → Prop)
     (fair_labels₂ : S₂ → L₂ → Prop)
     where
-  /-- Well-founded "rank" on concrete states (Prop. 11's terminating relation). -/
+  /-- Well-founded "rank" on concrete states (Prop. 11's terminating relation).
+      Per Gaspard §6.2 Prop. 11, the only obligation on `rank` is that it is
+      well-founded *and* it strictly decreases at the specific moments named
+      in `fair_elision_progress` (fair internal elisions). It does not need
+      to decrease on every fair step. -/
   rank : S₁ → S₁ → Prop
   rank_wf : WellFounded rank
-  /-- Helpful directions: every fair concrete step strictly decreases `rank`. -/
-  rank_decreases : ∀ s l s', concrete.step s l s' → fair_labels₁ s l → rank s' s
   /-- Prop. 11 §6.4 clause: when a fair internal step is elided by the abstract
       (the `InternalStar` from `step_internal` is empty), either `rank` records
       progress, or the abstract fairly weakly diverges. -/
