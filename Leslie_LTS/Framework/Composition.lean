@@ -829,14 +829,49 @@ noncomputable def compose_with_compatible
           sorry
     | .right lb =>
       -- Symmetric to .left, using wdB and Prod.Lex.right.
-      sorry
+      have hintB : labB₁.is_internal lb = true := by
+        simpa [parallel_labelling] using hint
+      have hfairB : fairB₁ sb₁ lb := hfair
+      obtain ⟨_hnosyn, hstepB, rfl⟩ := hstep
+      let mid := simB.step_internal sb₁ lb sb₁' sb₂
+        (reachable_right _ hreach) hRb hintB hstepB
+      let sb₂' := mid.1
+      let hstarB : InternalStar sysB₂ labB₂ sb₂ sb₂' := mid.2.1
+      let hRb' : simB.R sb₁' sb₂' := mid.2.2
+      have hstarB_empty : hstarB.IsEmpty := by
+        have hemp : (lift_star_right (sysA := sysA₂) hsync_ext sa₂ hstarB).IsEmpty := by
+          simpa [parallel_forward_sim, parallel_label_map, hstarB, mid] using hempty
+        exact (lift_star_right_isEmpty_iff (sysA := sysA₂) hsync_ext sa₂ hstarB).mp hemp
+      rcases wdB.fair_elision_progress sb₁ lb sb₁' sb₂
+          (reachable_right _ hreach) hRb hintB hfairB hstepB hstarB_empty with
+        hrankB | hdivB
+      · exact Or.inl (Prod.Lex.right sa₁ hrankB)
+      · refine Or.inr ?_
+        rcases hdivB with ⟨eB, heB0, heBstep, heBfair⟩ | ⟨sb_dead, ⟨hpathB⟩, hfdB_dead⟩
+        · refine Or.inl ⟨{ states := fun n => (sa₂, eB.states n),
+                             labels := fun n => .right (eB.labels n) }, ?_, ?_, ?_⟩
+          · simp [heB0]
+          · intro k
+            obtain ⟨hsteB, hintB_k⟩ := heBstep k
+            refine ⟨?_, ?_⟩
+            · refine ⟨fun la hsyn => ?_, hsteB, rfl⟩
+              have := (hsync_ext la _ hsyn).2
+              simp [Labelling.is_external, hintB_k] at this
+            · show (parallel_labelling labA₂ labB₂).is_internal (.right _) = true
+              simp [parallel_labelling, hintB_k]
+          · intro N
+            obtain ⟨k, hkN, hfair_k⟩ := heBfair N
+            exact ⟨k, hkN, hfair_k⟩
+        · -- Same documented deadlock-lift obstacle as in `.left la`: A may
+          -- still be active so `(sa₂, sb_dead)` is not a composed fair-deadlock.
+          sorry
     | .sync la lb =>
-      -- Composed elision requires both A's and B's stars to be empty.
-      -- The composed sync step requires both components internal (already
-      -- destructured via hint). Both A and B step in lock-step; either
-      -- witness's fair_elision_progress can be applied (whichever fair
-      -- component drives the rank decrease).
-      sorry
+      -- The composed `.sync la lb` step requires `sync₁ la lb` (from the
+      -- destructured step). But `hfair` on `.sync` gives
+      -- `fairA₁ sa₁ la ∧ fairB₁ sb₁ lb`, and `hfair_no_sync` says any
+      -- sync-able labels are NOT fair on either side. Contradiction.
+      obtain ⟨hsyn, _, _⟩ := hstep
+      exact absurd hfair.1 (hfair_no_sync la lb hsyn sa₁ sb₁).1
   fair_deadlock_diverges := by
     -- A fair-deadlock of the composition means no fair composed label is
     -- enabled. By structure of `parallel`, this implies (roughly) that
