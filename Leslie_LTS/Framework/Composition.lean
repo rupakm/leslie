@@ -706,15 +706,26 @@ noncomputable def compose_with_compatible
   rank := Prod.Lex wdA.rank wdB.rank
   rank_wf := wdA.rank_wf.prod_lex wdB.rank_wf
   fair_elision_progress := by
-    -- Case split on composed label: .left la / .right lb / .sync la lb.
-    -- For .left: composed elision ↔ A's elision (lift_star_left preserves
-    --   length / IsEmpty). Apply wdA.fair_elision_progress: get either
-    --   wdA.rank decrease (→ Prod.Lex.left case of composed rank) or
-    --   FairlyWeaklyDiverges abstract A (→ lift to composed via a helper).
-    -- For .right: symmetric, B side.
-    -- For .sync: both must be internal; both can be elided. Apply both
-    --   witnesses; rank decreases on either side suffices.
-    sorry
+    -- Structure of the proof: case split on the composed label.
+    intro ⟨sa₁, sb₁⟩ cl ⟨sa₁', sb₁'⟩ ⟨sa₂, sb₂⟩ hreach hR hint hfair hstep hempty
+    obtain ⟨hRa, hRb⟩ := hR
+    match cl with
+    | .left la =>
+      -- Composed elision (hempty) ↔ A's InternalStar is empty.
+      -- Apply wdA.fair_elision_progress to get rank decrease (→
+      -- Prod.Lex.left case of composed rank) or A's abstract divergence
+      -- (→ lift to composed FairlyWeaklyDiverges).
+      sorry
+    | .right lb =>
+      -- Symmetric to .left, using wdB and Prod.Lex.right.
+      sorry
+    | .sync la lb =>
+      -- Composed elision requires both A's and B's stars to be empty.
+      -- The composed sync step requires both components internal (already
+      -- destructured via hint). Both A and B step in lock-step; either
+      -- witness's fair_elision_progress can be applied (whichever fair
+      -- component drives the rank decrease).
+      sorry
   fair_deadlock_diverges := by
     -- A fair-deadlock of the composition means no fair composed label is
     -- enabled. By structure of `parallel`, this implies (roughly) that
