@@ -124,6 +124,17 @@ def InternalStar.IsEmpty {sys : System State Label} {lab : Labelling Label} :
   | _, _, .refl       => True
   | _, _, .step _ _ _ => False
 
+/-- An `InternalStar` is *all-fair* with respect to `fair_labels` if every
+    step's source state and label satisfy `fair_labels`. Used by the
+    soundness of the weak-divergence-preserving simulation to ensure that
+    abstract internal moves produced by the simulation are themselves fair
+    on the abstract side. -/
+def InternalStar.AllFair {sys : System State Label} {lab : Labelling Label}
+    (fair_labels : State → Label → Prop) :
+    {a b : State} → InternalStar sys lab a b → Prop
+  | _,  _, .refl                            => True
+  | a, _, .step (l := l) _ _ rest           => fair_labels a l ∧ rest.AllFair fair_labels
+
 /-- `Reachable` is preserved by `Star` steps. -/
 theorem Star.reachable {sys : System State Label}
     (h : Star sys a b) (ha : Reachable sys a) : Reachable sys b := by

@@ -636,4 +636,69 @@ def iparallel_forward_sim
         hstar_pre, hstep_ext, hstar_post,
         fun i => by rw [heq_post i (henum i)]; exact hR' i⟩
 
+/-! ## Fair Labels for Parallel Composition
+
+    Building blocks for lifting `ForwardSim.WeakDivPreserving` witnesses
+    through parallel composition (Gaspard Lemma 12). -/
+
+/-- The fair-label classifier for a binary parallel composition. A
+    `.left la` step is fair iff the A-component classifies `la` as fair at
+    the A-component state; analogously for `.right`. A `.sync la lb` step
+    is fair iff both components classify their respective labels as fair
+    at their respective states. -/
+def parallel_fair_labels
+    {SA : Type uA} {LA : Type vA} {SB : Type uB} {LB : Type vB}
+    (fairA : SA → LA → Prop) (fairB : SB → LB → Prop) :
+    SA × SB → CompLabel LA LB → Prop
+  | (sa, _),  .left la     => fairA sa la
+  | (_, sb),  .right lb    => fairB sb lb
+  | (sa, sb), .sync la lb  => fairA sa la ∧ fairB sb lb
+
+/-! ## Compositionality of `WeakDivPreserving` (Gaspard Lemma 12) -/
+
+/-- **Compositionality** (Gaspard CONCUR 2026, Lemma 12): given
+    `WeakDivPreserving` witnesses for two component simulations whose
+    compatibility conditions match those required by `parallel_forward_sim`,
+    the composed parallel simulation is also `WeakDivPreserving`.
+
+    The composed `rank` is the lex-disjoint-union of the per-component ranks
+    on the state pair (A component first, then B). The composed
+    `fair_elision_progress` case-splits on the composed label and invokes
+    the appropriate per-component witness clause. The composed
+    `fair_deadlock_diverges` requires both components to be at fair
+    deadlocks (so neither side can take a fair step), then composes the
+    per-component abstract divergences.
+
+    Construction is sorried (Phase 2.3); ~200-300 LOC. -/
+noncomputable def compose_with_compatible
+    {SA₁ : Type uA₁} {LA₁ : Type vA₁} {SA₂ : Type uA₂} {LA₂ : Type vA₂}
+    {SB₁ : Type uB₁} {LB₁ : Type vB₁} {SB₂ : Type uB₂} {LB₂ : Type vB₂}
+    {sysA₁ : System SA₁ LA₁} {sysA₂ : System SA₂ LA₂}
+    {sysB₁ : System SB₁ LB₁} {sysB₂ : System SB₂ LB₂}
+    {labA₁ : Labelling LA₁} {labA₂ : Labelling LA₂}
+    {labB₁ : Labelling LB₁} {labB₂ : Labelling LB₂}
+    {sync₁ : LA₁ → LB₁ → Prop} {sync₂ : LA₂ → LB₂ → Prop}
+    {simA : ForwardSim sysA₁ labA₁ sysA₂ labA₂}
+    {simB : ForwardSim sysB₁ labB₁ sysB₂ labB₂}
+    (hsync : ∀ la lb, sync₁ la lb → sync₂ (simA.label_map la) (simB.label_map lb))
+    (hnosync_left : ∀ la,
+      (∀ lb, ¬sync₁ la lb) → ∀ lb₂, ¬sync₂ (simA.label_map la) lb₂)
+    (hnosync_right : ∀ lb,
+      (∀ la, ¬sync₁ la lb) → ∀ la₂, ¬sync₂ la₂ (simB.label_map lb))
+    (hsync_ext : ∀ la lb, sync₂ la lb →
+      labA₂.is_external la = true ∧ labB₂.is_external lb = true)
+    (hmap_int_a : ∀ la, labA₁.is_internal la = true →
+      labA₂.is_internal (simA.label_map la) = true)
+    (hmap_int_b : ∀ lb, labB₁.is_internal lb = true →
+      labB₂.is_internal (simB.label_map lb) = true)
+    {fairA₁ : SA₁ → LA₁ → Prop} {fairA₂ : SA₂ → LA₂ → Prop}
+    {fairB₁ : SB₁ → LB₁ → Prop} {fairB₂ : SB₂ → LB₂ → Prop}
+    (_wdA : simA.WeakDivPreserving fairA₁ fairA₂)
+    (_wdB : simB.WeakDivPreserving fairB₁ fairB₂) :
+    (parallel_forward_sim simA simB hsync hnosync_left hnosync_right
+        hsync_ext hmap_int_a hmap_int_b).WeakDivPreserving
+      (parallel_fair_labels fairA₁ fairB₁)
+      (parallel_fair_labels fairA₂ fairB₂) := by
+  sorry
+
 end LTS

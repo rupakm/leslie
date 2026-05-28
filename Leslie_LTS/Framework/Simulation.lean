@@ -1263,17 +1263,32 @@ variable {fair_labels₁ : S₁ → L₁ → Prop} {fair_labels₂ : S₂ → L�
     a `WeakDivPreserving` witness lifts fairly weak divergence from concrete
     to abstract.
 
+    **Hypothesis `h_abs_fair`** (the narrow form requested per design call):
+    when the simulation responds to a *fair* concrete internal step with a
+    non-empty abstract `InternalStar` (i.e. the abstract took at least one
+    real internal step), every label in that abstract path is fair on the
+    abstract side. This is the minimum needed for the fair-divergence case
+    of Gaspard's appendix-A proof to go through. For typical Byzantine
+    protocol specs (e.g. BRB) it is trivially true — IdealBRB's only
+    internal label is `commit`, which is always fair. Simulations that
+    don't need fairness transfer (e.g. for safety-only proofs) can ignore
+    this theorem entirely and use the witness's other lemmas.
+
     The deadlock case (concrete reaches a fair deadlock via some τ-path) is
     proven by walking the τ-path through the simulation and applying
-    `fair_deadlock_diverges` at the end, then lifting back with
-    `FairlyWeaklyDiverges.lift`.
+    `fair_deadlock_diverges`, then lifting back with `FairlyWeaklyDiverges.lift`.
 
-    The fair-divergence case is currently left as `sorry`; it requires
-    handling the well-founded induction on `rank` over the infinite concrete
-    execution and is the bulk of the soundness work. -/
+    The fair-divergence case is currently left as `sorry`; the structured
+    induction is sketched in the body. -/
 theorem preserves_fair_weak_divergence
     {sim : ForwardSim concrete lab₁ abstract lab₂}
     (wd : sim.WeakDivPreserving fair_labels₁ fair_labels₂)
+    (h_abs_fair :
+      ∀ s₁ l₁ s₁' s₂
+        (hreach : Reachable concrete s₁) (hR : sim.R s₁ s₂)
+        (hint : lab₁.is_internal l₁ = true) (_ : fair_labels₁ s₁ l₁)
+        (hstep : concrete.step s₁ l₁ s₁'),
+        (sim.step_internal s₁ l₁ s₁' s₂ hreach hR hint hstep).2.1.AllFair fair_labels₂)
     {s₁ : S₁} {s₂ : S₂}
     (hreach : Reachable concrete s₁) (hR : sim.R s₁ s₂)
     (hdiv : FairlyWeaklyDiverges concrete lab₁ fair_labels₁ s₁) :
@@ -1324,43 +1339,51 @@ theorem preserves_fair_weak_divergence
 
 /-- **Headline transfer.** A property provable on the abstract under
     fair-WF assumptions (via `assumes_fair_wf`) transfers to the concrete
-    under the corresponding fair-WF assumptions, given:
+    under the corresponding fair-WF assumptions.
 
-    * `h_fair_compat` — fair labels on the concrete side map to fair labels
-      on the abstract side via `sim.label_map` over related states;
-    * `h_prop_transfer` — the property at the abstract level entails the
-      property at the concrete level for any pair of executions related
-      pointwise by `sim.R`.
+    **Index-map design** (per design call): because the abstract execution
+    constructed by flattening can include stutter steps (when the abstract
+    elides concrete internal moves), concrete and abstract index spaces do
+    not align 1-to-1. Instead, the client provides:
 
-    (The exact statement of `h_prop_transfer` is intentionally left raw here;
-    it will be specialised in client code via more ergonomic lemmas in
-    future commits.) -/
+    * `h_prop_transfer`: takes a strictly monotonic index map `idx` such
+      that the concrete state at `k` corresponds to the abstract state at
+      `idx k` (via `sim.R`). The map starts at `idx 0 = 0`. This is the
+      same shape `external_subseq_correspondence` already uses internally
+      (mapping concrete external indices to abstract external indices).
+
+    * `h_abs_fair`: same narrow fairness hypothesis as
+      `preserves_fair_weak_divergence`.
+
+    * `h_fair_compat`: concrete fair labels map to abstract fair labels
+      via `sim.label_map`. -/
 theorem transfers_satisfaction
     {sim : ForwardSim concrete lab₁ abstract lab₂}
     (wd : sim.WeakDivPreserving fair_labels₁ fair_labels₂)
+    (h_abs_fair :
+      ∀ s₁ l₁ s₁' s₂
+        (hreach : Reachable concrete s₁) (hR : sim.R s₁ s₂)
+        (hint : lab₁.is_internal l₁ = true) (_ : fair_labels₁ s₁ l₁)
+        (hstep : concrete.step s₁ l₁ s₁'),
+        (sim.step_internal s₁ l₁ s₁' s₂ hreach hR hint hstep).2.1.AllFair fair_labels₂)
     (h_fair_compat :
       ∀ s₁ l₁ s₂, sim.R s₁ s₂ → fair_labels₁ s₁ l₁ →
         fair_labels₂ s₂ (sim.label_map l₁))
     (φ_abs : TraceProp S₂ L₂) (φ_con : TraceProp S₁ L₁)
     (h_prop_transfer :
-      ∀ (e₁ : Execution S₁ L₁) (e₂ : Execution S₂ L₂),
+      ∀ (e₁ : Execution S₁ L₁) (e₂ : Execution S₂ L₂) (idx : Nat → Nat),
         concrete.valid_exec e₁ → abstract.valid_exec e₂ →
-        (∀ k, sim.R (e₁.states k) (e₂.states k)) →
+        (∀ k, idx k < idx (k + 1)) →       -- strict monotonicity
+        idx 0 = 0 →
+        (∀ k, sim.R (e₁.states k) (e₂.states (idx k))) →
         φ_abs e₂ 0 → φ_con e₁ 0)
     (h_abs :
       abstract.satisfies (assumes_fair_wf abstract fair_labels₂ φ_abs)) :
     concrete.satisfies (assumes_fair_wf concrete fair_labels₁ φ_con) := by
   sorry
 
-/-- **Compositionality** (Gaspard Lemma 12). Optional for the first cut.
-    Under input-enabledness on `P₃`, `WeakDivPreserving` is preserved by
-    parallel composition. Signature left abstract here pending the precise
-    statement of input-enabledness / compatibility from `Composition.lean`. -/
-theorem compose_with_compatible
-    {sim : ForwardSim concrete lab₁ abstract lab₂}
-    (_wd : sim.WeakDivPreserving fair_labels₁ fair_labels₂) :
-    True := by
-  sorry
+-- `compose_with_compatible` (Gaspard Lemma 12) lives in `Composition.lean`
+-- because its statement depends on `parallel_forward_sim`.
 
 end ForwardSim.WeakDivPreserving
 
