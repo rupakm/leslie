@@ -1278,8 +1278,14 @@ variable {fair_labels₁ : S₁ → L₁ → Prop} {fair_labels₂ : S₂ → L�
     proven by walking the τ-path through the simulation and applying
     `fair_deadlock_diverges`, then lifting back with `FairlyWeaklyDiverges.lift`.
 
-    The fair-divergence case is currently left as `sorry`; the structured
-    induction is sketched in the body. -/
+    The fair-divergence case (Case A) is partially proven via well-founded
+    induction on `wd.rank`. Two inner sorries remain:
+      * the `k₀ > 0` sub-case of rank-decrease (needs rank transitivity or a
+        strengthened IH; see comment in body);
+      * Case (ii) — building an infinite fair abstract execution from a
+        sequence of non-empty `walk_internal_star` outputs (mechanically
+        intricate, needs new `Execution`-from-`InternalStar`-sequence
+        machinery in `Trace.lean`). -/
 theorem preserves_fair_weak_divergence
     {sim : ForwardSim concrete lab₁ abstract lab₂}
     (wd : sim.WeakDivPreserving fair_labels₁ fair_labels₂)
@@ -1296,35 +1302,156 @@ theorem preserves_fair_weak_divergence
   rcases hdiv with hfair_div | ⟨s_dead, ⟨hpath⟩, hfd⟩
   · -- Fair-divergence case (Case A).
     --
-    -- Proof outline (Gaspard CONCUR 2026, §A, with the §6.4 fair adaptation):
-    --   1. Walk the concrete fair-divergence e₁ through `sim.step_internal`,
-    --      producing abstract states s₂_0 = s₂, s₂_1, s₂_2, ...
-    --   2. Classical case split:
-    --      (a) For some N, all s₂_k = s₂_N for k ≥ N (abstract stops moving).
-    --          Pick the first fair concrete index k ≥ N. The `InternalStar`
-    --          at that index is `IsEmpty`. Apply `fair_elision_progress`:
-    --          either `rank` decreases (recurse via well-founded induction
-    --          on `wd.rank`), or abstract fairly weakly diverges at s₂_k
-    --          (lift back via the composed `InternalStar` from s₂ to s₂_k
-    --          using `FairlyWeaklyDiverges.lift`).
-    --      (b) Infinitely many s₂_k are distinct: the abstract has an
-    --          infinite τ-execution. Under the assumption that all abstract
-    --          internal labels are fair (natural for honest protocol specs;
-    --          for BRB the only internal label is `commit` which is always
-    --          fair), this is a fair divergence — so FairlyWeaklyDiverges
-    --          holds at s₂.
+    -- We do strong well-founded induction on `wd.rank` over the concrete
+    -- start state `s₁`, generalising over `s₂`, `hreach`, `hR`, and the
+    -- fair-divergence witness.  At each step we walk the concrete
+    -- fair-divergence forward to its *first* fair index `k₀ ≥ 0`, push
+    -- everything through `sim.step_internal` (via `walk_internal_star`),
+    -- then case-split on whether the abstract `InternalStar` produced by
+    -- that fair step is empty (elided) or non-empty (real progress).
     --
-    -- Implementation requires:
-    --   * Strong well-founded induction on `wd.rank`
-    --   * Classical case analysis on `∃ N, ∀ k ≥ N, s₂_k = s₂_N`
-    --   * Concrete construction of the abstract infinite execution in case (b)
-    --   * Possibly an additional hypothesis
-    --       `∀ s l, lab₂.is_internal l → fair_labels₂ s l`
-    --     (or weaker, restricted to the labels actually produced by
-    --     `sim.step_internal`) to make case (b) work.
+    -- Case (i)  [elided]:  the witness's `fair_elision_progress` clause
+    --                      gives either a rank-decrease (recurse via the
+    --                      WF IH) or direct abstract fair-weak-divergence
+    --                      at the abstract image — lifted back through
+    --                      the composed `InternalStar`.
+    -- Case (ii) [non-empty]: combined with `h_abs_fair`, the fair concrete
+    --                        step produces an `AllFair` abstract path of
+    --                        length ≥ 1.  Iterating this case produces an
+    --                        infinite fair abstract execution.
     --
-    -- Estimated ~300-400 LOC; deferred to a follow-up commit.
-    sorry
+    -- The full Case (ii) construction (build the infinite abstract execution
+    -- from a sequence of non-empty `InternalStar`s) is structurally heavy and
+    -- is left as a single inner `sorry` below (see `case_ii` block) with a
+    -- detailed comment.  Case (i) is proved in full modulo this.
+    --
+    -- We strengthen to a generic well-founded recursion claim over s₁.
+    suffices hWF :
+        ∀ s₁ : S₁, Reachable concrete s₁ →
+          ∀ s₂ : S₂, sim.R s₁ s₂ →
+          FairDiverges concrete lab₁ fair_labels₁ s₁ →
+          FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂ from
+      hWF s₁ hreach s₂ hR hfair_div
+    intro s₁ hreach
+    induction s₁ using wd.rank_wf.induction with
+    | _ s₁ ih_rank =>
+      intro s₂ hR hfair_div
+      obtain ⟨e₁, he₁0, hstep_int, hcofair⟩ := hfair_div
+      -- Pick the first fair index `k₀ ≥ 0` in e₁ (cofinality at N=0).
+      obtain ⟨k₀, _hk₀_ge, hfair_k₀⟩ := hcofair 0
+      clear _hk₀_ge
+      -- Walk e₁ from index 0 to index k₀ through `sim.step_internal`.
+      -- Build the InternalStar of concrete internal steps from s₁ to e₁.states k₀.
+      have hpath_to_k₀ : InternalStar concrete lab₁ s₁ (e₁.states k₀) := by
+        have base : ∀ k, InternalStar concrete lab₁ (e₁.states 0) (e₁.states k) := by
+          intro k
+          induction k with
+          | zero => exact .refl
+          | succ k ih =>
+            exact ih.trans (.single (hstep_int k).2 (hstep_int k).1)
+        have := base k₀
+        rw [he₁0] at this
+        exact this
+      -- Push the path through the simulation.
+      let walk := sim.walk_internal_star hreach hR hpath_to_k₀
+      -- Reachability of e₁.states k₀.
+      have hreach_k₀ : Reachable concrete (e₁.states k₀) :=
+        hpath_to_k₀.toStar.reachable hreach
+      -- At position k₀ we have a fair internal concrete step.
+      have hstep_k₀ : concrete.step (e₁.states k₀) (e₁.labels k₀) (e₁.states (k₀ + 1)) :=
+        (hstep_int k₀).1
+      have hint_k₀ : lab₁.is_internal (e₁.labels k₀) = true := (hstep_int k₀).2
+      -- Apply step_internal at position k₀ to get the abstract InternalStar.
+      let mid := sim.step_internal (e₁.states k₀) (e₁.labels k₀) (e₁.states (k₀ + 1))
+                  walk.1 hreach_k₀ walk.2.2 hint_k₀ hstep_k₀
+      have hreach_k₀_succ : Reachable concrete (e₁.states (k₀ + 1)) :=
+        .step hreach_k₀ hstep_k₀
+      -- The tail of e₁ is itself a fair divergence at e₁.states (k₀ + 1).
+      have htail_div : FairDiverges concrete lab₁ fair_labels₁ (e₁.states (k₀ + 1)) := by
+        refine ⟨e₁.drop (k₀ + 1), ?_, ?_, ?_⟩
+        · -- (drop (k₀+1) e₁).states 0 = e₁.states (k₀+1)
+          show e₁.states (0 + (k₀ + 1)) = e₁.states (k₀ + 1)
+          congr 1; omega
+        · intro k
+          have hk := hstep_int (k + (k₀ + 1))
+          have heq1 : (Execution.drop (k₀ + 1) e₁).states k = e₁.states (k + (k₀ + 1)) := rfl
+          have heq2 : (Execution.drop (k₀ + 1) e₁).labels k = e₁.labels (k + (k₀ + 1)) := rfl
+          have heq3 : (Execution.drop (k₀ + 1) e₁).states (k + 1)
+                       = e₁.states (k + (k₀ + 1) + 1) := by
+            show e₁.states (k + 1 + (k₀ + 1)) = e₁.states (k + (k₀ + 1) + 1)
+            congr 1; omega
+          rw [heq1, heq2, heq3]
+          exact hk
+        · intro N
+          obtain ⟨k, hkN, hfair_k⟩ := hcofair (N + (k₀ + 1))
+          refine ⟨k - (k₀ + 1), by omega, ?_⟩
+          have heqs : (Execution.drop (k₀ + 1) e₁).states (k - (k₀ + 1)) = e₁.states k := by
+            show e₁.states ((k - (k₀ + 1)) + (k₀ + 1)) = e₁.states k
+            congr 1; omega
+          have heql : (Execution.drop (k₀ + 1) e₁).labels (k - (k₀ + 1)) = e₁.labels k := by
+            show e₁.labels ((k - (k₀ + 1)) + (k₀ + 1)) = e₁.labels k
+            congr 1; omega
+          rw [heqs, heql]; exact hfair_k
+      -- Classical case-split on whether the abstract step at k₀ is empty.
+      by_cases h_empty : mid.2.1.IsEmpty
+      · -- Case (i): elided.  Apply `fair_elision_progress`.
+        rcases wd.fair_elision_progress (e₁.states k₀) (e₁.labels k₀)
+                (e₁.states (k₀ + 1)) walk.1 hreach_k₀ walk.2.2 hint_k₀
+                hfair_k₀ hstep_k₀ h_empty with hrank | habs_div
+        · -- Rank decreased: `wd.rank (e₁.states (k₀+1)) (e₁.states k₀)`.
+          -- To apply `ih_rank` (which requires `wd.rank _ s₁`), we'd need
+          -- `wd.rank (e₁.states (k₀+1)) s₁`. This is automatic only when
+          -- `k₀ = 0` (since then `e₁.states k₀ = e₁.states 0 = s₁` by `he₁0`).
+          -- The general case `k₀ > 0` requires either:
+          --   (a) strengthening the IH to accept rank from any state
+          --       `Star`-reachable from `s₁` via fair internal steps, or
+          --   (b) using the transitive closure of `wd.rank` (which is itself
+          --       well-founded, by `WellFounded.transGen` in Mathlib).
+          -- Both approaches are mechanically involved; this `sorry` flags the
+          -- rank-transitivity gap precisely.
+          --
+          -- The `k₀ = 0` subcase IS handled below if you pattern-match.
+          by_cases hk0 : k₀ = 0
+          · -- k₀ = 0: rank decrease is from s₁ directly.
+            subst hk0
+            have hreq : wd.rank (e₁.states (0 + 1)) s₁ := by
+              have : e₁.states 0 = s₁ := he₁0
+              rw [← this]; exact hrank
+            have habs_at_mid : FairlyWeaklyDiverges abstract lab₂ fair_labels₂ mid.1 :=
+              ih_rank (e₁.states (0 + 1)) hreq hreach_k₀_succ mid.1 mid.2.2 htail_div
+            have habs_at_walk : FairlyWeaklyDiverges abstract lab₂ fair_labels₂ walk.1 :=
+              FairlyWeaklyDiverges.lift mid.2.1 habs_at_mid
+            exact FairlyWeaklyDiverges.lift walk.2.1 habs_at_walk
+          · -- k₀ > 0: needs rank transitivity / strengthened IH; see comment.
+            exact (sorry : FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂)
+        · -- Abstract directly fairly weakly diverges at walk.1.  Lift to s₂.
+          -- This sub-case is fully proven, no rank reasoning required.
+          exact FairlyWeaklyDiverges.lift walk.2.1 habs_div
+      · -- Case (ii): non-empty abstract step.  By `h_abs_fair`, mid.2.1 is
+        -- AllFair on the abstract side and has length ≥ 1.  Iterating this
+        -- argument cofinally many times produces a fair abstract divergence.
+        --
+        -- Detailed construction sketch (left as inner sorry):
+        --   * Define `s₂_seq : ℕ → S₂` and `path_seq : ℕ → InternalStar abstract …`
+        --     by recursion using `walk_internal_star` between consecutive fair
+        --     concrete indices (k₀ < k₁ < k₂ < ...).
+        --   * At each fair index k_i, apply `sim.step_internal` to get a
+        --     non-empty AllFair abstract InternalStar (by `h_abs_fair`, since
+        --     we are at a fair label).  If at any of these the InternalStar
+        --     becomes empty, defer to Case (i) at that index using `ih_rank`.
+        --   * Concatenate all abstract InternalStars into one infinite
+        --     execution. Fairness follows because each non-empty AllFair
+        --     contributes ≥ 1 fair abstract label, infinitely often.
+        --   * The resulting witness is `FairDiverges abstract lab₂ fair_labels₂ walk.1`
+        --     lifted back to `s₂` via `FairlyWeaklyDiverges.lift walk.2.1`.
+        --
+        -- This construction is mechanically intricate (~200 LOC) and uses
+        -- Classical.choice + Execution-from-InternalStar-sequence machinery
+        -- that does not currently exist as a helper.  Deferred.
+        have _ := h_abs_fair (e₁.states k₀) (e₁.labels k₀)
+                    (e₁.states (k₀ + 1)) walk.1 hreach_k₀ walk.2.2 hint_k₀
+                    hfair_k₀ hstep_k₀
+        sorry
   · -- Deadlock case: walk the τ-path through the simulation, then apply
     -- the witness's `fair_deadlock_diverges`, then lift back.
     let walk := sim.walk_internal_star hreach hR hpath
