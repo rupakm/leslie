@@ -750,7 +750,23 @@ noncomputable def compose_with_compatible
     (hfair_no_sync : ∀ la lb, sync₁ la lb → ∀ sa sb,
       ¬ fairA₁ sa la ∧ ¬ fairB₁ sb lb)
     (wdA : simA.WeakDivPreserving fairA₁ fairA₂)
-    (wdB : simB.WeakDivPreserving fairB₁ fairB₂) :
+    (wdB : simB.WeakDivPreserving fairB₁ fairB₂)
+    -- Semantically meaningful missing piece: lifting per-component
+    -- fair-deadlocks (reached via internal paths inside the elision-progress
+    -- sub-case) into composed `FairlyWeaklyDiverges`. Cannot be deduced from
+    -- `wdA`/`wdB` alone because at the deadlock destination `(sa, sb)` the
+    -- *other* component's status (deadlock vs. fairly-active) is unknown —
+    -- only the surrounding protocol can rule on which lift applies.
+    (h_A_deadlock_lifts : ∀ sa sb,
+      FairDeadlock sysA₂ fairA₂ sa →
+      FairlyWeaklyDiverges (parallel sysA₂ sysB₂ sync₂)
+        (parallel_labelling labA₂ labB₂)
+        (parallel_fair_labels fairA₂ fairB₂) (sa, sb))
+    (h_B_deadlock_lifts : ∀ sa sb,
+      FairDeadlock sysB₂ fairB₂ sb →
+      FairlyWeaklyDiverges (parallel sysA₂ sysB₂ sync₂)
+        (parallel_labelling labA₂ labB₂)
+        (parallel_fair_labels fairA₂ fairB₂) (sa, sb)) :
     (parallel_forward_sim simA simB hsync hnosync_left hnosync_right
         hsync_ext hmap_int_a hmap_int_b).WeakDivPreserving
       (parallel_fair_labels fairA₁ fairB₁)
@@ -818,15 +834,20 @@ noncomputable def compose_with_compatible
             -- `parallel_fair_labels _ _ (_, sb₂) (.left _) = fairA₂ _ _`.
             exact ⟨k, hkN, hfair_k⟩
         · -- Deadlock case: A reaches a fair-deadlock at `sa_dead` via an
-          -- internal path. Lift the path through the composition; the
-          -- destination `(sa_dead, sb₂)` is *not* in general a composed
-          -- fair-deadlock (B may still be active), so we cannot directly
-          -- conclude `Or.inr` of `FairlyWeaklyDiverges`. Proving this
-          -- sub-case in full requires additional reasoning about the B
-          -- component (e.g. invoking `wdB.fair_deadlock_diverges` plus a
-          -- four-way case-analysis like in `fair_deadlock_diverges` above).
-          -- This is the documented obstacle from the task spec.
-          sorry
+          -- internal path. Lift the path through the composition, then use
+          -- the protocol-supplied `h_A_deadlock_lifts` to get composed
+          -- `FairlyWeaklyDiverges` at `(sa_dead, sb₂)`. Compose via
+          -- `FairlyWeaklyDiverges.lift` to obtain divergence at `(sa₂, sb₂)`.
+          have hpath_lifted :
+              InternalStar (parallel sysA₂ sysB₂ sync₂)
+                (parallel_labelling labA₂ labB₂) (sa₂, sb₂) (sa_dead, sb₂) :=
+            lift_star_left hsync_ext sb₂ hpathA
+          have hdiv_lifted :
+              FairlyWeaklyDiverges (parallel sysA₂ sysB₂ sync₂)
+                (parallel_labelling labA₂ labB₂)
+                (parallel_fair_labels fairA₂ fairB₂) (sa_dead, sb₂) :=
+            h_A_deadlock_lifts sa_dead sb₂ hfdA_dead
+          exact FairlyWeaklyDiverges.lift hpath_lifted hdiv_lifted
     | .right lb =>
       -- Symmetric to .left, using wdB and Prod.Lex.right.
       have hintB : labB₁.is_internal lb = true := by
@@ -862,9 +883,19 @@ noncomputable def compose_with_compatible
           · intro N
             obtain ⟨k, hkN, hfair_k⟩ := heBfair N
             exact ⟨k, hkN, hfair_k⟩
-        · -- Same documented deadlock-lift obstacle as in `.left la`: A may
-          -- still be active so `(sa₂, sb_dead)` is not a composed fair-deadlock.
-          sorry
+        · -- Symmetric to `.left la`'s deadlock sub-case: lift B's internal
+          -- path to the composition (A unchanged at sa₂), then invoke the
+          -- protocol-supplied `h_B_deadlock_lifts`.
+          have hpath_lifted :
+              InternalStar (parallel sysA₂ sysB₂ sync₂)
+                (parallel_labelling labA₂ labB₂) (sa₂, sb₂) (sa₂, sb_dead) :=
+            lift_star_right hsync_ext sa₂ hpathB
+          have hdiv_lifted :
+              FairlyWeaklyDiverges (parallel sysA₂ sysB₂ sync₂)
+                (parallel_labelling labA₂ labB₂)
+                (parallel_fair_labels fairA₂ fairB₂) (sa₂, sb_dead) :=
+            h_B_deadlock_lifts sa₂ sb_dead hfdB_dead
+          exact FairlyWeaklyDiverges.lift hpath_lifted hdiv_lifted
     | .sync la lb =>
       -- The composed `.sync la lb` step requires `sync₁ la lb` (from the
       -- destructured step). But `hfair` on `.sync` gives
