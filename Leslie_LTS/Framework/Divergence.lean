@@ -111,4 +111,12 @@ theorem FairlyWeaklyDiverges.lift
   | refl => exact h
   | step hint hstep _ ih => exact FairlyWeaklyDiverges.cons_step hint hstep (ih h)
 
+/-- A fair-deadlock trivially gives fair-weak-divergence via the reflexive
+    internal-star path (zero steps). -/
+theorem FairDeadlock.fairlyWeaklyDiverges
+    {sys : System S L} {lab : Labelling L} {fair_labels : S → L → Prop}
+    {s : S} (h : FairDeadlock sys fair_labels s) :
+    FairlyWeaklyDiverges sys lab fair_labels s :=
+  Or.inr ⟨s, ⟨.refl⟩, h⟩
+
 end LTS

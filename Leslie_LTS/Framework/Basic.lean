@@ -124,6 +124,14 @@ def InternalStar.IsEmpty {sys : System State Label} {lab : Labelling Label} :
   | _, _, .refl       => True
   | _, _, .step _ _ _ => False
 
+@[simp] theorem InternalStar.length_eq_zero_iff_IsEmpty
+    {sys : System State Label} {lab : Labelling Label}
+    {a b : State} (h : InternalStar sys lab a b) :
+    h.length = 0 ↔ h.IsEmpty := by
+  cases h with
+  | refl => simp [InternalStar.length, InternalStar.IsEmpty]
+  | step _ _ _ => simp [InternalStar.length, InternalStar.IsEmpty]
+
 /-- An `InternalStar` is *all-fair* with respect to `fair_labels` if every
     step's source state and label satisfy `fair_labels`. Used by the
     soundness of the weak-divergence-preserving simulation to ensure that
