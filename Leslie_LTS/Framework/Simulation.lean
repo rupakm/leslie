@@ -1279,7 +1279,36 @@ theorem preserves_fair_weak_divergence
     (hdiv : FairlyWeaklyDiverges concrete lab₁ fair_labels₁ s₁) :
     FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂ := by
   rcases hdiv with hfair_div | ⟨s_dead, ⟨hpath⟩, hfd⟩
-  · -- Fair-divergence case: deferred to a follow-up commit.
+  · -- Fair-divergence case (Case A).
+    --
+    -- Proof outline (Gaspard CONCUR 2026, §A, with the §6.4 fair adaptation):
+    --   1. Walk the concrete fair-divergence e₁ through `sim.step_internal`,
+    --      producing abstract states s₂_0 = s₂, s₂_1, s₂_2, ...
+    --   2. Classical case split:
+    --      (a) For some N, all s₂_k = s₂_N for k ≥ N (abstract stops moving).
+    --          Pick the first fair concrete index k ≥ N. The `InternalStar`
+    --          at that index is `IsEmpty`. Apply `fair_elision_progress`:
+    --          either `rank` decreases (recurse via well-founded induction
+    --          on `wd.rank`), or abstract fairly weakly diverges at s₂_k
+    --          (lift back via the composed `InternalStar` from s₂ to s₂_k
+    --          using `FairlyWeaklyDiverges.lift`).
+    --      (b) Infinitely many s₂_k are distinct: the abstract has an
+    --          infinite τ-execution. Under the assumption that all abstract
+    --          internal labels are fair (natural for honest protocol specs;
+    --          for BRB the only internal label is `commit` which is always
+    --          fair), this is a fair divergence — so FairlyWeaklyDiverges
+    --          holds at s₂.
+    --
+    -- Implementation requires:
+    --   * Strong well-founded induction on `wd.rank`
+    --   * Classical case analysis on `∃ N, ∀ k ≥ N, s₂_k = s₂_N`
+    --   * Concrete construction of the abstract infinite execution in case (b)
+    --   * Possibly an additional hypothesis
+    --       `∀ s l, lab₂.is_internal l → fair_labels₂ s l`
+    --     (or weaker, restricted to the labels actually produced by
+    --     `sim.step_internal`) to make case (b) work.
+    --
+    -- Estimated ~300-400 LOC; deferred to a follow-up commit.
     sorry
   · -- Deadlock case: walk the τ-path through the simulation, then apply
     -- the witness's `fair_deadlock_diverges`, then lift back.
