@@ -845,7 +845,7 @@ noncomputable def compose_with_compatible
       rcases wdB.fair_elision_progress sb₁ lb sb₁' sb₂
           (reachable_right _ hreach) hRb hintB hfairB hstepB hstarB_empty with
         hrankB | hdivB
-      · exact Or.inl (Prod.Lex.right sa₁ hrankB)
+      · exact Or.inl (Prod.Lex.right sa₁' hrankB)
       · refine Or.inr ?_
         rcases hdivB with ⟨eB, heB0, heBstep, heBfair⟩ | ⟨sb_dead, ⟨hpathB⟩, hfdB_dead⟩
         · refine Or.inl ⟨{ states := fun n => (sa₂, eB.states n),
