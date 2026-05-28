@@ -1191,7 +1191,13 @@ theorem ForwardSim.lift_external_trace_prop
 -/
 
 /-- Witness that a `ForwardSim` is weak-divergence-preserving under the
-    given fair-label classifications on each side. -/
+    given fair-label classifications on each side.
+
+    Refined design (per design discussion 2026-05-28): four obligations
+    instead of the original two, to make the soundness of Case A of
+    `preserves_fair_weak_divergence` provable without an external
+    `h_abs_fair` hypothesis. The strengthening completes Gaspard's
+    §6.4 spec, which is incomplete as written. -/
 structure ForwardSim.WeakDivPreserving
     {S₁ : Type u₁} {L₁ : Type v₁} {S₂ : Type u₂} {L₂ : Type v₂}
     {concrete : System S₁ L₁} {lab₁ : Labelling L₁}
@@ -1201,15 +1207,19 @@ structure ForwardSim.WeakDivPreserving
     (fair_labels₂ : S₂ → L₂ → Prop)
     where
   /-- Well-founded "rank" on concrete states (Prop. 11's terminating relation).
-      Per Gaspard §6.2 Prop. 11, the only obligation on `rank` is that it is
-      well-founded *and* it strictly decreases at the specific moments named
-      in `fair_elision_progress` (fair internal elisions). It does not need
-      to decrease on every fair step. -/
+      The strict-decrease obligations are named below. -/
   rank : S₁ → S₁ → Prop
   rank_wf : WellFounded rank
-  /-- Prop. 11 §6.4 clause: when a fair internal step is elided by the abstract
-      (the `InternalStar` from `step_internal` is empty), either `rank` records
-      progress, or the abstract fairly weakly diverges. -/
+  /-- Helpful-directions promise: unfair internal concrete steps cannot
+      *grow* the rank. (They may decrease it or leave it unchanged.) Needed
+      to bridge unfair-prefix walks in the soundness of Case A. -/
+  rank_non_increasing :
+    ∀ s l s', concrete.step s l s' →
+      lab₁.is_internal l = true → ¬ fair_labels₁ s l →
+      s' = s ∨ rank s' s
+  /-- Prop. 11 §6.4 clause for fair internal elisions: when a fair internal
+      step is elided by the abstract (the `InternalStar` is empty), either
+      `rank` records progress, or the abstract fairly weakly diverges. -/
   fair_elision_progress :
     ∀ s₁ l₁ s₁' s₂
       (hreach : Reachable concrete s₁)
@@ -1219,6 +1229,22 @@ structure ForwardSim.WeakDivPreserving
       (hstep : concrete.step s₁ l₁ s₁'),
       (sim.step_internal s₁ l₁ s₁' s₂ hreach hR hint hstep).2.1.IsEmpty →
         rank s₁' s₁ ∨ FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂
+  /-- Companion clause for fair internal *non-elisions*: when the abstract
+      makes a real step in response and `rank` does not decrease, the
+      abstract `InternalStar` must be all-fair on the abstract side. This
+      is what guarantees Case A.2 of soundness produces a fair abstract
+      divergence (without an external h_abs_fair hypothesis). -/
+  fair_non_elision_progress :
+    ∀ s₁ l₁ s₁' s₂
+      (hreach : Reachable concrete s₁)
+      (hR : sim.R s₁ s₂)
+      (hint : lab₁.is_internal l₁ = true)
+      (hfair : fair_labels₁ s₁ l₁)
+      (hstep : concrete.step s₁ l₁ s₁'),
+      ¬ (sim.step_internal s₁ l₁ s₁' s₂ hreach hR hint hstep).2.1.IsEmpty →
+      ¬ rank s₁' s₁ →
+        (sim.step_internal s₁ l₁ s₁' s₂ hreach hR hint hstep).2.1.AllFair
+          fair_labels₂
   /-- Fair-deadlock clause: a concrete fair-deadlock forces an abstract one. -/
   fair_deadlock_diverges :
     ∀ s₁ s₂, Reachable concrete s₁ → sim.R s₁ s₂ →
@@ -1263,38 +1289,27 @@ variable {fair_labels₁ : S₁ → L₁ → Prop} {fair_labels₂ : S₂ → L�
     a `WeakDivPreserving` witness lifts fairly weak divergence from concrete
     to abstract.
 
-    **Hypothesis `h_abs_fair`** (the narrow form requested per design call):
-    when the simulation responds to a *fair* concrete internal step with a
-    non-empty abstract `InternalStar` (i.e. the abstract took at least one
-    real internal step), every label in that abstract path is fair on the
-    abstract side. This is the minimum needed for the fair-divergence case
-    of Gaspard's appendix-A proof to go through. For typical Byzantine
-    protocol specs (e.g. BRB) it is trivially true — IdealBRB's only
-    internal label is `commit`, which is always fair. Simulations that
-    don't need fairness transfer (e.g. for safety-only proofs) can ignore
-    this theorem entirely and use the witness's other lemmas.
+    The witness's new fields (`rank_non_increasing` and
+    `fair_non_elision_progress`, added in the design refinement of
+    2026-05-28) replace the external `h_abs_fair` hypothesis that earlier
+    versions of this theorem required.
 
-    The deadlock case (concrete reaches a fair deadlock via some τ-path) is
-    proven by walking the τ-path through the simulation and applying
-    `fair_deadlock_diverges`, then lifting back with `FairlyWeaklyDiverges.lift`.
+    The deadlock case is proven by walking the τ-path through the
+    simulation and applying `fair_deadlock_diverges`, then lifting back
+    with `FairlyWeaklyDiverges.lift`.
 
     The fair-divergence case (Case A) is partially proven via well-founded
     induction on `wd.rank`. Two inner sorries remain:
-      * the `k₀ > 0` sub-case of rank-decrease (needs rank transitivity or a
-        strengthened IH; see comment in body);
+      * the `k₀ > 0` sub-case of rank-decrease, now solvable using
+        `rank_non_increasing` to bridge the unfair prefix;
       * Case (ii) — building an infinite fair abstract execution from a
-        sequence of non-empty `walk_internal_star` outputs (mechanically
-        intricate, needs new `Execution`-from-`InternalStar`-sequence
-        machinery in `Trace.lean`). -/
+        sequence of non-empty `walk_internal_star` outputs, now solvable
+        using `fair_non_elision_progress` to guarantee each contribution
+        is `AllFair`. Mechanically intricate; needs new
+        `Execution`-from-`InternalStar`-sequence machinery in `Trace.lean`. -/
 theorem preserves_fair_weak_divergence
     {sim : ForwardSim concrete lab₁ abstract lab₂}
     (wd : sim.WeakDivPreserving fair_labels₁ fair_labels₂)
-    (h_abs_fair :
-      ∀ s₁ l₁ s₁' s₂
-        (hreach : Reachable concrete s₁) (hR : sim.R s₁ s₂)
-        (hint : lab₁.is_internal l₁ = true) (_ : fair_labels₁ s₁ l₁)
-        (hstep : concrete.step s₁ l₁ s₁'),
-        (sim.step_internal s₁ l₁ s₁' s₂ hreach hR hint hstep).2.1.AllFair fair_labels₂)
     {s₁ : S₁} {s₂ : S₂}
     (hreach : Reachable concrete s₁) (hR : sim.R s₁ s₂)
     (hdiv : FairlyWeaklyDiverges concrete lab₁ fair_labels₁ s₁) :
@@ -1448,9 +1463,6 @@ theorem preserves_fair_weak_divergence
         -- This construction is mechanically intricate (~200 LOC) and uses
         -- Classical.choice + Execution-from-InternalStar-sequence machinery
         -- that does not currently exist as a helper.  Deferred.
-        have _ := h_abs_fair (e₁.states k₀) (e₁.labels k₀)
-                    (e₁.states (k₀ + 1)) walk.1 hreach_k₀ walk.2.2 hint_k₀
-                    hfair_k₀ hstep_k₀
         sorry
   · -- Deadlock case: walk the τ-path through the simulation, then apply
     -- the witness's `fair_deadlock_diverges`, then lift back.
@@ -1479,20 +1491,12 @@ theorem preserves_fair_weak_divergence
       same shape `external_subseq_correspondence` already uses internally
       (mapping concrete external indices to abstract external indices).
 
-    * `h_abs_fair`: same narrow fairness hypothesis as
-      `preserves_fair_weak_divergence`.
-
     * `h_fair_compat`: concrete fair labels map to abstract fair labels
-      via `sim.label_map`. -/
+      via `sim.label_map`. (The witness's `fair_non_elision_progress`
+      replaces the earlier external `h_abs_fair` hypothesis.) -/
 theorem transfers_satisfaction
     {sim : ForwardSim concrete lab₁ abstract lab₂}
     (wd : sim.WeakDivPreserving fair_labels₁ fair_labels₂)
-    (h_abs_fair :
-      ∀ s₁ l₁ s₁' s₂
-        (hreach : Reachable concrete s₁) (hR : sim.R s₁ s₂)
-        (hint : lab₁.is_internal l₁ = true) (_ : fair_labels₁ s₁ l₁)
-        (hstep : concrete.step s₁ l₁ s₁'),
-        (sim.step_internal s₁ l₁ s₁' s₂ hreach hR hint hstep).2.1.AllFair fair_labels₂)
     (h_fair_compat :
       ∀ s₁ l₁ s₂, sim.R s₁ s₂ → fair_labels₁ s₁ l₁ →
         fair_labels₂ s₂ (sim.label_map l₁))

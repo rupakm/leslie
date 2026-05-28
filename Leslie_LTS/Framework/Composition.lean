@@ -702,6 +702,48 @@ def parallel_fair_labels
     parallel_fair_labels fairA fairB (sa, sb) (.sync la lb) =
       (fairA sa la ∧ fairB sb lb) := rfl
 
+/-- `lift_star_left` preserves `AllFair` via `parallel_fair_labels`: each
+    A-step's `(sa, la)` fairness equals the composed step's
+    `((sa, sb), .left la)` fairness. -/
+theorem lift_star_left_allFair
+    {SA : Type uA} {LA : Type vA} {SB : Type uB} {LB : Type vB}
+    {sysA : System SA LA} {sysB : System SB LB}
+    {labA : Labelling LA} {labB : Labelling LB}
+    {sync_on : LA → LB → Prop}
+    (hsync_ext : ∀ la lb, sync_on la lb →
+      labA.is_external la = true ∧ labB.is_external lb = true)
+    (fairA : SA → LA → Prop) (fairB : SB → LB → Prop)
+    {sa sa' : SA} (sb : SB)
+    (hstar : InternalStar sysA labA sa sa') :
+    hstar.AllFair fairA →
+      (lift_star_left (sysB := sysB) hsync_ext sb hstar).AllFair
+        (parallel_fair_labels fairA fairB) := by
+  induction hstar with
+  | refl => intro _; trivial
+  | step hint hstep rest ih =>
+      intro ⟨hfa, hfrest⟩
+      exact ⟨hfa, ih hfrest⟩
+
+/-- `lift_star_right` preserves `AllFair` via `parallel_fair_labels`. -/
+theorem lift_star_right_allFair
+    {SA : Type uA} {LA : Type vA} {SB : Type uB} {LB : Type vB}
+    {sysA : System SA LA} {sysB : System SB LB}
+    {labA : Labelling LA} {labB : Labelling LB}
+    {sync_on : LA → LB → Prop}
+    (hsync_ext : ∀ la lb, sync_on la lb →
+      labA.is_external la = true ∧ labB.is_external lb = true)
+    (fairA : SA → LA → Prop) (fairB : SB → LB → Prop)
+    (sa : SA) {sb sb' : SB}
+    (hstar : InternalStar sysB labB sb sb') :
+    hstar.AllFair fairB →
+      (lift_star_right (sysA := sysA) hsync_ext sa hstar).AllFair
+        (parallel_fair_labels fairA fairB) := by
+  induction hstar with
+  | refl => intro _; trivial
+  | step hint hstep rest ih =>
+      intro ⟨hfb, hfrest⟩
+      exact ⟨hfb, ih hfrest⟩
+
 /-! ## Compositionality of `WeakDivPreserving` (Gaspard Lemma 12) -/
 
 /-- **Compositionality** (Gaspard CONCUR 2026, Lemma 12): given
@@ -773,6 +815,39 @@ noncomputable def compose_with_compatible
       (parallel_fair_labels fairA₂ fairB₂) where
   rank := Prod.Lex wdA.rank wdB.rank
   rank_wf := wdA.rank_wf.prod_lex wdB.rank_wf
+  rank_non_increasing := by
+    -- Composed unfair internal step → either composed state unchanged or
+    -- composed rank decreases. Case-split on the composed label.
+    intro ⟨sa, sb⟩ cl ⟨sa', sb'⟩ hstep hint hunfair
+    match cl with
+    | .left la =>
+      have hintA : labA₁.is_internal la = true := by
+        simpa [parallel_labelling] using hint
+      have hunfairA : ¬ fairA₁ sa la := hunfair
+      obtain ⟨_hnosyn, hstepA, rfl⟩ := hstep
+      rcases wdA.rank_non_increasing sa la sa' hstepA hintA hunfairA with hAeq | hAdec
+      · subst hAeq; left; rfl
+      · right; exact Prod.Lex.left _ _ hAdec
+    | .right lb =>
+      have hintB : labB₁.is_internal lb = true := by
+        simpa [parallel_labelling] using hint
+      have hunfairB : ¬ fairB₁ sb lb := hunfair
+      obtain ⟨_hnosyn, hstepB, rfl⟩ := hstep
+      rcases wdB.rank_non_increasing sb lb sb' hstepB hintB hunfairB with hBeq | hBdec
+      · subst hBeq; left; rfl
+      · right; exact Prod.Lex.right _ hBdec
+    | .sync la lb =>
+      -- Sync labels are unfair (by hfair_no_sync), so this branch fires.
+      simp [parallel_labelling, Bool.and_eq_true] at hint
+      obtain ⟨hintA, hintB⟩ := hint
+      obtain ⟨hsyn, hstepA, hstepB⟩ := hstep
+      have hunfairA : ¬ fairA₁ sa la := (hfair_no_sync la lb hsyn sa sb).1
+      have hunfairB : ¬ fairB₁ sb lb := (hfair_no_sync la lb hsyn sa sb).2
+      rcases wdA.rank_non_increasing sa la sa' hstepA hintA hunfairA with hAeq | hAdec
+      · rcases wdB.rank_non_increasing sb lb sb' hstepB hintB hunfairB with hBeq | hBdec
+        · subst hAeq; subst hBeq; left; rfl
+        · subst hAeq; right; exact Prod.Lex.right _ hBdec
+      · right; exact Prod.Lex.left _ _ hAdec
   fair_elision_progress := by
     -- Structure of the proof: case split on the composed label.
     intro ⟨sa₁, sb₁⟩ cl ⟨sa₁', sb₁'⟩ ⟨sa₂, sb₂⟩ hreach hR hint hfair hstep hempty
@@ -901,6 +976,73 @@ noncomputable def compose_with_compatible
       -- destructured step). But `hfair` on `.sync` gives
       -- `fairA₁ sa₁ la ∧ fairB₁ sb₁ lb`, and `hfair_no_sync` says any
       -- sync-able labels are NOT fair on either side. Contradiction.
+      obtain ⟨hsyn, _, _⟩ := hstep
+      exact absurd hfair.1 (hfair_no_sync la lb hsyn sa₁ sb₁).1
+  fair_non_elision_progress := by
+    -- Case-split on the composed label. For .left la: composed non-elision
+    -- ↔ A's InternalStar non-empty; composed no-rank-decrease ↔ A's
+    -- no-rank-decrease (since composed Prod.Lex on .left is governed by A
+    -- when B is unchanged). Apply wdA.fair_non_elision_progress to get
+    -- AllFair on A's InternalStar, then lift via lift_star_left_allFair.
+    -- For .right: symmetric. For .sync: vacuous by hfair_no_sync.
+    intro ⟨sa₁, sb₁⟩ cl ⟨sa₁', sb₁'⟩ ⟨sa₂, sb₂⟩ hreach hR hint hfair hstep
+      hnonempty hno_rank
+    obtain ⟨hRa, hRb⟩ := hR
+    match cl with
+    | .left la =>
+      have hintA : labA₁.is_internal la = true := by
+        simpa [parallel_labelling] using hint
+      have hfairA : fairA₁ sa₁ la := hfair
+      obtain ⟨_hnosyn, hstepA, rfl⟩ := hstep
+      let mid := simA.step_internal sa₁ la sa₁' sa₂
+        (reachable_left _ hreach) hRa hintA hstepA
+      let hstarA : InternalStar sysA₂ labA₂ sa₂ mid.1 := mid.2.1
+      -- Translate the composed non-emptiness to A's non-emptiness.
+      have hA_nonempty : ¬ hstarA.IsEmpty := by
+        intro hemp
+        apply hnonempty
+        have : (lift_star_left (sysB := sysB₂) hsync_ext sb₂ hstarA).IsEmpty :=
+          (lift_star_left_isEmpty_iff (sysB := sysB₂) hsync_ext sb₂ hstarA).mpr hemp
+        simpa [parallel_forward_sim, parallel_label_map, hstarA, mid] using this
+      -- Translate the composed no-rank-decrease to A's no-rank-decrease.
+      have hA_no_rank : ¬ wdA.rank sa₁' sa₁ := by
+        intro hAdec
+        exact hno_rank (Prod.Lex.left _ _ hAdec)
+      have hAllA : hstarA.AllFair fairA₂ :=
+        wdA.fair_non_elision_progress sa₁ la sa₁' sa₂
+          (reachable_left _ hreach) hRa hintA hfairA hstepA hA_nonempty hA_no_rank
+      -- Lift to composed.
+      have : (lift_star_left (sysB := sysB₂) hsync_ext sb₂ hstarA).AllFair
+              (parallel_fair_labels fairA₂ fairB₂) :=
+        lift_star_left_allFair hsync_ext fairA₂ fairB₂ sb₂ hstarA hAllA
+      simpa [parallel_forward_sim, parallel_label_map, hstarA, mid] using this
+    | .right lb =>
+      have hintB : labB₁.is_internal lb = true := by
+        simpa [parallel_labelling] using hint
+      have hfairB : fairB₁ sb₁ lb := hfair
+      obtain ⟨_hnosyn, hstepB, rfl⟩ := hstep
+      let mid := simB.step_internal sb₁ lb sb₁' sb₂
+        (reachable_right _ hreach) hRb hintB hstepB
+      let hstarB : InternalStar sysB₂ labB₂ sb₂ mid.1 := mid.2.1
+      have hB_nonempty : ¬ hstarB.IsEmpty := by
+        intro hemp
+        apply hnonempty
+        have : (lift_star_right (sysA := sysA₂) hsync_ext sa₂ hstarB).IsEmpty :=
+          (lift_star_right_isEmpty_iff (sysA := sysA₂) hsync_ext sa₂ hstarB).mpr hemp
+        simpa [parallel_forward_sim, parallel_label_map, hstarB, mid] using this
+      have hB_no_rank : ¬ wdB.rank sb₁' sb₁ := by
+        intro hBdec
+        exact hno_rank (Prod.Lex.right _ hBdec)
+      have hAllB : hstarB.AllFair fairB₂ :=
+        wdB.fair_non_elision_progress sb₁ lb sb₁' sb₂
+          (reachable_right _ hreach) hRb hintB hfairB hstepB hB_nonempty hB_no_rank
+      have : (lift_star_right (sysA := sysA₂) hsync_ext sa₂ hstarB).AllFair
+              (parallel_fair_labels fairA₂ fairB₂) :=
+        lift_star_right_allFair hsync_ext fairA₂ fairB₂ sa₂ hstarB hAllB
+      simpa [parallel_forward_sim, parallel_label_map, hstarB, mid] using this
+    | .sync la lb =>
+      -- Vacuous: a .sync step is fair only if both components fair,
+      -- but hfair_no_sync says sync-able labels are unfair.
       obtain ⟨hsyn, _, _⟩ := hstep
       exact absurd hfair.1 (hfair_no_sync la lb hsyn sa₁ sb₁).1
   fair_deadlock_diverges := by

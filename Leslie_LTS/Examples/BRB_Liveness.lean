@@ -84,7 +84,18 @@ noncomputable def brb_weak_div_witness (hn : n > 3 * f) :
       (ideal_brb_fair_labels n Value) where
   rank := brb_rank n Value
   rank_wf := brb_rank_wf n Value
+  rank_non_increasing := by
+    -- Sorried: BRB-protocol-specific obligation that unfair (Byzantine)
+    -- internal steps do not grow the rank. Should follow from the
+    -- definition of brb_progress_measure (Phase 3.2 sorried).
+    sorry
   fair_elision_progress := by sorry
+  fair_non_elision_progress := by
+    -- For BRB: IdealBRB's only internal label is `commit`, which is
+    -- always fair (ideal_brb_fair_labels: .commit _ => True). The
+    -- simulation's abstract InternalStar consists of commit steps only,
+    -- so it is trivially AllFair regardless of the rank/non-empty hypotheses.
+    sorry
   fair_deadlock_diverges := by
     intro s₁ s₂ hreach _hR hfd
     exact absurd hfd
