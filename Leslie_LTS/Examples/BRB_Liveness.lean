@@ -89,12 +89,18 @@ noncomputable def brb_weak_div_witness (hn : n > 3 * f) :
     -- internal steps do not grow the rank. Should follow from the
     -- definition of brb_progress_measure (Phase 3.2 sorried).
     sorry
-  fair_elision_progress := by sorry
-  fair_non_elision_progress := by
-    -- For BRB: IdealBRB's only internal label is `commit`, which is
-    -- always fair (ideal_brb_fair_labels: .commit _ => True). The
-    -- simulation's abstract InternalStar consists of commit steps only,
-    -- so it is trivially AllFair regardless of the rank/non-empty hypotheses.
+  rank_decreases_on_fair_elision := by
+    -- Sorried: BRB-protocol-specific obligation that a fair internal
+    -- concrete step elided by IdealBRB decreases brb_rank. This is the
+    -- "helpful directions" condition: every correct-process action that
+    -- the ideal abstracts away must record progress in the measure.
+    sorry
+  rank_decreases_on_unfair_abstract := by
+    -- For BRB: vacuously satisfied. IdealBRB's only internal label is
+    -- `commit`, which is always fair (ideal_brb_fair_labels: .commit _ =>
+    -- True). So the abstract InternalStar is always AllFair, hence the
+    -- hypothesis `¬ AllFair` cannot hold. The proof would `exfalso` on
+    -- the hypothesis. Sorried as part of the Phase-3 BRB scaffolding.
     sorry
   fair_deadlock_diverges := by
     intro s₁ s₂ hreach _hR hfd

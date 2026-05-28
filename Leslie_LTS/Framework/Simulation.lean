@@ -1193,11 +1193,11 @@ theorem ForwardSim.lift_external_trace_prop
 /-- Witness that a `ForwardSim` is weak-divergence-preserving under the
     given fair-label classifications on each side.
 
-    Refined design (per design discussion 2026-05-28): four obligations
-    instead of the original two, to make the soundness of Case A of
-    `preserves_fair_weak_divergence` provable without an external
-    `h_abs_fair` hypothesis. The strengthening completes Gaspard's
-    §6.4 spec, which is incomplete as written. -/
+    **Refined design (Gaspard 2026-05-28):** the witness obligations are all
+    direct (no disjunctions). Per Gaspard, this formulation is sound *and*
+    complete for non-probabilistic programs. The "helpful directions"
+    terminology used informally is implicit: the "helpful" labels are
+    exactly those at which `rank` decreases (cases (a) and (b) below). -/
 structure ForwardSim.WeakDivPreserving
     {S₁ : Type u₁} {L₁ : Type v₁} {S₂ : Type u₂} {L₂ : Type v₂}
     {concrete : System S₁ L₁} {lab₁ : Labelling L₁}
@@ -1206,21 +1206,21 @@ structure ForwardSim.WeakDivPreserving
     (fair_labels₁ : S₁ → L₁ → Prop)
     (fair_labels₂ : S₂ → L₂ → Prop)
     where
-  /-- Well-founded "rank" on concrete states (Prop. 11's terminating relation).
-      The strict-decrease obligations are named below. -/
+  /-- Well-founded "rank" on concrete states (Prop. 11's terminating relation). -/
   rank : S₁ → S₁ → Prop
   rank_wf : WellFounded rank
-  /-- Helpful-directions promise: unfair internal concrete steps cannot
-      *grow* the rank. (They may decrease it or leave it unchanged.) Needed
-      to bridge unfair-prefix walks in the soundness of Case A. -/
+  /-- Unfair internal concrete steps cannot *grow* the rank. (They may
+      decrease it or leave it unchanged.) Bridges unfair-prefix walks in
+      soundness. -/
   rank_non_increasing :
     ∀ s l s', concrete.step s l s' →
       lab₁.is_internal l = true → ¬ fair_labels₁ s l →
       s' = s ∨ rank s' s
-  /-- Prop. 11 §6.4 clause for fair internal elisions: when a fair internal
-      step is elided by the abstract (the `InternalStar` is empty), either
-      `rank` records progress, or the abstract fairly weakly diverges. -/
-  fair_elision_progress :
+  /-- **Gaspard's clause (a)** + skip constraint: when the abstract responds
+      to a fair internal concrete step with a skip transition (empty
+      `InternalStar`), the concrete label is "helpful" — equivalently, the
+      rank strictly decreases. -/
+  rank_decreases_on_fair_elision :
     ∀ s₁ l₁ s₁' s₂
       (hreach : Reachable concrete s₁)
       (hR : sim.R s₁ s₂)
@@ -1228,13 +1228,12 @@ structure ForwardSim.WeakDivPreserving
       (hfair : fair_labels₁ s₁ l₁)
       (hstep : concrete.step s₁ l₁ s₁'),
       (sim.step_internal s₁ l₁ s₁' s₂ hreach hR hint hstep).2.1.IsEmpty →
-        rank s₁' s₁ ∨ FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂
-  /-- Companion clause for fair internal *non-elisions*: when the abstract
-      makes a real step in response and `rank` does not decrease, the
-      abstract `InternalStar` must be all-fair on the abstract side. This
-      is what guarantees Case A.2 of soundness produces a fair abstract
-      divergence (without an external h_abs_fair hypothesis). -/
-  fair_non_elision_progress :
+      rank s₁' s₁
+  /-- **Gaspard's clause (b)**: when the abstract responds to a fair
+      internal concrete step with a non-skip whose `InternalStar` contains
+      an *unfair* label (per `fair_labels₂`), the rank strictly decreases.
+      (Stated as the contrapositive of "no rank decrease ⇒ AllFair".) -/
+  rank_decreases_on_unfair_abstract :
     ∀ s₁ l₁ s₁' s₂
       (hreach : Reachable concrete s₁)
       (hR : sim.R s₁ s₂)
@@ -1242,9 +1241,9 @@ structure ForwardSim.WeakDivPreserving
       (hfair : fair_labels₁ s₁ l₁)
       (hstep : concrete.step s₁ l₁ s₁'),
       ¬ (sim.step_internal s₁ l₁ s₁' s₂ hreach hR hint hstep).2.1.IsEmpty →
-      ¬ rank s₁' s₁ →
-        (sim.step_internal s₁ l₁ s₁' s₂ hreach hR hint hstep).2.1.AllFair
-          fair_labels₂
+      ¬ (sim.step_internal s₁ l₁ s₁' s₂ hreach hR hint hstep).2.1.AllFair
+          fair_labels₂ →
+      rank s₁' s₁
   /-- Fair-deadlock clause: a concrete fair-deadlock forces an abstract one. -/
   fair_deadlock_diverges :
     ∀ s₁ s₂, Reachable concrete s₁ → sim.R s₁ s₂ →
@@ -1409,39 +1408,29 @@ theorem preserves_fair_weak_divergence
           rw [heqs, heql]; exact hfair_k
       -- Classical case-split on whether the abstract step at k₀ is empty.
       by_cases h_empty : mid.2.1.IsEmpty
-      · -- Case (i): elided.  Apply `fair_elision_progress`.
-        rcases wd.fair_elision_progress (e₁.states k₀) (e₁.labels k₀)
-                (e₁.states (k₀ + 1)) walk.1 hreach_k₀ walk.2.2 hint_k₀
-                hfair_k₀ hstep_k₀ h_empty with hrank | habs_div
-        · -- Rank decreased: `wd.rank (e₁.states (k₀+1)) (e₁.states k₀)`.
-          -- To apply `ih_rank` (which requires `wd.rank _ s₁`), we'd need
-          -- `wd.rank (e₁.states (k₀+1)) s₁`. This is automatic only when
-          -- `k₀ = 0` (since then `e₁.states k₀ = e₁.states 0 = s₁` by `he₁0`).
-          -- The general case `k₀ > 0` requires either:
-          --   (a) strengthening the IH to accept rank from any state
-          --       `Star`-reachable from `s₁` via fair internal steps, or
-          --   (b) using the transitive closure of `wd.rank` (which is itself
-          --       well-founded, by `WellFounded.transGen` in Mathlib).
-          -- Both approaches are mechanically involved; this `sorry` flags the
-          -- rank-transitivity gap precisely.
-          --
-          -- The `k₀ = 0` subcase IS handled below if you pattern-match.
-          by_cases hk0 : k₀ = 0
-          · -- k₀ = 0: rank decrease is from s₁ directly.
-            subst hk0
-            have hreq : wd.rank (e₁.states (0 + 1)) s₁ := by
-              have : e₁.states 0 = s₁ := he₁0
-              rw [← this]; exact hrank
-            have habs_at_mid : FairlyWeaklyDiverges abstract lab₂ fair_labels₂ mid.1 :=
-              ih_rank (e₁.states (0 + 1)) hreq hreach_k₀_succ mid.1 mid.2.2 htail_div
-            have habs_at_walk : FairlyWeaklyDiverges abstract lab₂ fair_labels₂ walk.1 :=
-              FairlyWeaklyDiverges.lift mid.2.1 habs_at_mid
-            exact FairlyWeaklyDiverges.lift walk.2.1 habs_at_walk
-          · -- k₀ > 0: needs rank transitivity / strengthened IH; see comment.
-            exact (sorry : FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂)
-        · -- Abstract directly fairly weakly diverges at walk.1.  Lift to s₂.
-          -- This sub-case is fully proven, no rank reasoning required.
-          exact FairlyWeaklyDiverges.lift walk.2.1 habs_div
+      · -- Case (i): elided.  Apply `rank_decreases_on_fair_elision`.
+        -- Under Gaspard's refined formulation, the disjunctive
+        -- `rank ∨ FairlyWeaklyDiverges` is replaced by direct `rank`
+        -- decrease: a fair skip MUST be helpful (decrease rank).
+        have hrank : wd.rank (e₁.states (k₀ + 1)) (e₁.states k₀) :=
+          wd.rank_decreases_on_fair_elision (e₁.states k₀) (e₁.labels k₀)
+            (e₁.states (k₀ + 1)) walk.1 hreach_k₀ walk.2.2 hint_k₀
+            hfair_k₀ hstep_k₀ h_empty
+        -- The general k₀ > 0 case requires `rank_non_increasing` chained
+        -- through the unfair prefix, plus rank transitivity. See sorry.
+        by_cases hk0 : k₀ = 0
+        · -- k₀ = 0: rank decrease is from s₁ directly.
+          subst hk0
+          have hreq : wd.rank (e₁.states (0 + 1)) s₁ := by
+            have : e₁.states 0 = s₁ := he₁0
+            rw [← this]; exact hrank
+          have habs_at_mid : FairlyWeaklyDiverges abstract lab₂ fair_labels₂ mid.1 :=
+            ih_rank (e₁.states (0 + 1)) hreq hreach_k₀_succ mid.1 mid.2.2 htail_div
+          have habs_at_walk : FairlyWeaklyDiverges abstract lab₂ fair_labels₂ walk.1 :=
+            FairlyWeaklyDiverges.lift mid.2.1 habs_at_mid
+          exact FairlyWeaklyDiverges.lift walk.2.1 habs_at_walk
+        · -- k₀ > 0: needs rank transitivity / strengthened IH; see comment.
+          exact (sorry : FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂)
       · -- Case (ii): non-empty abstract step.  By `h_abs_fair`, mid.2.1 is
         -- AllFair on the abstract side and has length ≥ 1.  Iterating this
         -- argument cofinally many times produces a fair abstract divergence.
