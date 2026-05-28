@@ -1,5 +1,6 @@
 import Leslie_LTS.Framework.Rules
 import Leslie_LTS.Framework.Simulation
+import Mathlib.Order.RelClasses
 
 /-! # Parallel Composition of Labelled Transition Systems
 
@@ -669,7 +670,10 @@ def parallel_fair_labels
     deadlocks (so neither side can take a fair step), then composes the
     per-component abstract divergences.
 
-    Construction is sorried (Phase 2.3); ~200-300 LOC. -/
+    Construction sketched (Phase 2.3). `rank` and `rank_wf` are fully
+    proven via lexicographic composition of the per-component ranks;
+    `fair_elision_progress` and `fair_deadlock_diverges` are sketched with
+    sub-sorries pending follow-up. -/
 noncomputable def compose_with_compatible
     {SA₁ : Type uA₁} {LA₁ : Type vA₁} {SA₂ : Type uA₂} {LA₂ : Type vA₂}
     {SB₁ : Type uB₁} {LB₁ : Type vB₁} {SB₂ : Type uB₂} {LB₂ : Type vB₂}
@@ -693,12 +697,32 @@ noncomputable def compose_with_compatible
       labB₂.is_internal (simB.label_map lb) = true)
     {fairA₁ : SA₁ → LA₁ → Prop} {fairA₂ : SA₂ → LA₂ → Prop}
     {fairB₁ : SB₁ → LB₁ → Prop} {fairB₂ : SB₂ → LB₂ → Prop}
-    (_wdA : simA.WeakDivPreserving fairA₁ fairA₂)
-    (_wdB : simB.WeakDivPreserving fairB₁ fairB₂) :
+    (wdA : simA.WeakDivPreserving fairA₁ fairA₂)
+    (wdB : simB.WeakDivPreserving fairB₁ fairB₂) :
     (parallel_forward_sim simA simB hsync hnosync_left hnosync_right
         hsync_ext hmap_int_a hmap_int_b).WeakDivPreserving
       (parallel_fair_labels fairA₁ fairB₁)
-      (parallel_fair_labels fairA₂ fairB₂) := by
-  sorry
+      (parallel_fair_labels fairA₂ fairB₂) where
+  rank := Prod.Lex wdA.rank wdB.rank
+  rank_wf := wdA.rank_wf.prod_lex wdB.rank_wf
+  fair_elision_progress := by
+    -- Case split on composed label: .left la / .right lb / .sync la lb.
+    -- For .left: composed elision ↔ A's elision (lift_star_left preserves
+    --   length / IsEmpty). Apply wdA.fair_elision_progress: get either
+    --   wdA.rank decrease (→ Prod.Lex.left case of composed rank) or
+    --   FairlyWeaklyDiverges abstract A (→ lift to composed via a helper).
+    -- For .right: symmetric, B side.
+    -- For .sync: both must be internal; both can be elided. Apply both
+    --   witnesses; rank decreases on either side suffices.
+    sorry
+  fair_deadlock_diverges := by
+    -- A fair-deadlock of the composition means no fair composed label is
+    -- enabled. By structure of `parallel`, this implies (roughly) that
+    -- the A component cannot take any fair A-step AND the B component
+    -- cannot take any fair B-step AND no fair sync is possible. Then by
+    -- wdA.fair_deadlock_diverges and wdB.fair_deadlock_diverges, both
+    -- abstract components fairly weakly diverge, which gives composed
+    -- FairlyWeaklyDiverges (via a helper).
+    sorry
 
 end LTS
