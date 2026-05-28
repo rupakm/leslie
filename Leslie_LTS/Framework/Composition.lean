@@ -252,7 +252,7 @@ private theorem reachable_right
     | .sync _ lb => simp [parallel] at hstep; exact .step ih hstep.2.2
 
 -- Helper: lift an A-side InternalStar to the composed system (B unchanged).
-private def lift_star_left
+def lift_star_left
     {SA : Type _} {LA : Type _} {SB : Type _} {LB : Type _}
     {sysA : System SA LA} {sysB : System SB LB}
     {labA : Labelling LA} {labB : Labelling LB}
@@ -273,7 +273,7 @@ private def lift_star_left
         ⟨hnosyn, hstep, rfl⟩) (lift_star_left hsync_ext sb rest)
 
 -- Helper: lift a B-side InternalStar to the composed system (A unchanged).
-private def lift_star_right
+def lift_star_right
     {SA : Type _} {LA : Type _} {SB : Type _} {LB : Type _}
     {sysA : System SA LA} {sysB : System SB LB}
     {labA : Labelling LA} {labB : Labelling LB}
@@ -292,6 +292,34 @@ private def lift_star_right
     .step (show (parallel_labelling labA labB).is_internal (.right lb) = true from hint)
       (show (parallel sysA sysB sync_on).step (sa, sb) (.right lb) (sa, _) from
         ⟨hnosyn, hstep, rfl⟩) (lift_star_right hsync_ext sa rest)
+
+@[simp] theorem lift_star_left_isEmpty_iff
+    {SA : Type uA} {LA : Type vA} {SB : Type uB} {LB : Type vB}
+    {sysA : System SA LA} {sysB : System SB LB}
+    {labA : Labelling LA} {labB : Labelling LB}
+    {sync_on : LA → LB → Prop}
+    (hsync_ext : ∀ la lb, sync_on la lb →
+      labA.is_external la = true ∧ labB.is_external lb = true)
+    {sa sa' : SA} (sb : SB)
+    (hstar : InternalStar sysA labA sa sa') :
+    (lift_star_left (sysB := sysB) hsync_ext sb hstar).IsEmpty ↔ hstar.IsEmpty := by
+  cases hstar with
+  | refl => simp [lift_star_left, InternalStar.IsEmpty]
+  | step _ _ _ => simp [lift_star_left, InternalStar.IsEmpty]
+
+@[simp] theorem lift_star_right_isEmpty_iff
+    {SA : Type uA} {LA : Type vA} {SB : Type uB} {LB : Type vB}
+    {sysA : System SA LA} {sysB : System SB LB}
+    {labA : Labelling LA} {labB : Labelling LB}
+    {sync_on : LA → LB → Prop}
+    (hsync_ext : ∀ la lb, sync_on la lb →
+      labA.is_external la = true ∧ labB.is_external lb = true)
+    (sa : SA) {sb sb' : SB}
+    (hstar : InternalStar sysB labB sb sb') :
+    (lift_star_right (sysA := sysA) hsync_ext sa hstar).IsEmpty ↔ hstar.IsEmpty := by
+  cases hstar with
+  | refl => simp [lift_star_right, InternalStar.IsEmpty]
+  | step _ _ _ => simp [lift_star_right, InternalStar.IsEmpty]
 
 /-- The composed label map for `parallel_forward_sim`. Defined separately
     so it remains computable even when the simulations use classical choice. -/
@@ -734,6 +762,142 @@ noncomputable def compose_with_compatible
     -- wdA.fair_deadlock_diverges and wdB.fair_deadlock_diverges, both
     -- abstract components fairly weakly diverge, which gives composed
     -- FairlyWeaklyDiverges (via a helper).
-    sorry
+    --
+    -- ===== Step 1: destructure inputs =====
+    intro s₁ s₂ hreach hR hfd
+    obtain ⟨sa₁, sb₁⟩ := s₁
+    obtain ⟨sa₂, sb₂⟩ := s₂
+    obtain ⟨hRa, hRb⟩ := hR
+    -- ===== Step 2: derive component fair-deadlocks =====
+    -- For the A component: suppose `sysA₁.step sa₁ la sa₁'` with
+    -- `fairA₁ sa₁ la`. We want a contradiction with `hfd`.
+    -- Case split on whether `la` synchronizes with anything.
+    have hfdA : FairDeadlock sysA₁ fairA₁ sa₁ := by
+      intro la sa₁' hstepA hfairA
+      by_cases hnosync : ∀ lb, ¬ sync₁ la lb
+      · -- `.left la` is enabled; fair label is `fairA₁ sa₁ la`.
+        have hcstep : (parallel sysA₁ sysB₁ sync₁).step
+            (sa₁, sb₁) (.left la) (sa₁', sb₁) := ⟨hnosync, hstepA, rfl⟩
+        have hcfair : parallel_fair_labels fairA₁ fairB₁ (sa₁, sb₁) (.left la) :=
+          hfairA
+        exact hfd (.left la) (sa₁', sb₁) hcstep hcfair
+      · -- `la` syncs with some `lb`. The composed `.left la` step is blocked.
+        -- The remaining option is a `.sync la lb` step (or no enabled
+        -- composed step using `la`). We cannot in general derive a
+        -- contradiction without an additional fairness assumption about
+        -- the syncing partner. This is the unresolved sub-case.
+        sorry
+    have hfdB : FairDeadlock sysB₁ fairB₁ sb₁ := by
+      intro lb sb₁' hstepB hfairB
+      by_cases hnosync : ∀ la, ¬ sync₁ la lb
+      · -- `.right lb` is enabled; fair label is `fairB₁ sb₁ lb`.
+        have hcstep : (parallel sysA₁ sysB₁ sync₁).step
+            (sa₁, sb₁) (.right lb) (sa₁, sb₁') := ⟨hnosync, hstepB, rfl⟩
+        have hcfair : parallel_fair_labels fairA₁ fairB₁ (sa₁, sb₁) (.right lb) :=
+          hfairB
+        exact hfd (.right lb) (sa₁, sb₁') hcstep hcfair
+      · -- Symmetric to `hfdA`'s syncing sub-case.
+        sorry
+    -- ===== Step 3: apply per-component witnesses =====
+    have hdivA : FairlyWeaklyDiverges sysA₂ labA₂ fairA₂ sa₂ :=
+      wdA.fair_deadlock_diverges sa₁ sa₂ (reachable_left _ hreach) hRa hfdA
+    have hdivB : FairlyWeaklyDiverges sysB₂ labB₂ fairB₂ sb₂ :=
+      wdB.fair_deadlock_diverges sb₁ sb₂ (reachable_right _ hreach) hRb hfdB
+    -- ===== Step 4: combine per-component divergences =====
+    -- Four sub-cases by the disjunctions in `hdivA` and `hdivB`. We prove
+    -- the "both fair-deadlock" sub-case in full (per task spec); other
+    -- sub-cases are scoped sorries.
+    -- Helper: lift A's fair-divergence at sa₂ to a composed fair-divergence
+    -- at (sa₂, sb₂) via `.left _` actions (B unchanged).
+    have lift_A_fdiv : ∀ sb,
+        FairDiverges sysA₂ labA₂ fairA₂ sa₂ →
+        FairDiverges (parallel sysA₂ sysB₂ sync₂)
+          (parallel_labelling labA₂ labB₂)
+          (parallel_fair_labels fairA₂ fairB₂) (sa₂, sb) := by
+      intro sb ⟨eA, heA0, heAstep, heAfair⟩
+      refine ⟨{ states := fun n => (eA.states n, sb),
+                 labels := fun n => .left (eA.labels n) }, ?_, ?_, ?_⟩
+      · simp [heA0]
+      · intro k
+        obtain ⟨hsteA, hintA⟩ := heAstep k
+        refine ⟨?_, ?_⟩
+        · -- Composed step `.left (eA.labels k)` requires non-sync.
+          refine ⟨fun lb hsyn => ?_, hsteA, rfl⟩
+          have := (hsync_ext _ lb hsyn).1
+          simp [Labelling.is_external, hintA] at this
+        · -- Composed label is internal because A's label is internal.
+          show (parallel_labelling labA₂ labB₂).is_internal (.left _) = true
+          simp [parallel_labelling, hintA]
+      · intro N
+        obtain ⟨k, hkN, hfair_k⟩ := heAfair N
+        refine ⟨k, hkN, ?_⟩
+        -- `parallel_fair_labels _ _ (_, sb) (.left _) = fairA₂ _ _`.
+        exact hfair_k
+    -- Helper: lift B's fair-divergence at sb₂ to a composed fair-divergence
+    -- at (sa, sb₂) via `.right _` actions (A unchanged).
+    have lift_B_fdiv : ∀ sa,
+        FairDiverges sysB₂ labB₂ fairB₂ sb₂ →
+        FairDiverges (parallel sysA₂ sysB₂ sync₂)
+          (parallel_labelling labA₂ labB₂)
+          (parallel_fair_labels fairA₂ fairB₂) (sa, sb₂) := by
+      intro sa ⟨eB, heB0, heBstep, heBfair⟩
+      refine ⟨{ states := fun n => (sa, eB.states n),
+                 labels := fun n => .right (eB.labels n) }, ?_, ?_, ?_⟩
+      · simp [heB0]
+      · intro k
+        obtain ⟨hsteB, hintB⟩ := heBstep k
+        refine ⟨?_, ?_⟩
+        · refine ⟨fun la hsyn => ?_, hsteB, rfl⟩
+          have := (hsync_ext la _ hsyn).2
+          simp [Labelling.is_external, hintB] at this
+        · show (parallel_labelling labA₂ labB₂).is_internal (.right _) = true
+          simp [parallel_labelling, hintB]
+      · intro N
+        obtain ⟨k, hkN, hfair_k⟩ := heBfair N
+        refine ⟨k, hkN, ?_⟩
+        exact hfair_k
+    rcases hdivA with hfdivA | ⟨sa_dead, ⟨hpathA⟩, hfdA_dead⟩
+    · -- A fair-diverges abstractly. In either B sub-case, lift A's
+      -- divergence via `.left _` (B unchanged). The composed state is a
+      -- fair divergence, regardless of B's status.
+      exact Or.inl (lift_A_fdiv sb₂ hfdivA)
+    · -- A reaches a fair-deadlock at `sa_dead` via internal path.
+      rcases hdivB with hfdivB | ⟨sb_dead, ⟨hpathB⟩, hfdB_dead⟩
+      · -- B fair-diverges. Walk A's path to (sa_dead, sb₂), then build
+        -- a composed fair divergence from B's fair divergence (A unchanged).
+        have hpath_lifted :
+            InternalStar (parallel sysA₂ sysB₂ sync₂)
+              (parallel_labelling labA₂ labB₂) (sa₂, sb₂) (sa_dead, sb₂) :=
+          lift_star_left hsync_ext sb₂ hpathA
+        -- From (sa_dead, sb₂), B's fair divergence lifts via `.right _`.
+        have hdiv_lifted :
+            FairlyWeaklyDiverges (parallel sysA₂ sysB₂ sync₂)
+              (parallel_labelling labA₂ labB₂)
+              (parallel_fair_labels fairA₂ fairB₂) (sa_dead, sb₂) :=
+          Or.inl (lift_B_fdiv sa_dead hfdivB)
+        exact FairlyWeaklyDiverges.lift hpath_lifted hdiv_lifted
+      · -- ===== "Both fair-deadlock" sub-case: fully proven =====
+        -- Walk A's path (B fixed at sb₂), then B's path (A fixed at sa_dead).
+        -- The composed state (sa_dead, sb_dead) is a fair-deadlock of
+        -- the composed abstract system.
+        refine Or.inr ⟨(sa_dead, sb_dead), ?_, ?_⟩
+        · -- Internal path from (sa₂, sb₂) to (sa_dead, sb_dead).
+          refine ⟨(lift_star_left hsync_ext sb₂ hpathA).trans
+                  (lift_star_right hsync_ext sa_dead hpathB)⟩
+        · -- (sa_dead, sb_dead) is a composed fair-deadlock.
+          intro cl s' hcstep hcfair
+          match cl with
+          | .left la =>
+            obtain ⟨_, hstepA, _⟩ := hcstep
+            -- `hcfair : fairA₂ sa_dead la` — contradicts `hfdA_dead`.
+            exact hfdA_dead la _ hstepA hcfair
+          | .right lb =>
+            obtain ⟨_, hstepB, _⟩ := hcstep
+            exact hfdB_dead lb _ hstepB hcfair
+          | .sync la lb =>
+            obtain ⟨_, hstepA, _⟩ := hcstep
+            -- `hcfair = ⟨fairA₂ sa_dead la, fairB₂ sb_dead lb⟩`;
+            -- first conjunct contradicts `hfdA_dead`.
+            exact hfdA_dead la _ hstepA hcfair.1
 
 end LTS
