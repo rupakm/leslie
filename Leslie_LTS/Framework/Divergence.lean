@@ -62,24 +62,53 @@ def FairlyWeaklyDiverges
 
     Used in the soundness proof of `preserves_fair_weak_divergence` to lift
     abstract divergence at a later state back to abstract divergence at the
-    starting state.
+    starting state. Proven by induction on the `InternalStar` via the
+    single-step prepend lemma `FairlyWeaklyDiverges.cons_step`. -/
+/-- **Single-step prepend lemma**: a single internal step preserves
+    `FairlyWeaklyDiverges`. Building block for the full `lift` lemma. -/
+theorem FairlyWeaklyDiverges.cons_step
+    {sys : System S L} {lab : Labelling L} {fair_labels : S → L → Prop}
+    {s s' : S} {l : L}
+    (hint : lab.is_internal l = true)
+    (hstep : sys.step s l s')
+    (h : FairlyWeaklyDiverges sys lab fair_labels s') :
+    FairlyWeaklyDiverges sys lab fair_labels s := by
+  rcases h with ⟨e', he'0, he'step, he'fair⟩ | ⟨s_dead, ⟨hpath⟩, hfd⟩
+  · -- Fair divergence at s' lifts via Execution.cons.
+    refine Or.inl ⟨Execution.cons s l e', ?_, ?_, ?_⟩
+    · -- states 0 = s
+      rfl
+    · -- Each step is a valid internal step.
+      intro k
+      cases k with
+      | zero =>
+        refine ⟨?_, hint⟩
+        simp [Execution.cons_states_zero, Execution.cons_labels_zero,
+              Execution.cons_states_succ, he'0]
+        exact hstep
+      | succ k =>
+        simp [Execution.cons_states_succ, Execution.cons_labels_succ]
+        exact he'step k
+    · -- Infinitely many fair labels: shift indices by 1.
+      intro N
+      obtain ⟨k, hkN, hfair_k⟩ := he'fair N
+      refine ⟨k + 1, by omega, ?_⟩
+      simp [Execution.cons_states_succ, Execution.cons_labels_succ]
+      exact hfair_k
+  · -- Deadlock case: prepend one step to the InternalStar.
+    exact Or.inr ⟨s_dead, ⟨.step hint hstep hpath⟩, hfd⟩
 
-    The deadlock case is immediate (transitivity of `InternalStar`). The
-    fair-divergence case requires constructing a new infinite execution by
-    splicing the finite prefix onto the infinite suffix; left as `sorry`
-    pending a `PrefixedExecution`-style helper in `Framework.Trace`. -/
+/-- **Lift lemma**: prepending an `InternalStar` preserves
+    `FairlyWeaklyDiverges`. Proven by induction on the `InternalStar` using
+    `FairlyWeaklyDiverges.cons_step`. -/
 theorem FairlyWeaklyDiverges.lift
     {sys : System S L} {lab : Labelling L} {fair_labels : S → L → Prop}
     {s s' : S}
     (hstar : InternalStar sys lab s s')
     (h : FairlyWeaklyDiverges sys lab fair_labels s') :
     FairlyWeaklyDiverges sys lab fair_labels s := by
-  rcases h with hdiv | ⟨s_dead, ⟨hpath⟩, hfd⟩
-  · -- Fair divergence at s' lifts to fair divergence at s by prepending.
-    -- Construction deferred: requires building an Execution from
-    -- (hstar : InternalStar s s') ++ (e' : Execution from s').
-    sorry
-  · -- Deadlock case: compose internal stars transitively.
-    exact Or.inr ⟨s_dead, ⟨hstar.trans hpath⟩, hfd⟩
+  induction hstar with
+  | refl => exact h
+  | step hint hstep _ ih => exact FairlyWeaklyDiverges.cons_step hint hstep (ih h)
 
 end LTS

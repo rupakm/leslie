@@ -29,6 +29,25 @@ def Execution.drop (k : Nat) (e : Execution State Label) : Execution State Label
   states := fun n => e.states (n + k)
   labels := fun n => e.labels (n + k)
 
+/-- Prepend a single (state, label) pair to an execution. The new execution
+    starts at `s`, takes label `l` to reach `e.states 0`, then continues as `e`. -/
+def Execution.cons (s : State) (l : Label) (e : Execution State Label) :
+    Execution State Label where
+  states := fun n => match n with | 0 => s | n+1 => e.states n
+  labels := fun n => match n with | 0 => l | n+1 => e.labels n
+
+@[simp] theorem Execution.cons_states_zero (s : State) (l : Label) (e : Execution State Label) :
+    (Execution.cons s l e).states 0 = s := rfl
+
+@[simp] theorem Execution.cons_states_succ (s : State) (l : Label) (e : Execution State Label)
+    (n : Nat) : (Execution.cons s l e).states (n + 1) = e.states n := rfl
+
+@[simp] theorem Execution.cons_labels_zero (s : State) (l : Label) (e : Execution State Label) :
+    (Execution.cons s l e).labels 0 = l := rfl
+
+@[simp] theorem Execution.cons_labels_succ (s : State) (l : Label) (e : Execution State Label)
+    (n : Nat) : (Execution.cons s l e).labels (n + 1) = e.labels n := rfl
+
 /-- The state component of a dropped execution at index `n`. -/
 @[simp] theorem Execution.drop_states (e : Execution State Label) (k n : Nat) :
     (e.drop k).states n = e.states (n + k) := rfl
