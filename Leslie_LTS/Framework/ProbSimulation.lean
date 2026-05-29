@@ -200,16 +200,16 @@ def ProbForwardSim.single_step_transfer
     (hreach : Reachable concrete s₁) (hR : sim.R s₁ ν)
     (hstep : concrete.step s₁ l₁ μ₁) :
     Σ' ν' : PMF S₂,
-      (InternalWeakStar abstract lab₂ ν ν' ∨
-       ∃ l₂, WeakStep abstract lab₂ l₂ ν ν') ×'
+      (Nonempty (InternalWeakStar abstract lab₂ ν ν') ∨
+       ∃ l₂, Nonempty (WeakStep abstract lab₂ l₂ ν ν')) ×'
       DistLiftR sim.R μ₁ ν' := by
   by_cases hint : lab₁.is_internal l₁ = true
   · obtain ⟨ν', hws, hlift⟩ := sim.step_internal s₁ l₁ μ₁ ν hreach hR hint hstep
-    exact ⟨ν', Or.inl hws, hlift⟩
+    exact ⟨ν', Or.inl ⟨hws⟩, hlift⟩
   · have hext : lab₁.is_external l₁ = true := by
       simp [LTS.Labelling.is_external, hint]
     obtain ⟨ν', hws, hlift⟩ := sim.step_external s₁ l₁ μ₁ ν hreach hR hext hstep
-    exact ⟨ν', Or.inr ⟨sim.label_map l₁, hws⟩, hlift⟩
+    exact ⟨ν', Or.inr ⟨sim.label_map l₁, ⟨hws⟩⟩, hlift⟩
 
 /-- The initial condition provides a `DistLiftR` from the Dirac distribution
     at a concrete initial state. -/
@@ -357,7 +357,7 @@ theorem WeakStep_fromLTS_pure
   exact ⟨s', rfl⟩
 
 /-- Converse: `LTS.InternalStar` lifts to `InternalWeakStar` on `fromLTS`. -/
-theorem InternalStar_to_InternalWeakStar
+noncomputable def InternalStar_to_InternalWeakStar
     {sys : LTS.System S₂ L₂} {lab : LTS.Labelling L₂}
     {s s' : S₂}
     (h : LTS.InternalStar sys lab s s') :
@@ -448,15 +448,12 @@ noncomputable def ProbForwardSim_to_ForwardSim
   step_external := fun s₁ l₁ s₁' s₂ hreach hR hext hstep => by
     let ⟨ν', hws, hlift⟩ := sim.step_external s₁ l₁ (PMF.pure s₁') (PMF.pure s₂)
       ((reachable_fromLTS c s₁).mpr hreach) hR hext ⟨s₁', hstep, rfl⟩
-    -- WeakStep is ∃-valued (Prop), so use .choose/.choose_spec
-    set μ₁ := hws.choose
-    set μ₂ := hws.choose_spec.choose
-    have hpre : InternalWeakStar (fromLTS a) lab₂ (PMF.pure s₂) μ₁ :=
-      hws.choose_spec.choose_spec.1
-    have hext_s : HyperStep (fromLTS a) (sim.label_map l₁) μ₁ μ₂ :=
-      hws.choose_spec.choose_spec.2.1
-    have hpost : InternalWeakStar (fromLTS a) lab₂ μ₂ ν' :=
-      hws.choose_spec.choose_spec.2.2
+    -- WeakStep is a structure with fields μ₁, μ₂, pre, ext, post
+    set μ₁ := hws.μ₁
+    set μ₂ := hws.μ₂
+    have hpre : InternalWeakStar (fromLTS a) lab₂ (PMF.pure s₂) μ₁ := hws.pre
+    have hext_s : HyperStep (fromLTS a) (sim.label_map l₁) μ₁ μ₂ := hws.ext
+    have hpost : InternalWeakStar (fromLTS a) lab₂ μ₂ ν' := hws.post
     set p1 := InternalWeakStar_fromLTS_pure hpre
     have heq1 : μ₁ = PMF.pure p1.choose := p1.choose_spec.1
     set p2 := HyperStep_fromLTS_pure (heq1 ▸ hext_s)
