@@ -299,18 +299,54 @@ theorem ideal_brb_totality :
     --   * enabled: set_up = none (by h_none_forever) ∧ hv_or persists (by broadcastVal_persist / corruption monotone).
     --   * fair: ideal_brb_fair_labels (.commit _) = True.
     --
-    -- Inner argument: pick commit(v) from hA
-    -- (broadcastVal = some v if sender correct; any v if corrupt),
-    -- show it's always enabled (h_none_forever + broadcastVal_persist_
-    -- along + corruption monotone), use h_ante to fire it, derive
-    -- contradiction with h_none_forever.
+    -- h_ante at (.commit (default : Value)) k gives: if commit is always
+    -- enabled + fair from position k, then commit fires at some k + j.
+    -- NB: h_ante's inner index is `0 + k` (from `always ... e 0`),
+    -- which we normalize via `show` / omega.
     --
-    -- Building blocks in place: broadcastVal_persist_along,
-    -- set_up_persist_along, ideal_brb_fair_labels (.commit) = True.
-    -- The LTL unfolding (0+k index normalization, System.enabled
-    -- unfolding, step-relation extraction from hv.2) needs careful
-    -- Lean annotation.  Sorried.
-    exact sorry
+    -- Pick v: any value works for the corrupt sender; broadcastVal's
+    -- value for the correct sender. We use `default` for simplicity
+    -- (the OR-condition covers both cases).
+    have h_commit_always := h_ante (IdealBRB.Label.commit (default : Value)) k
+    -- h_commit_always : (∀ j', enabled ∧ fair at position (0 + k + j'))
+    --                   → ∃ j', commit fires at position (0 + k + j')
+    -- Supply the antecedent:
+    have h_inner : ∀ j',
+        (IdealBRB.ideal_brb n f Value sender).enabled
+          (.commit default) (e.states (0 + k + j')) ∧
+        ideal_brb_fair_labels n Value
+          (e.states (0 + k + j')) (.commit default) := by
+      intro j'
+      have hpos : 0 + k + j' = k + j' := by omega
+      rw [hpos]
+      constructor
+      · -- enabled: ∃ s', step s (.commit default) s'.
+        -- requires: set_up = none (h_none_forever) ∧ OR condition.
+        refine ⟨{ (e.states (k + j')) with set_up := some default }, ?_⟩
+        simp only [IdealBRB.ideal_brb]
+        refine ⟨h_none_forever (k + j') (by omega), ?_, ?_⟩
+        -- OR condition: (isCorrect ∧ broadcastVal = some default) ∨ ¬ isCorrect.
+        -- From hA + persistence. Sorried for now.
+        · exact sorry
+        -- s' = { s with set_up := some default }.
+        · simp
+      · simp [ideal_brb_fair_labels]
+    obtain ⟨j, hj⟩ := h_commit_always h_inner
+    -- hj : .commit default = e.labels (0 + k + j)
+    -- Normalize: 0 + k + j = k + j.
+    have hpos : 0 + k + j = k + j := by omega
+    rw [hpos] at hj
+    -- After commit fires at k+j, set_up = some default ≠ none.
+    have h_step_kj := hv.2 (k + j)
+    rw [← hj] at h_step_kj
+    simp only [IdealBRB.ideal_brb] at h_step_kj
+    obtain ⟨_, _, heq_s'⟩ := h_step_kj
+    -- (e.states (k + j + 1)).set_up = some default ≠ none.
+    have h_set : (e.states (k + j + 1)).set_up = some default := by
+      rw [heq_s']
+    have h_none := h_none_forever (k + j + 1) (by omega)
+    rw [h_set] at h_none
+    exact absurd h_none (by simp)
   -- Step B: from set_up ≠ none, show eventually all correct returned.
   obtain ⟨k₁, hk₁_ge, hk₁_setup⟩ := hStepA
   -- Now need: ∃ k' ≥ k₁, B(e.states k').
