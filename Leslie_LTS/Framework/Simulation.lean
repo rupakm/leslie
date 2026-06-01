@@ -852,7 +852,14 @@ private noncomputable def flattenInternalStars
         (∀ t, sys.step (e.states t) (e.labels t) (e.states (t + 1)) ∨
               (e.states t = e.states (t + 1) ∧ e.labels t = lab.tau)) ∧
         -- Each emitted label is INTERNAL
-        (∀ t, lab.is_internal (e.labels t) = true) } := by
+        (∀ t, lab.is_internal (e.labels t) = true) ∧
+        -- Label correspondence: at position (off k + i) within segment k
+        -- (for `i < (paths k).length`), the label equals the i-th label of
+        -- the LPath obtained from `(paths k).toInternalLPath`.  Lifted
+        -- from `flattenLPaths`'s segment-label clause.
+        (∀ k i, i < (paths k).length →
+          e.labels (loffset (fun k => (paths k).length) k + i) =
+            ((paths k).toInternalLPath).val.get_label i) } := by
   -- Convert each InternalStar to an LPath with internal-label invariant
   let lpaths_pkg : (k : Nat) → { p : LPath sys.step (states k) (states (k + 1)) //
       ∀ i, i < p.length → lab.is_internal (p.get_label i) = true } :=
@@ -872,7 +879,7 @@ private noncomputable def flattenInternalStars
   -- Rewrite loffset over LPath lengths to loffset over InternalStar lengths
   have hoff_eq : (fun k => (lpaths k).length) = (fun k => (paths k).length) := by
     funext k; exact hlen_eq k
-  refine ⟨e, ?bdry, ?sos, ?internal⟩
+  refine ⟨e, ?bdry, ?sos, ?internal, ?label_seg⟩
   case bdry =>
     intro k; rw [← hoff_eq]; exact hboundary k
   case sos =>
@@ -910,6 +917,15 @@ private noncomputable def flattenInternalStars
     · -- t is beyond all segments: label = lab.tau (internal by tau_internal)
       rw [hlabels_stutter t hrange]
       exact lab.tau_internal
+  case label_seg =>
+    intro k i hi
+    -- `lpaths k` is `(paths k).toInternalLPath.val` by construction.
+    -- `hlabels_seg` uses `len = (lpaths k).length`; rewrite via `hoff_eq`
+    -- to match the user-facing `(paths k).length`.
+    have hi' : i < (lpaths k).length := by rw [hlen_eq]; exact hi
+    have h := hlabels_seg k i hi'
+    rw [← hoff_eq]
+    exact h
 
 /-- For a `ForwardSim`, every valid concrete execution has a corresponding
     valid abstract execution whose external label subsequence matches
