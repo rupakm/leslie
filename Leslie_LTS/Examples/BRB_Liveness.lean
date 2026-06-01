@@ -110,6 +110,37 @@ theorem brb_fair_deadlock_implies_terminated (hn : n > 3 * f) :
   -- Proof sketched in plan §D.4; sorried for now.
   sorry
 
+/-! ## Fair-label compatibility through the simulation
+
+    Concrete fair labels map to abstract fair labels via `label_map`.
+    Used as the `h_fair_compat` hypothesis in `transfers_satisfaction`. -/
+theorem brb_fair_compat (hn : n > 3 * f) :
+    ∀ s₁ l₁ s₂,
+      (BRB_Simulation.brb_forward_sim n f Value sender hn).R s₁ s₂ →
+      brb_fair_labels n Value s₁ l₁ →
+      ideal_brb_fair_labels n Value s₂
+        ((BRB_Simulation.brb_forward_sim n f Value sender hn).label_map l₁) := by
+  intro s₁ l₁ s₂ hR hfair
+  -- R = sim_rel → s₂.corrupted = s₁.corrupted.
+  have hcorr : s₂.corrupted = s₁.corrupted := hR.1
+  match l₁ with
+  | .corrupt _ => exact absurd hfair (by simp [brb_fair_labels])
+  | .input _ _ => exact absurd hfair (by simp [brb_fair_labels])
+  | .output p v =>
+    -- label_map (.output p v) = .output p v.
+    -- fair_labels₁ = p ∉ s₁.corrupted; fair_labels₂ = p ∉ s₂.corrupted.
+    simp only [BRB_Simulation.brb_forward_sim, BRB_Simulation.label_map,
+               brb_fair_labels, ideal_brb_fair_labels] at hfair ⊢
+    rw [hcorr]; exact hfair
+  | .send _ _ _ v =>
+    -- label_map (.send ..) = .commit v; fair_labels₂ (.commit _) = True.
+    simp [BRB_Simulation.brb_forward_sim, BRB_Simulation.label_map,
+          ideal_brb_fair_labels]
+  | .recv _ _ _ v =>
+    -- label_map (.recv ..) = .commit v; fair_labels₂ (.commit _) = True.
+    simp [BRB_Simulation.brb_forward_sim, BRB_Simulation.label_map,
+          ideal_brb_fair_labels]
+
 /-! ## Structural fact: every IdealBRB internal label is fair
 
     `ideal_labelling.is_internal = true` only for `.commit _`, which
