@@ -1414,77 +1414,78 @@ theorem preserves_fair_weak_divergence
             show e₁.labels ((k - (k₀ + 1)) + (k₀ + 1)) = e₁.labels k
             congr 1; omega
           rw [heqs, heql]; exact hfair_k
-      -- Classical case-split on whether the abstract step at k₀ is empty.
-      by_cases h_empty : mid.2.1.IsEmpty
-      · -- Case (i): elided.  Apply `rank_decreases_on_fair_elision`.
-        -- Under Gaspard's refined formulation, the disjunctive
-        -- `rank ∨ FairlyWeaklyDiverges` is replaced by direct `rank`
-        -- decrease: a fair skip MUST be helpful (decrease rank).
-        have hrank : wd.rank (e₁.states (k₀ + 1)) (e₁.states k₀) :=
-          wd.rank_decreases_on_fair_elision (e₁.states k₀) (e₁.labels k₀)
-            (e₁.states (k₀ + 1)) walk.1 hreach_k₀ walk.2.2 hint_k₀
-            hfair_k₀ hstep_k₀ h_empty
-        -- Unified Case-(i) handler covering both `k₀ = 0` and `k₀ > 0`.
-        --
-        -- Helper `transfer_at_pivot m _ hrec`: given an index `m ≥ 1` along
-        -- the concrete fair-divergence with `wd.rank (e₁.states m) s₁`,
-        -- lift fair divergence at `e₁.states m` to abstract divergence at
-        -- `s₂` via the WF IH `ih_rank` (walking the `m`-prefix through the
-        -- simulation as an `InternalStar`, then lifting back).
-        have transfer_at_pivot :
-            ∀ m, 0 < m → wd.rank (e₁.states m) s₁ →
-              FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂ := by
-          intro m _ hrec
-          have hpath_m : InternalStar concrete lab₁ s₁ (e₁.states m) := by
-            have base : ∀ k, InternalStar concrete lab₁ (e₁.states 0) (e₁.states k) := by
-              intro k
-              induction k with
-              | zero => exact .refl
-              | succ k ih =>
-                exact ih.trans (.single (hstep_int k).2 (hstep_int k).1)
-            have := base m
-            rw [he₁0] at this; exact this
-          let walk_m := sim.walk_internal_star hreach hR hpath_m
-          have hreach_m : Reachable concrete (e₁.states m) :=
-            hpath_m.toStar.reachable hreach
-          have htail_div_m : FairDiverges concrete lab₁ fair_labels₁
-              (e₁.states m) := by
-            refine ⟨e₁.drop m, ?_, ?_, ?_⟩
-            · show e₁.states (0 + m) = e₁.states m
+      -- Shared helper `transfer_at_pivot m _ hrec`: given an index `m ≥ 1`
+      -- along the concrete fair-divergence with `wd.rank (e₁.states m) s₁`,
+      -- lift fair divergence at `e₁.states m` to abstract divergence at
+      -- `s₂` via the WF IH `ih_rank` (walking the `m`-prefix through the
+      -- simulation as an `InternalStar`, then lifting back).
+      have transfer_at_pivot :
+          ∀ m, 0 < m → wd.rank (e₁.states m) s₁ →
+            FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂ := by
+        intro m _ hrec
+        have hpath_m : InternalStar concrete lab₁ s₁ (e₁.states m) := by
+          have base : ∀ k, InternalStar concrete lab₁ (e₁.states 0) (e₁.states k) := by
+            intro k
+            induction k with
+            | zero => exact .refl
+            | succ k ih =>
+              exact ih.trans (.single (hstep_int k).2 (hstep_int k).1)
+          have := base m
+          rw [he₁0] at this; exact this
+        let walk_m := sim.walk_internal_star hreach hR hpath_m
+        have hreach_m : Reachable concrete (e₁.states m) :=
+          hpath_m.toStar.reachable hreach
+        have htail_div_m : FairDiverges concrete lab₁ fair_labels₁
+            (e₁.states m) := by
+          refine ⟨e₁.drop m, ?_, ?_, ?_⟩
+          · show e₁.states (0 + m) = e₁.states m
+            congr 1; omega
+          · intro k
+            have hk := hstep_int (k + m)
+            have heq1 : (Execution.drop m e₁).states k = e₁.states (k + m) := rfl
+            have heq2 : (Execution.drop m e₁).labels k = e₁.labels (k + m) := rfl
+            have heq3 : (Execution.drop m e₁).states (k + 1)
+                         = e₁.states (k + m + 1) := by
+              show e₁.states (k + 1 + m) = e₁.states (k + m + 1)
               congr 1; omega
-            · intro k
-              have hk := hstep_int (k + m)
-              have heq1 : (Execution.drop m e₁).states k = e₁.states (k + m) := rfl
-              have heq2 : (Execution.drop m e₁).labels k = e₁.labels (k + m) := rfl
-              have heq3 : (Execution.drop m e₁).states (k + 1)
-                           = e₁.states (k + m + 1) := by
-                show e₁.states (k + 1 + m) = e₁.states (k + m + 1)
-                congr 1; omega
-              rw [heq1, heq2, heq3]; exact hk
-            · intro N
-              obtain ⟨k, hkN, hfair_k⟩ := hcofair (N + m)
-              refine ⟨k - m, by omega, ?_⟩
-              have heqs : (Execution.drop m e₁).states (k - m) = e₁.states k := by
-                show e₁.states ((k - m) + m) = e₁.states k
-                congr 1; omega
-              have heql : (Execution.drop m e₁).labels (k - m) = e₁.labels k := by
-                show e₁.labels ((k - m) + m) = e₁.labels k
-                congr 1; omega
-              rw [heqs, heql]; exact hfair_k
-          have habs_at_walk_m : FairlyWeaklyDiverges abstract lab₂ fair_labels₂
-              walk_m.1 :=
-            ih_rank (e₁.states m) hrec hreach_m walk_m.1 walk_m.2.2 htail_div_m
-          exact FairlyWeaklyDiverges.lift walk_m.2.1 habs_at_walk_m
-        -- Case-split on whether any unfair prefix step strictly decreases rank.
-        -- If so, take the LEAST such index `j₀`; by minimality + the
-        -- equality clause of `rank_non_increasing`, every prior step is an
-        -- equality, so `e₁.states j₀ = s₁` and `rank (e₁.states (j₀+1)) s₁`.
-        -- Otherwise every prefix step is an equality (vacuous when `k₀ = 0`),
-        -- so `e₁.states k₀ = s₁`, and the elision rank from `hrank` gives
-        -- `rank (e₁.states (k₀+1)) s₁`.
+            rw [heq1, heq2, heq3]; exact hk
+          · intro N
+            obtain ⟨k, hkN, hfair_k⟩ := hcofair (N + m)
+            refine ⟨k - m, by omega, ?_⟩
+            have heqs : (Execution.drop m e₁).states (k - m) = e₁.states k := by
+              show e₁.states ((k - m) + m) = e₁.states k
+              congr 1; omega
+            have heql : (Execution.drop m e₁).labels (k - m) = e₁.labels k := by
+              show e₁.labels ((k - m) + m) = e₁.labels k
+              congr 1; omega
+            rw [heqs, heql]; exact hfair_k
+        have habs_at_walk_m : FairlyWeaklyDiverges abstract lab₂ fair_labels₂
+            walk_m.1 :=
+          ih_rank (e₁.states m) hrec hreach_m walk_m.1 walk_m.2.2 htail_div_m
+        exact FairlyWeaklyDiverges.lift walk_m.2.1 habs_at_walk_m
+      -- Shared helper `bridge_from_hrank_k0`: given a rank-decrease from
+      -- `s_k₀` to `s_(k₀+1)` (produced by either `rank_decreases_on_
+      -- fair_elision` in Case (i), or `rank_decreases_on_unfair_abstract`
+      -- in Case (ii.a)), walk through the unfair prefix via
+      -- `rank_non_increasing` to find a pivot `m ∈ [1, k₀+1]` with
+      -- `wd.rank (e₁.states m) s₁`, then call `transfer_at_pivot`.
+      --
+      -- Two sub-cases:
+      --   * Some unfair prefix step at `j < k₀` strictly drops rank → take
+      --     the LEAST such `j₀`; by minimality + the equality clause of
+      --     `rank_non_increasing`, every prior step is an equality, so
+      --     `e₁.states j₀ = s₁` and `wd.rank (e₁.states (j₀+1)) s₁`.
+      --     Pivot `m := j₀+1`.
+      --   * No strict drop in the prefix → every prefix step is an
+      --     equality (vacuous if `k₀ = 0`), so `e₁.states k₀ = s₁`, and
+      --     `hrank` gives `wd.rank (e₁.states (k₀+1)) s₁`.  Pivot
+      --     `m := k₀+1`.
+      have bridge_from_hrank_k0 :
+          wd.rank (e₁.states (k₀ + 1)) (e₁.states k₀) →
+            FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂ := by
+        intro hrank
         by_cases hQ : ∃ j, j < k₀ ∧ wd.rank (e₁.states (j + 1)) (e₁.states j)
-        · -- Strict-rank step somewhere in the prefix.  Pivot at `j₀ + 1`.
-          let j₀ : Nat := Nat.find hQ
+        · let j₀ : Nat := Nat.find hQ
           have hj₀_lt : j₀ < k₀ := (Nat.find_spec hQ).1
           have hj₀_rank : wd.rank (e₁.states (j₀ + 1)) (e₁.states j₀) :=
             (Nat.find_spec hQ).2
@@ -1513,8 +1514,7 @@ theorem preserves_fair_weak_divergence
             rw [huniv j₀ (Nat.le_refl _), he₁0]
           have hrec : wd.rank (e₁.states (j₀ + 1)) s₁ := hj₀_eq_s₁ ▸ hj₀_rank
           exact transfer_at_pivot (j₀ + 1) (Nat.succ_pos _) hrec
-        · -- All unfair prefix steps are equalities (vacuous if `k₀ = 0`).
-          push_neg at hQ
+        · push_neg at hQ
           have h_prefix_eq : ∀ i, i < k₀ → e₁.states (i + 1) = e₁.states i := by
             intro i hi
             have hunfair := hno_fair_before i hi
@@ -1536,28 +1536,52 @@ theorem preserves_fair_weak_divergence
             rw [huniv k₀ (Nat.le_refl _), he₁0]
           have hrec : wd.rank (e₁.states (k₀ + 1)) s₁ := hek0_eq_s₁ ▸ hrank
           exact transfer_at_pivot (k₀ + 1) (Nat.succ_pos _) hrec
-      · -- Case (ii): non-empty abstract step.  By `h_abs_fair`, mid.2.1 is
-        -- AllFair on the abstract side and has length ≥ 1.  Iterating this
-        -- argument cofinally many times produces a fair abstract divergence.
-        --
-        -- Detailed construction sketch (left as inner sorry):
-        --   * Define `s₂_seq : ℕ → S₂` and `path_seq : ℕ → InternalStar abstract …`
-        --     by recursion using `walk_internal_star` between consecutive fair
-        --     concrete indices (k₀ < k₁ < k₂ < ...).
-        --   * At each fair index k_i, apply `sim.step_internal` to get a
-        --     non-empty AllFair abstract InternalStar (by `h_abs_fair`, since
-        --     we are at a fair label).  If at any of these the InternalStar
-        --     becomes empty, defer to Case (i) at that index using `ih_rank`.
-        --   * Concatenate all abstract InternalStars into one infinite
-        --     execution. Fairness follows because each non-empty AllFair
-        --     contributes ≥ 1 fair abstract label, infinitely often.
-        --   * The resulting witness is `FairDiverges abstract lab₂ fair_labels₂ walk.1`
-        --     lifted back to `s₂` via `FairlyWeaklyDiverges.lift walk.2.1`.
-        --
-        -- This construction is mechanically intricate (~200 LOC) and uses
-        -- Classical.choice + Execution-from-InternalStar-sequence machinery
-        -- that does not currently exist as a helper.  Deferred.
-        sorry
+      -- Classical case-split on whether the abstract step at k₀ is empty.
+      by_cases h_empty : mid.2.1.IsEmpty
+      · -- Case (i): elided.  `rank_decreases_on_fair_elision` gives the
+        -- rank drop; the shared bridge handles the prefix.
+        have hrank : wd.rank (e₁.states (k₀ + 1)) (e₁.states k₀) :=
+          wd.rank_decreases_on_fair_elision (e₁.states k₀) (e₁.labels k₀)
+            (e₁.states (k₀ + 1)) walk.1 hreach_k₀ walk.2.2 hint_k₀
+            hfair_k₀ hstep_k₀ h_empty
+        exact bridge_from_hrank_k0 hrank
+      · -- Case (ii): non-empty abstract step. Sub-split on whether the
+        -- abstract InternalStar is AllFair.
+        by_cases h_allFair : mid.2.1.AllFair fair_labels₂
+        · -- Case (ii.b): non-empty AND AllFair.  The HARD case — iterate
+          -- across cofinitely many fair concrete indices to build an
+          -- infinite fair abstract execution.
+          --
+          -- Detailed construction sketch (still sorried):
+          --   * Define `s₂_seq : ℕ → S₂` and
+          --     `path_seq : ℕ → InternalStar abstract …` by recursion using
+          --     `walk_internal_star` between consecutive fair concrete
+          --     indices (k₀ < k₁ < k₂ < ...).
+          --   * At each fair index k_i, apply `sim.step_internal` to get
+          --     an abstract `InternalStar`; sub-case on AllFair (recurse
+          --     in this proof) vs not (reduce to Case (ii.a) via
+          --     `rank_decreases_on_unfair_abstract`) vs empty (reduce to
+          --     Case (i) via `rank_decreases_on_fair_elision`).
+          --   * Concatenate all AllFair non-empty abstract InternalStars
+          --     into one infinite execution. Fairness follows because each
+          --     AllFair non-empty contribution gives ≥ 1 fair abstract
+          --     label, infinitely often.
+          --   * The resulting witness is `FairDiverges abstract lab₂
+          --     fair_labels₂ walk.1` lifted back to `s₂` via
+          --     `FairlyWeaklyDiverges.lift walk.2.1`.
+          --
+          -- Mechanically intricate (~200 LOC) and uses Classical.choice +
+          -- Execution-from-InternalStar-sequence machinery that does not
+          -- currently exist as a helper.  Deferred.
+          sorry
+        · -- Case (ii.a): non-empty but NOT AllFair.  Then
+          -- `rank_decreases_on_unfair_abstract` gives the rank drop, and
+          -- the shared bridge handles the prefix exactly as in Case (i).
+          have hrank : wd.rank (e₁.states (k₀ + 1)) (e₁.states k₀) :=
+            wd.rank_decreases_on_unfair_abstract (e₁.states k₀)
+              (e₁.labels k₀) (e₁.states (k₀ + 1)) walk.1 hreach_k₀ walk.2.2
+              hint_k₀ hfair_k₀ hstep_k₀ h_empty h_allFair
+          exact bridge_from_hrank_k0 hrank
   · -- Deadlock case: walk the τ-path through the simulation, then apply
     -- the witness's `fair_deadlock_diverges`, then lift back.
     let walk := sim.walk_internal_star hreach hR hpath
