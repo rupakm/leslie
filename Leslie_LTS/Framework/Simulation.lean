@@ -1784,31 +1784,116 @@ theorem preserves_fair_weak_divergence
               fair_labels₁ (e₁.states (k₀ + i)) (e₁.labels (k₀ + i)) ∧
               ((paths_seq i).IsEmpty ∨ ¬ (paths_seq i).AllFair fair_labels₂)
           · -- Case (ii.b.X): bad index at i ≥ 1 gives rank decrease at
-            -- `e₁.states (k₀+i)` via fair_elision (if empty) or
-            -- unfair_abstract (if non-empty non-AllFair).
-            --
-            -- OBSTRUCTION in the current witness API: applying `ih_rank`
-            -- at `e₁.states (k₀+i+1)` requires `wd.rank (e₁.states
-            -- (k₀+i+1)) s₁`, a chain from `e₁.states (k₀+i)` back to
-            -- `s₁`.  The prefix `[0, k₀+i)` contains:
-            --   • `[0, k₀)`: unfair, OK via `rank_non_increasing`;
-            --   • `{k₀}` and any fair k ∈ (k₀, k₀+i): all in Case (ii.b)
-            --     (else they'd be the LEAST bad i — but here our i is
-            --     any bad index, not necessarily the least).
-            --
-            -- Even taking the LEAST bad i, the intermediate Case (ii.b)
-            -- fair indices contribute no rank info (the witness API has
-            -- no clause for fair-non-empty-AllFair).
-            --
-            -- Resolutions (all design-level):
-            --   (a) add a 5th witness field forcing rank non-increase
-            --       at fair-non-empty-AllFair steps;
-            --   (b) reformulate WF induction over a stronger order
-            --       (e.g. lex of rank with abstract-progress counter);
-            --   (c) prove (Y) holds unconditionally (i.e. (X) cannot
-            --       hold past finitely many recursions).
-            -- Deferred.
-            sorry
+            -- `e₁.states (k₀+i_j)`.  Take the LEAST bad index `i_j`;
+            -- assemble the per-step prefix-disjunction over `[0, k₀+i_j)`
+            -- using:
+            --   • `[0, k₀)`: unfair, via `rank_non_increasing` (already
+            --     in `h_prefix_disj_k0`).
+            --   • `{k₀}`: fair, non-empty AllFair (Case (ii.b) entry
+            --     `¬ h_empty` + `h_allFair`), via the NEW 5th witness
+            --     clause `rank_non_increasing_on_fair_progress`.
+            --   • `(k₀, k₀+i_j)`: fair indices are non-empty AllFair by
+            --     minimality of `i_j` (not in `h_break` for `i < i_j`);
+            --     unfair indices use `rank_non_increasing`.
+            -- Then call the generic `bridge_from_hrank_at`.
+            let i_j : Nat := Nat.find h_break
+            have hi_j_spec :
+                1 ≤ i_j ∧
+                fair_labels₁ (e₁.states (k₀ + i_j)) (e₁.labels (k₀ + i_j)) ∧
+                ((paths_seq i_j).IsEmpty ∨
+                  ¬ (paths_seq i_j).AllFair fair_labels₂) :=
+              Nat.find_spec h_break
+            have hi_j_min : ∀ i, i < i_j →
+                ¬ (1 ≤ i ∧
+                   fair_labels₁ (e₁.states (k₀ + i)) (e₁.labels (k₀ + i)) ∧
+                   ((paths_seq i).IsEmpty ∨
+                     ¬ (paths_seq i).AllFair fair_labels₂)) :=
+              fun i hi => Nat.find_min h_break hi
+            -- Derive the rank decrease at the bad index k₀ + i_j.
+            have hrank_at_kj :
+                wd.rank (e₁.states (k₀ + i_j + 1)) (e₁.states (k₀ + i_j)) := by
+              by_cases h_isempty : (paths_seq i_j).IsEmpty
+              · exact wd.rank_decreases_on_fair_elision
+                  (e₁.states (k₀ + i_j)) (e₁.labels (k₀ + i_j))
+                  (e₁.states (k₀ + i_j + 1))
+                  (abs_acc i_j).1 (reach_at i_j) (abs_acc i_j).2.2
+                  (hstep_int (k₀ + i_j)).2 hi_j_spec.2.1
+                  (hstep_int (k₀ + i_j)).1 h_isempty
+              · have hnot_allfair :
+                    ¬ (paths_seq i_j).AllFair fair_labels₂ := by
+                  rcases hi_j_spec.2.2 with hempty | hnaf
+                  · exact absurd hempty h_isempty
+                  · exact hnaf
+                exact wd.rank_decreases_on_unfair_abstract
+                  (e₁.states (k₀ + i_j)) (e₁.labels (k₀ + i_j))
+                  (e₁.states (k₀ + i_j + 1))
+                  (abs_acc i_j).1 (reach_at i_j) (abs_acc i_j).2.2
+                  (hstep_int (k₀ + i_j)).2 hi_j_spec.2.1
+                  (hstep_int (k₀ + i_j)).1 h_isempty hnot_allfair
+            -- Build the full prefix disjunction over [0, k₀ + i_j).
+            have h_prefix_disj_kj :
+                ∀ i, i < k₀ + i_j →
+                  e₁.states (i + 1) = e₁.states i ∨
+                  wd.rank (e₁.states (i + 1)) (e₁.states i) := by
+              intro i hi
+              by_cases hi_lt_k₀ : i < k₀
+              · -- Unfair prefix step.
+                exact h_prefix_disj_k0 i hi_lt_k₀
+              · -- i ≥ k₀; i = k₀ + (i - k₀), and i - k₀ < i_j.
+                push Not at hi_lt_k₀
+                -- We want to apply the 5th witness clause (or
+                -- rank_non_increasing for unfair indices here).
+                let i' : Nat := i - k₀
+                have hi'_eq : i = k₀ + i' := by omega
+                have hi'_lt : i' < i_j := by omega
+                by_cases hfair_at : fair_labels₁ (e₁.states i) (e₁.labels i)
+                · -- Fair index in [k₀, k₀ + i_j).  By minimality of i_j,
+                  -- paths_seq i' is non-empty AllFair (the conjunction
+                  -- inside h_break fails because either i' < 1 ⇒ i' = 0
+                  -- ⇒ paths_seq 0 = mid.2.1 which is non-empty AllFair
+                  -- by Case (ii.b) entry; or i' ≥ 1 and not in
+                  -- h_break by minimality of i_j).
+                  have hpaths_good :
+                      ¬ (paths_seq i').IsEmpty ∧
+                      (paths_seq i').AllFair fair_labels₂ := by
+                    by_cases hi'_zero : i' = 0
+                    · -- i' = 0 ⇒ paths_seq 0 = mid.2.1; use h_empty/h_allFair.
+                      subst hi'_zero
+                      refine ⟨h_empty, h_allFair⟩
+                    · -- i' ≥ 1 and i' < i_j ⇒ not in h_break.
+                      have hi'_pos : 1 ≤ i' :=
+                        Nat.one_le_iff_ne_zero.mpr hi'_zero
+                      have hfair_at_i' :
+                          fair_labels₁ (e₁.states (k₀ + i'))
+                                       (e₁.labels (k₀ + i')) := by
+                        rw [← hi'_eq]; exact hfair_at
+                      have := hi_j_min i' hi'_lt
+                      push Not at this
+                      rcases this hi'_pos hfair_at_i' with
+                        ⟨hne, hallfair⟩
+                      exact ⟨hne, hallfair⟩
+                  -- Apply the 5th witness clause.
+                  have hdisj :
+                      e₁.states (k₀ + i' + 1) = e₁.states (k₀ + i') ∨
+                      wd.rank (e₁.states (k₀ + i' + 1))
+                              (e₁.states (k₀ + i')) :=
+                    wd.rank_non_increasing_on_fair_progress
+                      (e₁.states (k₀ + i')) (e₁.labels (k₀ + i'))
+                      (e₁.states (k₀ + i' + 1))
+                      (abs_acc i').1 (reach_at i') (abs_acc i').2.2
+                      (hstep_int (k₀ + i')).2
+                      (by rw [← hi'_eq]; exact hfair_at)
+                      (hstep_int (k₀ + i')).1
+                      hpaths_good.1 hpaths_good.2
+                  rw [← hi'_eq] at hdisj
+                  exact hdisj
+                · -- Unfair index in [k₀, k₀ + i_j) (possible since
+                  -- hno_fair_before only covers [0, k₀)).
+                  exact wd.rank_non_increasing (e₁.states i)
+                    (e₁.labels i) (e₁.states (i + 1))
+                    (hstep_int i).1 (hstep_int i).2 hfair_at
+            exact bridge_from_hrank_at (k₀ + i_j) h_prefix_disj_kj
+              hrank_at_kj
           · -- Case (ii.b.Y): every fair concrete index k > k₀ gives a
             -- non-empty AllFair via paths_seq.
             push Not at h_break
