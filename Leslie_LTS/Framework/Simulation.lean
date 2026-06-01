@@ -1715,7 +1715,7 @@ theorem preserves_fair_weak_divergence
           let states_seq : ℕ → S₂ := fun i => (abs_acc i).1
           -- ── Step 4: apply flattenInternalStars ────────────────────
           haveI : Inhabited L₂ := ⟨lab₂.tau⟩
-          obtain ⟨e₂, _hbdry, _hsos, _hint_all⟩ :=
+          obtain ⟨e₂, _hbdry, _hsos, _hint_all, _hlbl_seg⟩ :=
             flattenInternalStars states_seq paths_seq
           -- ── Step 5: classical case-split on paths_seq behaviour ──
           classical
