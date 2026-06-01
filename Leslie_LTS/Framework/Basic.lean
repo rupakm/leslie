@@ -143,6 +143,23 @@ def InternalStar.AllFair {sys : System State Label} {lab : Labelling Label}
   | _,  _, .refl                            => True
   | a, _, .step (l := l) _ _ rest           => fair_labels a l ∧ rest.AllFair fair_labels
 
+/-- If every internal label is fair (regardless of state), then every
+    `InternalStar` is `AllFair`.  This is the "vacuous" case of
+    `WeakDivPreserving.rank_decreases_on_unfair_abstract`: when every
+    internal abstract label of the target system is classified as fair,
+    the `¬ AllFair` hypothesis of the field is unsatisfiable, so the
+    field discharges by `exfalso`. Used by the BRB and BCA witnesses. -/
+theorem InternalStar.allFair_of_all_internal_fair
+    {sys : System State Label} {lab : Labelling Label}
+    {fair_labels : State → Label → Prop}
+    (h_int_fair : ∀ s l, lab.is_internal l = true → fair_labels s l)
+    {a b : State} (star : InternalStar sys lab a b) :
+    star.AllFair fair_labels := by
+  induction star with
+  | refl => simp [InternalStar.AllFair]
+  | step hint _ _ ih =>
+    exact ⟨h_int_fair _ _ hint, ih⟩
+
 /-- `Reachable` is preserved by `Star` steps. -/
 theorem Star.reachable {sys : System State Label}
     (h : Star sys a b) (ha : Reachable sys a) : Reachable sys b := by

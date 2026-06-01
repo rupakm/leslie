@@ -78,8 +78,9 @@ theorem brb_no_fair_deadlock_reachable (hn : n > 3 * f) :
     `ideal_labelling.is_internal = true` only for `.commit _`, which
     `ideal_brb_fair_labels` always classifies as fair (`True`). Hence
     every `InternalStar` on the ideal side is `AllFair` w.r.t.
-    `ideal_brb_fair_labels`. This is the lemma that discharges
-    `rank_decreases_on_unfair_abstract` by `exfalso` below. -/
+    `ideal_brb_fair_labels`, by the framework-level helper
+    `InternalStar.allFair_of_all_internal_fair`. This is the fact that
+    discharges `rank_decreases_on_unfair_abstract` by `exfalso` below. -/
 theorem ideal_brb_internal_label_fair (s : IdealBRB.State n Value)
     (l : IdealBRB.Label n Value)
     (hint : (IdealBRB.ideal_labelling n Value).is_internal l = true) :
@@ -90,11 +91,8 @@ theorem ideal_brb_internalStar_allFair
     {a b : IdealBRB.State n Value}
     (star : InternalStar (IdealBRB.ideal_brb n f Value sender)
                           (IdealBRB.ideal_labelling n Value) a b) :
-    star.AllFair (ideal_brb_fair_labels n Value) := by
-  induction star with
-  | refl => simp [InternalStar.AllFair]
-  | step hint _ _ ih =>
-    exact ⟨ideal_brb_internal_label_fair n Value _ _ hint, ih⟩
+    star.AllFair (ideal_brb_fair_labels n Value) :=
+  star.allFair_of_all_internal_fair (ideal_brb_internal_label_fair n Value)
 
 /-! ## The headline witness -/
 

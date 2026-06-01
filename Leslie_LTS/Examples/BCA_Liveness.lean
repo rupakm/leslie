@@ -57,8 +57,9 @@ def ideal_bca_fair_labels
     `ideal_labelling.is_internal = true` only for `.bind _`, which
     `ideal_bca_fair_labels` always classifies as fair (`True`). Hence
     every `InternalStar` on the ideal side is `AllFair` w.r.t.
-    `ideal_bca_fair_labels`. This is the lemma that discharges
-    `rank_decreases_on_unfair_abstract` by `exfalso` below. -/
+    `ideal_bca_fair_labels`, by the framework-level helper
+    `InternalStar.allFair_of_all_internal_fair`. This is the fact that
+    discharges `rank_decreases_on_unfair_abstract` by `exfalso` below. -/
 theorem ideal_bca_internal_label_fair (s : IdealBCA.State T n)
     (l : IdealBCA.Label T n)
     (hint : (IdealBCA.ideal_labelling T n).is_internal l = true) :
@@ -69,11 +70,8 @@ theorem ideal_bca_internalStar_allFair
     {a b : IdealBCA.State T n}
     (star : InternalStar (IdealBCA.ideal_bca T n f)
                           (IdealBCA.ideal_labelling T n) a b) :
-    star.AllFair (ideal_bca_fair_labels T n) := by
-  induction star with
-  | refl => simp [InternalStar.AllFair]
-  | step hint _ _ ih =>
-    exact ⟨ideal_bca_internal_label_fair T n _ _ hint, ih⟩
+    star.AllFair (ideal_bca_fair_labels T n) :=
+  star.allFair_of_all_internal_fair (ideal_bca_internal_label_fair T n)
 
 /-! ## Well-founded rank on concrete states (definitions deferred) -/
 
