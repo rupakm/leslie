@@ -264,23 +264,31 @@ theorem ideal_brb_totality :
             ∀ p, p ∉ s.corrupted → s.returned p ≠ none)))) := by
   -- Unfold: valid exec e + fair-WF antecedent → leads_to at 0.
   intro e hv h_ante
-  -- leads_to at 0 = ∀ k, A(k) → ∃ k' ≥ k, B(k').
-  -- Chain through intermediate "set_up ≠ none":
-  --   Step A: A ↝ (set_up ≠ none)
-  --   Step B: (set_up ≠ none) ↝ B
-  --
-  -- Step A: commit(v) is enabled once A holds (if set_up = none);
-  --   fair scheduling forces commit to fire; after firing, set_up ≠ none.
-  --   "Until or forever" argument: either set_up becomes ≠ none
-  --   (target reached), or it stays none forever → commit always
-  --   enabled → antecedent fires → contradiction.
-  --
-  -- Step B: once set_up = some v, for each correct p with
-  --   returned p = none, output(p, v) is enabled + fair. Fair
-  --   scheduling fires it. Finite induction over correct procs.
-  --
-  -- Both steps sorried — substantial LTL reasoning, but structure
-  -- is clear and framework helpers (leads_to_chain, etc.) are in scope.
+  -- leads_to at 0: ∀ k, A(e.states k) → ∃ k' ≥ k, B(e.states k').
+  -- Show via the intermediate "set_up ≠ none":
+  --   Step A: A → eventually (set_up ≠ none)
+  --   Step B: set_up ≠ none → eventually B
+  intro k hA
+  -- Step A: show eventually set_up ≠ none from position k.
+  have hStepA : ∃ k' ≥ k, (e.states k').set_up ≠ none := by
+    -- Until-or-forever: either set_up becomes ≠ none, or stays none
+    -- forever (giving permanently enabled commit → antecedent fires →
+    -- set_up set → contradiction).
+    by_contra h_never
+    -- h_never : ¬ ∃ k' ≥ k, set_up ≠ none.  Derive: set_up = none
+    -- at every k' ≥ k.
+    have h_none_forever : ∀ k', k' ≥ k → (e.states k').set_up = none := by
+      intro k' hk'; by_contra hne; exact h_never ⟨k', hk', hne⟩
+    -- From hA: broadcastVal ≠ none ∨ ¬ isCorrect sender at position k.
+    -- Need a value v for which commit(v) is enabled.
+    -- Case: sender correct → broadcastVal = some v for some v.
+    -- Case: sender corrupt → commit(default) is enabled.
+    sorry  -- WIP: extract v, show commit(v) always enabled, use h_ante
+  -- Step B: from set_up ≠ none, show eventually all correct returned.
+  obtain ⟨k₁, hk₁_ge, hk₁_setup⟩ := hStepA
+  -- Now need: ∃ k' ≥ k₁, B(e.states k').
+  -- For each correct p with returned p = none at k₁, fair scheduling
+  -- of output(p, _) fires it. Finite induction.
   sorry
 
 /-- The concrete-side totality, lifted from `ideal_brb_totality` via the
