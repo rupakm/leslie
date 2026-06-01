@@ -1774,19 +1774,56 @@ theorem preserves_fair_weak_divergence
                 have hi_pos : 1 ≤ i := Nat.one_le_iff_ne_zero.mpr hi0
                 exact h_break i hi_pos hfair_i
             -- (a) e₂.states 0 = walk.1 (from `_hbdry` at k = 0).
-            have he0 : e₂.states 0 = walk.1 := by
-              have h := _hbdry 0
-              -- `_hbdry 0 : e₂.states (loffset … 0) = states_seq 0`
-              -- `loffset … 0 = 0` by Nat.rec; `states_seq 0 = walk.1`
-              -- by `(abs_acc 0).1 = walk.1` definitionally.
-              -- Both reductions hold via Lean's definitional equality.
-              exact h
-            -- (b)–(d) — no-stutter, fair cofinality, FairDiverges +
-            -- lift — require strengthening `flattenInternalStars` to
-            -- expose segment label/state correspondence, then
-            -- discharging via `h_paths_ge_k0` + `hcofair`.  The
-            -- foundation `he0` is in hand; remainder deferred.
-            exact (sorry : FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂)
+            have he0 : e₂.states 0 = walk.1 := _hbdry 0
+            -- ── Key tool: loffset is unbounded ──────────────────────
+            -- By `hcofair` + `h_paths_ge_k0`, infinitely many paths_seq
+            -- contribute ≥ 1 to loffset.  Hence for any N, ∃ k with
+            -- N ≤ loffset (paths_seq lengths) (k + 1).
+            --
+            -- Detailed proof: by induction on N, iteratively find fair
+            -- concrete indices ≥ k₀+1 via `hcofair`, each contributing
+            -- ≥ 1 to loffset.  The (N+1)-th fair index gives offset
+            -- ≥ N+1 > N.
+            -- Sorried — substantial but mechanical.
+            have h_off_unbounded :
+                ∀ N, ∃ k, N ≤ loffset (fun k => (paths_seq k).length) (k + 1) :=
+              sorry
+            -- (b) Every position has a real step (no stutter).
+            -- From _hsos: step OR (stutter with label = tau).  Stutter
+            -- only happens when t+1 > all offsets.  By unboundedness,
+            -- ∃ k with t+1 ≤ off (k+1), so we're inside some segment
+            -- → real step.
+            have h_step : ∀ t, abstract.step
+                (e₂.states t) (e₂.labels t) (e₂.states (t + 1)) := by
+              intro t
+              rcases _hsos t with hstep | ⟨_, htau⟩
+              · exact hstep
+              · -- Stutter case: derive contradiction by showing t+1 is
+                -- in range, hence the label must come from a segment,
+                -- not be the stutter label tau.  But we have label =
+                -- tau here.  The "in range" check via h_off_unbounded.
+                -- This subproof requires connecting _hsos's stutter
+                -- predicate to the offsets predicate used by
+                -- flattenLPaths' stutter clause.
+                -- Sorried — small bridge lemma.
+                exact sorry
+            -- (c) Fair cofinality.  For any N, find a fair concrete
+            -- index k_c ≥ k₀+1 with offset position t_c ≥ N.  At t_c
+            -- (a boundary), e₂.states t_c = states_seq (k_c-k₀) and
+            -- e₂.labels t_c = first label of paths_seq (k_c-k₀) via
+            -- _hlbl_seg with i=0.  AllFair on the non-empty
+            -- paths_seq gives fair_labels₂ at the source-state +
+            -- first-label pair.
+            -- Sorried — mechanical from h_off_unbounded + hcofair +
+            -- h_paths_ge_k0 + AllFair structure.
+            have h_fair_cofinal : ∀ N, ∃ k, N ≤ k ∧
+                fair_labels₂ (e₂.states k) (e₂.labels k) := sorry
+            -- (d) Assemble FairDiverges at walk.1, lift to s₂.
+            have hfd_walk : FairDiverges abstract lab₂ fair_labels₂ walk.1 :=
+              ⟨e₂, he0,
+               fun k => ⟨h_step k, _hint_all k⟩,
+               h_fair_cofinal⟩
+            exact FairlyWeaklyDiverges.lift walk.2.1 (Or.inl hfd_walk)
         · -- Case (ii.a): non-empty but NOT AllFair.  Then
           -- `rank_decreases_on_unfair_abstract` gives the rank drop, and
           -- the shared bridge handles the prefix exactly as in Case (i).
