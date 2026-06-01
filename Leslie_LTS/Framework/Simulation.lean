@@ -1858,8 +1858,8 @@ theorem preserves_fair_weak_divergence
                       (paths_seq i').AllFair fair_labels₂ := by
                     by_cases hi'_zero : i' = 0
                     · -- i' = 0 ⇒ paths_seq 0 = mid.2.1; use h_empty/h_allFair.
-                      subst hi'_zero
-                      refine ⟨h_empty, h_allFair⟩
+                      rw [hi'_zero]
+                      exact ⟨h_empty, h_allFair⟩
                     · -- i' ≥ 1 and i' < i_j ⇒ not in h_break.
                       have hi'_pos : 1 ≤ i' :=
                         Nat.one_le_iff_ne_zero.mpr hi'_zero
