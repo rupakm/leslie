@@ -781,95 +781,9 @@ private noncomputable def flattenLPaths {S : Type u} {L : Type v}
   case step_or_stutter =>
     intro t
     by_cases hk1 : ∃ j, t + 1 ≤ off (j + 1)
-    · have hk : ∃ j, t ≤ off (j + 1) := by
-        obtain ⟨j, hj⟩ := hk1; exact ⟨j, by omega⟩
-      let s := lfindSmallest (fun j => t ≤ off (j + 1)) hk.choose hk.choose_spec
-      let s' := lfindSmallest (fun j => t + 1 ≤ off (j + 1)) hk1.choose hk1.choose_spec
-      have hs_le_s' : s.val ≤ s'.val := seg_mono t hk hk1
-      by_cases heq_ss' : s.val = s'.val
-      · -- Same segment: consecutive step within one path
-        -- s and s' are the same segment, so s = s' for both state and label lookups
-        have hoff_le : off s.val ≤ t := seg_le t hk
-        have hk_lt : t - off s.val < (paths s.val).length := by
-          have hk1_bound' : t + 1 ≤ off (s.val + 1) := by
-            have : s.val = s'.val := heq_ss'; rw [this]; exact s'.property.1
-          have : off (s.val + 1) = off s.val + (paths s.val).length := rfl
-          omega
-        have hidx : t + 1 - off s'.val = (t - off s.val) + 1 := by
-          have : off s'.val = off s.val := by rw [heq_ss']
-          rw [this, Nat.succ_sub hoff_le]
-        -- The label segment for t is also s (since t+1 ≤ off(s+1), findSmallest gives s)
-        -- lookupLabel t hk1 uses lfindSmallest(t+1 ≤ off(k+1)) = s' = s
-        have hst : ea_states t = (paths s.val).get_state (t - off s.val) :=
-          ea_states_val t hk
-        have hst1 : ea_states (t + 1) = (paths s'.val).get_state (t + 1 - off s'.val) :=
-          ea_states_val (t + 1) hk1
-        have hlt : ea_labels t = (paths s'.val).get_label (t - off s'.val) :=
-          ea_labels_val t hk1
-        simp only at ⊢
-        rw [hst, hst1, hlt, ← heq_ss', Nat.succ_sub hoff_le]
-        exact Or.inl ((paths s.val).get_step (t - off s.val) hk_lt)
-      · -- Different segments: boundary between two paths
-        have hlt_ss' : s.val < s'.val := Nat.lt_of_le_of_ne hs_le_s' heq_ss'
-        have hk1_gt : ¬(t + 1 ≤ off (s.val + 1)) := by
-          intro h_contra
-          exact absurd h_contra (s'.property.2 s.val hlt_ss')
-        have hk_eq : t = off (s.val + 1) := by
-          have := s.property.1; omega
-        have hget_k : (paths s.val).get_state (t - off s.val) =
-            states (s.val + 1) := by
-          have hlen_eq : t - off s.val = (paths s.val).length := by
-            have : off (s.val + 1) = off s.val + (paths s.val).length := rfl
-            omega
-          rw [hlen_eq, (paths s.val).get_state_length]
-        have hoff_s1_le_s' : off (s.val + 1) ≤ off s'.val :=
-          loffset_mono_le len (Nat.succ_le_of_lt hlt_ss')
-        have hoff_s'_le : off s'.val ≤ t + 1 := seg_le (t + 1) hk1
-        have hoff_eq : off s'.val = off (s.val + 1) := by
-          suffices h : off s'.val ≤ off (s.val + 1) from
-            Nat.le_antisymm h hoff_s1_le_s'
-          by_cases h_le : off s'.val ≤ off (s.val + 1)
-          · exact h_le
-          · exfalso
-            have hgt : off (s.val + 1) < off s'.val := by omega
-            have hoff_s' : off s'.val = off (s.val + 1) + 1 := by
-              have h1 := hoff_s'_le; have h2 := hk_eq; omega
-            have hs'_gt : s'.val > s.val + 1 := by
-              by_cases hle : s'.val ≤ s.val + 1
-              · have : s'.val = s.val + 1 := by omega
-                rw [this] at hoff_s'; omega
-              · omega
-            have hpred_lt : s'.val - 1 < s'.val := by omega
-            have hpred_valid : t + 1 ≤ off (s'.val - 1 + 1) := by
-              have : s'.val - 1 + 1 = s'.val := by omega
-              rw [this]; omega
-            exact absurd hpred_valid (s'.property.2 (s'.val - 1) hpred_lt)
-        have hwit_s1_s' : states (s.val + 1) = states s'.val :=
-          states_eq_of_off_eq (s.val + 1) s'.val (Nat.succ_le_of_lt hlt_ss')
-            hoff_eq.symm
-        have hidx_k1 : t + 1 - off s'.val = 1 := by
-          have h1 : off s'.val = off (s.val + 1) := hoff_eq
-          have h2 : t = off (s.val + 1) := hk_eq
-          omega
-        have hlen_ge : (paths s'.val).length ≥ 1 := by
-          have hbd : t + 1 - off s'.val ≤ (paths s'.val).length :=
-            seg_bound (t + 1) hk1
-          have h1 := hoff_eq; have h2 := hk_eq; omega
-        have hstep := (paths s'.val).get_step 0 (by omega)
-        rw [LPath.get_state_zero] at hstep
-        -- Label at t uses segment s' (containing t+1), at index t - off s' = 0
-        have hlbl_idx : t - off s'.val = 0 := by
-          have := hoff_eq; have := hk_eq; omega
-        have hst : ea_states t = (paths s.val).get_state (t - off s.val) :=
-          ea_states_val t hk
-        have hst1 : ea_states (t + 1) = (paths s'.val).get_state (t + 1 - off s'.val) :=
-          ea_states_val (t + 1) hk1
-        have hlt : ea_labels t = (paths s'.val).get_label (t - off s'.val) :=
-          ea_labels_val t hk1
-        simp only at ⊢
-        rw [hst, hst1, hlt, hget_k, hidx_k1, hwit_s1_s', hlbl_idx]
-        exact Or.inl hstep
-    · -- t+1 NOT in range: stutter
+    · -- In-range: delegate to the shared `h_step_in_range`.
+      exact Or.inl (h_step_in_range t hk1)
+    · -- t+1 NOT in range: stutter.
       have hst := ea_states_stutter t hk1
       have hlt := ea_labels_stutter t hk1
       simp only at hst hlt ⊢
