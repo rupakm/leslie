@@ -299,15 +299,18 @@ theorem ideal_brb_totality :
     --   * enabled: set_up = none (by h_none_forever) ∧ hv_or persists (by broadcastVal_persist / corruption monotone).
     --   * fair: ideal_brb_fair_labels (.commit _) = True.
     --
-    -- Per-execution persistence is now proven:
-    --   * `IdealBRB.broadcastVal_persist_along` lifts broadcastVal to
-    --     all future positions.
-    --   * `IdealBRB.set_up_persist_along` lifts set_up similarly.
-    -- The remaining gap: unfold h_ante at (.commit v) with k, check
-    -- that the enabled + fair hypotheses are satisfied, extract the
-    -- commit-fires conclusion, and derive contradiction with
-    -- h_none_forever.  Standard but needs careful LTL unfolding.
-    sorry
+    -- Inner argument: pick commit(v) from hA
+    -- (broadcastVal = some v if sender correct; any v if corrupt),
+    -- show it's always enabled (h_none_forever + broadcastVal_persist_
+    -- along + corruption monotone), use h_ante to fire it, derive
+    -- contradiction with h_none_forever.
+    --
+    -- Building blocks in place: broadcastVal_persist_along,
+    -- set_up_persist_along, ideal_brb_fair_labels (.commit) = True.
+    -- The LTL unfolding (0+k index normalization, System.enabled
+    -- unfolding, step-relation extraction from hv.2) needs careful
+    -- Lean annotation.  Sorried.
+    exact sorry
   -- Step B: from set_up ≠ none, show eventually all correct returned.
   obtain ⟨k₁, hk₁_ge, hk₁_setup⟩ := hStepA
   -- Now need: ∃ k' ≥ k₁, B(e.states k').
