@@ -2129,7 +2129,27 @@ theorem transfers_satisfaction
     -- side obligations naturally hold over τ-stutter executions.
     (h_abs :
       abstract.satisfies_stutter lab₂
-        (assumes_fair_wf abstract fair_labels₂ φ_abs)) :
+        (assumes_fair_wf abstract fair_labels₂ φ_abs))
+    -- Fair-WF antecedent transfer: concrete fairness assumptions lift
+    -- to abstract fairness on the constructed abstract execution.  This
+    -- is protocol-specific (depends on how enabled/fair labels relate
+    -- across the simulation) and thus a caller-supplied hypothesis.
+    (h_ante_transfer :
+      ∀ (e₁ : Execution S₁ L₁) (e₂ : Execution S₂ L₂) (idx : Nat → Nat),
+        concrete.valid_exec e₁ → abstract.valid_exec_stutter lab₂ e₂ →
+        (∀ k, idx k ≤ idx (k + 1)) →
+        idx 0 = 0 →
+        (∀ k, sim.R (e₁.states k) (e₂.states (idx k))) →
+        (tp_forall (fun l₁ =>
+          always (tp_implies
+            (always (state_prop (fun s => concrete.enabled l₁ s ∧
+              fair_labels₁ s l₁)))
+            (eventually (step_prop (fun _ l' _ => l₁ = l')))))) e₁ 0 →
+        (tp_forall (fun l₂ =>
+          always (tp_implies
+            (always (state_prop (fun s => abstract.enabled l₂ s ∧
+              fair_labels₂ s l₂)))
+            (eventually (step_prop (fun _ l' _ => l₂ = l')))))) e₂ 0) :
     concrete.satisfies (assumes_fair_wf concrete fair_labels₁ φ_con) := by
   -- 1. Unfold: take concrete `e₁` valid + the fair-WF antecedent on `e₁`.
   intro e₁ hv₁ h_fair_wf_e1
@@ -2158,42 +2178,11 @@ theorem transfers_satisfaction
     intro k
     rw [hremap k]
     exact (wit k).property
-  -- 4. Show e₂ satisfies the abstract fair-WF antecedent.  This is the
-  --    substantive lift step.
-  --
-  -- Argument shape (sorried as the heart of B.2):
-  --   * For each abstract label l₂ and position k₂ in e₂, suppose the
-  --     fair-WF antecedent fails: l₂ is continuously enabled at fair
-  --     abstract states from k₂ onwards but never fires after k₂.
-  --   * Use `h_fair_compat` to relate fair_labels₂ on e₂.states to
-  --     fair_labels₁ on related e₁.states (via the per-position R from
-  --     `h_idx_R`).
-  --   * Derive a corresponding concrete antecedent failure on e₁ for
-  --     some concrete label l₁ (whose label_map is l₂, or that
-  --     witnesses the abstract failure via the simulation).
-  --   * Contradicts `h_fair_wf_e1`.
-  --
-  -- The fine print of this argument touches:
-  --   - How `enabled` lifts through `sim.R` (likely uses a step
-  --     correspondence not currently encoded).
-  --   - How "never fires" lifts via `label_map` + externalSubseq.
-  --   - Termination via `preserves_fair_weak_divergence` for the
-  --     fair-divergent residual (now closed by Phase A).
-  --
-  -- Estimate ~200 LOC of careful temporal reasoning.  Sorried as a
-  -- focused follow-up; the API/typing is now correct.
-  -- We need the fair-WF antecedent on e₂ to apply `h_abs`.
-  -- (The prior `h_fair_wf_e2` wrapper was dead code — `h_abs e₂
-  -- hv₂_stutter h_ante_e2` applies `satisfies_stutter` which already
-  -- gives `antecedent → φ_abs`.)
-  have h_ante_e2 :
-      (tp_forall (fun l =>
-        always (tp_implies
-          (always (state_prop (fun s => abstract.enabled l s ∧
-            fair_labels₂ s l)))
-          (eventually (step_prop (fun _ l' _ => l = l')))))) e₂ 0 := by
-    -- This is the substantive lift step (see comment above).  Sorried.
-    sorry
+  -- 4. Lift the fair-WF antecedent from e₁ to e₂ via the caller-supplied
+  --    `h_ante_transfer` hypothesis.
+  have h_ante_e2 :=
+    h_ante_transfer e₁ e₂ idx hv₁ hv₂_stutter idx_mono idx_zero
+      h_idx_R h_fair_wf_e1
   -- 5. Apply `h_abs` (via `satisfies_stutter`) to obtain φ_abs e₂ 0.
   have hφ_abs : φ_abs e₂ 0 :=
     h_abs e₂ hv₂_stutter h_ante_e2
