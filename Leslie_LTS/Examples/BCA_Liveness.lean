@@ -93,14 +93,16 @@ def bca_rank (s s' : BCA_LTS.State T n) : Prop :=
 theorem bca_rank_wf :
     WellFounded (bca_rank T n) := by sorry
 
-/-! ## No fair deadlock under `n > 3f` -/
+/-! ## Reachable fair-deadlocks are terminated (mirrors BRB)
 
-/-- Under `n > 3f`, no reachable concrete BCA state is a fair deadlock —
-    some correct process always has a fair action enabled. Mirrors the
-    BRB version. -/
-theorem bca_no_fair_deadlock_reachable (hn : n > 3 * f) :
+    The original `bca_no_fair_deadlock_reachable` was false at
+    terminated reachable states (vacuously fair-deadlocks); replaced
+    after Phase C.2 by the honest claim that any reachable
+    fair-deadlock is terminated. -/
+theorem bca_fair_deadlock_implies_terminated (hn : n > 3 * f) :
     ∀ s, Reachable (BCA_LTS.bca T n f) s →
-      ¬ FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s := by
+      FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s →
+      ∀ p, p ∉ s.corrupted → (s.local_ p).decided ≠ none := by
   sorry
 
 /-! ## The headline witness -/

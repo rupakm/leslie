@@ -63,14 +63,33 @@ def brb_rank (s s' : BRB_LTS.State n Value) : Prop :=
 theorem brb_rank_wf :
     WellFounded (brb_rank n Value) := by sorry
 
-/-! ## No fair deadlock under `n > 3f` -/
+/-! ## Reachable fair-deadlocks are terminated
 
-/-- Under `n > 3f`, no reachable concrete state is a fair deadlock — some
-    correct process always has a fair action enabled. -/
-theorem brb_no_fair_deadlock_reachable (hn : n > 3 * f) :
+    The original `brb_no_fair_deadlock_reachable` (no reachable BRB
+    state is a fair deadlock) is **false as stated**: a terminated
+    reachable state — where every correct process has `returned ≠
+    none` and no pending fair messages remain — is vacuously a
+    fair-deadlock under `FairDeadlock`'s definition (every enabled
+    label is unfair, since only `corrupt` / `input` adversary moves
+    remain). After Phase C.2's discharge rewrite via
+    `ForwardSim.fair_deadlock_lifts`, the framework no longer needs
+    that false claim.
+
+    What IS true and useful: every reachable fair-deadlock is
+    terminated.  This is the right invariant for the protocol-level
+    `h_fair_reverse` discharge — if `s₁` is a reachable BRB
+    fair-deadlock, every correct proc has returned, and the matched
+    ideal state is also "done" (no commit/output enabled), so no fair
+    abstract step is enabled either. -/
+theorem brb_fair_deadlock_implies_terminated (hn : n > 3 * f) :
     ∀ s, Reachable (BRB_LTS.brb n f Value sender) s →
-      ¬ FairDeadlock (BRB_LTS.brb n f Value sender)
-        (brb_fair_labels n Value) s := by
+      FairDeadlock (BRB_LTS.brb n f Value sender)
+        (brb_fair_labels n Value) s →
+      ∀ p, p ∉ s.corrupted → (s.local_ p).returned ≠ none := by
+  -- Protocol-specific: at a fair-deadlock no fair send/recv/output is
+  -- enabled.  Under n > 3f, the only way no fair output(p, _) is
+  -- enabled for a correct p is `(s.local_ p).returned ≠ none` already.
+  -- Proof sketched in plan §D.4; sorried for now.
   sorry
 
 /-! ## Structural fact: every IdealBRB internal label is fair
