@@ -1432,6 +1432,42 @@ def walk_internal_star
       let tail := sim.walk_internal_star hreach_mid mid.2.2 rest
       ⟨tail.1, mid.2.1.trans tail.2.1, tail.2.2⟩
 
+/-- **Fair-deadlock lift via reverse fair-step correspondence.**
+
+    If at every reachable concrete state `s₁` related (via `sim.R`) to
+    abstract state `s₂`, every fair-enabled abstract step at `s₂` has
+    *some* fair-enabled concrete step at `s₁` (not necessarily related
+    by `label_map`), then a concrete fair-deadlock at `s₁` lifts to an
+    abstract fair-deadlock at `s₂`.
+
+    This is the framework-level helper that lets protocol-side
+    `WeakDivPreserving.fair_deadlock_diverges` clauses discharge
+    honestly — by combining this with `FairDeadlock.fairlyWeaklyDiverges`,
+    we get `FairlyWeaklyDiverges` at `s₂` via the deadlock disjunct.
+    This replaces the dishonest `exfalso`-on-`*_no_fair_deadlock_reachable`
+    construction (which falsely claims terminated reachable states are
+    never fair-deadlocks).
+
+    The `h_fair_reverse` hypothesis is protocol-specific.  For BRB at a
+    terminated reachable state, the matched ideal state is also
+    terminated (no fair commit/output possible), so the predicate holds
+    trivially. -/
+theorem fair_deadlock_lifts
+    (sim : ForwardSim concrete lab₁ abstract lab₂)
+    (fair_labels₁ : S₁ → L₁ → Prop) (fair_labels₂ : S₂ → L₂ → Prop)
+    (h_fair_reverse :
+      ∀ s₁ s₂, Reachable concrete s₁ → sim.R s₁ s₂ →
+        ∀ l₂ s₂', abstract.step s₂ l₂ s₂' → fair_labels₂ s₂ l₂ →
+          ∃ l₁ s₁', concrete.step s₁ l₁ s₁' ∧ fair_labels₁ s₁ l₁)
+    {s₁ : S₁} {s₂ : S₂} (hreach : Reachable concrete s₁)
+    (hR : sim.R s₁ s₂)
+    (hfd : FairDeadlock concrete fair_labels₁ s₁) :
+    FairDeadlock abstract fair_labels₂ s₂ := by
+  intro l₂ s₂' hstep hfair_l₂
+  obtain ⟨l₁, s₁', hstep₁, hfair₁⟩ :=
+    h_fair_reverse s₁ s₂ hreach hR l₂ s₂' hstep hfair_l₂
+  exact hfd l₁ s₁' hstep₁ hfair₁
+
 end ForwardSim
 
 namespace ForwardSim.WeakDivPreserving
