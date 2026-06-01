@@ -132,9 +132,23 @@ noncomputable def brb_weak_div_witness (hn : n > 3 * f) :
     -- D.1 in plans/close-framework-gaps-and-brb.md).
     sorry
   fair_deadlock_diverges := by
-    intro s₁ s₂ hreach _hR hfd
-    exact absurd hfd
-      (brb_no_fair_deadlock_reachable n f Value sender hn s₁ hreach)
+    -- Honest discharge via the deadlock disjunct of FairlyWeaklyDiverges.
+    -- Uses the framework helper `ForwardSim.fair_deadlock_lifts` plus a
+    -- protocol-specific "reverse fair-step correspondence" hypothesis.
+    --
+    -- The reverse correspondence: at any reachable BRB state s₁ related
+    -- to IdealBRB state s₂, every fair-enabled abstract step at s₂
+    -- (fair commit or fair output) has SOME fair-enabled concrete step
+    -- at s₁ (the concrete output 1:1 for fair output, or a concrete
+    -- recv that crosses the relevant threshold for fair commit).
+    -- Protocol-specific; sorried here pending the BRB invariant work.
+    intro s₁ s₂ hreach hR hfd
+    apply FairDeadlock.fairlyWeaklyDiverges
+    apply (BRB_Simulation.brb_forward_sim n f Value sender hn).fair_deadlock_lifts
+      (brb_fair_labels n Value) (ideal_brb_fair_labels n Value) ?_ hreach hR hfd
+    -- h_fair_reverse: at any reachable s₁ related to s₂, every fair
+    -- abstract step has a fair concrete preimage.  Protocol-specific.
+    sorry
 
 /-! ## Liveness statements
 

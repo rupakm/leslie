@@ -138,9 +138,13 @@ noncomputable def bca_weak_div_witness (hn : n > 3 * f) :
     -- for plans/close-framework-gaps-and-brb.md).
     sorry
   fair_deadlock_diverges := by
-    intro s₁ s₂ hreach _hR hfd
-    exact absurd hfd
-      (bca_no_fair_deadlock_reachable T n f hn s₁ hreach)
+    -- Same shape as BRB: honest discharge via ForwardSim.fair_deadlock_
+    -- lifts + a protocol-specific reverse fair-step correspondence.
+    intro s₁ s₂ hreach hR hfd
+    apply FairDeadlock.fairlyWeaklyDiverges
+    apply (BCA_Simulation.bca_forward_sim T n f hn).fair_deadlock_lifts
+      (bca_fair_labels T n) (ideal_bca_fair_labels T n) ?_ hreach hR hfd
+    sorry
 
 /-! ## Liveness statements
 
