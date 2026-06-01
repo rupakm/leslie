@@ -547,7 +547,11 @@ private noncomputable def flattenLPaths {S : Type u} {L : Type v}
           (paths k).get_label i) ∧
       -- Labels beyond all segments use the stutter label
       (∀ t, (¬∃ k, t + 1 ≤ loffset (fun k => (paths k).length) (k + 1)) →
-        e.labels t = stutter_label) } := by
+        e.labels t = stutter_label) ∧
+      -- In-range positions always have a real step (no stutter).
+      -- Strengthening of step_or_stutter for the in-range case.
+      (∀ t, (∃ k, t + 1 ≤ loffset (fun k => (paths k).length) (k + 1)) →
+        step (e.states t) (e.labels t) (e.states (t + 1))) } := by
   let len := fun k => (paths k).length
   let off := loffset len
   -- Lookup: given t in range, find the segment and index within it
@@ -653,7 +657,95 @@ private noncomputable def flattenLPaths {S : Type u} {L : Type v}
       have h1 : t + 1 ≤ off (s'.val + 1) := s'.property.1
       have h2 : t ≤ off (s'.val + 1) := by omega
       exact absurd h2 (s.property.2 s'.val hlt')
-  refine ⟨⟨ea_states, ea_labels⟩, ?remap, ?step_or_stutter, ?labels_seg, ?labels_stutter⟩
+  -- Extract the in-range step proof as a shared lemma used by both
+  -- `step_or_stutter` (left disjunct) and the new `step_in_range` clause.
+  have h_step_in_range : ∀ t, (∃ k, t + 1 ≤ off (k + 1)) →
+      step (ea_states t) (ea_labels t) (ea_states (t + 1)) := by
+    intro t hk1
+    have hk : ∃ j, t ≤ off (j + 1) := by
+      obtain ⟨j, hj⟩ := hk1; exact ⟨j, by omega⟩
+    let s := lfindSmallest (fun j => t ≤ off (j + 1)) hk.choose hk.choose_spec
+    let s' := lfindSmallest (fun j => t + 1 ≤ off (j + 1)) hk1.choose hk1.choose_spec
+    have hs_le_s' : s.val ≤ s'.val := seg_mono t hk hk1
+    by_cases heq_ss' : s.val = s'.val
+    · -- Same segment
+      have hoff_le : off s.val ≤ t := seg_le t hk
+      have hk_lt : t - off s.val < (paths s.val).length := by
+        have hk1_bound' : t + 1 ≤ off (s.val + 1) := by
+          have : s.val = s'.val := heq_ss'; rw [this]; exact s'.property.1
+        have : off (s.val + 1) = off s.val + (paths s.val).length := rfl
+        omega
+      have hidx : t + 1 - off s'.val = (t - off s.val) + 1 := by
+        have : off s'.val = off s.val := by rw [heq_ss']
+        rw [this, Nat.succ_sub hoff_le]
+      have hst : ea_states t = (paths s.val).get_state (t - off s.val) :=
+        ea_states_val t hk
+      have hst1 : ea_states (t + 1) = (paths s'.val).get_state (t + 1 - off s'.val) :=
+        ea_states_val (t + 1) hk1
+      have hlt : ea_labels t = (paths s'.val).get_label (t - off s'.val) :=
+        ea_labels_val t hk1
+      rw [hst, hst1, hlt, ← heq_ss', Nat.succ_sub hoff_le]
+      exact (paths s.val).get_step (t - off s.val) hk_lt
+    · -- Different segments: boundary between two paths
+      have hlt_ss' : s.val < s'.val := Nat.lt_of_le_of_ne hs_le_s' heq_ss'
+      have hk1_gt : ¬(t + 1 ≤ off (s.val + 1)) := by
+        intro h_contra
+        exact absurd h_contra (s'.property.2 s.val hlt_ss')
+      have hk_eq : t = off (s.val + 1) := by
+        have := s.property.1; omega
+      have hget_k : (paths s.val).get_state (t - off s.val) =
+          states (s.val + 1) := by
+        have hlen_eq : t - off s.val = (paths s.val).length := by
+          have : off (s.val + 1) = off s.val + (paths s.val).length := rfl
+          omega
+        rw [hlen_eq, (paths s.val).get_state_length]
+      have hoff_s1_le_s' : off (s.val + 1) ≤ off s'.val :=
+        loffset_mono_le len (Nat.succ_le_of_lt hlt_ss')
+      have hoff_s'_le : off s'.val ≤ t + 1 := seg_le (t + 1) hk1
+      have hoff_eq : off s'.val = off (s.val + 1) := by
+        suffices h : off s'.val ≤ off (s.val + 1) from
+          Nat.le_antisymm h hoff_s1_le_s'
+        by_cases h_le : off s'.val ≤ off (s.val + 1)
+        · exact h_le
+        · exfalso
+          have hgt : off (s.val + 1) < off s'.val := by omega
+          have hoff_s' : off s'.val = off (s.val + 1) + 1 := by
+            have h1 := hoff_s'_le; have h2 := hk_eq; omega
+          have hs'_gt : s'.val > s.val + 1 := by
+            by_cases hle : s'.val ≤ s.val + 1
+            · have : s'.val = s.val + 1 := by omega
+              rw [this] at hoff_s'; omega
+            · omega
+          have hpred_lt : s'.val - 1 < s'.val := by omega
+          have hpred_valid : t + 1 ≤ off (s'.val - 1 + 1) := by
+            have : s'.val - 1 + 1 = s'.val := by omega
+            rw [this]; omega
+          exact absurd hpred_valid (s'.property.2 (s'.val - 1) hpred_lt)
+      have hwit_s1_s' : states (s.val + 1) = states s'.val :=
+        states_eq_of_off_eq (s.val + 1) s'.val (Nat.succ_le_of_lt hlt_ss')
+          hoff_eq.symm
+      have hidx_k1 : t + 1 - off s'.val = 1 := by
+        have h1 : off s'.val = off (s.val + 1) := hoff_eq
+        have h2 : t = off (s.val + 1) := hk_eq
+        omega
+      have hlen_ge : (paths s'.val).length ≥ 1 := by
+        have hbd : t + 1 - off s'.val ≤ (paths s'.val).length :=
+          seg_bound (t + 1) hk1
+        have h1 := hoff_eq; have h2 := hk_eq; omega
+      have hstep := (paths s'.val).get_step 0 (by omega)
+      rw [LPath.get_state_zero] at hstep
+      have hlbl_idx : t - off s'.val = 0 := by
+        have := hoff_eq; have := hk_eq; omega
+      have hst : ea_states t = (paths s.val).get_state (t - off s.val) :=
+        ea_states_val t hk
+      have hst1 : ea_states (t + 1) = (paths s'.val).get_state (t + 1 - off s'.val) :=
+        ea_states_val (t + 1) hk1
+      have hlt : ea_labels t = (paths s'.val).get_label (t - off s'.val) :=
+        ea_labels_val t hk1
+      rw [hst, hst1, hlt, hget_k, hidx_k1, hwit_s1_s', hlbl_idx]
+      exact hstep
+  refine ⟨⟨ea_states, ea_labels⟩, ?remap, ?step_or_stutter, ?labels_seg,
+          ?labels_stutter, ?step_in_range⟩
   case remap =>
     intro k
     have hex : ∃ j, off k ≤ off (j + 1) := ⟨k, loffset_mono len k⟩
@@ -815,6 +907,9 @@ private noncomputable def flattenLPaths {S : Type u} {L : Type v}
     intro t ht
     show ea_labels t = stutter_label
     exact ea_labels_stutter t ht
+  case step_in_range =>
+    intro t ht
+    exact h_step_in_range t ht
 
 /-- Length of the `LPath` obtained from `InternalStar.toInternalLPath` equals
     the original `InternalStar.length`. -/
@@ -859,7 +954,11 @@ private noncomputable def flattenInternalStars
         -- from `flattenLPaths`'s segment-label clause.
         (∀ k i, i < (paths k).length →
           e.labels (loffset (fun k => (paths k).length) k + i) =
-            ((paths k).toInternalLPath).val.get_label i) } := by
+            ((paths k).toInternalLPath).val.get_label i) ∧
+        -- In-range positions always have a real step (no stutter).
+        -- Lifted from `flattenLPaths`'s `step_in_range` clause.
+        (∀ t, (∃ k, t + 1 ≤ loffset (fun k => (paths k).length) (k + 1)) →
+          sys.step (e.states t) (e.labels t) (e.states (t + 1))) } := by
   -- Convert each InternalStar to an LPath with internal-label invariant
   let lpaths_pkg : (k : Nat) → { p : LPath sys.step (states k) (states (k + 1)) //
       ∀ i, i < p.length → lab.is_internal (p.get_label i) = true } :=
@@ -874,12 +973,12 @@ private noncomputable def flattenInternalStars
   have hlen_eq : ∀ k, (lpaths k).length = (paths k).length :=
     fun k => InternalStar.toInternalLPath_length (paths k)
   -- Flatten LPaths using the existing helper
-  obtain ⟨e, hboundary, hsos, hlabels_seg, hlabels_stutter⟩ :=
+  obtain ⟨e, hboundary, hsos, hlabels_seg, hlabels_stutter, hstep_in_range⟩ :=
     flattenLPaths lab.tau states lpaths
   -- Rewrite loffset over LPath lengths to loffset over InternalStar lengths
   have hoff_eq : (fun k => (lpaths k).length) = (fun k => (paths k).length) := by
     funext k; exact hlen_eq k
-  refine ⟨e, ?bdry, ?sos, ?internal, ?label_seg⟩
+  refine ⟨e, ?bdry, ?sos, ?internal, ?label_seg, ?step_in_range⟩
   case bdry =>
     intro k; rw [← hoff_eq]; exact hboundary k
   case sos =>
@@ -926,6 +1025,13 @@ private noncomputable def flattenInternalStars
     have h := hlabels_seg k i hi'
     rw [← hoff_eq]
     exact h
+  case step_in_range =>
+    intro t ht
+    -- Rewrite the `paths`-length predicate to the `lpaths`-length form,
+    -- then apply `hstep_in_range`.
+    have ht' : ∃ k, t + 1 ≤ loffset (fun k => (lpaths k).length) (k + 1) := by
+      rw [hoff_eq]; exact ht
+    exact hstep_in_range t ht'
 
 /-- For a `ForwardSim`, every valid concrete execution has a corresponding
     valid abstract execution whose external label subsequence matches
@@ -953,7 +1059,7 @@ theorem ForwardSim.external_subseq_correspondence
   let wit := sim.buildWitness e₁ hv₁
   let lpaths := sim.buildLPath e₁ hv₁
   -- Flatten into a single abstract execution (step-or-stutter)
-  obtain ⟨e₂, hremap, hsos, hlabels_seg, hlabels_stutter⟩ :=
+  obtain ⟨e₂, hremap, hsos, hlabels_seg, hlabels_stutter, _hstep_in_range⟩ :=
     flattenLPaths lab₂.tau (fun k => (wit k).val) lpaths
   refine ⟨e₂, ⟨?_, ?_⟩, ?_⟩
   · -- Init: e₂.states 0 = (wit 0).val, which is an abstract initial state
@@ -1715,7 +1821,7 @@ theorem preserves_fair_weak_divergence
           let states_seq : ℕ → S₂ := fun i => (abs_acc i).1
           -- ── Step 4: apply flattenInternalStars ────────────────────
           haveI : Inhabited L₂ := ⟨lab₂.tau⟩
-          obtain ⟨e₂, _hbdry, _hsos, _hint_all, _hlbl_seg⟩ :=
+          obtain ⟨e₂, _hbdry, _hsos, _hint_all, _hlbl_seg, _hstep_in_range⟩ :=
             flattenInternalStars states_seq paths_seq
           -- ── Step 5: classical case-split on paths_seq behaviour ──
           classical
@@ -1817,24 +1923,13 @@ theorem preserves_fair_weak_divergence
                     (paths_seq (k_c - k₀)).length := rfl
                 exact ⟨k_c - k₀, by omega⟩
             -- (b) Every position has a real step (no stutter).
-            -- From _hsos: step OR (stutter with label = tau).  Stutter
-            -- only happens when t+1 > all offsets.  By unboundedness,
-            -- ∃ k with t+1 ≤ off (k+1), so we're inside some segment
-            -- → real step.
+            -- By `h_off_unbounded` at `t + 1`, ∃ k with t+1 ≤ off (k+1),
+            -- so t is in range; then `_hstep_in_range` gives the step
+            -- directly (no need to disambiguate via `_hsos`).
             have h_step : ∀ t, abstract.step
                 (e₂.states t) (e₂.labels t) (e₂.states (t + 1)) := by
               intro t
-              rcases _hsos t with hstep | ⟨_, htau⟩
-              · exact hstep
-              · -- Stutter case: derive contradiction by showing t+1 is
-                -- in range, hence the label must come from a segment,
-                -- not be the stutter label tau.  But we have label =
-                -- tau here.  The "in range" check via h_off_unbounded.
-                -- This subproof requires connecting _hsos's stutter
-                -- predicate to the offsets predicate used by
-                -- flattenLPaths' stutter clause.
-                -- Sorried — small bridge lemma.
-                exact sorry
+              exact _hstep_in_range t (h_off_unbounded (t + 1))
             -- (c) Fair cofinality.  For any N, find a fair concrete
             -- index k_c ≥ k₀+k'+1 (where k' comes from h_off_unbounded
             -- at N) with offset position t = loffset (paths_seq lengths)
