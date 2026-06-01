@@ -262,26 +262,25 @@ theorem ideal_brb_totality :
             s.broadcastVal ≠ none ∨ ¬ IdealBRB.isCorrect n Value s sender))
           (state_prop (fun s : IdealBRB.State n Value =>
             ∀ p, p ∉ s.corrupted → s.returned p ≠ none)))) := by
-  -- Structure: chain through the intermediate state "set_up ≠ none".
+  -- Unfold: valid exec e + fair-WF antecedent → leads_to at 0.
+  intro e hv h_ante
+  -- leads_to at 0 = ∀ k, A(k) → ∃ k' ≥ k, B(k').
+  -- Chain through intermediate "set_up ≠ none":
+  --   Step A: A ↝ (set_up ≠ none)
+  --   Step B: (set_up ≠ none) ↝ B
   --
-  -- Step A: leads_to (broadcastVal ≠ none ∨ ¬ isCorrect sender)
-  --                   (set_up ≠ none)
-  --   Argument: commit(v) is enabled when broadcastVal = some v (sender
-  --   correct) or sender is corrupt (any v). Fair scheduling (commit is
-  --   always fair = True) fires it, setting set_up := some v. Invariant:
-  --   once set_up is set, it stays set (IdealBRB only sets set_up in
-  --   commit, which requires set_up = none, so it fires at most once).
+  -- Step A: commit(v) is enabled once A holds (if set_up = none);
+  --   fair scheduling forces commit to fire; after firing, set_up ≠ none.
+  --   "Until or forever" argument: either set_up becomes ≠ none
+  --   (target reached), or it stays none forever → commit always
+  --   enabled → antecedent fires → contradiction.
   --
-  -- Step B: leads_to (set_up ≠ none)
-  --                   (∀ p correct, returned p ≠ none)
-  --   Argument: for each correct p with returned p = none, output(p, v)
-  --   is enabled (requires set_up = some v, returned p = none, p correct).
-  --   Fair scheduling (output fair when p correct) fires it. After N
-  --   correct procs have returned (with N decreasing), the conclusion
-  --   holds. This is a finite induction over the set of correct procs.
+  -- Step B: once set_up = some v, for each correct p with
+  --   returned p = none, output(p, v) is enabled + fair. Fair
+  --   scheduling fires it. Finite induction over correct procs.
   --
-  -- Each step is individually sorried — substantial LTL/temporal
-  -- reasoning (~100 LOC each).
+  -- Both steps sorried — substantial LTL reasoning, but structure
+  -- is clear and framework helpers (leads_to_chain, etc.) are in scope.
   sorry
 
 /-- The concrete-side totality, lifted from `ideal_brb_totality` via the
