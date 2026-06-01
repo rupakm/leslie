@@ -942,12 +942,74 @@ noncomputable def compose_with_compatible
       exact absurd hfair.1 (hfair_no_sync la lb hsyn sa₁ sb₁).1
   rank_non_increasing_on_fair_progress := by
     -- Composed fair non-skip whose composed InternalStar IS AllFair.
-    -- One component takes the elided side (.refl), contributing equality
-    -- (`s' = s` on that component); the other component's InternalStar
-    -- is non-empty AllFair, triggering its own
-    -- `rank_non_increasing_on_fair_progress` (`s' = s ∨ rank s' s`).  Lex
-    -- pair then satisfies the disjunction.  Will be filled in by A.2.
-    sorry
+    -- Pattern mirrors `rank_decreases_on_unfair_abstract`: on `.left la`,
+    -- derive componentA's `hstarA` non-empty + AllFair from the composed
+    -- assumptions (via the `lift_star_left_*_iff` lemmas), then apply
+    -- `wdA.rank_non_increasing_on_fair_progress` to get
+    -- `sa₁' = sa₁ ∨ rank sa₁' sa₁`.  Combined with `sb₁' = sb₁` (from
+    -- the composed step's structure on `.left`), lift to the composed
+    -- disjunction via `congr`/`Prod.Lex.left`.  Symmetric for `.right`.
+    -- `.sync` is impossible via `hfair_no_sync`.
+    intro ⟨sa₁, sb₁⟩ cl ⟨sa₁', sb₁'⟩ ⟨sa₂, sb₂⟩ hreach hR hint hfair hstep
+      hnonempty hallfair
+    obtain ⟨hRa, hRb⟩ := hR
+    match cl with
+    | .left la =>
+      have hintA : labA₁.is_internal la = true := by
+        simpa [parallel_labelling] using hint
+      have hfairA : fairA₁ sa₁ la := hfair
+      obtain ⟨_hnosyn, hstepA, rfl⟩ := hstep
+      let mid := simA.step_internal sa₁ la sa₁' sa₂
+        (reachable_left _ hreach) hRa hintA hstepA
+      let hstarA : InternalStar sysA₂ labA₂ sa₂ mid.1 := mid.2.1
+      have hA_nonempty : ¬ hstarA.IsEmpty := by
+        intro hemp
+        apply hnonempty
+        have : (lift_star_left (sysB := sysB₂) hsync_ext sb₂ hstarA).IsEmpty :=
+          (lift_star_left_isEmpty_iff (sysB := sysB₂) hsync_ext sb₂ hstarA).mpr hemp
+        simpa [parallel_forward_sim, parallel_label_map, hstarA, mid] using this
+      have hA_allfair : hstarA.AllFair fairA₂ := by
+        apply (lift_star_left_allFair_iff hsync_ext fairA₂ fairB₂ sb₂ hstarA).mp
+        have : (lift_star_left (sysB := sysB₂) hsync_ext sb₂ hstarA).AllFair
+                  (parallel_fair_labels fairA₂ fairB₂) := by
+          simpa [parallel_forward_sim, parallel_label_map, hstarA, mid] using hallfair
+        exact this
+      have hA_disj : sa₁' = sa₁ ∨ wdA.rank sa₁' sa₁ :=
+        wdA.rank_non_increasing_on_fair_progress sa₁ la sa₁' sa₂
+          (reachable_left _ hreach) hRa hintA hfairA hstepA hA_nonempty hA_allfair
+      rcases hA_disj with heq | hrankA
+      · -- sa₁' = sa₁; combined with sb₁' = sb₁ (already), composed states equal.
+        exact Or.inl (by rw [heq])
+      · exact Or.inr (Prod.Lex.left sb₁' sb₁' hrankA)
+    | .right lb =>
+      have hintB : labB₁.is_internal lb = true := by
+        simpa [parallel_labelling] using hint
+      have hfairB : fairB₁ sb₁ lb := hfair
+      obtain ⟨_hnosyn, hstepB, rfl⟩ := hstep
+      let mid := simB.step_internal sb₁ lb sb₁' sb₂
+        (reachable_right _ hreach) hRb hintB hstepB
+      let hstarB : InternalStar sysB₂ labB₂ sb₂ mid.1 := mid.2.1
+      have hB_nonempty : ¬ hstarB.IsEmpty := by
+        intro hemp
+        apply hnonempty
+        have : (lift_star_right (sysA := sysA₂) hsync_ext sa₂ hstarB).IsEmpty :=
+          (lift_star_right_isEmpty_iff (sysA := sysA₂) hsync_ext sa₂ hstarB).mpr hemp
+        simpa [parallel_forward_sim, parallel_label_map, hstarB, mid] using this
+      have hB_allfair : hstarB.AllFair fairB₂ := by
+        apply (lift_star_right_allFair_iff hsync_ext fairA₂ fairB₂ sa₂ hstarB).mp
+        have : (lift_star_right (sysA := sysA₂) hsync_ext sa₂ hstarB).AllFair
+                  (parallel_fair_labels fairA₂ fairB₂) := by
+          simpa [parallel_forward_sim, parallel_label_map, hstarB, mid] using hallfair
+        exact this
+      have hB_disj : sb₁' = sb₁ ∨ wdB.rank sb₁' sb₁ :=
+        wdB.rank_non_increasing_on_fair_progress sb₁ lb sb₁' sb₂
+          (reachable_right _ hreach) hRb hintB hfairB hstepB hB_nonempty hB_allfair
+      rcases hB_disj with heq | hrankB
+      · exact Or.inl (by rw [heq])
+      · exact Or.inr (Prod.Lex.right sa₁' hrankB)
+    | .sync la lb =>
+      obtain ⟨hsyn, _, _⟩ := hstep
+      exact absurd hfair.1 (hfair_no_sync la lb hsyn sa₁ sb₁).1
   fair_deadlock_diverges := by
     -- A fair-deadlock of the composition means no fair composed label is
     -- enabled. By structure of `parallel`, this implies (roughly) that
