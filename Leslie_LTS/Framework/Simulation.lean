@@ -2133,34 +2133,31 @@ theorem transfers_satisfaction
     concrete.satisfies (assumes_fair_wf concrete fair_labels₁ φ_con) := by
   -- 1. Unfold: take concrete `e₁` valid + the fair-WF antecedent on `e₁`.
   intro e₁ hv₁ h_fair_wf_e1
-  -- 2. Build the abstract execution e₂ via external_subseq_
-  --    correspondence.  This gives `valid_exec_stutter` and the
-  --    externalSubseq match (the latter not needed here).
-  obtain ⟨e₂, hv₂_stutter, _h_extsubseq⟩ :=
-    sim.external_subseq_correspondence h_label_ext h_map_tau e₁ hv₁
-  -- 3. Construct the index map `idx` and the per-position R witness
-  --    from buildLPath / buildWitness.  `idx k = loffset (buildLPath
-  --    lengths) k`; non-strict monotonicity because LPaths may have
-  --    length 0 (elided abstract step).
+  -- 2. Build the abstract execution e₂ directly from
+  --    buildWitness / buildLPath / flattenLPaths (inlined from
+  --    external_subseq_correspondence, so we keep `wit`/`hremap`
+  --    in scope for h_idx_R below).
   haveI : Inhabited L₂ := ⟨lab₂.tau⟩
-  let lpaths_len : Nat → Nat := fun k => (sim.buildLPath e₁ hv₁ k).length
-  let idx : Nat → Nat := loffset lpaths_len
+  let wit := sim.buildWitness e₁ hv₁
+  let lpaths := sim.buildLPath e₁ hv₁
+  obtain ⟨e₂, hremap, hsos, _hlabels_seg, _hlabels_stutter, _hstep_in_range⟩ :=
+    flattenLPaths lab₂.tau (fun k => (wit k).val) lpaths
+  have hv₂_stutter : abstract.valid_exec_stutter lab₂ e₂ := by
+    refine ⟨?_, hsos⟩
+    have h0 : e₂.states 0 = (wit 0).val := hremap 0
+    rw [h0]
+    exact (sim.init_sim (e₁.states 0) hv₁.1).2.1
+  -- 3. Construct the index map `idx` and the per-position R witness.
+  let idx : Nat → Nat := loffset (fun k => (lpaths k).length)
   have idx_mono : ∀ k, idx k ≤ idx (k + 1) := fun k => loffset_mono _ _
   have idx_zero : idx 0 = 0 := rfl
-  -- The boundary states of e₂ match `buildWitness k` (this comes from
-  -- flattenLPaths' boundary clause inside external_subseq_
-  -- correspondence; we'd need to expose it).  For now this is the
-  -- sole remaining inner sorry — needed both for R-at-position and
-  -- for step (4) below.
-  have h_idx_R : ∀ k, sim.R (e₁.states k)
-      (e₂.states (idx k)) := by
-    -- Sorry: requires exposing the boundary-states match from
-    -- external_subseq_correspondence's internal flattenLPaths call
-    -- (i.e., `e₂.states (loffset … k) = (buildWitness k).val` plus
-    -- `(buildWitness k).property : R (e₁.states k) (buildWitness k).val`).
-    -- Will be filled in by a follow-up that exposes idx/R from
-    -- external_subseq_correspondence — small mechanical work.
-    sorry
+  -- h_idx_R follows directly from hremap + buildWitness's R:
+  --   `hremap k : e₂.states (idx k) = (wit k).val`
+  --   `(wit k).property : sim.R (e₁.states k) (wit k).val`
+  have h_idx_R : ∀ k, sim.R (e₁.states k) (e₂.states (idx k)) := by
+    intro k
+    rw [hremap k]
+    exact (wit k).property
   -- 4. Show e₂ satisfies the abstract fair-WF antecedent.  This is the
   --    substantive lift step.
   --
