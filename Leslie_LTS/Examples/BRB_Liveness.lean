@@ -279,11 +279,31 @@ theorem ideal_brb_totality :
     -- at every k' ≥ k.
     have h_none_forever : ∀ k', k' ≥ k → (e.states k').set_up = none := by
       intro k' hk'; by_contra hne; exact h_never ⟨k', hk', hne⟩
-    -- From hA: broadcastVal ≠ none ∨ ¬ isCorrect sender at position k.
-    -- Need a value v for which commit(v) is enabled.
-    -- Case: sender correct → broadcastVal = some v for some v.
-    -- Case: sender corrupt → commit(default) is enabled.
-    sorry  -- WIP: extract v, show commit(v) always enabled, use h_ante
+    -- Extract a value v for which commit(v) is enabled at position k.
+    -- The commit step requires:
+    --   set_up = none ∧ ((isCorrect sender ∧ broadcastVal = some v) ∨ ¬ isCorrect sender)
+    -- From hA (broadcastVal ≠ none ∨ ¬ isCorrect sender), we can find
+    -- such a v. Full extraction is protocol reasoning; sorried here.
+    -- Once we have v AND "commit(v) stays enabled" (via h_none_forever +
+    -- broadcastVal_persist), the antecedent h_ante at (.commit v) k
+    -- forces commit to fire, contradicting h_none_forever.
+    -- commit(v) is always enabled from k onwards (since set_up = none
+    -- forever and broadcastVal/corruption are monotone). Use h_ante
+    -- for l = .commit v at position k.
+    --
+    -- h_ante at (.commit v) k gives:
+    --   (∀ j, enabled (.commit v) (e.states (k+j)) ∧ fair (.commit v) (e.states (k+j)))
+    --   → ∃ j, .commit v = e.labels (k+j)
+    --
+    -- The inner ∀ j holds because:
+    --   * enabled: set_up = none (by h_none_forever) ∧ hv_or persists (by broadcastVal_persist / corruption monotone).
+    --   * fair: ideal_brb_fair_labels (.commit _) = True.
+    --
+    -- But: broadcastVal_persist only gives per-step persistence, not
+    -- per-execution persistence. Need an inductive lift through e's
+    -- steps (a standard invariant-along-execution argument using hv's
+    -- valid_exec step property).
+    sorry  -- WIP: inductive broadcastVal persistence + h_ante extraction
   -- Step B: from set_up ≠ none, show eventually all correct returned.
   obtain ⟨k₁, hk₁_ge, hk₁_setup⟩ := hStepA
   -- Now need: ∃ k' ≥ k₁, B(e.states k').
