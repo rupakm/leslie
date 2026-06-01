@@ -155,6 +155,49 @@ theorem broadcastVal_persist {s s' : State n Value}
     obtain ⟨_, hnone, rfl⟩ := hstep
     simp [hnone] at h
 
+/-- `broadcastVal` persists along a valid execution: if `broadcastVal
+    = some v` at position `k`, it stays `some v` at all `k' ≥ k`. -/
+theorem broadcastVal_persist_along
+    {e : Execution (State n Value) (Label n Value)}
+    (hv : (ideal_brb (n := n) (f := f) (Value := Value) sender).valid_exec e)
+    {k : Nat} {v : Value}
+    (h : (e.states k).broadcastVal = some v) :
+    ∀ k', k ≤ k' → (e.states k').broadcastVal = some v := by
+  intro k'
+  induction k' with
+  | zero =>
+    intro hle
+    have : k = 0 := Nat.le_zero.mp hle
+    rw [this] at h; exact h
+  | succ k' ih =>
+    intro hle
+    rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · have hle' : k ≤ k' := by omega
+      have hprev := ih hle'
+      exact broadcastVal_persist (hv.2 k') hprev
+
+/-- `set_up` persists along a valid execution. -/
+theorem set_up_persist_along
+    {e : Execution (State n Value) (Label n Value)}
+    (hv : (ideal_brb (n := n) (f := f) (Value := Value) sender).valid_exec e)
+    {k : Nat} {v : Value}
+    (h : (e.states k).set_up = some v) :
+    ∀ k', k ≤ k' → (e.states k').set_up = some v := by
+  intro k'
+  induction k' with
+  | zero =>
+    intro hle
+    have : k = 0 := Nat.le_zero.mp hle
+    rw [this] at h; exact h
+  | succ k' ih =>
+    intro hle
+    rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · have hle' : k ≤ k' := by omega
+      have hprev := ih hle'
+      exact set_up_persist (hv.2 k') hprev
+
 end monotonicity
 
 /-! ### Safety Properties (label-based)
