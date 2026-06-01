@@ -124,6 +124,13 @@ noncomputable def brb_weak_div_witness (hn : n > 3 * f) :
     intro s₁ _l₁ _s₁' _s₂ _hreach _hR _hint _hfair _hstep _hne hnaf
     exact absurd
       (ideal_brb_internalStar_allFair n f Value sender _) hnaf
+  rank_non_increasing_on_fair_progress := by
+    -- Protocol-specific: at a fair correct-process internal BRB step
+    -- whose IdealBRB response is non-empty AllFair (i.e. `.commit v` is
+    -- the abstract response), `brb_progress_measure` does not increase.
+    -- Tied to the deferred `brb_progress_measure` design (Phase 3.2 /
+    -- D.1 in plans/close-framework-gaps-and-brb.md).
+    sorry
   fair_deadlock_diverges := by
     intro s₁ s₂ hreach _hR hfd
     exact absurd hfd

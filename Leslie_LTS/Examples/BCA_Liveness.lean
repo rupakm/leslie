@@ -130,6 +130,13 @@ noncomputable def bca_weak_div_witness (hn : n > 3 * f) :
     intro s₁ _l₁ _s₁' _s₂ _hreach _hR _hint _hfair _hstep _hne hnaf
     exact absurd
       (ideal_bca_internalStar_allFair T n f _) hnaf
+  rank_non_increasing_on_fair_progress := by
+    -- Protocol-specific: at a fair correct-process internal BCA step
+    -- whose IdealBCA response is non-empty AllFair (i.e. `.bind b` is
+    -- the abstract response), `bca_progress_measure` does not increase.
+    -- Tied to the deferred `bca_progress_measure` design (out of scope
+    -- for plans/close-framework-gaps-and-brb.md).
+    sorry
   fair_deadlock_diverges := by
     intro s₁ s₂ hreach _hR hfd
     exact absurd hfd

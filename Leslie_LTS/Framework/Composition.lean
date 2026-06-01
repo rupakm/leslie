@@ -940,6 +940,14 @@ noncomputable def compose_with_compatible
     | .sync la lb =>
       obtain ⟨hsyn, _, _⟩ := hstep
       exact absurd hfair.1 (hfair_no_sync la lb hsyn sa₁ sb₁).1
+  rank_non_increasing_on_fair_progress := by
+    -- Composed fair non-skip whose composed InternalStar IS AllFair.
+    -- One component takes the elided side (.refl), contributing equality
+    -- (`s' = s` on that component); the other component's InternalStar
+    -- is non-empty AllFair, triggering its own
+    -- `rank_non_increasing_on_fair_progress` (`s' = s ∨ rank s' s`).  Lex
+    -- pair then satisfies the disjunction.  Will be filled in by A.2.
+    sorry
   fair_deadlock_diverges := by
     -- A fair-deadlock of the composition means no fair composed label is
     -- enabled. By structure of `parallel`, this implies (roughly) that

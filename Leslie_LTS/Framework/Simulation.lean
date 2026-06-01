@@ -1376,6 +1376,31 @@ structure ForwardSim.WeakDivPreserving
       ¬ (sim.step_internal s₁ l₁ s₁' s₂ hreach hR hint hstep).2.1.AllFair
           fair_labels₂ →
       rank s₁' s₁
+  /-- **Lockstep fair progress** (Gaspard's 5th clause): when the
+      abstract responds to a fair internal concrete step with a
+      non-empty `AllFair` `InternalStar`, rank does NOT increase
+      (`s₁' = s₁ ∨ rank s₁' s₁`).  This is the missing clause that makes
+      rank monotone non-increasing across every internal concrete step:
+      combined with `rank_non_increasing` (unfair),
+      `rank_decreases_on_fair_elision` (fair empty, strict), and
+      `rank_decreases_on_unfair_abstract` (fair non-empty non-AllFair,
+      strict), every internal step is classified.
+
+      Without this clause, Case (ii.b.X) of `preserves_fair_weak_
+      divergence`'s soundness proof cannot bridge rank back to `s₁`
+      through prefix steps where the abstract makes fair progress
+      "in lockstep" with the concrete. -/
+  rank_non_increasing_on_fair_progress :
+    ∀ s₁ l₁ s₁' s₂
+      (hreach : Reachable concrete s₁)
+      (hR : sim.R s₁ s₂)
+      (hint : lab₁.is_internal l₁ = true)
+      (hfair : fair_labels₁ s₁ l₁)
+      (hstep : concrete.step s₁ l₁ s₁'),
+      ¬ (sim.step_internal s₁ l₁ s₁' s₂ hreach hR hint hstep).2.1.IsEmpty →
+      (sim.step_internal s₁ l₁ s₁' s₂ hreach hR hint hstep).2.1.AllFair
+          fair_labels₂ →
+      s₁' = s₁ ∨ rank s₁' s₁
   /-- Fair-deadlock clause: a concrete fair-deadlock forces an abstract one. -/
   fair_deadlock_diverges :
     ∀ s₁ s₂, Reachable concrete s₁ → sim.R s₁ s₂ →
