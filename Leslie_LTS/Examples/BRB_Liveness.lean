@@ -52,16 +52,34 @@ def ideal_brb_fair_labels
 
 /-! ## Well-founded rank on concrete states (definitions deferred to Phase 3.2) -/
 
-/-- A `Nat`-valued progress measure on concrete BRB states. Decreases on
-    every fair correct-process step. Definition deferred to Phase 3.2. -/
-def brb_progress_measure (_s : BRB_LTS.State n Value) : Nat := by sorry
+/-- A `Nat`-valued progress measure on concrete BRB states.
+
+    **Placeholder** (currently returns 0 for all states).  The intended
+    lex measure over protocol phases is:
+
+      Dim 1: #correct procs with `returned = none`
+      Dim 2: total pending fair messages in buffer (between correct procs)
+      Dim 3: #correct (src, dst, t, v) tuples eligible to send but unsent
+
+    Encoded as `D1 * K² + D2 * K + D3` with `K ≥ n² · 3` (bounded per
+    value `v` — the protocol commits to at most one value per `sender`).
+
+    The real definition replaces this when the rank obligations (D.3)
+    are discharged.  Until then, `brb_rank = False` everywhere (since
+    `0 < 0` is false), and `brb_rank_wf` is trivially well-founded. -/
+def brb_progress_measure (_s : BRB_LTS.State n Value) : Nat := 0
 
 /-- The well-founded rank: `s' < s` iff the measure strictly drops. -/
 def brb_rank (s s' : BRB_LTS.State n Value) : Prop :=
   brb_progress_measure n Value s' < brb_progress_measure n Value s
 
+/-- With the placeholder measure (= 0 for all states), `brb_rank` is
+    `False` everywhere (0 < 0 is false), so well-foundedness is trivial
+    — no infinite descending chain exists because no pair is related.
+    This will need re-proof when the real measure is plugged in. -/
 theorem brb_rank_wf :
-    WellFounded (brb_rank n Value) := by sorry
+    WellFounded (brb_rank n Value) :=
+  ⟨fun a => ⟨a, fun _ h => absurd h (Nat.not_lt_zero _)⟩⟩
 
 /-! ## Reachable fair-deadlocks are terminated
 
