@@ -1726,30 +1726,60 @@ theorem preserves_fair_weak_divergence
             -- walking concrete from k₀ for i steps, together with the
             -- composed `InternalStar` from `walk.1` to s₂_i and the
             -- `sim.R` witness at `e₁.states (k₀ + i)`.
+            --
+            -- Defined via explicit `Nat.rec` (rather than `induction`
+            -- tactic) so that `(abs_acc (i+1)).1` reduces definitionally
+            -- to the recursive step's image — required for downstream
+            -- `paths_seq` to type-check.
             let abs_acc : ∀ i, Σ' s₂' : S₂,
                 InternalStar abstract lab₂ walk.1 s₂' ×'
-                sim.R (e₁.states (k₀ + i)) s₂' := by
-              intro i
-              induction i with
-              | zero =>
-                exact ⟨walk.1, .refl, walk.2.2⟩
-              | succ i ih =>
-                let mid_i := sim.step_internal (e₁.states (k₀ + i))
-                              (e₁.labels (k₀ + i))
-                              (e₁.states (k₀ + i + 1))
-                              ih.1 (reach_at i) ih.2.2
-                              (hstep_int (k₀ + i)).2 (hstep_int (k₀ + i)).1
-                exact ⟨mid_i.1, ih.2.1.trans mid_i.2.1, mid_i.2.2⟩
-            -- Steps (3)–(6): assembling the abstract execution from
-            -- `abs_acc`, applying `flattenInternalStars`, ruling out
-            -- stutter, and discharging fair-cofinality.  Each step is
-            -- mechanically substantial; combined they require Classical-
-            -- recursion-aware handling of the per-segment InternalStars
-            -- and a no-stutter argument keyed on (Y).
-            --
-            -- The `abs_acc` and `reach_at` helpers above are the
-            -- foundation for steps (3)–(6); the remaining construction
-            -- is deferred.
+                sim.R (e₁.states (k₀ + i)) s₂' := fun i =>
+              Nat.rec
+                (motive := fun i => Σ' s₂' : S₂,
+                    InternalStar abstract lab₂ walk.1 s₂' ×'
+                    sim.R (e₁.states (k₀ + i)) s₂')
+                ⟨walk.1, .refl, walk.2.2⟩
+                (fun i ih =>
+                  let mid_i := sim.step_internal (e₁.states (k₀ + i))
+                                (e₁.labels (k₀ + i))
+                                (e₁.states (k₀ + i + 1))
+                                ih.1 (reach_at i) ih.2.2
+                                (hstep_int (k₀ + i)).2
+                                (hstep_int (k₀ + i)).1
+                  ⟨mid_i.1, ih.2.1.trans mid_i.2.1, mid_i.2.2⟩)
+                i
+            -- Step (3): extract per-segment abstract InternalStars by
+            -- replaying the step_internal call at each index.  Each
+            -- `paths_seq i` matches the segment used to build
+            -- `abs_acc (i+1)` from `abs_acc i`.
+            let paths_seq : ∀ i,
+                InternalStar abstract lab₂ (abs_acc i).1 (abs_acc (i+1)).1 :=
+              fun i =>
+                (sim.step_internal (e₁.states (k₀ + i))
+                  (e₁.labels (k₀ + i)) (e₁.states (k₀ + i + 1))
+                  (abs_acc i).1 (reach_at i) (abs_acc i).2.2
+                  (hstep_int (k₀ + i)).2 (hstep_int (k₀ + i)).1).2.1
+            -- Step (4): apply `flattenInternalStars` to obtain an
+            -- abstract execution whose states are walked from `walk.1`
+            -- through the `paths_seq` segments and whose labels are all
+            -- internal (guaranteed by the new helper).
+            let states_seq : ℕ → S₂ := fun i => (abs_acc i).1
+            haveI : Inhabited L₂ := ⟨lab₂.tau⟩
+            obtain ⟨e₂, _hbdry, hsos, hint_all⟩ :=
+              flattenInternalStars states_seq paths_seq
+            -- Steps (5)–(6): now `e₂` is the candidate abstract
+            -- execution.  `hsos` gives step-or-tau-stutter; `hint_all`
+            -- gives every label internal.  Remaining work:
+            --   * Rule out tau-stutter steps (uses (Y) → every fair
+            --     k₀+i contributes a non-empty segment, but UNFAIR
+            --     in-between indices may still contribute empty
+            --     segments, so a no-stutter argument requires
+            --     pre-filtering or strengthening flattenInternalStars).
+            --   * Show `e₂.states 0 = walk.1`.
+            --   * Show cofinitely many fair labels in `e₂`.
+            --   * Conclude `FairDiverges abstract lab₂ fair_labels₂
+            --     walk.1`, then lift via `FairlyWeaklyDiverges.lift
+            --     walk.2.1`.
             exact (sorry : FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂)
         · -- Case (ii.a): non-empty but NOT AllFair.  Then
           -- `rank_decreases_on_unfair_abstract` gives the rank drop, and
