@@ -231,6 +231,26 @@ theorem ideal_brb_totality :
             s.broadcastVal ≠ none ∨ ¬ IdealBRB.isCorrect n Value s sender))
           (state_prop (fun s : IdealBRB.State n Value =>
             ∀ p, p ∉ s.corrupted → s.returned p ≠ none)))) := by
+  -- Structure: chain through the intermediate state "set_up ≠ none".
+  --
+  -- Step A: leads_to (broadcastVal ≠ none ∨ ¬ isCorrect sender)
+  --                   (set_up ≠ none)
+  --   Argument: commit(v) is enabled when broadcastVal = some v (sender
+  --   correct) or sender is corrupt (any v). Fair scheduling (commit is
+  --   always fair = True) fires it, setting set_up := some v. Invariant:
+  --   once set_up is set, it stays set (IdealBRB only sets set_up in
+  --   commit, which requires set_up = none, so it fires at most once).
+  --
+  -- Step B: leads_to (set_up ≠ none)
+  --                   (∀ p correct, returned p ≠ none)
+  --   Argument: for each correct p with returned p = none, output(p, v)
+  --   is enabled (requires set_up = some v, returned p = none, p correct).
+  --   Fair scheduling (output fair when p correct) fires it. After N
+  --   correct procs have returned (with N decreasing), the conclusion
+  --   holds. This is a finite induction over the set of correct procs.
+  --
+  -- Each step is individually sorried — substantial LTL/temporal
+  -- reasoning (~100 LOC each).
   sorry
 
 /-- The concrete-side totality, lifted from `ideal_brb_totality` via the
