@@ -151,6 +151,25 @@ def System.satisfies (sys : System State Label)
     (φ : TraceProp State Label) : Prop :=
   ∀ e, sys.valid_exec e → φ e 0
 
+/-- A system satisfies `φ` in the *stutter-tolerant* sense iff every
+    `valid_exec_stutter` execution satisfies `φ`.  Used for abstract-side
+    obligations in the `WeakDivPreserving` soundness chain, where the
+    abstract execution constructed by `external_subseq_correspondence`
+    is only `valid_exec_stutter` (τ-stutters appear at boundaries where
+    the abstract elides a concrete internal move).
+
+    Strictly stronger than `satisfies`: every `valid_exec` is also a
+    `valid_exec_stutter` (with no actual stutter steps), so
+    `satisfies_stutter → satisfies`.  For the property classes proven
+    in this codebase (state-based safety / liveness, externalSubseq-
+    based secrecy, branching), the two coincide modulo a wrapper —
+    τ-stutters preserve state and are invisible under `externalSubseq`,
+    so they're transparent to all relevant property classes. -/
+def System.satisfies_stutter (sys : System State Label)
+    (lab : Labelling Label)
+    (φ : TraceProp State Label) : Prop :=
+  ∀ e, sys.valid_exec_stutter lab e → φ e 0
+
 /-- A trace property is valid if it holds on all executions at all positions. -/
 def tp_valid {State : Type u} {Label : Type v}
     (p : TraceProp State Label) : Prop :=
