@@ -1733,36 +1733,36 @@ theorem preserves_fair_weak_divergence
             -- Deferred.
             sorry
           · -- Case (ii.b.Y): every fair concrete index k > k₀ gives a
-            -- non-empty AllFair via paths_seq.  Combined with Case
-            -- (ii.b) entry (paths_seq 0 = mid.2.1 is non-empty AllFair
-            -- via h_empty/h_allFair), we have:
-            --   ∀ k ≥ k₀ with fair_labels₁ at k, paths_seq (k-k₀) is
-            --   non-empty AllFair fair_labels₂.
-            -- Plus, by `hcofair`, fair concrete indices are cofinite,
-            -- so the corresponding paths_seq segments are cofinitely
-            -- non-empty AllFair.
+            -- non-empty AllFair via paths_seq.
+            push Not at h_break
+            -- h_break now: ∀ i, 1 ≤ i → fair_labels₁ … →
+            --   ¬ (paths_seq i).IsEmpty ∧ (paths_seq i).AllFair fair_labels₂
             --
-            -- This is the input shape for proving `FairDiverges
-            -- abstract lab₂ fair_labels₂ walk.1` from `e₂`:
-            --   • no-stutter: each empty paths_seq is bounded by a
-            --     subsequent non-empty paths_seq (since fair indices
-            --     are cofinite), so offsets grow unboundedly → no
-            --     stutter at any position.
-            --   • cofinite fair labels: each non-empty AllFair
-            --     paths_seq segment contributes ≥ 1 fair label;
-            --     these accumulate cofinitely.
-            --
-            -- Remaining work to discharge these two:
-            -- (a) `e₂.states 0 = walk.1` (from `_hbdry` at k = 0).
-            -- (b) `∀ t, abstract.step (e₂.states t) (e₂.labels t)
-            --      (e₂.states (t+1))` — from `_hsos` + no-stutter.
-            -- (c) `∀ N, ∃ k ≥ N, fair_labels₂ at e₂ index k` —
-            --      from cofinite non-empty AllFair contributions.
-            -- (d) Combine into `FairDiverges`, then
-            --     `FairlyWeaklyDiverges.lift walk.2.1` lifts to `s₂`.
-            --
-            -- These four are mechanically intricate but follow
-            -- directly from the (Y) hypothesis + `hcofair`.  Deferred.
+            -- Combined with the Case (ii.b) entry assumptions
+            -- (`h_empty`/`h_allFair` on `mid.2.1`), we have the uniform
+            -- statement: every fair concrete index k ≥ k₀ has paths_seq
+            -- (k - k₀) non-empty AllFair.
+            have h_paths_ge_k0 :
+                ∀ i, fair_labels₁ (e₁.states (k₀ + i)) (e₁.labels (k₀ + i)) →
+                  ¬ (paths_seq i).IsEmpty ∧
+                  (paths_seq i).AllFair fair_labels₂ := by
+              intro i hfair_i
+              by_cases hi0 : i = 0
+              · -- i = 0: paths_seq 0 unfolds to mid.2.1 (same step_internal
+                -- call); discharge with `h_empty` and `h_allFair`.
+                subst hi0
+                refine ⟨?_, ?_⟩
+                · exact h_empty
+                · exact h_allFair
+              · -- i ≥ 1: apply h_break.
+                have hi_pos : 1 ≤ i := Nat.one_le_iff_ne_zero.mpr hi0
+                exact h_break i hi_pos hfair_i
+            -- The remaining work — no-stutter argument, e₂.states 0 =
+            -- walk.1, fair cofinality, lift to s₂ — uses the
+            -- `h_paths_ge_k0` predicate plus `_hbdry`, `_hsos`,
+            -- `_hint_all` from `flattenInternalStars`, plus `hcofair`
+            -- for cofinality of concrete fair indices.  Each is
+            -- mechanically intricate but the inputs are all in scope.
             exact (sorry : FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂)
         · -- Case (ii.a): non-empty but NOT AllFair.  Then
           -- `rank_decreases_on_unfair_abstract` gives the rank drop, and
