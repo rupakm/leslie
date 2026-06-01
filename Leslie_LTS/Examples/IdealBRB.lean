@@ -97,6 +97,66 @@ def ideal_labelling [Inhabited Value] : Labelling (Label n Value) where
   tau := .commit default
   tau_internal := rfl
 
+/-! ### Step-Preservation Lemmas (Monotonicity)
+
+    Simple per-step invariants: once certain fields are set, no
+    transition resets them. Used by `ideal_brb_totality`'s leads-to
+    chain and by protocol invariants more broadly. -/
+
+section monotonicity
+variable {n f : Nat} {Value : Type} [DecidableEq Value]
+         {sender : Fin n} [Inhabited Value]
+
+/-- `set_up` is monotone: once `some v`, it stays `some v`. -/
+theorem set_up_persist {s s' : State n Value}
+    {l : Label n Value}
+    (hstep : (ideal_brb (n := n) (f := f) (Value := Value) sender).step s l s')
+    {v : Value} (h : s.set_up = some v) :
+    s'.set_up = some v := by
+  simp only [ideal_brb] at hstep
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := hstep; exact h
+  | .input _ _ => obtain ⟨_, _, rfl⟩ := hstep; exact h
+  | .output _ _ => obtain ⟨_, _, _, rfl⟩ := hstep; exact h
+  | .commit w =>
+    obtain ⟨hnone, _, rfl⟩ := hstep
+    exact absurd h (by rw [hnone]; simp)
+
+/-- `returned p` is monotone: once `some v`, it stays. -/
+theorem returned_persist {s s' : State n Value}
+    {l : Label n Value}
+    (hstep : (ideal_brb (n := n) (f := f) (Value := Value) sender).step s l s')
+    {p : Fin n} {v : Value} (h : s.returned p = some v) :
+    s'.returned p = some v := by
+  simp only [ideal_brb] at hstep
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := hstep; exact h
+  | .input _ _ => obtain ⟨_, _, rfl⟩ := hstep; exact h
+  | .commit _ => obtain ⟨_, _, rfl⟩ := hstep; exact h
+  | .output i w =>
+    obtain ⟨_, hnone_i, _, rfl⟩ := hstep
+    show (if p = i then some w else s.returned p) = some v
+    split
+    · next heq => rw [heq] at h; simp [hnone_i] at h
+    · exact h
+
+/-- `broadcastVal` is monotone: once `some v`, it stays. -/
+theorem broadcastVal_persist {s s' : State n Value}
+    {l : Label n Value}
+    (hstep : (ideal_brb (n := n) (f := f) (Value := Value) sender).step s l s')
+    {v : Value} (h : s.broadcastVal = some v) :
+    s'.broadcastVal = some v := by
+  simp only [ideal_brb] at hstep
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := hstep; exact h
+  | .output _ _ => obtain ⟨_, _, _, rfl⟩ := hstep; exact h
+  | .commit _ => obtain ⟨_, _, rfl⟩ := hstep; exact h
+  | .input _ _ =>
+    obtain ⟨_, hnone, rfl⟩ := hstep
+    simp [hnone] at h
+
+end monotonicity
+
 /-! ### Safety Properties (label-based)
 
     Properties are expressed purely in terms of the observable label
