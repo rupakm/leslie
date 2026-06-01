@@ -270,6 +270,22 @@ def InternalStar.toInternalLPath {sys : System S L} {lab : Labelling L}
       | zero => simp [LPath.get_label]; exact hint
       | succ j => simp [LPath.get_label, LPath.length] at hi ⊢; exact hp j (by omega)⟩
 
+/-- The first label of a non-empty `AllFair` `InternalStar` (via
+    `toInternalLPath.val.get_label 0`) is fair at its source state.
+    Used to discharge fair-cofinality in the `WeakDivPreserving`
+    soundness proof. -/
+theorem InternalStar.fair_first_of_nonempty_allFair
+    {sys : System S L} {lab : Labelling L} [Inhabited L]
+    {fair_labels : S → L → Prop}
+    {a b : S} (h : InternalStar sys lab a b)
+    (hne : ¬ h.IsEmpty) (haf : h.AllFair fair_labels) :
+    fair_labels a (h.toInternalLPath.val.get_label 0) := by
+  cases h with
+  | refl => exact absurd True.intro hne
+  | step hint hstep rest =>
+    simp [InternalStar.toInternalLPath, LPath.get_label]
+    exact haf.1
+
 /-- `Star` implies the existence of an `LPath`. -/
 theorem Star.nonempty_lpath {sys : System S L}
     (h : Star sys a b) : Nonempty (LPath sys.step a b) := by

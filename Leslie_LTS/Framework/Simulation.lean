@@ -1836,16 +1836,50 @@ theorem preserves_fair_weak_divergence
                 -- Sorried — small bridge lemma.
                 exact sorry
             -- (c) Fair cofinality.  For any N, find a fair concrete
-            -- index k_c ≥ k₀+1 with offset position t_c ≥ N.  At t_c
-            -- (a boundary), e₂.states t_c = states_seq (k_c-k₀) and
-            -- e₂.labels t_c = first label of paths_seq (k_c-k₀) via
-            -- _hlbl_seg with i=0.  AllFair on the non-empty
-            -- paths_seq gives fair_labels₂ at the source-state +
-            -- first-label pair.
-            -- Sorried — mechanical from h_off_unbounded + hcofair +
-            -- h_paths_ge_k0 + AllFair structure.
+            -- index k_c ≥ k₀+k'+1 (where k' comes from h_off_unbounded
+            -- at N) with offset position t = loffset (paths_seq lengths)
+            -- (k_c-k₀) ≥ N.  At the boundary t, e₂.states t =
+            -- states_seq (k_c-k₀) (via _hbdry) and e₂.labels t = first
+            -- label of paths_seq (k_c-k₀) (via _hlbl_seg at i=0).
+            -- AllFair on the non-empty paths_seq gives fair_labels₂ at
+            -- the source-state + first-label pair.
             have h_fair_cofinal : ∀ N, ∃ k, N ≤ k ∧
-                fair_labels₂ (e₂.states k) (e₂.labels k) := sorry
+                fair_labels₂ (e₂.states k) (e₂.labels k) := by
+              intro N
+              obtain ⟨k', hk'⟩ := h_off_unbounded N
+              obtain ⟨k_c, hk_c_ge, hk_c_fair⟩ := hcofair (k₀ + k' + 1)
+              have hk_c_idx : k₀ + (k_c - k₀) = k_c := by omega
+              have hfair_at :
+                  fair_labels₁ (e₁.states (k₀ + (k_c - k₀)))
+                               (e₁.labels (k₀ + (k_c - k₀))) := by
+                rw [hk_c_idx]; exact hk_c_fair
+              obtain ⟨hpaths_nonempty, hpaths_allFair⟩ :=
+                h_paths_ge_k0 (k_c - k₀) hfair_at
+              let t := loffset (fun k => (paths_seq k).length) (k_c - k₀)
+              have ht_ge_N : N ≤ t := by
+                have hmono : loffset (fun k => (paths_seq k).length) (k' + 1) ≤
+                             loffset (fun k => (paths_seq k).length) (k_c - k₀) :=
+                  loffset_mono_le _ (by omega)
+                omega
+              have hlen_pos : 0 < (paths_seq (k_c - k₀)).length := by
+                rcases Nat.eq_zero_or_pos (paths_seq (k_c - k₀)).length
+                  with hz | hp
+                · exfalso
+                  exact hpaths_nonempty
+                    ((InternalStar.length_eq_zero_iff_IsEmpty _).mp hz)
+                · exact hp
+              have hstate : e₂.states t = states_seq (k_c - k₀) :=
+                _hbdry (k_c - k₀)
+              have hlbl : e₂.labels t =
+                  ((paths_seq (k_c - k₀)).toInternalLPath).val.get_label 0 := by
+                have h := _hlbl_seg (k_c - k₀) 0 hlen_pos
+                simpa using h
+              refine ⟨t, ht_ge_N, ?_⟩
+              rw [hstate, hlbl]
+              -- Discharge via the generic helper
+              -- `InternalStar.fair_first_of_nonempty_allFair`.
+              exact (paths_seq (k_c - k₀)).fair_first_of_nonempty_allFair
+                hpaths_nonempty hpaths_allFair
             -- (d) Assemble FairDiverges at walk.1, lift to s₂.
             have hfd_walk : FairDiverges abstract lab₂ fair_labels₂ walk.1 :=
               ⟨e₂, he0,
