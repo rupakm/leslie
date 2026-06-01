@@ -1950,6 +1950,38 @@ theorem transfers_satisfaction
     (h_abs :
       abstract.satisfies (assumes_fair_wf abstract fair_labels₂ φ_abs)) :
     concrete.satisfies (assumes_fair_wf concrete fair_labels₁ φ_con) := by
+  -- Proof outline (full discharge requires framework-level design work):
+  --
+  -- 1. Unfold the conclusion: take concrete e₁ valid with the fair-WF
+  --    antecedent on e₁; need φ_con e₁ 0.
+  -- 2. Build an abstract execution e₂ via
+  --    `sim.external_subseq_correspondence` — this produces a
+  --    `valid_exec_stutter`, not `valid_exec`.
+  -- 3. Show e₂ satisfies the abstract fair-WF antecedent — uses
+  --    `h_fair_compat` to translate fair concrete labels to fair
+  --    abstract labels, and `preserves_fair_weak_divergence` to argue
+  --    away fair-WD on the abstract side.
+  -- 4. Apply h_abs to get φ_abs e₂ 0 — BLOCKED because `System.satisfies`
+  --    quantifies over `valid_exec` (non-stutter), while `e₂` is only
+  --    `valid_exec_stutter`.
+  -- 5. Apply h_prop_transfer to get φ_con e₁ 0.
+  --
+  -- BLOCKING DESIGN ISSUE for (4):
+  --   * Option A: introduce a `System.satisfies_stutter sys lab φ :=
+  --     ∀ e, sys.valid_exec_stutter lab e → φ e 0` and re-type `h_abs`
+  --     to use it.  Framework-wide change but conceptually cleanest:
+  --     abstract-side properties naturally hold over stutter execs
+  --     (the τ-stutter is part of the abstract trace semantics).
+  --   * Option B: write a stutter-removal helper that filters τ-stutters
+  --     from a `valid_exec_stutter` to produce a `valid_exec`, then
+  --     argue index-map invariance.  Requires careful handling of
+  --     traces that are entirely τ after some point.
+  --   * Option C: change `h_prop_transfer` to take `valid_exec_stutter`
+  --     and adjust the signature of h_abs separately.  Bypasses (4)
+  --     but doesn't actually resolve the issue.
+  --
+  -- Deferred to a follow-up that picks an option and threads it through
+  -- the framework.
   sorry
 
 -- `compose_with_compatible` (Gaspard Lemma 12) lives in `Composition.lean`
