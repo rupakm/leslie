@@ -1481,24 +1481,22 @@ variable {fair_labels₁ : S₁ → L₁ → Prop} {fair_labels₂ : S₂ → L�
     a `WeakDivPreserving` witness lifts fairly weak divergence from concrete
     to abstract.
 
-    The witness's new fields (`rank_non_increasing` and
-    `fair_non_elision_progress`, added in the design refinement of
-    2026-05-28) replace the external `h_abs_fair` hypothesis that earlier
-    versions of this theorem required.
+    The witness's five rank clauses (`rank_non_increasing`,
+    `rank_decreases_on_fair_elision`, `rank_decreases_on_unfair_abstract`,
+    `rank_non_increasing_on_fair_progress`, plus the WF `rank`/`rank_wf`
+    pair) together classify every internal concrete step type and make
+    rank monotone non-increasing across all of them.
 
     The deadlock case is proven by walking the τ-path through the
     simulation and applying `fair_deadlock_diverges`, then lifting back
     with `FairlyWeaklyDiverges.lift`.
 
-    The fair-divergence case (Case A) is partially proven via well-founded
-    induction on `wd.rank`. Two inner sorries remain:
-      * the `k₀ > 0` sub-case of rank-decrease, now solvable using
-        `rank_non_increasing` to bridge the unfair prefix;
-      * Case (ii) — building an infinite fair abstract execution from a
-        sequence of non-empty `walk_internal_star` outputs, now solvable
-        using `fair_non_elision_progress` to guarantee each contribution
-        is `AllFair`. Mechanically intricate; needs new
-        `Execution`-from-`InternalStar`-sequence machinery in `Trace.lean`. -/
+    The fair-divergence case (Case A) is fully proven, via well-founded
+    induction on `wd.rank` and a generic prefix bridge
+    (`bridge_from_hrank_at`).  All sub-cases — (i) elided fair step,
+    (ii.a) non-empty non-AllFair fair step, (ii.b.X) later bad fair
+    index, (ii.b.Y) infinite AllFair iteration — discharge using the
+    appropriate witness clause plus the bridge / `transfer_at_pivot`. -/
 theorem preserves_fair_weak_divergence
     {sim : ForwardSim concrete lab₁ abstract lab₂}
     (wd : sim.WeakDivPreserving fair_labels₁ fair_labels₂)
@@ -1517,20 +1515,25 @@ theorem preserves_fair_weak_divergence
     -- then case-split on whether the abstract `InternalStar` produced by
     -- that fair step is empty (elided) or non-empty (real progress).
     --
-    -- Case (i)  [elided]:  the witness's `fair_elision_progress` clause
-    --                      gives either a rank-decrease (recurse via the
-    --                      WF IH) or direct abstract fair-weak-divergence
-    --                      at the abstract image — lifted back through
-    --                      the composed `InternalStar`.
-    -- Case (ii) [non-empty]: combined with `h_abs_fair`, the fair concrete
-    --                        step produces an `AllFair` abstract path of
-    --                        length ≥ 1.  Iterating this case produces an
-    --                        infinite fair abstract execution.
-    --
-    -- The full Case (ii) construction (build the infinite abstract execution
-    -- from a sequence of non-empty `InternalStar`s) is structurally heavy and
-    -- is left as a single inner `sorry` below (see `case_ii` block) with a
-    -- detailed comment.  Case (i) is proved in full modulo this.
+    -- Case (i)  [elided]:  `rank_decreases_on_fair_elision` gives a
+    --                      rank decrease at k₀; the shared prefix
+    --                      bridge `bridge_from_hrank_at` handles the
+    --                      walk back to s₁.
+    -- Case (ii.a) [non-empty, ¬AllFair]:
+    --                      `rank_decreases_on_unfair_abstract` gives
+    --                      the rank decrease; same bridge.
+    -- Case (ii.b.X) [later fair index where abstract response is
+    --                empty or ¬AllFair]: take the LEAST such index k_j;
+    --                rank decreases at k_j via clause (a) or (b); the
+    --                generalised bridge handles the longer prefix
+    --                (including fair-AllFair-non-empty intermediate
+    --                steps via `rank_non_increasing_on_fair_progress`).
+    -- Case (ii.b.Y) [every later fair index gives non-empty AllFair]:
+    --                build the infinite abstract execution via
+    --                `flattenInternalStars`; cofinality of fair labels
+    --                comes from `hcofair` + `h_paths_ge_k0`; no
+    --                stutter via `h_off_unbounded` +
+    --                `flattenLPaths.step_in_range`.
     --
     -- We strengthen to a generic well-founded recursion claim over s₁.
     suffices hWF :
@@ -2086,15 +2089,18 @@ theorem preserves_fair_weak_divergence
     elides concrete internal moves), concrete and abstract index spaces do
     not align 1-to-1. Instead, the client provides:
 
-    * `h_prop_transfer`: takes a strictly monotonic index map `idx` such
-      that the concrete state at `k` corresponds to the abstract state at
-      `idx k` (via `sim.R`). The map starts at `idx 0 = 0`. This is the
-      same shape `external_subseq_correspondence` already uses internally
-      (mapping concrete external indices to abstract external indices).
+    * `h_prop_transfer`: takes a *weakly* monotonic index map `idx`
+      (`idx k ≤ idx (k + 1)`, not strict — empty LPath segments may
+      collapse two concrete indices to the same abstract index) such
+      that the concrete state at `k` corresponds to the abstract state
+      at `idx k` (via `sim.R`).  The map starts at `idx 0 = 0`.
 
     * `h_fair_compat`: concrete fair labels map to abstract fair labels
-      via `sim.label_map`. (The witness's `fair_non_elision_progress`
-      replaces the earlier external `h_abs_fair` hypothesis.) -/
+      via `sim.label_map`.
+
+    * `h_abs` is typed `satisfies_stutter` (not `satisfies`) — abstract-
+      side obligations naturally hold over τ-stutter executions, which
+      is exactly what `external_subseq_correspondence` produces. -/
 theorem transfers_satisfaction
     {sim : ForwardSim concrete lab₁ abstract lab₂}
     (wd : sim.WeakDivPreserving fair_labels₁ fair_labels₂)
