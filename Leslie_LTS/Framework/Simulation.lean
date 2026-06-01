@@ -2185,13 +2185,10 @@ theorem transfers_satisfaction
   --
   -- Estimate ~200 LOC of careful temporal reasoning.  Sorried as a
   -- focused follow-up; the API/typing is now correct.
-  have h_fair_wf_e2 : assumes_fair_wf abstract fair_labels₂ φ_abs e₂ 0 →
-      φ_abs e₂ 0 := by
-    intro h
-    -- The hypothesis `h` is the antecedent-implies-consequent; we
-    -- separately need to produce the antecedent on e₂, then derive φ.
-    sorry
-  -- We need the antecedent on e₂ to apply `h_abs`.
+  -- We need the fair-WF antecedent on e₂ to apply `h_abs`.
+  -- (The prior `h_fair_wf_e2` wrapper was dead code — `h_abs e₂
+  -- hv₂_stutter h_ante_e2` applies `satisfies_stutter` which already
+  -- gives `antecedent → φ_abs`.)
   have h_ante_e2 :
       (tp_forall (fun l =>
         always (tp_implies
