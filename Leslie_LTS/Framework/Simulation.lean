@@ -1619,44 +1619,51 @@ theorem preserves_fair_weak_divergence
             walk_m.1 :=
           ih_rank (e₁.states m) hrec hreach_m walk_m.1 walk_m.2.2 htail_div_m
         exact FairlyWeaklyDiverges.lift walk_m.2.1 habs_at_walk_m
-      -- Shared helper `bridge_from_hrank_k0`: given a rank-decrease from
-      -- `s_k₀` to `s_(k₀+1)` (produced by either `rank_decreases_on_
-      -- fair_elision` in Case (i), or `rank_decreases_on_unfair_abstract`
-      -- in Case (ii.a)), walk through the unfair prefix via
-      -- `rank_non_increasing` to find a pivot `m ∈ [1, k₀+1]` with
-      -- `wd.rank (e₁.states m) s₁`, then call `transfer_at_pivot`.
+      -- Generic prefix bridge: given a pivot index `m` and a per-step
+      -- "rank non-increasing OR strict decrease" predicate over the
+      -- prefix `[0, m)`, plus a strict rank decrease at `m`, produce
+      -- the goal `FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂`.
       --
       -- Two sub-cases:
-      --   * Some unfair prefix step at `j < k₀` strictly drops rank → take
-      --     the LEAST such `j₀`; by minimality + the equality clause of
-      --     `rank_non_increasing`, every prior step is an equality, so
+      --   * Some prefix step at `j < m` strictly drops rank → take the
+      --     LEAST such `j₀`; by minimality + the equality clause of the
+      --     prefix predicate, every prior step is an equality, so
       --     `e₁.states j₀ = s₁` and `wd.rank (e₁.states (j₀+1)) s₁`.
-      --     Pivot `m := j₀+1`.
+      --     Pivot at `j₀+1`.
       --   * No strict drop in the prefix → every prefix step is an
-      --     equality (vacuous if `k₀ = 0`), so `e₁.states k₀ = s₁`, and
-      --     `hrank` gives `wd.rank (e₁.states (k₀+1)) s₁`.  Pivot
-      --     `m := k₀+1`.
-      have bridge_from_hrank_k0 :
-          wd.rank (e₁.states (k₀ + 1)) (e₁.states k₀) →
-            FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂ := by
-        intro hrank
-        by_cases hQ : ∃ j, j < k₀ ∧ wd.rank (e₁.states (j + 1)) (e₁.states j)
+      --     equality (vacuous if `m = 0`), so `e₁.states m = s₁`, and
+      --     `hrank` gives `wd.rank (e₁.states (m+1)) s₁`.  Pivot at `m+1`.
+      --
+      -- Cases (i), (ii.a), and (ii.b.X) all call this with different `m`
+      -- and different prefix-disjunction proofs:
+      --   * Case (i)/(ii.a): m = k₀; prefix [0, k₀) is all unfair (by
+      --     `hno_fair_before`), so the disjunction comes from
+      --     `rank_non_increasing` on each step.
+      --   * Case (ii.b.X): m = k₀ + i_j (the LEAST bad index); prefix
+      --     [0, k₀+i_j) mixes unfair steps (rank_non_increasing) with
+      --     fair-non-empty-AllFair steps (rank_non_increasing_on_fair_
+      --     progress) — both yield the disjunction.
+      have bridge_from_hrank_at :
+          ∀ m,
+            (∀ i, i < m → e₁.states (i + 1) = e₁.states i ∨
+                  wd.rank (e₁.states (i + 1)) (e₁.states i)) →
+            wd.rank (e₁.states (m + 1)) (e₁.states m) →
+              FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂ := by
+        intro m h_prefix_disj hrank
+        by_cases hQ : ∃ j, j < m ∧ wd.rank (e₁.states (j + 1)) (e₁.states j)
         · let j₀ : Nat := Nat.find hQ
-          have hj₀_lt : j₀ < k₀ := (Nat.find_spec hQ).1
+          have hj₀_lt : j₀ < m := (Nat.find_spec hQ).1
           have hj₀_rank : wd.rank (e₁.states (j₀ + 1)) (e₁.states j₀) :=
             (Nat.find_spec hQ).2
           have hj₀_min : ∀ i, i < j₀ →
-              ¬ (i < k₀ ∧ wd.rank (e₁.states (i + 1)) (e₁.states i)) :=
+              ¬ (i < m ∧ wd.rank (e₁.states (i + 1)) (e₁.states i)) :=
             fun i hi => Nat.find_min hQ hi
           have h_prefix_eq : ∀ i, i < j₀ → e₁.states (i + 1) = e₁.states i := by
             intro i hi
-            have hi_lt_k₀ : i < k₀ := lt_trans hi hj₀_lt
-            have hunfair := hno_fair_before i hi_lt_k₀
-            rcases wd.rank_non_increasing (e₁.states i) (e₁.labels i)
-                    (e₁.states (i + 1)) (hstep_int i).1 (hstep_int i).2 hunfair
-              with heq | hr
+            have hi_lt_m : i < m := lt_trans hi hj₀_lt
+            rcases h_prefix_disj i hi_lt_m with heq | hr
             · exact heq
-            · exact absurd ⟨hi_lt_k₀, hr⟩ (hj₀_min i hi)
+            · exact absurd ⟨hi_lt_m, hr⟩ (hj₀_min i hi)
           have hj₀_eq_s₁ : e₁.states j₀ = s₁ := by
             have huniv : ∀ i, i ≤ j₀ → e₁.states i = e₁.states 0 := by
               intro i
@@ -1671,27 +1678,36 @@ theorem preserves_fair_weak_divergence
           have hrec : wd.rank (e₁.states (j₀ + 1)) s₁ := hj₀_eq_s₁ ▸ hj₀_rank
           exact transfer_at_pivot (j₀ + 1) (Nat.succ_pos _) hrec
         · push Not at hQ
-          have h_prefix_eq : ∀ i, i < k₀ → e₁.states (i + 1) = e₁.states i := by
+          have h_prefix_eq : ∀ i, i < m → e₁.states (i + 1) = e₁.states i := by
             intro i hi
-            have hunfair := hno_fair_before i hi
-            rcases wd.rank_non_increasing (e₁.states i) (e₁.labels i)
-                    (e₁.states (i + 1)) (hstep_int i).1 (hstep_int i).2 hunfair
-              with heq | hr
+            rcases h_prefix_disj i hi with heq | hr
             · exact heq
             · exact absurd hr (hQ i hi)
-          have hek0_eq_s₁ : e₁.states k₀ = s₁ := by
-            have huniv : ∀ i, i ≤ k₀ → e₁.states i = e₁.states 0 := by
+          have hm_eq_s₁ : e₁.states m = s₁ := by
+            have huniv : ∀ i, i ≤ m → e₁.states i = e₁.states 0 := by
               intro i
               induction i with
               | zero => intro _; rfl
               | succ i ih =>
                 intro hi
-                have hi_lt : i < k₀ := by omega
-                have hi_le : i ≤ k₀ := Nat.le_of_lt hi_lt
+                have hi_lt : i < m := by omega
+                have hi_le : i ≤ m := Nat.le_of_lt hi_lt
                 rw [h_prefix_eq i hi_lt, ih hi_le]
-            rw [huniv k₀ (Nat.le_refl _), he₁0]
-          have hrec : wd.rank (e₁.states (k₀ + 1)) s₁ := hek0_eq_s₁ ▸ hrank
-          exact transfer_at_pivot (k₀ + 1) (Nat.succ_pos _) hrec
+            rw [huniv m (Nat.le_refl _), he₁0]
+          have hrec : wd.rank (e₁.states (m + 1)) s₁ := hm_eq_s₁ ▸ hrank
+          exact transfer_at_pivot (m + 1) (Nat.succ_pos _) hrec
+      -- Pre-derived prefix-disjunction for [0, k₀): all unfair → use
+      -- `rank_non_increasing` at each step.  Used by Case (i) and (ii.a)
+      -- (which pivot at `k₀`).  Case (ii.b.X) uses a longer prefix
+      -- predicate that also covers fair-non-empty-AllFair steps via the
+      -- 5th witness clause.
+      have h_prefix_disj_k0 :
+          ∀ i, i < k₀ → e₁.states (i + 1) = e₁.states i ∨
+                wd.rank (e₁.states (i + 1)) (e₁.states i) := by
+        intro i hi
+        have hunfair := hno_fair_before i hi
+        exact wd.rank_non_increasing (e₁.states i) (e₁.labels i)
+                (e₁.states (i + 1)) (hstep_int i).1 (hstep_int i).2 hunfair
       -- Classical case-split on whether the abstract step at k₀ is empty.
       by_cases h_empty : mid.2.1.IsEmpty
       · -- Case (i): elided.  `rank_decreases_on_fair_elision` gives the
@@ -1700,7 +1716,7 @@ theorem preserves_fair_weak_divergence
           wd.rank_decreases_on_fair_elision (e₁.states k₀) (e₁.labels k₀)
             (e₁.states (k₀ + 1)) walk.1 hreach_k₀ walk.2.2 hint_k₀
             hfair_k₀ hstep_k₀ h_empty
-        exact bridge_from_hrank_k0 hrank
+        exact bridge_from_hrank_at k₀ h_prefix_disj_k0 hrank
       · -- Case (ii): non-empty abstract step. Sub-split on whether the
         -- abstract InternalStar is AllFair.
         by_cases h_allFair : mid.2.1.AllFair fair_labels₂
@@ -1927,7 +1943,7 @@ theorem preserves_fair_weak_divergence
             wd.rank_decreases_on_unfair_abstract (e₁.states k₀)
               (e₁.labels k₀) (e₁.states (k₀ + 1)) walk.1 hreach_k₀ walk.2.2
               hint_k₀ hfair_k₀ hstep_k₀ h_empty h_allFair
-          exact bridge_from_hrank_k0 hrank
+          exact bridge_from_hrank_at k₀ h_prefix_disj_k0 hrank
   · -- Deadlock case: walk the τ-path through the simulation, then apply
     -- the witness's `fair_deadlock_diverges`, then lift back.
     let walk := sim.walk_internal_star hreach hR hpath
