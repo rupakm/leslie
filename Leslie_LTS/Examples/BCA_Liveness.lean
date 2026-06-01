@@ -145,7 +145,15 @@ noncomputable def bca_weak_div_witness (hn : n > 3 * f) :
 /-! ## Liveness statements
 
     The ideal-level decision liveness, plus the concrete-level decision
-    obtained by transferring it through `bca_weak_div_witness`. -/
+    obtained by transferring it through `bca_weak_div_witness`.
+
+    Status: BCA full closure is out of scope for
+    plans/close-framework-gaps-and-brb.md (BRB is the prioritised
+    end-to-end target).  The statements below remain `sorry`'d.  When
+    `transfers_satisfaction` is used here, `ideal_bca_decision` may need
+    to be expressed as `IdealBCA.ideal_bca.satisfies_stutter
+    (IdealBCA.ideal_labelling T n) (...)` to match the relaxed `h_abs`
+    signature — see the analogous note in BRB_Liveness.lean. -/
 
 /-- Decision property on the IDEAL: under fair scheduling, every correct
     process eventually decides. -/

@@ -139,8 +139,25 @@ noncomputable def brb_weak_div_witness (hn : n > 3 * f) :
 /-! ## Liveness statements
 
     The ideal-level liveness, plus the concrete-level liveness obtained by
-    transferring it through `brb_weak_div_witness`. Both sorried in Phase 1;
-    proofs in Phase 3.6 and 3.7. -/
+    transferring it through `brb_weak_div_witness`.
+
+    Status (per plans/close-framework-gaps-and-brb.md):
+    * `ideal_brb_totality`: pure LTL leads-to chaining on the ideal
+      (commit eventually fires → output enabled → output fires →
+      every correct proc has `returned`).  Phase D.5.
+    * `brb_totality`: lift of `ideal_brb_totality` via
+      `transfers_satisfaction` (signature relaxed and skeleton in
+      place in Phase B.2; two inner sorries remain — boundary R
+      witness and the fair-WF antecedent lift).  Phase D.6.
+
+    Note: when transfers_satisfaction is consumed here, `ideal_brb_
+    totality` may need to be expressed as
+    `IdealBRB.ideal_brb.satisfies_stutter (IdealBRB.ideal_labelling
+    n Value) (...)` to match the relaxed `h_abs` signature.  For
+    state-based `eventually` properties (which both totality goals
+    are), `satisfies → satisfies_stutter` is straightforward (τ-
+    stutters preserve state, so the eventually fires at the same
+    real-step position). -/
 
 /-- Totality / delivery property on the IDEAL: under fair scheduling, every
     correct process eventually has `returned` populated. -/
