@@ -816,6 +816,101 @@ private noncomputable def flattenLPaths {S : Type u} {L : Type v}
     show ea_labels t = stutter_label
     exact ea_labels_stutter t ht
 
+/-- Length of the `LPath` obtained from `InternalStar.toInternalLPath` equals
+    the original `InternalStar.length`. -/
+private theorem InternalStar.toInternalLPath_length
+    {S : Type u} {L : Type v} [Inhabited L]
+    {sys : System S L} {lab : Labelling L}
+    {a b : S} (h : InternalStar sys lab a b) :
+    (h.toInternalLPath).val.length = h.length := by
+  induction h with
+  | refl => rfl
+  | step _ _ rest ih =>
+    show (LPath.cons _ _ (rest.toInternalLPath).val).length =
+      1 + rest.length
+    simp [LPath.length, ih]; omega
+
+/-- Flatten an infinite sequence of `InternalStar` segments into a single
+    `Execution`, where every emitted label is internal.
+
+    This is a refinement of `flattenLPaths` specialised to `InternalStar`
+    segments: each segment is converted to an `LPath` with internal labels
+    via `InternalStar.toInternalLPath`, then `flattenLPaths` produces the
+    execution. The additional property — that EVERY position's label is
+    internal — follows because segment labels are internal (by the
+    `toInternalLPath` invariant) and stutter labels are `lab.tau` (internal
+    by `Labelling.tau_internal`). -/
+private noncomputable def flattenInternalStars
+    {S : Type u} {L : Type v} [Inhabited L]
+    {sys : System S L} {lab : Labelling L}
+    (states : Nat → S)
+    (paths : (k : Nat) → InternalStar sys lab (states k) (states (k + 1))) :
+    { e : Execution S L //
+        -- Boundary equalities at segment ends
+        (∀ k, e.states (loffset (fun k => (paths k).length) k) = states k) ∧
+        -- Every position is a step or a tau-stutter
+        (∀ t, sys.step (e.states t) (e.labels t) (e.states (t + 1)) ∨
+              (e.states t = e.states (t + 1) ∧ e.labels t = lab.tau)) ∧
+        -- Each emitted label is INTERNAL
+        (∀ t, lab.is_internal (e.labels t) = true) } := by
+  -- Convert each InternalStar to an LPath with internal-label invariant
+  let lpaths_pkg : (k : Nat) → { p : LPath sys.step (states k) (states (k + 1)) //
+      ∀ i, i < p.length → lab.is_internal (p.get_label i) = true } :=
+    fun k => (paths k).toInternalLPath
+  let lpaths : (k : Nat) → LPath sys.step (states k) (states (k + 1)) :=
+    fun k => (lpaths_pkg k).val
+  -- Each LPath has internal labels
+  have hpath_internal : ∀ k i, i < (lpaths k).length →
+      lab.is_internal ((lpaths k).get_label i) = true :=
+    fun k => (lpaths_pkg k).property
+  -- Length equality between InternalStar and converted LPath
+  have hlen_eq : ∀ k, (lpaths k).length = (paths k).length :=
+    fun k => InternalStar.toInternalLPath_length (paths k)
+  -- Flatten LPaths using the existing helper
+  obtain ⟨e, hboundary, hsos, hlabels_seg, hlabels_stutter⟩ :=
+    flattenLPaths lab.tau states lpaths
+  -- Rewrite loffset over LPath lengths to loffset over InternalStar lengths
+  have hoff_eq : (fun k => (lpaths k).length) = (fun k => (paths k).length) := by
+    funext k; exact hlen_eq k
+  refine ⟨e, ?bdry, ?sos, ?internal⟩
+  case bdry =>
+    intro k; rw [← hoff_eq]; exact hboundary k
+  case sos =>
+    exact hsos
+  case internal =>
+    intro t
+    by_cases hrange : ∃ k, t + 1 ≤ loffset (fun k => (lpaths k).length) (k + 1)
+    · -- t is inside some segment: label comes from an LPath, which has internal labels
+      -- Find the smallest segment m with t+1 ≤ loffset (m+1)
+      obtain ⟨m, hm_le, hm_lt⟩ : ∃ m,
+          loffset (fun k => (lpaths k).length) m ≤ t ∧
+          t < loffset (fun k => (lpaths k).length) (m + 1) := by
+        let s := lfindSmallest (fun k => t + 1 ≤ loffset (fun k => (lpaths k).length) (k + 1))
+          hrange.choose hrange.choose_spec
+        refine ⟨s.val, ?_, by have := s.property.1; omega⟩
+        by_cases hs0 : s.val = 0
+        · simp [hs0, show loffset (fun k => (lpaths k).length) 0 = 0 from rfl]
+        · by_cases hle : loffset (fun k => (lpaths k).length) s.val ≤ t
+          · exact hle
+          · exfalso
+            have h_pred : ¬(t + 1 ≤ loffset (fun k => (lpaths k).length) ((s.val - 1) + 1)) :=
+              s.property.2 (s.val - 1) (by omega)
+            rw [show (s.val - 1) + 1 = s.val from by omega] at h_pred
+            omega
+      have hoff_succ : loffset (fun k => (lpaths k).length) (m + 1) =
+          loffset (fun k => (lpaths k).length) m + (lpaths m).length := rfl
+      have hi_lt : t - loffset (fun k => (lpaths k).length) m < (lpaths m).length := by omega
+      have hlbl : e.labels t = (lpaths m).get_label
+          (t - loffset (fun k => (lpaths k).length) m) := by
+        have := hlabels_seg m (t - loffset (fun k => (lpaths k).length) m) hi_lt
+        rwa [show loffset (fun k => (lpaths k).length) m +
+              (t - loffset (fun k => (lpaths k).length) m) = t from by omega] at this
+      rw [hlbl]
+      exact hpath_internal m (t - loffset (fun k => (lpaths k).length) m) hi_lt
+    · -- t is beyond all segments: label = lab.tau (internal by tau_internal)
+      rw [hlabels_stutter t hrange]
+      exact lab.tau_internal
+
 /-- For a `ForwardSim`, every valid concrete execution has a corresponding
     valid abstract execution whose external label subsequence matches
     (via `label_map`) the concrete external label subsequence.
