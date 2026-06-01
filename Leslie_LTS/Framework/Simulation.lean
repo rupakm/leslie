@@ -1,6 +1,7 @@
 import Leslie_LTS.Framework.Rules
 import Leslie_LTS.Framework.Divergence
 import Leslie_LTS.Framework.Liveness
+import Mathlib.Data.Nat.Find
 
 /-! # Simulation Relations for LTS
 
@@ -1351,9 +1352,16 @@ theorem preserves_fair_weak_divergence
     | _ s₁ ih_rank =>
       intro s₂ hR hfair_div
       obtain ⟨e₁, he₁0, hstep_int, hcofair⟩ := hfair_div
-      -- Pick the first fair index `k₀ ≥ 0` in e₁ (cofinality at N=0).
-      obtain ⟨k₀, _hk₀_ge, hfair_k₀⟩ := hcofair 0
-      clear _hk₀_ge
+      -- Pick the LEAST fair index `k₀ ≥ 0` in e₁ via `Nat.find`. Minimality
+      -- (`hno_fair_before`) is what lets `rank_non_increasing` bridge the
+      -- unfair prefix in the k₀ > 0 sub-case below.
+      have h_ex_fair : ∃ k, fair_labels₁ (e₁.states k) (e₁.labels k) := by
+        obtain ⟨k, _, hk⟩ := hcofair 0; exact ⟨k, hk⟩
+      obtain ⟨k₀, hfair_k₀, hno_fair_before⟩ :
+          ∃ k₀, fair_labels₁ (e₁.states k₀) (e₁.labels k₀)
+              ∧ ∀ i, i < k₀ → ¬ fair_labels₁ (e₁.states i) (e₁.labels i) :=
+        ⟨Nat.find h_ex_fair, Nat.find_spec h_ex_fair,
+         fun _ hi => Nat.find_min h_ex_fair hi⟩
       -- Walk e₁ from index 0 to index k₀ through `sim.step_internal`.
       -- Build the InternalStar of concrete internal steps from s₁ to e₁.states k₀.
       have hpath_to_k₀ : InternalStar concrete lab₁ s₁ (e₁.states k₀) := by
@@ -1416,21 +1424,118 @@ theorem preserves_fair_weak_divergence
           wd.rank_decreases_on_fair_elision (e₁.states k₀) (e₁.labels k₀)
             (e₁.states (k₀ + 1)) walk.1 hreach_k₀ walk.2.2 hint_k₀
             hfair_k₀ hstep_k₀ h_empty
-        -- The general k₀ > 0 case requires `rank_non_increasing` chained
-        -- through the unfair prefix, plus rank transitivity. See sorry.
-        by_cases hk0 : k₀ = 0
-        · -- k₀ = 0: rank decrease is from s₁ directly.
-          subst hk0
-          have hreq : wd.rank (e₁.states (0 + 1)) s₁ := by
-            have : e₁.states 0 = s₁ := he₁0
-            rw [← this]; exact hrank
-          have habs_at_mid : FairlyWeaklyDiverges abstract lab₂ fair_labels₂ mid.1 :=
-            ih_rank (e₁.states (0 + 1)) hreq hreach_k₀_succ mid.1 mid.2.2 htail_div
-          have habs_at_walk : FairlyWeaklyDiverges abstract lab₂ fair_labels₂ walk.1 :=
-            FairlyWeaklyDiverges.lift mid.2.1 habs_at_mid
-          exact FairlyWeaklyDiverges.lift walk.2.1 habs_at_walk
-        · -- k₀ > 0: needs rank transitivity / strengthened IH; see comment.
-          exact (sorry : FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂)
+        -- Unified Case-(i) handler covering both `k₀ = 0` and `k₀ > 0`.
+        --
+        -- Helper `transfer_at_pivot m _ hrec`: given an index `m ≥ 1` along
+        -- the concrete fair-divergence with `wd.rank (e₁.states m) s₁`,
+        -- lift fair divergence at `e₁.states m` to abstract divergence at
+        -- `s₂` via the WF IH `ih_rank` (walking the `m`-prefix through the
+        -- simulation as an `InternalStar`, then lifting back).
+        have transfer_at_pivot :
+            ∀ m, 0 < m → wd.rank (e₁.states m) s₁ →
+              FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂ := by
+          intro m _ hrec
+          have hpath_m : InternalStar concrete lab₁ s₁ (e₁.states m) := by
+            have base : ∀ k, InternalStar concrete lab₁ (e₁.states 0) (e₁.states k) := by
+              intro k
+              induction k with
+              | zero => exact .refl
+              | succ k ih =>
+                exact ih.trans (.single (hstep_int k).2 (hstep_int k).1)
+            have := base m
+            rw [he₁0] at this; exact this
+          let walk_m := sim.walk_internal_star hreach hR hpath_m
+          have hreach_m : Reachable concrete (e₁.states m) :=
+            hpath_m.toStar.reachable hreach
+          have htail_div_m : FairDiverges concrete lab₁ fair_labels₁
+              (e₁.states m) := by
+            refine ⟨e₁.drop m, ?_, ?_, ?_⟩
+            · show e₁.states (0 + m) = e₁.states m
+              congr 1; omega
+            · intro k
+              have hk := hstep_int (k + m)
+              have heq1 : (Execution.drop m e₁).states k = e₁.states (k + m) := rfl
+              have heq2 : (Execution.drop m e₁).labels k = e₁.labels (k + m) := rfl
+              have heq3 : (Execution.drop m e₁).states (k + 1)
+                           = e₁.states (k + m + 1) := by
+                show e₁.states (k + 1 + m) = e₁.states (k + m + 1)
+                congr 1; omega
+              rw [heq1, heq2, heq3]; exact hk
+            · intro N
+              obtain ⟨k, hkN, hfair_k⟩ := hcofair (N + m)
+              refine ⟨k - m, by omega, ?_⟩
+              have heqs : (Execution.drop m e₁).states (k - m) = e₁.states k := by
+                show e₁.states ((k - m) + m) = e₁.states k
+                congr 1; omega
+              have heql : (Execution.drop m e₁).labels (k - m) = e₁.labels k := by
+                show e₁.labels ((k - m) + m) = e₁.labels k
+                congr 1; omega
+              rw [heqs, heql]; exact hfair_k
+          have habs_at_walk_m : FairlyWeaklyDiverges abstract lab₂ fair_labels₂
+              walk_m.1 :=
+            ih_rank (e₁.states m) hrec hreach_m walk_m.1 walk_m.2.2 htail_div_m
+          exact FairlyWeaklyDiverges.lift walk_m.2.1 habs_at_walk_m
+        -- Case-split on whether any unfair prefix step strictly decreases rank.
+        -- If so, take the LEAST such index `j₀`; by minimality + the
+        -- equality clause of `rank_non_increasing`, every prior step is an
+        -- equality, so `e₁.states j₀ = s₁` and `rank (e₁.states (j₀+1)) s₁`.
+        -- Otherwise every prefix step is an equality (vacuous when `k₀ = 0`),
+        -- so `e₁.states k₀ = s₁`, and the elision rank from `hrank` gives
+        -- `rank (e₁.states (k₀+1)) s₁`.
+        by_cases hQ : ∃ j, j < k₀ ∧ wd.rank (e₁.states (j + 1)) (e₁.states j)
+        · -- Strict-rank step somewhere in the prefix.  Pivot at `j₀ + 1`.
+          let j₀ : Nat := Nat.find hQ
+          have hj₀_lt : j₀ < k₀ := (Nat.find_spec hQ).1
+          have hj₀_rank : wd.rank (e₁.states (j₀ + 1)) (e₁.states j₀) :=
+            (Nat.find_spec hQ).2
+          have hj₀_min : ∀ i, i < j₀ →
+              ¬ (i < k₀ ∧ wd.rank (e₁.states (i + 1)) (e₁.states i)) :=
+            fun i hi => Nat.find_min hQ hi
+          have h_prefix_eq : ∀ i, i < j₀ → e₁.states (i + 1) = e₁.states i := by
+            intro i hi
+            have hi_lt_k₀ : i < k₀ := lt_trans hi hj₀_lt
+            have hunfair := hno_fair_before i hi_lt_k₀
+            rcases wd.rank_non_increasing (e₁.states i) (e₁.labels i)
+                    (e₁.states (i + 1)) (hstep_int i).1 (hstep_int i).2 hunfair
+              with heq | hr
+            · exact heq
+            · exact absurd ⟨hi_lt_k₀, hr⟩ (hj₀_min i hi)
+          have hj₀_eq_s₁ : e₁.states j₀ = s₁ := by
+            have huniv : ∀ i, i ≤ j₀ → e₁.states i = e₁.states 0 := by
+              intro i
+              induction i with
+              | zero => intro _; rfl
+              | succ i ih =>
+                intro hi
+                have hi_lt : i < j₀ := by omega
+                have hi_le : i ≤ j₀ := Nat.le_of_lt hi_lt
+                rw [h_prefix_eq i hi_lt, ih hi_le]
+            rw [huniv j₀ (Nat.le_refl _), he₁0]
+          have hrec : wd.rank (e₁.states (j₀ + 1)) s₁ := hj₀_eq_s₁ ▸ hj₀_rank
+          exact transfer_at_pivot (j₀ + 1) (Nat.succ_pos _) hrec
+        · -- All unfair prefix steps are equalities (vacuous if `k₀ = 0`).
+          push_neg at hQ
+          have h_prefix_eq : ∀ i, i < k₀ → e₁.states (i + 1) = e₁.states i := by
+            intro i hi
+            have hunfair := hno_fair_before i hi
+            rcases wd.rank_non_increasing (e₁.states i) (e₁.labels i)
+                    (e₁.states (i + 1)) (hstep_int i).1 (hstep_int i).2 hunfair
+              with heq | hr
+            · exact heq
+            · exact absurd hr (hQ i hi)
+          have hek0_eq_s₁ : e₁.states k₀ = s₁ := by
+            have huniv : ∀ i, i ≤ k₀ → e₁.states i = e₁.states 0 := by
+              intro i
+              induction i with
+              | zero => intro _; rfl
+              | succ i ih =>
+                intro hi
+                have hi_lt : i < k₀ := by omega
+                have hi_le : i ≤ k₀ := Nat.le_of_lt hi_lt
+                rw [h_prefix_eq i hi_lt, ih hi_le]
+            rw [huniv k₀ (Nat.le_refl _), he₁0]
+          have hrec : wd.rank (e₁.states (k₀ + 1)) s₁ := hek0_eq_s₁ ▸ hrank
+          exact transfer_at_pivot (k₀ + 1) (Nat.succ_pos _) hrec
       · -- Case (ii): non-empty abstract step.  By `h_abs_fair`, mid.2.1 is
         -- AllFair on the abstract side and has length ≥ 1.  Iterating this
         -- argument cofinally many times produces a fair abstract divergence.
