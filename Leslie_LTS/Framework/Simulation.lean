@@ -1643,32 +1643,117 @@ theorem preserves_fair_weak_divergence
       · -- Case (ii): non-empty abstract step. Sub-split on whether the
         -- abstract InternalStar is AllFair.
         by_cases h_allFair : mid.2.1.AllFair fair_labels₂
-        · -- Case (ii.b): non-empty AND AllFair.  The HARD case — iterate
-          -- across cofinitely many fair concrete indices to build an
-          -- infinite fair abstract execution.
+        · -- Case (ii.b): non-empty AND AllFair at k₀.
           --
-          -- Detailed construction sketch (still sorried):
-          --   * Define `s₂_seq : ℕ → S₂` and
-          --     `path_seq : ℕ → InternalStar abstract …` by recursion using
-          --     `walk_internal_star` between consecutive fair concrete
-          --     indices (k₀ < k₁ < k₂ < ...).
-          --   * At each fair index k_i, apply `sim.step_internal` to get
-          --     an abstract `InternalStar`; sub-case on AllFair (recurse
-          --     in this proof) vs not (reduce to Case (ii.a) via
-          --     `rank_decreases_on_unfair_abstract`) vs empty (reduce to
-          --     Case (i) via `rank_decreases_on_fair_elision`).
-          --   * Concatenate all AllFair non-empty abstract InternalStars
-          --     into one infinite execution. Fairness follows because each
-          --     AllFair non-empty contribution gives ≥ 1 fair abstract
-          --     label, infinitely often.
-          --   * The resulting witness is `FairDiverges abstract lab₂
-          --     fair_labels₂ walk.1` lifted back to `s₂` via
-          --     `FairlyWeaklyDiverges.lift walk.2.1`.
+          -- Structural sub-split (classical) on whether the AllFair-non-empty
+          -- behaviour persists at every later fair concrete index, OR breaks
+          -- at some later fair index.
           --
-          -- Mechanically intricate (~200 LOC) and uses Classical.choice +
-          -- Execution-from-InternalStar-sequence machinery that does not
-          -- currently exist as a helper.  Deferred.
-          sorry
+          -- The split is over the *concrete* fair indices > k₀, and asks
+          -- whether at any such index the simulation's response would land
+          -- in Case (i) (empty) or Case (ii.a) (non-empty, non-AllFair).
+          -- Because step_internal's value depends on additional reachability
+          -- and `sim.R` witnesses computed by walking the prefix to that
+          -- index, the bad-index existence is stated as a *propositional*
+          -- (not Σ') existence and resolved classically.
+          --
+          -- The crisp witness-level reformulation: "exists `k > k₀` fair such
+          -- that, *for any* abstract response valid at that point, the
+          -- response is empty or non-AllFair." We use the equivalent and
+          -- simpler form below.
+          classical
+          by_cases h_break : ∃ k_j, k_j > k₀ ∧
+              fair_labels₁ (e₁.states k_j) (e₁.labels k_j) ∧
+              ∀ (s₂_j : S₂)
+                (hreach_j : Reachable concrete (e₁.states k_j))
+                (hR_j : sim.R (e₁.states k_j) s₂_j),
+                let mid_j := sim.step_internal (e₁.states k_j)
+                              (e₁.labels k_j) (e₁.states (k_j + 1))
+                              s₂_j hreach_j hR_j
+                              (hstep_int k_j).2 (hstep_int k_j).1
+                mid_j.2.1.IsEmpty ∨
+                  ¬ mid_j.2.1.AllFair fair_labels₂
+          · -- Case (ii.b.X): some later fair index k_j breaks the
+            -- AllFair-non-empty pattern.
+            --
+            -- At k_j, depending on which disjunct holds:
+            --   * empty → `rank_decreases_on_fair_elision` gives a rank
+            --     decrease `wd.rank (e₁.states (k_j+1)) (e₁.states k_j)`.
+            --   * non-empty non-AllFair → `rank_decreases_on_unfair_abstract`
+            --     gives the same rank decrease.
+            --
+            -- OBSTRUCTION in the current witness API.  Applying `ih_rank`
+            -- requires `wd.rank (e₁.states (k_j+1)) s₁`, i.e. a rank chain
+            -- from `e₁.states k_j` back to `s₁`.  Chaining through
+            -- `[0, k_j)`:
+            --   * `[0, k₀)`: unfair steps, `rank_non_increasing` gives
+            --     equality OR rank decrease.  Fine.
+            --   * `{k₀}`: Case (ii.b) gives NO rank info — the witness
+            --     API has no clause for "fair, non-empty, AllFair" abstract
+            --     responses.  Rank could increase here for all we know.
+            --   * `(k₀, k_j)`: a mix of fair indices (all in Case (ii.b)
+            --     by minimality of k_j w.r.t. the predicate) and unfair
+            --     indices.  Same issue at each Case-(ii.b) fair index.
+            --
+            -- Closing this requires either (a) adding a 5th witness field
+            -- forcing rank non-increase at fair non-empty AllFair steps,
+            -- (b) reformulating the WF induction over a stronger order
+            -- (e.g. lex of rank with a "max abstract progress" counter),
+            -- or (c) the direct construction of Case (ii.b.Y) without
+            -- splitting (sketch: under WF rank, the (ii.b.X) sub-case is
+            -- impossible past finitely many recursions; one can argue
+            -- the recursion always reaches (ii.b.Y) eventually).
+            --
+            -- All three are design changes / heavy refactors.  Deferred.
+            sorry
+          · -- Case (ii.b.Y): every fair concrete index k > k₀ gives a
+            -- non-empty AllFair abstract response.
+            --
+            -- Construct the infinite fair abstract execution using
+            -- `flattenInternalStars`:
+            --
+            --   (1) Recursively define `acc : ℕ → Σ' s₂', InternalStar
+            --       abstract lab₂ walk.1 s₂' ×' sim.R (e₁.states (k₀ + i)) s₂'`
+            --       — the chain of step_internal walks from concrete index
+            --       k₀ onwards.  `acc 0 = ⟨walk.1, .refl, walk.2.2⟩`;
+            --       `acc (i+1)` extends by applying `sim.step_internal` at
+            --       concrete index `k₀ + i` (NB: this might be the i = 0
+            --       step which is the fair k₀ step we already pre-computed
+            --       as `mid`, OR an unfair internal step in between fair
+            --       indices, OR a later fair index protected by (ii.b.Y)).
+            --
+            --   (2) Define `states_seq : ℕ → S₂` and `paths_seq : ∀ i,
+            --       InternalStar abstract lab₂ (states_seq i)
+            --       (states_seq (i+1))` as the targets/segments of `acc`.
+            --
+            --   (3) Apply `flattenInternalStars states_seq paths_seq` to
+            --       obtain an `Execution` whose every label is internal.
+            --
+            --   (4) Argue cofinality of fair labels in the resulting
+            --       execution: at each concrete fair index k > k₀, by
+            --       (ii.b.Y), the contribution is non-empty AllFair; this
+            --       contributes ≥ 1 fair abstract label within the
+            --       Execution; cofinality of concrete fair indices then
+            --       yields cofinality of fair abstract labels.
+            --
+            --   (5) Rule out stutter in the resulting Execution: the
+            --       step-or-stutter clause of `flattenInternalStars` may
+            --       degenerate at empty segments.  Two paths:
+            --         (a) Pre-filter to only non-empty segments — uses
+            --             Classical.choice to enumerate the non-empty
+            --             contributions, preserving the AllFair chain.
+            --         (b) Strengthen the post-condition of
+            --             `flattenInternalStars` to "if all segments are
+            --             non-empty, no stutter" and discharge here.
+            --
+            --   (6) Conclude `FairDiverges abstract lab₂ fair_labels₂
+            --       walk.1`, then lift via `FairlyWeaklyDiverges.lift
+            --       walk.2.1` to obtain the goal at `s₂`.
+            --
+            -- The new `flattenInternalStars` helper handles step (3) and the
+            -- internal-labels invariant.  Steps (1)–(2) require Classical
+            -- recursion machinery; step (5) is the trickiest.  Deferred.
+            sorry
         · -- Case (ii.a): non-empty but NOT AllFair.  Then
           -- `rank_decreases_on_unfair_abstract` gives the rank drop, and
           -- the shared bridge handles the prefix exactly as in Case (i).
