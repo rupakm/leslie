@@ -210,26 +210,47 @@ noncomputable def brb_weak_div_witness (hn : n > 3 * f) :
     stutters preserve state, so the eventually fires at the same
     real-step position). -/
 
-/-- Totality / delivery property on the IDEAL: under fair scheduling, every
-    correct process eventually has `returned` populated. -/
+/-- Totality / delivery property on the IDEAL: under fair scheduling,
+    once the sender has broadcast (or has been corrupted), every correct
+    process eventually has `returned` populated.
+
+    **Statement guard:** the earlier version lacked a precondition
+    and was false when `input` never fires (since `input` is unfair,
+    fair scheduling doesn't force it; without broadcastVal, `commit`
+    never enables and no progress occurs).  The `leads_to` from
+    "broadcastVal set or sender corrupt" to "all correct returned"
+    is the honest conditional formulation, matching the TLA-side
+    `totality` from `ByzantineReliableBroadcast.lean`. -/
 theorem ideal_brb_totality :
     (IdealBRB.ideal_brb n f Value sender).satisfies
       (assumes_fair_wf
         (IdealBRB.ideal_brb n f Value sender)
         (ideal_brb_fair_labels n Value)
-        (eventually (state_prop (fun s : IdealBRB.State n Value =>
-          ∀ p, p ∉ s.corrupted → s.returned p ≠ none)))) := by
+        (leads_to
+          (state_prop (fun s : IdealBRB.State n Value =>
+            s.broadcastVal ≠ none ∨ ¬ IdealBRB.isCorrect n Value s sender))
+          (state_prop (fun s : IdealBRB.State n Value =>
+            ∀ p, p ∉ s.corrupted → s.returned p ≠ none)))) := by
   sorry
 
 /-- The concrete-side totality, lifted from `ideal_brb_totality` via the
-    transfer theorem applied to `brb_weak_div_witness`. -/
+    transfer theorem applied to `brb_weak_div_witness`.
+
+    **Statement guard** (matching `ideal_brb_totality`): the `leads_to`
+    precondition on the concrete side is "sender has broadcast or been
+    corrupted" — translated via `sim_rel` to the ideal's
+    `broadcastVal ≠ none ∨ ¬ isCorrect sender`. -/
 theorem brb_totality (hn : n > 3 * f) :
     (BRB_LTS.brb n f Value sender).satisfies
       (assumes_fair_wf
         (BRB_LTS.brb n f Value sender)
         (brb_fair_labels n Value)
-        (eventually (state_prop (fun s : BRB_LTS.State n Value =>
-          ∀ p, p ∉ s.corrupted → (s.local_ p).returned ≠ none)))) := by
+        (leads_to
+          (state_prop (fun s : BRB_LTS.State n Value =>
+            (s.local_ sender).broadcastVal ≠ none ∨
+            ¬ BRB_LTS.isCorrect n Value s sender))
+          (state_prop (fun s : BRB_LTS.State n Value =>
+            ∀ p, p ∉ s.corrupted → (s.local_ p).returned ≠ none)))) := by
   sorry
 
 end BRB_Liveness
