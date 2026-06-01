@@ -1514,7 +1514,7 @@ theorem preserves_fair_weak_divergence
             rw [huniv j₀ (Nat.le_refl _), he₁0]
           have hrec : wd.rank (e₁.states (j₀ + 1)) s₁ := hj₀_eq_s₁ ▸ hj₀_rank
           exact transfer_at_pivot (j₀ + 1) (Nat.succ_pos _) hrec
-        · push_neg at hQ
+        · push Not at hQ
           have h_prefix_eq : ∀ i, i < k₀ → e₁.states (i + 1) = e₁.states i := by
             intro i hi
             have hunfair := hno_fair_before i hi
