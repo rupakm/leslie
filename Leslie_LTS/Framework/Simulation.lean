@@ -1757,12 +1757,19 @@ theorem preserves_fair_weak_divergence
               · -- i ≥ 1: apply h_break.
                 have hi_pos : 1 ≤ i := Nat.one_le_iff_ne_zero.mpr hi0
                 exact h_break i hi_pos hfair_i
-            -- The remaining work — no-stutter argument, e₂.states 0 =
-            -- walk.1, fair cofinality, lift to s₂ — uses the
-            -- `h_paths_ge_k0` predicate plus `_hbdry`, `_hsos`,
-            -- `_hint_all` from `flattenInternalStars`, plus `hcofair`
-            -- for cofinality of concrete fair indices.  Each is
-            -- mechanically intricate but the inputs are all in scope.
+            -- (a) e₂.states 0 = walk.1 (from `_hbdry` at k = 0).
+            have he0 : e₂.states 0 = walk.1 := by
+              have h := _hbdry 0
+              -- `_hbdry 0 : e₂.states (loffset … 0) = states_seq 0`
+              -- `loffset … 0 = 0` by Nat.rec; `states_seq 0 = walk.1`
+              -- by `(abs_acc 0).1 = walk.1` definitionally.
+              -- Both reductions hold via Lean's definitional equality.
+              exact h
+            -- (b)–(d) — no-stutter, fair cofinality, FairDiverges +
+            -- lift — require strengthening `flattenInternalStars` to
+            -- expose segment label/state correspondence, then
+            -- discharging via `h_paths_ge_k0` + `hcofair`.  The
+            -- foundation `he0` is in hand; remainder deferred.
             exact (sorry : FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂)
         · -- Case (ii.a): non-empty but NOT AllFair.  Then
           -- `rank_decreases_on_unfair_abstract` gives the rank drop, and
