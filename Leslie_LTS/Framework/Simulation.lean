@@ -1776,18 +1776,46 @@ theorem preserves_fair_weak_divergence
             -- (a) e₂.states 0 = walk.1 (from `_hbdry` at k = 0).
             have he0 : e₂.states 0 = walk.1 := _hbdry 0
             -- ── Key tool: loffset is unbounded ──────────────────────
-            -- By `hcofair` + `h_paths_ge_k0`, infinitely many paths_seq
-            -- contribute ≥ 1 to loffset.  Hence for any N, ∃ k with
-            -- N ≤ loffset (paths_seq lengths) (k + 1).
-            --
-            -- Detailed proof: by induction on N, iteratively find fair
-            -- concrete indices ≥ k₀+1 via `hcofair`, each contributing
-            -- ≥ 1 to loffset.  The (N+1)-th fair index gives offset
-            -- ≥ N+1 > N.
-            -- Sorried — substantial but mechanical.
+            -- For any N, ∃ k, N ≤ loffset (paths_seq lengths) (k + 1).
+            -- Proof: induction on N, using `hcofair` to find a fair
+            -- concrete index past the current k', and `h_paths_ge_k0`
+            -- to ensure paths_seq at that index has length ≥ 1.
             have h_off_unbounded :
-                ∀ N, ∃ k, N ≤ loffset (fun k => (paths_seq k).length) (k + 1) :=
-              sorry
+                ∀ N, ∃ k, N ≤ loffset (fun k => (paths_seq k).length) (k + 1) := by
+              intro N
+              induction N with
+              | zero =>
+                exact ⟨0, Nat.zero_le _⟩
+              | succ N ih =>
+                obtain ⟨k', hk'⟩ := ih
+                -- Find a fair concrete index k_c ≥ k₀ + (k' + 1) + 1.
+                obtain ⟨k_c, hk_c_ge, hk_c_fair⟩ := hcofair (k₀ + k' + 2)
+                have hkc_ge : k_c ≥ k₀ + 1 := by omega
+                have hk_c_idx : k₀ + (k_c - k₀) = k_c := by omega
+                have hfair_at :
+                    fair_labels₁ (e₁.states (k₀ + (k_c - k₀)))
+                                 (e₁.labels (k₀ + (k_c - k₀))) := by
+                  rw [hk_c_idx]; exact hk_c_fair
+                have ⟨hpaths_nonempty, _⟩ := h_paths_ge_k0 (k_c - k₀) hfair_at
+                have hlen_pos : 0 < (paths_seq (k_c - k₀)).length := by
+                  rcases Nat.eq_zero_or_pos (paths_seq (k_c - k₀)).length
+                    with hz | hp
+                  · exfalso
+                    exact hpaths_nonempty
+                      ((InternalStar.length_eq_zero_iff_IsEmpty _).mp hz)
+                  · exact hp
+                -- loffset over paths_seq at k' + 1 ≤ loffset at k_c - k₀
+                -- (monotonicity), and at k_c - k₀ + 1 = at k_c - k₀ +
+                -- (paths_seq (k_c - k₀)).length ≥ at k_c - k₀ + 1.
+                have h_mono :
+                    loffset (fun k => (paths_seq k).length) (k' + 1) ≤
+                    loffset (fun k => (paths_seq k).length) (k_c - k₀) :=
+                  loffset_mono_le _ (by omega)
+                have h_succ :
+                    loffset (fun k => (paths_seq k).length) (k_c - k₀ + 1) =
+                    loffset (fun k => (paths_seq k).length) (k_c - k₀) +
+                    (paths_seq (k_c - k₀)).length := rfl
+                exact ⟨k_c - k₀, by omega⟩
             -- (b) Every position has a real step (no stutter).
             -- From _hsos: step OR (stutter with label = tau).  Stutter
             -- only happens when t+1 > all offsets.  By unboundedness,
