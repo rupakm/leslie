@@ -1709,51 +1709,48 @@ theorem preserves_fair_weak_divergence
           · -- Case (ii.b.Y): every fair concrete index k > k₀ gives a
             -- non-empty AllFair abstract response.
             --
-            -- Construct the infinite fair abstract execution using
-            -- `flattenInternalStars`:
+            -- Step (1): build the per-index reachability witness for
+            -- e₁.states (k₀ + i), by induction on i from `hreach_k₀`.
+            have reach_at : ∀ i, Reachable concrete (e₁.states (k₀ + i)) := by
+              intro i
+              induction i with
+              | zero => exact hreach_k₀
+              | succ i ih =>
+                have hstep : concrete.step (e₁.states (k₀ + i))
+                              (e₁.labels (k₀ + i))
+                              (e₁.states (k₀ + i + 1)) :=
+                  (hstep_int (k₀ + i)).1
+                exact .step ih hstep
+            -- Step (2): build the abstract walk accumulator.
+            -- `abs_acc i` packages the abstract state s₂_i reached after
+            -- walking concrete from k₀ for i steps, together with the
+            -- composed `InternalStar` from `walk.1` to s₂_i and the
+            -- `sim.R` witness at `e₁.states (k₀ + i)`.
+            let abs_acc : ∀ i, Σ' s₂' : S₂,
+                InternalStar abstract lab₂ walk.1 s₂' ×'
+                sim.R (e₁.states (k₀ + i)) s₂' := by
+              intro i
+              induction i with
+              | zero =>
+                exact ⟨walk.1, .refl, walk.2.2⟩
+              | succ i ih =>
+                let mid_i := sim.step_internal (e₁.states (k₀ + i))
+                              (e₁.labels (k₀ + i))
+                              (e₁.states (k₀ + i + 1))
+                              ih.1 (reach_at i) ih.2.2
+                              (hstep_int (k₀ + i)).2 (hstep_int (k₀ + i)).1
+                exact ⟨mid_i.1, ih.2.1.trans mid_i.2.1, mid_i.2.2⟩
+            -- Steps (3)–(6): assembling the abstract execution from
+            -- `abs_acc`, applying `flattenInternalStars`, ruling out
+            -- stutter, and discharging fair-cofinality.  Each step is
+            -- mechanically substantial; combined they require Classical-
+            -- recursion-aware handling of the per-segment InternalStars
+            -- and a no-stutter argument keyed on (Y).
             --
-            --   (1) Recursively define `acc : ℕ → Σ' s₂', InternalStar
-            --       abstract lab₂ walk.1 s₂' ×' sim.R (e₁.states (k₀ + i)) s₂'`
-            --       — the chain of step_internal walks from concrete index
-            --       k₀ onwards.  `acc 0 = ⟨walk.1, .refl, walk.2.2⟩`;
-            --       `acc (i+1)` extends by applying `sim.step_internal` at
-            --       concrete index `k₀ + i` (NB: this might be the i = 0
-            --       step which is the fair k₀ step we already pre-computed
-            --       as `mid`, OR an unfair internal step in between fair
-            --       indices, OR a later fair index protected by (ii.b.Y)).
-            --
-            --   (2) Define `states_seq : ℕ → S₂` and `paths_seq : ∀ i,
-            --       InternalStar abstract lab₂ (states_seq i)
-            --       (states_seq (i+1))` as the targets/segments of `acc`.
-            --
-            --   (3) Apply `flattenInternalStars states_seq paths_seq` to
-            --       obtain an `Execution` whose every label is internal.
-            --
-            --   (4) Argue cofinality of fair labels in the resulting
-            --       execution: at each concrete fair index k > k₀, by
-            --       (ii.b.Y), the contribution is non-empty AllFair; this
-            --       contributes ≥ 1 fair abstract label within the
-            --       Execution; cofinality of concrete fair indices then
-            --       yields cofinality of fair abstract labels.
-            --
-            --   (5) Rule out stutter in the resulting Execution: the
-            --       step-or-stutter clause of `flattenInternalStars` may
-            --       degenerate at empty segments.  Two paths:
-            --         (a) Pre-filter to only non-empty segments — uses
-            --             Classical.choice to enumerate the non-empty
-            --             contributions, preserving the AllFair chain.
-            --         (b) Strengthen the post-condition of
-            --             `flattenInternalStars` to "if all segments are
-            --             non-empty, no stutter" and discharge here.
-            --
-            --   (6) Conclude `FairDiverges abstract lab₂ fair_labels₂
-            --       walk.1`, then lift via `FairlyWeaklyDiverges.lift
-            --       walk.2.1` to obtain the goal at `s₂`.
-            --
-            -- The new `flattenInternalStars` helper handles step (3) and the
-            -- internal-labels invariant.  Steps (1)–(2) require Classical
-            -- recursion machinery; step (5) is the trickiest.  Deferred.
-            sorry
+            -- The `abs_acc` and `reach_at` helpers above are the
+            -- foundation for steps (3)–(6); the remaining construction
+            -- is deferred.
+            exact (sorry : FairlyWeaklyDiverges abstract lab₂ fair_labels₂ s₂)
         · -- Case (ii.a): non-empty but NOT AllFair.  Then
           -- `rank_decreases_on_unfair_abstract` gives the rank drop, and
           -- the shared bridge handles the prefix exactly as in Case (i).
