@@ -73,6 +73,29 @@ theorem brb_no_fair_deadlock_reachable (hn : n > 3 * f) :
         (brb_fair_labels n Value) s := by
   sorry
 
+/-! ## Structural fact: every IdealBRB internal label is fair
+
+    `ideal_labelling.is_internal = true` only for `.commit _`, which
+    `ideal_brb_fair_labels` always classifies as fair (`True`). Hence
+    every `InternalStar` on the ideal side is `AllFair` w.r.t.
+    `ideal_brb_fair_labels`. This is the lemma that discharges
+    `rank_decreases_on_unfair_abstract` by `exfalso` below. -/
+theorem ideal_brb_internal_label_fair (s : IdealBRB.State n Value)
+    (l : IdealBRB.Label n Value)
+    (hint : (IdealBRB.ideal_labelling n Value).is_internal l = true) :
+    ideal_brb_fair_labels n Value s l := by
+  cases l <;> simp_all [IdealBRB.ideal_labelling, ideal_brb_fair_labels]
+
+theorem ideal_brb_internalStar_allFair
+    {a b : IdealBRB.State n Value}
+    (star : InternalStar (IdealBRB.ideal_brb n f Value sender)
+                          (IdealBRB.ideal_labelling n Value) a b) :
+    star.AllFair (ideal_brb_fair_labels n Value) := by
+  induction star with
+  | refl => simp [InternalStar.AllFair]
+  | step hint _ _ ih =>
+    exact ⟨ideal_brb_internal_label_fair n Value _ _ hint, ih⟩
+
 /-! ## The headline witness -/
 
 /-- `brb_forward_sim` is weak-divergence-preserving under the fair-label
@@ -96,12 +119,13 @@ noncomputable def brb_weak_div_witness (hn : n > 3 * f) :
     -- the ideal abstracts away must record progress in the measure.
     sorry
   rank_decreases_on_unfair_abstract := by
-    -- For BRB: vacuously satisfied. IdealBRB's only internal label is
-    -- `commit`, which is always fair (ideal_brb_fair_labels: .commit _ =>
-    -- True). So the abstract InternalStar is always AllFair, hence the
-    -- hypothesis `¬ AllFair` cannot hold. The proof would `exfalso` on
-    -- the hypothesis. Sorried as part of the Phase-3 BRB scaffolding.
-    sorry
+    -- Vacuous: IdealBRB's only internal label is `.commit _`, which
+    -- `ideal_brb_fair_labels` always classifies as fair (`True`). Hence
+    -- every abstract `InternalStar` produced by `step_internal` is
+    -- `AllFair`, contradicting the `¬ AllFair` hypothesis. `exfalso`.
+    intro s₁ _l₁ _s₁' _s₂ _hreach _hR _hint _hfair _hstep _hne hnaf
+    exact absurd
+      (ideal_brb_internalStar_allFair n f Value sender _) hnaf
   fair_deadlock_diverges := by
     intro s₁ s₂ hreach _hR hfd
     exact absurd hfd
