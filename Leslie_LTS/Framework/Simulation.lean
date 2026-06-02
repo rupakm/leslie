@@ -2125,11 +2125,14 @@ theorem transfers_satisfaction
         idx 0 = 0 →
         (∀ k, sim.R (e₁.states k) (e₂.states (idx k))) →
         φ_abs e₂ 0 → φ_con e₁ 0)
-    -- `h_abs` re-typed as `satisfies_stutter` per Option A — abstract
-    -- side obligations naturally hold over τ-stutter executions.
+    -- `h_abs` re-typed as `satisfies_stutter` per Option A, with the
+    -- step-aware variant `assumes_fair_wf_step` — on stutter execs,
+    -- "fires" means both label match AND a real step (not just a
+    -- τ-stutter label). This resolves the fundamental issue where
+    -- τ-stutters would "fire" commit without changing state.
     (h_abs :
       abstract.satisfies_stutter lab₂
-        (assumes_fair_wf abstract fair_labels₂ φ_abs))
+        (assumes_fair_wf_step abstract fair_labels₂ φ_abs))
     -- Fair-WF antecedent transfer: concrete fairness assumptions lift
     -- to abstract fairness on the constructed abstract execution.  This
     -- is protocol-specific (depends on how enabled/fair labels relate
@@ -2149,7 +2152,8 @@ theorem transfers_satisfaction
           always (tp_implies
             (always (state_prop (fun s => abstract.enabled l₂ s ∧
               fair_labels₂ s l₂)))
-            (eventually (step_prop (fun _ l' _ => l₂ = l')))))) e₂ 0) :
+            (eventually (fun e k => l₂ = e.labels k ∧
+              abstract.step (e.states k) (e.labels k) (e.states (k + 1))))))) e₂ 0) :
     concrete.satisfies (assumes_fair_wf concrete fair_labels₁ φ_con) := by
   -- 1. Unfold: take concrete `e₁` valid + the fair-WF antecedent on `e₁`.
   intro e₁ hv₁ h_fair_wf_e1

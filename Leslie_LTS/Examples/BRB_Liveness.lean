@@ -557,7 +557,7 @@ theorem ideal_brb_totality :
 theorem ideal_brb_totality_stutter :
     (IdealBRB.ideal_brb n f Value sender).satisfies_stutter
       (IdealBRB.ideal_labelling n Value)
-      (assumes_fair_wf
+      (assumes_fair_wf_step
         (IdealBRB.ideal_brb n f Value sender)
         (ideal_brb_fair_labels n Value)
         (leads_to
