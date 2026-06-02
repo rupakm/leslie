@@ -219,6 +219,37 @@ theorem set_up_persist_along
       have hprev := ih hle'
       exact set_up_persist (hv.2 k') hprev
 
+/-- Corruption is monotone: if `p ∈ s.corrupted`, then `p ∈ s'.corrupted`
+    for any step. -/
+theorem corrupted_mem_persist {s s' : State n Value}
+    {l : Label n Value}
+    (hstep : (ideal_brb (n := n) (f := f) (Value := Value) sender).step s l s')
+    {p : Fin n} (h : p ∈ s.corrupted) :
+    p ∈ s'.corrupted := by
+  simp only [ideal_brb] at hstep
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := hstep; exact List.mem_cons.mpr (Or.inr h)
+  | .input _ _ => obtain ⟨_, _, rfl⟩ := hstep; exact h
+  | .output _ _ => obtain ⟨_, _, _, rfl⟩ := hstep; exact h
+  | .commit _ => obtain ⟨_, _, rfl⟩ := hstep; exact h
+
+/-- Corruption persists along a valid execution. -/
+theorem corrupted_mem_persist_along
+    {e : Execution (State n Value) (Label n Value)}
+    (hv : (ideal_brb (n := n) (f := f) (Value := Value) sender).valid_exec e)
+    {k : Nat} {p : Fin n}
+    (h : p ∈ (e.states k).corrupted) :
+    ∀ k', k ≤ k' → p ∈ (e.states k').corrupted := by
+  intro k'
+  induction k' with
+  | zero =>
+    intro hle; have : k = 0 := Nat.le_zero.mp hle; rw [this] at h; exact h
+  | succ k' ih =>
+    intro hle
+    rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · exact corrupted_mem_persist (hv.2 k') (ih (by omega))
+
 end monotonicity
 
 /-! ### Safety Properties (label-based)

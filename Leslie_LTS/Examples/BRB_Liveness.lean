@@ -389,11 +389,11 @@ theorem ideal_brb_totality :
         -- persists.
         refine ⟨default, fun k' hk' => ?_⟩
         right
-        -- ¬ isCorrect at k; isCorrect = p ∉ corrupted; corruption
-        -- list only grows.  Need: sender ∈ (e.states k').corrupted.
-        -- Since sender ∈ (e.states k).corrupted (from hcorrupt) and
-        -- corrupted only grows along valid execs, sender ∈ at k'.
-        exact sorry -- needs corrupted_persist_along for IdealBRB
+        -- ¬ isCorrect at k → sender ∈ corrupted at k → persists to k'.
+        simp only [IdealBRB.isCorrect] at hcorrupt ⊢
+        push_neg at hcorrupt ⊢
+        have hcorrupt' : sender ∈ (e.states (0 + k)).corrupted := hcorrupt
+        exact IdealBRB.corrupted_mem_persist_along hv hcorrupt' k' (by omega)
     obtain ⟨v, h_or_persist⟩ := h_or_at
     have h_commit_always := h_ante (IdealBRB.Label.commit v) k
     have h_inner : ∀ j',
