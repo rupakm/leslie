@@ -556,13 +556,35 @@ theorem ideal_brb_totality :
     intro p hp
     exact (hk'_spec p).2 k_max (hk_max_ge p) hp
 
-/-- The concrete-side totality, lifted from `ideal_brb_totality` via the
-    transfer theorem applied to `brb_weak_div_witness`.
+/-- Lift `ideal_brb_totality` to `satisfies_stutter`.  Every `valid_exec`
+    is also a `valid_exec_stutter` (with no stutters), so `satisfies`
+    implies `satisfies_stutter` for any property. -/
+theorem ideal_brb_totality_stutter :
+    (IdealBRB.ideal_brb n f Value sender).satisfies_stutter
+      (IdealBRB.ideal_labelling n Value)
+      (assumes_fair_wf
+        (IdealBRB.ideal_brb n f Value sender)
+        (ideal_brb_fair_labels n Value)
+        (leads_to
+          (state_prop (fun s : IdealBRB.State n Value =>
+            s.broadcastVal ≠ none ∨ ¬ IdealBRB.isCorrect n Value s sender))
+          (state_prop (fun s : IdealBRB.State n Value =>
+            ∀ p, p ∉ s.corrupted → s.returned p ≠ none)))) := by
+  intro e hv_stutter h_ante
+  -- hv_stutter : valid_exec_stutter. We need to apply ideal_brb_totality
+  -- which requires valid_exec. But e may contain stutters, so this doesn't
+  -- directly work. Instead, use the fact that assumes_fair_wf's antecedent
+  -- (weak fairness for each label) implies the property φ, and stutter
+  -- steps don't affect state-based properties.
+  --
+  -- For now, sorry — this is a generic lifting issue (satisfies →
+  -- satisfies_stutter for state-based properties). The right fix is
+  -- either a stutter-removal helper or a generic `satisfies_le_
+  -- satisfies_stutter` lemma for state-based TraceProp.
+  sorry
 
-    **Statement guard** (matching `ideal_brb_totality`): the `leads_to`
-    precondition on the concrete side is "sender has broadcast or been
-    corrupted" — translated via `sim_rel` to the ideal's
-    `broadcastVal ≠ none ∨ ¬ isCorrect sender`. -/
+/-- The concrete-side totality, lifted from `ideal_brb_totality` via
+    `transfers_satisfaction` applied to `brb_weak_div_witness`. -/
 theorem brb_totality (hn : n > 3 * f) :
     (BRB_LTS.brb n f Value sender).satisfies
       (assumes_fair_wf
@@ -574,6 +596,24 @@ theorem brb_totality (hn : n > 3 * f) :
             ¬ BRB_LTS.isCorrect n Value s sender))
           (state_prop (fun s : BRB_LTS.State n Value =>
             ∀ p, p ∉ s.corrupted → (s.local_ p).returned ≠ none)))) := by
-  sorry
+  -- Apply transfers_satisfaction with the BRB witness.
+  apply ForwardSim.WeakDivPreserving.transfers_satisfaction
+    (brb_weak_div_witness n f Value sender hn)
+    (brb_fair_compat n f Value sender hn)
+    (by intro l₁ hl₁; cases l₁ <;>
+        simp [BRB_LTS.brb_labelling, Labelling.is_external,
+              BRB_Simulation.label_map, IdealBRB.ideal_labelling,
+              BRB_Simulation.brb_forward_sim] at *)
+    (by rfl)  -- h_map_tau: label_map tau = tau
+  · -- h_prop_transfer: transfer the leads_to property through sim.R.
+    -- Given concrete e₁, abstract e₂ with R at corresponding positions,
+    -- if the abstract leads_to holds (broadcastVal ∨ ¬ isCorrect →
+    -- eventually all returned), translate to concrete (broadcastVal ∨
+    -- ¬ isCorrect → eventually all returned) via sim_rel.
+    sorry
+  · -- h_abs: ideal_brb_totality lifted to satisfies_stutter.
+    exact ideal_brb_totality_stutter n f Value sender
+  · -- h_ante_transfer: lift concrete fair-WF antecedent to abstract.
+    sorry
 
 end BRB_Liveness
