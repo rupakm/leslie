@@ -425,33 +425,106 @@ theorem ideal_brb_totality :
     exact absurd h_none (by simp)
   -- Step B: from set_up ≠ none, show eventually all correct returned.
   obtain ⟨k₁, hk₁_ge, hk₁_setup⟩ := hStepA
-  -- Step B: from set_up = some v at k₁, show all correct procs
-  -- eventually return.
+  -- Step B: from set_up ≠ none at k₁, show all correct procs eventually return.
+  -- Extract the value v from set_up.
+  obtain ⟨v, hv_setup⟩ := Option.ne_none_iff_exists'.mp hk₁_setup
+  -- set_up persists from k₁ onwards.
+  have h_setup_persist : ∀ k', k₁ ≤ k' → (e.states k').set_up = some v :=
+    IdealBRB.set_up_persist_along hv hv_setup
+  -- For each correct p, if returned p = none at some k' ≥ k₁, then
+  -- output(p, v) is permanently enabled + fair from k' until it fires.
+  -- Use h_ante to fire it; after it fires, returned p = some v ≠ none.
   --
-  -- Strategy: finite induction over the set of correct procs with
-  -- `returned = none`.  At each step:
-  --   1. Pick any correct p with `(e.states k_i).returned p = none`.
-  --   2. Show `output(p, v)` is enabled at k_i:
-  --      * `isCorrect p` — correctness is monotone (once correct, stays
-  --        correct unless corrupted, but fair deadlock doesn't fire
-  --        corrupt for correct procs).
-  --      * `returned p = none` — by assumption.
-  --      * `set_up = some v` — `set_up` is monotone: once set, the only
-  --        step that touches it is `commit`, which requires `set_up =
-  --        none` as a precondition.  So `set_up` persists from k₁.
-  --   3. Show `output(p, v)` is fair: `ideal_brb_fair_labels (.output p
-  --      v) = p ∉ corrupted` which holds since p is correct.
-  --   4. Apply h_ante for `.output p v` at k_i: "always enabled + fair →
-  --      eventually fires".  After output fires, `returned p = some v`.
-  --   5. `returned` is monotone (once set, never unset).  So the count
-  --      of correct procs with `returned = none` strictly decreases.
-  --   6. After at most n steps, all correct procs have `returned ≠ none`.
-  --
-  -- The step-preservation lemmas `set_up_persist_along` and
-  -- `returned_persist_along` (committed earlier in this file) provide
-  -- the monotonicity facts.  The `h_ante` application pattern mirrors
-  -- Step A's `h_commit_always` usage.
-  sorry
+  -- We show: ∀ p, p ∉ (e.states k₁).corrupted →
+  --   ∃ k' ≥ k₁, (e.states k').returned p ≠ none.
+  -- Then combine with returned_persist_along to get the goal at some
+  -- final k' ≥ k₁ ≥ k.
+  suffices h_each : ∀ p, p ∉ (e.states k₁).corrupted →
+      ∃ k', k₁ ≤ k' ∧ (e.states k').returned p ≠ none from by
+    -- Need: ∃ k' ≥ k, ∀ p, p ∉ (e.states k').corrupted → returned p ≠ none.
+    -- Each correct p gets its own k'_p.  Take max over all procs.
+    -- Since there are finitely many procs (Fin n), this is bounded.
+    -- However, returned persists and corruption only grows, so once
+    -- returned p ≠ none at k'_p, it stays ≠ none.
+    -- Use the maximum k'_p across all p : Fin n.
+    sorry
+  -- Prove h_each: for each correct p at k₁, output eventually fires.
+  intro p hp
+  -- Until-or-forever for returned p: either it becomes ≠ none, or
+  -- stays none forever.
+  by_contra h_never_ret
+  -- h_never_ret : ¬ (∃ k', k₁ ≤ k' ∧ returned p ≠ none)
+  have h_ret_none : ∀ k', k₁ ≤ k' → (e.states k').returned p = none := by
+    intro k' hk'; by_contra hne; exact h_never_ret ⟨k', hk', hne⟩
+  -- output(p, v) is always enabled + fair from k₁ onwards:
+  --   enabled: isCorrect p ∧ returned p = none ∧ set_up = some v
+  --   fair: p ∉ corrupted
+  have h_output_always := h_ante (IdealBRB.Label.output p v) k₁
+  have h_output_inner : ∀ j',
+      (IdealBRB.ideal_brb n f Value sender).enabled
+        (.output p v) (e.states (0 + k₁ + j')) ∧
+      ideal_brb_fair_labels n Value
+        (e.states (0 + k₁ + j')) (.output p v) := by
+    intro j'
+    have hpos : 0 + k₁ + j' = k₁ + j' := by omega
+    rw [hpos]
+    constructor
+    · -- enabled: ∃ s', step s (.output p v) s'
+      refine ⟨{ (e.states (k₁ + j')) with
+                returned := fun q => if q = p then some v
+                  else (e.states (k₁ + j')).returned q }, ?_⟩
+      show (IdealBRB.ideal_brb n f Value sender).step _ (.output p v) _
+      simp only [IdealBRB.ideal_brb]
+      refine ⟨?_, h_ret_none (k₁ + j') (by omega),
+              h_setup_persist (k₁ + j') (by omega), ?_⟩
+      · -- isCorrect p at k₁ + j': need p ∉ corrupted at k₁ + j'.
+        -- We have p ∉ corrupted at k₁ (from hp).  But p could get
+        -- corrupted between k₁ and k₁+j'.  So we need the
+        -- CONTRAPOSITIVE: if output(p,v) is never going to fire because
+        -- p gets corrupted, that's fine — we only need the case where
+        -- p stays correct (since we're proving for correct p at the
+        -- GOAL position, which is ∀ p, p ∉ corrupted at final k' →
+        -- returned p ≠ none).
+        --
+        -- Actually: the `h_each` target says "p ∉ corrupted at k₁" →
+        -- returned p ≠ none eventually.  If p gets corrupted later,
+        -- output might not fire.  But returned ALSO persists, so either:
+        --   (a) returned p gets set before corruption → persists → done.
+        --   (b) p gets corrupted before returned → but then p ∈
+        --       corrupted at the goal position too, so the ∀ p
+        --       quantifier's antecedent (p ∉ corrupted) is false → done.
+        --
+        -- For THIS until-or-forever argument (which derives contradiction
+        -- from "returned p = none at all k' ≥ k₁"), we need output
+        -- enabled at every position.  But if p gets corrupted, output
+        -- is disabled.  So either (a) p stays correct forever (output
+        -- stays enabled, fires, contradiction), or (b) p gets corrupted
+        -- at some k₂ ≥ k₁.  In case (b), the outer ∀ p's antecedent at
+        -- the final position is false if k₂ ≤ final position.
+        --
+        -- Fix: instead of the until-or-forever on returned alone, do a
+        -- nested case-split on whether p stays correct.
+        -- Sorried for now.
+        exact sorry
+      · simp
+    · -- fair: ideal_brb_fair_labels (.output p v) = p ∉ corrupted.
+      -- Same issue as enabled: if p gets corrupted, fair is false.
+      -- Sorried — same fix needed (nested case-split on p's correctness).
+      exact sorry
+  obtain ⟨j, hj⟩ := h_output_always h_output_inner
+  -- output(p, v) fires at 0 + k₁ + j.
+  have hpos : 0 + k₁ + j = k₁ + j := by omega
+  rw [hpos] at hj
+  -- After output fires, returned p = some v ≠ none.
+  have h_step_out := hv.2 (k₁ + j)
+  rw [← hj] at h_step_out
+  simp only [IdealBRB.ideal_brb] at h_step_out
+  obtain ⟨_, _, _, heq_s'⟩ := h_step_out
+  have h_ret_set : (e.states (k₁ + j + 1)).returned p = some v := by
+    rw [heq_s']; simp
+  have h_ret_none' := h_ret_none (k₁ + j + 1) (by omega)
+  rw [h_ret_set] at h_ret_none'
+  exact absurd h_ret_none' (by simp)
 
 /-- The concrete-side totality, lifted from `ideal_brb_totality` via the
     transfer theorem applied to `brb_weak_div_witness`.
