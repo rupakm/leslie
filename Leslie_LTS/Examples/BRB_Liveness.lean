@@ -637,10 +637,83 @@ theorem ideal_brb_totality_stutter :
       obtain ⟨_, _, heq_s'⟩ := h_real_step
       have : (e.states (0 + k + j + 1)).set_up = some default := by rw [heq_s']
       exact absurd (h_none_forever (0 + k + j + 1) (by omega)) (by rw [this]; simp)
-  -- Step B: from set_up ≠ none at k₁, all correct procs eventually return.
-  -- Same argument as ideal_brb_totality Step B, but with h_ante giving
-  -- real steps. The per-proc argument + finite-max wrapper are identical.
-  sorry
+  -- Step B: from set_up ≠ none, all correct procs eventually return.
+  obtain ⟨k₁, hk₁_ge, hk₁_setup⟩ := hStepA
+  obtain ⟨v, hv_setup⟩ := Option.ne_none_iff_exists'.mp hk₁_setup
+  have h_setup_persist : ∀ k', k₁ ≤ k' → (e.states k').set_up = some v :=
+    IdealBRB.set_up_persist_along_stutter hv_stutter hv_setup
+  -- Per-proc: if p stays correct forever, output fires and returned persists.
+  have h_per_proc : ∀ p : Fin n,
+      (∀ k', k₁ ≤ k' → p ∉ (e.states k').corrupted) →
+      ∃ k', k₁ ≤ k' ∧ (e.states k').returned p ≠ none := by
+    intro p h_stays_correct
+    by_contra h_never_ret
+    have h_ret_none : ∀ k', k₁ ≤ k' → (e.states k').returned p = none := by
+      intro k' hk'; by_contra hne; exact h_never_ret ⟨k', hk', hne⟩
+    have h_output := h_ante (IdealBRB.Label.output p v) k₁
+    have h_output_inner : ∀ j',
+        (IdealBRB.ideal_brb n f Value sender).enabled
+          (.output p v) (e.states (0 + k₁ + j')) ∧
+        ideal_brb_fair_labels n Value
+          (e.states (0 + k₁ + j')) (.output p v) := by
+      intro j'
+      constructor
+      · refine ⟨{ (e.states (0 + k₁ + j')) with
+                  returned := fun q => if q = p then some v
+                    else (e.states (0 + k₁ + j')).returned q }, ?_⟩
+        show (IdealBRB.ideal_brb n f Value sender).step _ (.output p v) _
+        simp only [IdealBRB.ideal_brb]
+        exact ⟨h_stays_correct (0 + k₁ + j') (by omega),
+               h_ret_none (0 + k₁ + j') (by omega),
+               h_setup_persist (0 + k₁ + j') (by omega), by simp⟩
+      · simp only [ideal_brb_fair_labels]
+        exact h_stays_correct (0 + k₁ + j') (by omega)
+    obtain ⟨j, hlbl, h_real_step⟩ := h_output h_output_inner
+    rw [← hlbl] at h_real_step
+    simp only [IdealBRB.ideal_brb] at h_real_step
+    obtain ⟨_, _, _, heq_s'⟩ := h_real_step
+    have h_ret_set : (e.states (0 + k₁ + j + 1)).returned p = some v := by
+      rw [heq_s']; simp
+    exact absurd (h_ret_none (0 + k₁ + j + 1) (by omega))
+      (by rw [h_ret_set]; simp)
+  -- Per-proc-persist + finite-max wrapper (same as ideal_brb_totality).
+  have h_per_proc_persist : ∀ p : Fin n, ∃ k'_p, k₁ ≤ k'_p ∧
+      ∀ k', k'_p ≤ k' →
+        (p ∉ (e.states k').corrupted → (e.states k').returned p ≠ none) := by
+    intro p
+    by_cases h_correct : ∀ k', k₁ ≤ k' → p ∉ (e.states k').corrupted
+    · obtain ⟨k'_p, hk'_p, hret⟩ := h_per_proc p h_correct
+      obtain ⟨w, hw⟩ := Option.ne_none_iff_exists'.mp hret
+      refine ⟨k'_p, hk'_p, fun k' hk' _ => ?_⟩
+      have := IdealBRB.returned_persist_along_stutter hv_stutter hw k' hk'
+      simp [this]
+    · push_neg at h_correct
+      obtain ⟨k₂, hk₂, hc⟩ := h_correct
+      refine ⟨k₂, by omega, fun k' hk' hcorr => ?_⟩
+      exact absurd (IdealBRB.corrupted_mem_persist_along_stutter hv_stutter hc k' hk') hcorr
+  classical
+  let k'_fn : Fin n → Nat := fun p => (h_per_proc_persist p).choose
+  have hk'_spec : ∀ p, k₁ ≤ k'_fn p ∧
+      ∀ k', k'_fn p ≤ k' →
+        (p ∉ (e.states k').corrupted → (e.states k').returned p ≠ none) :=
+    fun p => (h_per_proc_persist p).choose_spec
+  simp only [eventually, state_prop]
+  by_cases hn0 : n = 0
+  · subst hn0
+    exact ⟨k₁ - k, by intro p; exact Fin.elim0 p⟩
+  · haveI : Nonempty (Fin n) := ⟨⟨0, by omega⟩⟩
+    let k_max := Finset.univ.sup k'_fn
+    have hk_max_ge : ∀ p, k'_fn p ≤ k_max :=
+      fun p => Finset.le_sup (Finset.mem_univ p)
+    have hk_max_ge_k₁ : k₁ ≤ k_max := by
+      have := (hk'_spec ⟨0, by omega⟩).1
+      have := hk_max_ge ⟨0, by omega⟩
+      omega
+    refine ⟨k_max - k, ?_⟩
+    have hkmax_eq : 0 + k + (k_max - k) = k_max := by omega
+    rw [hkmax_eq]
+    intro p hp
+    exact (hk'_spec p).2 k_max (hk_max_ge p) hp
 
 /-- The concrete-side totality, lifted from `ideal_brb_totality` via
     `transfers_satisfaction` applied to `brb_weak_div_witness`. -/
