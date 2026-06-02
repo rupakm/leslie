@@ -365,60 +365,61 @@ theorem ideal_brb_totality :
     -- Pick v: any value works for the corrupt sender; broadcastVal's
     -- value for the correct sender. We use `default` for simplicity
     -- (the OR-condition covers both cases).
-    have h_commit_always := h_ante (IdealBRB.Label.commit (default : Value)) k
-    -- h_commit_always : (∀ j', enabled ∧ fair at position (0 + k + j'))
-    --                   → ∃ j', commit fires at position (0 + k + j')
-    -- Supply the antecedent:
+    -- Extract a concrete value v to commit.  Case-split on hA:
+    --   * broadcastVal ≠ none → extract v from broadcastVal = some v.
+    --   * ¬ isCorrect sender → any value works (corrupt branch of OR).
+    -- In both cases, derive `h_or_at : ∀ k', k ≤ k' → OR condition at k'`.
+    have h_or_at : ∃ v : Value, ∀ k', k ≤ k' →
+        (IdealBRB.isCorrect n Value (e.states k') sender ∧
+         (e.states k').broadcastVal = some v) ∨
+        ¬ IdealBRB.isCorrect n Value (e.states k') sender := by
+      rcases hA with hbv | hcorrupt
+      · -- broadcastVal ≠ none at k.
+        obtain ⟨v, hv_eq⟩ := Option.ne_none_iff_exists'.mp hbv
+        refine ⟨v, fun k' hk' => ?_⟩
+        by_cases hcorr : IdealBRB.isCorrect n Value (e.states k') sender
+        · have hv_eq' : (e.states k).broadcastVal = some v := by
+            have h0k : 0 + k = k := by omega
+            rwa [h0k] at hv_eq
+          have hbv_k' := IdealBRB.broadcastVal_persist_along hv hv_eq' k' (by omega)
+          exact Or.inl ⟨hcorr, hbv_k'⟩
+        · exact Or.inr hcorr
+      · -- sender corrupt at k.  Corruption only grows (corrupt step
+        -- adds to the list; no step removes from it).  So ¬ isCorrect
+        -- persists.
+        refine ⟨default, fun k' hk' => ?_⟩
+        right
+        -- ¬ isCorrect at k; isCorrect = p ∉ corrupted; corruption
+        -- list only grows.  Need: sender ∈ (e.states k').corrupted.
+        -- Since sender ∈ (e.states k).corrupted (from hcorrupt) and
+        -- corrupted only grows along valid execs, sender ∈ at k'.
+        exact sorry -- needs corrupted_persist_along for IdealBRB
+    obtain ⟨v, h_or_persist⟩ := h_or_at
+    have h_commit_always := h_ante (IdealBRB.Label.commit v) k
     have h_inner : ∀ j',
         (IdealBRB.ideal_brb n f Value sender).enabled
-          (.commit default) (e.states (0 + k + j')) ∧
+          (.commit v) (e.states (0 + k + j')) ∧
         ideal_brb_fair_labels n Value
-          (e.states (0 + k + j')) (.commit default) := by
+          (e.states (0 + k + j')) (.commit v) := by
       intro j'
       have hpos : 0 + k + j' = k + j' := by omega
       rw [hpos]
       constructor
-      · -- enabled: ∃ s', step s (.commit default) s'.
-        -- requires: set_up = none (h_none_forever) ∧ OR condition.
-        refine ⟨{ (e.states (k + j')) with set_up := some default }, ?_⟩
+      · refine ⟨{ (e.states (k + j')) with set_up := some v }, ?_⟩
+        show (IdealBRB.ideal_brb n f Value sender).step _ (.commit v) _
         simp only [IdealBRB.ideal_brb]
-        refine ⟨h_none_forever (k + j') (by omega), ?_, ?_⟩
-        -- OR condition: (isCorrect sender ∧ broadcastVal = some default) ∨ ¬ isCorrect sender.
-        --
-        -- Case split on sender correctness at position k + j':
-        --   * Correct sender: hA gives broadcastVal ≠ none at k.
-        --     broadcastVal is monotone (once set, never unset — no BRB
-        --     step clears it; see `IdealBRB.ideal_brb.step` cases).
-        --     So broadcastVal ≠ none at k + j'.  But we need
-        --     `broadcastVal = some default` specifically — the value
-        --     `default` was chosen as our commit value.
-        --     ISSUE: the correct-sender branch of hA says broadcastVal ≠
-        --     none, giving `some v` for some v, but we committed to
-        --     `default`.  Fix: either generalize the commit value to
-        --     match broadcastVal (use Classical.choice on `broadcastVal =
-        --     some v` to extract v, then commit v instead of default), or
-        --     add an existential wrapper around the commit value in the
-        --     outer proof.
-        --   * Corrupt sender: Or.inr (¬ isCorrect sender).  Corruption
-        --     is monotone — once corrupt, stays corrupt.  So ¬ isCorrect
-        --     at k persists to k + j'.
-        · exact sorry
-        -- s' = { s with set_up := some default }.
-        · simp
+        refine ⟨h_none_forever (k + j') (by omega),
+               h_or_persist (k + j') (by omega), ?_⟩
+        simp
       · simp [ideal_brb_fair_labels]
     obtain ⟨j, hj⟩ := h_commit_always h_inner
-    -- hj : .commit default = e.labels (0 + k + j)
-    -- Normalize: 0 + k + j = k + j.
     have hpos : 0 + k + j = k + j := by omega
     rw [hpos] at hj
-    -- After commit fires at k+j, set_up = some default ≠ none.
     have h_step_kj := hv.2 (k + j)
     rw [← hj] at h_step_kj
     simp only [IdealBRB.ideal_brb] at h_step_kj
     obtain ⟨_, _, heq_s'⟩ := h_step_kj
-    -- (e.states (k + j + 1)).set_up = some default ≠ none.
-    have h_set : (e.states (k + j + 1)).set_up = some default := by
-      rw [heq_s']
+    have h_set : (e.states (k + j + 1)).set_up = some v := by rw [heq_s']
     have h_none := h_none_forever (k + j + 1) (by omega)
     rw [h_set] at h_none
     exact absurd h_none (by simp)
