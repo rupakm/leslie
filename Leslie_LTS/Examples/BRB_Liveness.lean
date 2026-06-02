@@ -729,38 +729,16 @@ theorem brb_totality (hn : n > 3 * f) :
           (state_prop (fun s : BRB_LTS.State n Value =>
             ∀ p, p ∉ s.corrupted → (s.local_ p).returned ≠ none)))) := by
   -- Apply transfers_satisfaction with the BRB witness.
-  apply ForwardSim.WeakDivPreserving.transfers_satisfaction
-    (brb_weak_div_witness n f Value sender hn)
-    (brb_fair_compat n f Value sender hn)
-    (by intro l₁ hl₁; cases l₁ <;>
-        simp [BRB_LTS.brb_labelling, Labelling.is_external,
-              BRB_Simulation.label_map, IdealBRB.ideal_labelling,
-              BRB_Simulation.brb_forward_sim] at *)
-    (by rfl)  -- h_map_tau: label_map tau = tau
-  · -- h_prop_transfer: translate leads_to through sim_rel + Q-monotonicity.
-    --
-    -- Strategy: for concrete k with P_con, translate to P_abs at idx k
-    -- via sim_rel. Apply abstract leads_to to get j' with Q_abs at
-    -- abstract position `idx k + j'`. Q_abs (∀ p ∉ corrupted, returned
-    -- ≠ none) is monotone along stutter execs (returned persists,
-    -- corruption grows — see returned_persist_along_stutter and
-    -- corrupted_mem_persist_along_stutter in IdealBRB.lean). So Q_abs
-    -- propagates to all later abstract positions including idx m for
-    -- any m with idx m ≥ idx k + j'. Then sim_rel at m translates
-    -- Q_abs to Q_con.
-    --
-    -- Remaining subgoal: ∃ m ≥ k, idx m ≥ idx k + j' (idx unboundedness).
-    -- This requires: the concrete exec makes infinitely many non-elided
-    -- steps, or equivalently, idx → ∞. With the placeholder measure
-    -- (brb_rank = False), the simulation never recurses, so the abstract
-    -- exec may plateau. But the external_subseq_correspondence's idx is
-    -- loffset over LPath lengths, which grows whenever the concrete makes
-    -- an external step. Under fair scheduling, external steps fire
-    -- infinitely often. Full proof deferred.
-    sorry
-  · -- h_abs: ideal_brb_totality lifted to satisfies_stutter.
-    exact ideal_brb_totality_stutter n f Value sender
-  · -- h_ante_transfer: lift concrete fair-WF antecedent to abstract.
-    sorry
+  -- h_prop_transfer and h_ante_transfer are the two remaining
+  -- protocol-specific hypotheses. Both require:
+  --   * Q-monotonicity on stutter abstract execs (proven via
+  --     returned_persist_along_stutter + corrupted_mem_persist_along_stutter)
+  --   * idx-unboundedness (loffset over LPath lengths → ∞ under fair
+  --     scheduling, since external steps produce non-empty LPaths)
+  --   * Fair-WF antecedent lift (concrete fairness → abstract fairness
+  --     via sim.R + label_map)
+  -- Both are mechanically substantial (~100 LOC each) but follow
+  -- established patterns. Sorried pending next session.
+  sorry
 
 end BRB_Liveness
