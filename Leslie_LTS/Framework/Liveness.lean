@@ -440,4 +440,55 @@ def assumes_fair_wf
         (eventually (step_prop (fun _ l' _ => l = l'))))))
     φ
 
+/-- Step-aware variant of `assumes_fair_wf`: the "eventually fires"
+    conclusion requires both `l = e.labels k` AND a real step
+    `sys.step (e.states k) (e.labels k) (e.states (k+1))`.
+
+    On `valid_exec` (non-stutter), this is equivalent to `assumes_fair_wf`
+    since every label match IS a real step. On `valid_exec_stutter`, this
+    is STRICTLY WEAKER than `assumes_fair_wf` (the antecedent is harder
+    to satisfy, so the implication is easier to prove). Used by
+    `transfers_satisfaction`'s `h_abs` hypothesis for honest discharge
+    on stutter execs. -/
+def assumes_fair_wf_step
+    (sys : System State Label)
+    (fair_labels : State → Label → Prop)
+    (φ : TraceProp State Label) : TraceProp State Label :=
+  tp_implies
+    (tp_forall (fun l =>
+      always (tp_implies
+        (always (state_prop (fun s => sys.enabled l s ∧ fair_labels s l)))
+        (eventually (fun e k => l = e.labels k ∧
+          sys.step (e.states k) (e.labels k) (e.states (k + 1)))))))
+    φ
+
+/-- On `valid_exec`, `assumes_fair_wf_step` and `assumes_fair_wf` are
+    equivalent (every position has a real step). -/
+theorem assumes_fair_wf_step_eq_on_valid_exec
+    {sys : System State Label}
+    {fair_labels : State → Label → Prop}
+    {φ : TraceProp State Label}
+    {e : Execution State Label}
+    (hv : sys.valid_exec e) :
+    assumes_fair_wf_step sys fair_labels φ e 0 ↔
+    assumes_fair_wf sys fair_labels φ e 0 := by
+  constructor
+  · -- assumes_fair_wf_step → assumes_fair_wf:
+    -- step-aware antecedent is stronger (requires label + step).
+    -- Strip the step part to get the label-only antecedent.
+    intro h ante
+    apply h
+    intro l k hcont
+    obtain ⟨j, hfires⟩ := ante l k hcont
+    have h_step := hv.2 (k + j)
+    exact ⟨j, by simpa using hfires, by simpa using h_step⟩
+  · -- assumes_fair_wf → assumes_fair_wf_step:
+    -- label-only antecedent is weaker; on valid_exec, every label
+    -- match IS a real step, so add the step witness.
+    intro h ante
+    apply h
+    intro l k hcont
+    obtain ⟨j, hfires, _⟩ := ante l k hcont
+    exact ⟨j, hfires⟩
+
 end LTS
