@@ -332,15 +332,17 @@ discharge the four `WeakDivPreserving` obligations (including the new
 via LTL leads-to chaining; lift to `brb_totality` via
 `transfers_satisfaction` (closed by Phase B).
 
-**Prior overnight progress (2026-06-02 01:00–01:53):**
+**Prior progress:**
 - `brb_progress_measure` defined (placeholder 0, with docstring describing
   the intended lex measure).
 - `brb_rank_wf` proven (trivially for placeholder).
 - `brb_fair_compat` proven (concrete fair labels → abstract fair labels).
-- `ideal_brb_totality` Step A partially proven: until-or-forever structure
-  for `set_up` with step-preservation lemmas (set_up/returned/broadcastVal
-  monotone).  One inner sorry at the OR condition (line ~330), plus the
-  sender-corrupt branch.  Step B fully sorried.
+- `ideal_brb_totality` **Step A fully proven** (2026-06-02): until-or-
+  forever structure with step-preservation lemmas.  OR-condition closed
+  via `broadcastVal_persist_along` (correct sender) and
+  `corrupted_mem_persist_along` (corrupt sender, new helper in
+  `IdealBRB.lean`).
+- **Step B still sorried** — finite induction over correct procs.
 - See the module header of `BRB_Liveness.lean` for the dependency graph
   and recommended attack order.
 
@@ -438,12 +440,9 @@ comments have been pruned from `Simulation.lean`.
 
 **Highest priority — close ideal_brb_totality (unblocks brb_totality):**
 
-1. Close Step A OR-condition sorry (line ~330 of BRB_Liveness.lean):
-   generalize commit value from `default` to match broadcastVal, or add
-   existential wrapper.  See detailed comment in the file.
-2. Close Step A sender-corrupt branch.
-3. Prove Step B (finite induction over correct procs — see detailed
-   strategy comment in the file at line ~355).
+1. ~~Close Step A~~ — ✅ DONE (OR-condition + sender-corrupt branch).
+2. **Prove Step B** (finite induction over correct procs — see detailed
+   strategy comment in BRB_Liveness.lean at line ~449).
 4. `feat: prove brb_totality via transfers_satisfaction` — apply
    `transfers_satisfaction` with `brb_weak_div_witness` +
    `ideal_brb_totality` + `brb_fair_compat`.
