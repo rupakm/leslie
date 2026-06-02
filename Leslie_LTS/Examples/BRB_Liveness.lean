@@ -565,20 +565,68 @@ theorem ideal_brb_totality_stutter :
             s.broadcastVal ≠ none ∨ ¬ IdealBRB.isCorrect n Value s sender))
           (state_prop (fun s : IdealBRB.State n Value =>
             ∀ p, p ∉ s.corrupted → s.returned p ≠ none)))) := by
-  -- The proof mirrors ideal_brb_totality exactly. The only difference:
-  -- `hv_stutter.2 k` gives `step ∨ stutter` instead of `step`. At the
-  -- two extraction points (commit fires, output fires), the label is
-  -- known from h_ante's conclusion. At stutter steps, state is unchanged,
-  -- which contradicts the state change derived from the step relation
-  -- (set_up goes from none to some, or returned goes from none to some).
-  -- So the stutter branch is excluded at both extraction points.
+  intro e hv_stutter h_ante
+  -- Build a `valid_exec` from `valid_exec_stutter` by showing that
+  -- whenever stutter occurs (state unchanged + label = τ), the step
+  -- relation also holds (since τ = .commit default, and commit has
+  -- precondition set_up = none — so if set_up = none, commit IS a
+  -- valid step to the same state with set_up = some default... but
+  -- that changes set_up, contradicting state unchanged. If set_up ≠
+  -- none, commit's precondition fails, so the step relation doesn't
+  -- hold. In that case we can't produce a real step from a stutter.)
   --
-  -- Mechanically, this is identical to ideal_brb_totality with
-  -- `rcases hv_stutter.2 k with hstep | ⟨heq, _⟩` at each extraction
-  -- and `absurd` on the stutter branch using the state change. The full
-  -- re-proof is ~200 LOC of duplication. Sorried to avoid the dup;
-  -- a proper fix is a generic `satisfies_stutter_of_state_prop_leads_to`
-  -- lemma in the framework.
+  -- The simpler path: just re-prove the property for stutter execs.
+  -- The proof of ideal_brb_totality uses `hv.2` at exactly two places:
+  --   (1) commit extraction: hv.2 (k+j) after hj : .commit v = label
+  --   (2) output extraction: hv.2 (k₁+j) after hj : .output p v = label
+  -- At both, stutter gives label = tau = .commit default. For (2),
+  -- .output ≠ .commit so contradiction. For (1), stutter gives
+  -- state unchanged, but the step gives set_up := some v ≠ set_up's old
+  -- value (which is none by h_none_forever) — so state changed,
+  -- contradiction with stutter's state_eq.
+  --
+  -- Apply ideal_brb_totality to a valid_exec constructed by replacing
+  -- stutter steps with "trivial" real steps. But constructing such an
+  -- exec requires protocol knowledge. Instead, inline the proof.
+  -- We can just pass the two `hv.2` obligations as helpers.
+  have hv_step_at_commit : ∀ k v, e.labels k = .commit v →
+      (IdealBRB.ideal_brb n f Value sender).step
+        (e.states k) (e.labels k) (e.states (k + 1)) := by
+    intro k v hlbl
+    rcases hv_stutter.2 k with hstep | ⟨heq, htau⟩
+    · exact hstep
+    · -- stutter: label = tau = .commit default, state unchanged.
+      -- If v ≠ default, label mismatch.
+      -- If v = default, label matches but we still have a real commit
+      -- step? No — stutter means state unchanged. But `h_none_forever`
+      -- or `hA` give us info about set_up that leads to contradiction
+      -- later in the proof (not here). So at this point, the stutter
+      -- IS possible if the step relation also holds. Since
+      -- stutter ∨ step, and we have stutter, we need step too.
+      -- Actually: the stutter gives state (k+1) = state k. The commit
+      -- step gives state (k+1) = { state k with set_up := some v }.
+      -- These are equal iff set_up was already some v, but commit
+      -- requires set_up = none. So if set_up = none (commit precondition),
+      -- state changes (contradiction with stutter). If set_up ≠ none,
+      -- commit isn't enabled.
+      -- But at this helper level, we don't know set_up's value.
+      -- Need protocol context. Sorry.
+      exact sorry
+  have hv_step_at_output : ∀ k p v, e.labels k = .output p v →
+      (IdealBRB.ideal_brb n f Value sender).step
+        (e.states k) (e.labels k) (e.states (k + 1)) := by
+    intro k p v hlbl
+    rcases hv_stutter.2 k with hstep | ⟨_, htau⟩
+    · exact hstep
+    · -- stutter: label = tau = .commit default. But label = .output p v.
+      -- .output ≠ .commit — contradiction.
+      simp [IdealBRB.ideal_labelling] at htau
+      rw [hlbl] at htau
+      exact absurd htau (by simp [IdealBRB.Label.commit])
+  -- Now we can apply the same proof as ideal_brb_totality, using
+  -- hv_step_at_commit and hv_step_at_output instead of hv.2.
+  -- The proof structure is identical. Sorry for now — the ~200 LOC
+  -- duplication is mechanical but tedious.
   sorry
 
 /-- The concrete-side totality, lifted from `ideal_brb_totality` via
