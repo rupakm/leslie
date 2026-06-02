@@ -2,4 +2,5 @@
 AGENTS.md
 CLAUDE.md
 .claude/*
-.sageox/*plans/
+.sageox/*
+plans/
