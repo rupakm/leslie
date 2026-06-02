@@ -49,9 +49,9 @@ import Leslie_LTS.Examples.BRB_Simulation
 
   ### Attack order for a fresh session
 
-  1. **Finish ideal_brb_totality Step A** — close the OR-condition sorry
-     at line ~330.  Needs: `broadcastVal_persist_along` (or inline the
-     persistence argument + case-split on sender correctness).
+  1. ~~Finish ideal_brb_totality Step A~~ — ✅ DONE (commits 74d0e5d,
+     16db159).  OR-condition closed via `broadcastVal_persist_along` +
+     `corrupted_mem_persist_along`.
   2. **Prove ideal_brb_totality Step B** — for each correct p with
      `returned p = none` at `k₁`, show `output(p, v)` is enabled (needs
      `set_up = some v` persistence + `returned p = none`) and fair
