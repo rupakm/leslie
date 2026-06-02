@@ -589,28 +589,68 @@ theorem ideal_brb_totality_stutter :
   -- stutter steps with "trivial" real steps. But constructing such an
   -- exec requires protocol knowledge. Instead, inline the proof.
   -- We can just pass the two `hv.2` obligations as helpers.
-  have hv_step_at_commit : ∀ k v, e.labels k = .commit v →
+  -- Helper for commit extraction: at position k where label = .commit v
+  -- AND set_up = none (needed to derive contradiction with stutter),
+  -- valid_exec_stutter gives a real step.
+  have hv_step_at_commit : ∀ k v, e.labels k = IdealBRB.Label.commit v →
+      (e.states k).set_up = none →
       (IdealBRB.ideal_brb n f Value sender).step
         (e.states k) (e.labels k) (e.states (k + 1)) := by
-    intro k v hlbl
-    rcases hv_stutter.2 k with hstep | ⟨heq, htau⟩
+    intro k v hlbl hsetup
+    rcases hv_stutter.2 k with hstep | ⟨heq, _⟩
     · exact hstep
-    · -- stutter: label = tau = .commit default, state unchanged.
-      -- If v ≠ default, label mismatch.
-      -- If v = default, label matches but we still have a real commit
-      -- step? No — stutter means state unchanged. But `h_none_forever`
-      -- or `hA` give us info about set_up that leads to contradiction
-      -- later in the proof (not here). So at this point, the stutter
-      -- IS possible if the step relation also holds. Since
-      -- stutter ∨ step, and we have stutter, we need step too.
-      -- Actually: the stutter gives state (k+1) = state k. The commit
-      -- step gives state (k+1) = { state k with set_up := some v }.
-      -- These are equal iff set_up was already some v, but commit
-      -- requires set_up = none. So if set_up = none (commit precondition),
-      -- state changes (contradiction with stutter). If set_up ≠ none,
-      -- commit isn't enabled.
-      -- But at this helper level, we don't know set_up's value.
-      -- Need protocol context. Sorry.
+    · -- stutter: state (k+1) = state k. But commit at this position
+      -- sets set_up := some v. Since set_up was none (hsetup) and the
+      -- step sets it to some v, the new state differs from the old.
+      -- But heq says they're equal — contradiction.
+      -- Actually stutter means NO step happened — state is unchanged.
+      -- The commit label is just τ = .commit default being emitted as
+      -- a stutter label. But if no step happened, the step relation
+      -- doesn't hold — that's fine, we just need to show the step
+      -- DOES hold (since the label can't be commit without a real step
+      -- when set_up = none).
+      -- Wait — stutter means `e.states k = e.states (k+1)` AND
+      -- `e.labels k = τ`. We have `e.labels k = .commit v`. So
+      -- τ = .commit v. Since τ = .commit default, v = default.
+      -- And state unchanged. Is this possible? Yes, if the system
+      -- was in a state where commit default is a "no-op" — but commit
+      -- requires set_up = none, and sets set_up := some default. Since
+      -- set_up was none (hsetup) and becomes some default, the state
+      -- CHANGED — contradicting heq.
+      exfalso
+      have : (e.states (k + 1)).set_up = (e.states k).set_up := by rw [heq]
+      -- After a commit step, set_up = some v ≠ none. But state unchanged
+      -- means set_up at k+1 = set_up at k = none. But there was no real
+      -- step — so set_up stays none. The contradiction is that the label
+      -- says commit happened but state didn't change — but in a stutter
+      -- execution, labels CAN be τ without a matching step. The issue is
+      -- that τ happened but no step occurred. So set_up stays none.
+      -- There's no contradiction here — the stutter is consistent!
+      --
+      -- The real fix: we don't need this helper to produce a real step
+      -- from a stutter. Instead, the MAIN proof (ideal_brb_totality's
+      -- argument) uses hv.2 to DERIVE that set_up changed after commit
+      -- fires. With stutter, set_up DOESN'T change. So the "commit fires"
+      -- event from h_ante (∃ j, .commit v = e.labels (k+j)) might land
+      -- on a stutter position where no state change occurs.
+      --
+      -- This means the proof of ideal_brb_totality_stutter fundamentally
+      -- differs from ideal_brb_totality: the h_ante fair-WF assumption
+      -- guarantees that commit FIRES (label = .commit v at some position),
+      -- but on a stutter exec, this firing might be a stutter (no state
+      -- change). The proof's contradiction argument (set_up ≠ none after
+      -- commit, but h_none_forever says set_up = none) breaks.
+      --
+      -- RESOLUTION: the fair-WF antecedent says "if .commit v is always
+      -- enabled AND fair, then .commit v eventually fires AS A LABEL."
+      -- On a stutter exec, firing as a label doesn't mean a real step
+      -- occurred. The antecedent is about labels, not steps.
+      --
+      -- So ideal_brb_totality_stutter CANNOT be proven by the same
+      -- argument. The satisfies → satisfies_stutter lifting is
+      -- genuinely non-trivial for the assumes_fair_wf shape.
+      --
+      -- Sorry — this needs a fundamental redesign, not a mechanical fix.
       exact sorry
   have hv_step_at_output : ∀ k p v, e.labels k = .output p v →
       (IdealBRB.ideal_brb n f Value sender).step
