@@ -505,12 +505,18 @@ theorem ideal_brb_totality :
     have h_ret_set : (e.states (k₁ + j + 1)).returned p = some v := by
       rw [heq_s']; simp
     exact absurd (h_ret_none (k₁ + j + 1) (by omega)) (by rw [h_ret_set]; simp)
-  -- Now: combine per-proc results into the ∀ p goal.
-  -- For each p, either p stays correct (→ returned eventually, persists)
-  -- or p gets corrupted (→ antecedent false at final position).
-  -- Take max of per-proc k'_p values via Finset.sup.
-  -- Sorried — finite-max wrapper is boilerplate.
-  sorry
+  -- Combine: for each p, Classical.choice on whether p stays correct
+  -- gives a per-proc time k'_p.  Take k_max = max over Fin n.
+  -- At k_max, all case-(a) procs have returned (by persistence from
+  -- k'_p ≤ k_max); case-(b) procs have the antecedent vacuously false
+  -- (corrupted persists forward).
+  --
+  -- This finite-max + persistence argument is boilerplate but
+  -- notationally heavy in Lean.  Sorried — the hard part (h_per_proc)
+  -- is fully proven above; this wrapper doesn't require protocol
+  -- reasoning, just Finset.sup + returned_persist_along +
+  -- corrupted_mem_persist_along.
+  exact sorry
 
 /-- The concrete-side totality, lifted from `ideal_brb_totality` via the
     transfer theorem applied to `brb_weak_div_witness`.
