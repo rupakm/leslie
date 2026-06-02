@@ -49,17 +49,12 @@ import Leslie_LTS.Examples.BRB_Simulation
 
   ### Attack order for a fresh session
 
-  1. ~~Finish ideal_brb_totality Step A~~ — ✅ DONE (commits 74d0e5d,
-     16db159).  OR-condition closed via `broadcastVal_persist_along` +
-     `corrupted_mem_persist_along`.
-  2. **Prove ideal_brb_totality Step B** — for each correct p with
-     `returned p = none` at `k₁`, show `output(p, v)` is enabled (needs
-     `set_up = some v` persistence + `returned p = none`) and fair
-     (`p ∉ corrupted`), then apply the `h_ante` weak-fairness assumption
-     to fire it.  Finite induction over the set of undecided correct
-     procs (at most `n` steps).
-  3. **Prove brb_totality** via `transfers_satisfaction` — once
-     `ideal_brb_totality` is proven.
+  1. ~~ideal_brb_totality~~ — ✅ FULLY PROVEN (zero sorries).
+  2. ~~brb_totality skeleton~~ — wired through transfers_satisfaction.
+     Three inner sorries remain: ideal_brb_totality_stutter (generic
+     satisfies → satisfies_stutter lift), h_prop_transfer (leads_to
+     translation through sim_rel), h_ante_transfer (fair-WF antecedent
+     lift from concrete to abstract).
   4. **Design brb_progress_measure** — replace placeholder 0 with a
      real lex measure. This is independent of Steps 1–3 but required for
      the simulation to produce meaningful abstract witnesses at BRB
