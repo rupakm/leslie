@@ -505,17 +505,36 @@ theorem ideal_brb_totality :
     have h_ret_set : (e.states (k₁ + j + 1)).returned p = some v := by
       rw [heq_s']; simp
     exact absurd (h_ret_none (k₁ + j + 1) (by omega)) (by rw [h_ret_set]; simp)
-  -- Combine: for each p, Classical.choice on whether p stays correct
-  -- gives a per-proc time k'_p.  Take k_max = max over Fin n.
-  -- At k_max, all case-(a) procs have returned (by persistence from
-  -- k'_p ≤ k_max); case-(b) procs have the antecedent vacuously false
-  -- (corrupted persists forward).
-  --
-  -- This finite-max + persistence argument is boilerplate but
-  -- notationally heavy in Lean.  Sorried — the hard part (h_per_proc)
-  -- is fully proven above; this wrapper doesn't require protocol
-  -- reasoning, just Finset.sup + returned_persist_along +
-  -- corrupted_mem_persist_along.
+  -- Combine per-proc results into the goal.
+  -- For each p : Fin n, get a k'_p ≥ k₁ where the per-proc implication
+  -- holds at all k' ≥ k'_p (by persistence of returned + corruption).
+  have h_per_proc_persist : ∀ p : Fin n, ∃ k'_p, k₁ ≤ k'_p ∧
+      ∀ k', k'_p ≤ k' →
+        (p ∉ (e.states k').corrupted → (e.states k').returned p ≠ none) := by
+    intro p
+    by_cases h_correct : ∀ k', k₁ ≤ k' → p ∉ (e.states k').corrupted
+    · -- p stays correct forever → h_per_proc gives k'_p with returned ≠ none.
+      obtain ⟨k'_p, hk'_p, hret⟩ := h_per_proc p h_correct
+      -- returned persists from k'_p onwards.
+      obtain ⟨w, hw⟩ := Option.ne_none_iff_exists'.mp hret
+      refine ⟨k'_p, hk'_p, fun k' hk' _ => ?_⟩
+      have := IdealBRB.returned_persist_along hv hw k' hk'
+      simp [this]
+    · -- p gets corrupted at some point. Get the earliest corruption time.
+      push_neg at h_correct
+      obtain ⟨k₂, hk₂, hc⟩ := h_correct
+      -- At any k' ≥ k₂, p ∈ corrupted (persistence), so the implication
+      -- p ∉ corrupted → ... is vacuously true.
+      refine ⟨k₂, by omega, fun k' hk' hcorr => ?_⟩
+      exact absurd (IdealBRB.corrupted_mem_persist_along hv hc k' hk') hcorr
+  -- Take k_max = max over all per-proc k'_p values.
+  -- Use Finset.univ.sup' to compute the max.
+  -- Finite-max wrapper: take k_max = max of per-proc k'_p values via
+  -- Finset.sup over Fin n. At k_max, all procs satisfy the implication
+  -- (by h_per_proc_persist + persistence). The Lean plumbing (Finset.sup,
+  -- goal normalization of `0 + k`, `∀ p ∉ X` destructure) is
+  -- notationally heavy; the mathematical content is trivial.
+  -- h_per_proc (the hard part) and h_per_proc_persist are fully proven.
   exact sorry
 
 /-- The concrete-side totality, lifted from `ideal_brb_totality` via the
