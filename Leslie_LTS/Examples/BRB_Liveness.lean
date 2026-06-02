@@ -529,13 +529,32 @@ theorem ideal_brb_totality :
       exact absurd (IdealBRB.corrupted_mem_persist_along hv hc k' hk') hcorr
   -- Take k_max = max over all per-proc k'_p values.
   -- Use Finset.univ.sup' to compute the max.
-  -- Finite-max wrapper: take k_max = max of per-proc k'_p values via
-  -- Finset.sup over Fin n. At k_max, all procs satisfy the implication
-  -- (by h_per_proc_persist + persistence). The Lean plumbing (Finset.sup,
-  -- goal normalization of `0 + k`, `∀ p ∉ X` destructure) is
-  -- notationally heavy; the mathematical content is trivial.
-  -- h_per_proc (the hard part) and h_per_proc_persist are fully proven.
-  exact sorry
+  -- Finite-max wrapper.
+  classical
+  let k'_fn : Fin n → Nat := fun p => (h_per_proc_persist p).choose
+  have hk'_spec : ∀ p, k₁ ≤ k'_fn p ∧
+      ∀ k', k'_fn p ≤ k' →
+        (p ∉ (e.states k').corrupted → (e.states k').returned p ≠ none) :=
+    fun p => (h_per_proc_persist p).choose_spec
+  -- Goal: eventually (state_prop (∀ p ∉ corrupted, returned p ≠ none)) e (0 + k)
+  -- = ∃ j, (∀ p ∉ (e.states (0+k+j)).corrupted, (e.states (0+k+j)).returned p ≠ none)
+  simp only [eventually, state_prop]
+  by_cases hn0 : n = 0
+  · subst hn0
+    exact ⟨k₁ - k, by intro p; exact Fin.elim0 p⟩
+  · haveI : Nonempty (Fin n) := ⟨⟨0, by omega⟩⟩
+    let k_max := Finset.univ.sup k'_fn
+    have hk_max_ge : ∀ p, k'_fn p ≤ k_max :=
+      fun p => Finset.le_sup (Finset.mem_univ p)
+    have hk_max_ge_k₁ : k₁ ≤ k_max := by
+      have := (hk'_spec ⟨0, by omega⟩).1
+      have := hk_max_ge ⟨0, by omega⟩
+      omega
+    refine ⟨k_max - k, ?_⟩
+    have hkmax_eq : 0 + k + (k_max - k) = k_max := by omega
+    rw [hkmax_eq]
+    intro p hp
+    exact (hk'_spec p).2 k_max (hk_max_ge p) hp
 
 /-- The concrete-side totality, lifted from `ideal_brb_totality` via the
     transfer theorem applied to `brb_weak_div_witness`.
