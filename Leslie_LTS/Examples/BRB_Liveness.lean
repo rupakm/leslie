@@ -6,12 +6,70 @@ import Leslie_LTS.Examples.BRB_Simulation
 /-! # BRB Liveness: Fair-Weak-Divergence Witness and Lifted Totality
 
   This file instantiates `ForwardSim.WeakDivPreserving` for the existing
-  `BRB_Simulation.brb_forward_sim` and uses the transfer theorem to lift
-  a fair-scheduling totality property from `IdealBRB` to the concrete
-  Bracha BRB.
+  `BRB_Simulation.brb_forward_sim` and uses `transfers_satisfaction` to
+  lift a fair-scheduling totality property from `IdealBRB` to the
+  concrete Bracha BRB.
 
-  All declarations here are statements only (Phase 1.5 of the plan). Proofs
-  are deferred to Phase 3.
+  ## Current state (see also `plans/close-framework-gaps-and-brb.md`)
+
+  Framework (`Leslie_LTS/Framework/Simulation.lean`) is sorry-free.
+  This file has the remaining protocol-specific sorries:
+
+  ### Dependency graph of remaining sorries
+
+  ```
+  brb_progress_measure (D.1: currently placeholder 0)
+      │
+      ├─→ brb_rank_wf (D.2: proven trivially for placeholder; re-prove for real measure)
+      ├─→ rank_non_increasing (D.3: sorry — unfair steps don't grow measure)
+      ├─→ rank_decreases_on_fair_elision (D.3: sorry — helpful fair steps decrease measure)
+      ├─→ rank_non_increasing_on_fair_progress (D.3: sorry — lockstep AllFair steps ≤ measure)
+      │
+      └─→ [none of these block ideal_brb_totality or brb_totality — with
+           the placeholder measure, brb_rank = False everywhere, so all
+           rank clauses are vacuously satisfied.  The measure only matters
+           if you want the composed `preserves_fair_weak_divergence` to
+           produce the right witnesses at non-trivial BRB states.]
+
+  brb_fair_deadlock_implies_terminated (D.4: sorry)
+      │
+      └─→ h_fair_reverse inside brb_weak_div_witness.fair_deadlock_diverges
+           (line ~219: sorry — reverse fair-step correspondence)
+
+  ideal_brb_totality (D.5: partially proven)
+      │  Step A: broadcastVal → set_up ≠ none.
+      │    — until-or-forever structure in place, 1 inner sorry at line ~330
+      │      (OR condition: needs broadcastVal_persist_along + isCorrect case split)
+      │  Step B: set_up ≠ none → all correct returned (line ~355: sorry)
+      │    — finite induction: for each correct p, fair output(p, _) fires.
+      │
+      └─→ brb_totality (D.6: sorry — apply transfers_satisfaction with
+           brb_weak_div_witness + ideal_brb_totality + brb_fair_compat)
+  ```
+
+  ### Attack order for a fresh session
+
+  1. **Finish ideal_brb_totality Step A** — close the OR-condition sorry
+     at line ~330.  Needs: `broadcastVal_persist_along` (or inline the
+     persistence argument + case-split on sender correctness).
+  2. **Prove ideal_brb_totality Step B** — for each correct p with
+     `returned p = none` at `k₁`, show `output(p, v)` is enabled (needs
+     `set_up = some v` persistence + `returned p = none`) and fair
+     (`p ∉ corrupted`), then apply the `h_ante` weak-fairness assumption
+     to fire it.  Finite induction over the set of undecided correct
+     procs (at most `n` steps).
+  3. **Prove brb_totality** via `transfers_satisfaction` — once
+     `ideal_brb_totality` is proven.
+  4. **Design brb_progress_measure** — replace placeholder 0 with a
+     real lex measure. This is independent of Steps 1–3 but required for
+     the simulation to produce meaningful abstract witnesses at BRB
+     states (without it, `brb_rank = False` everywhere and the rank
+     obligations are all vacuous).
+  5. **Prove the rank obligations** (rank_non_increasing, rank_decreases_
+     on_fair_elision, rank_non_increasing_on_fair_progress) against the
+     real measure.
+  6. **Prove brb_fair_deadlock_implies_terminated** and use it to close
+     the `h_fair_reverse` sorry.
 -/
 
 open LTS
@@ -325,8 +383,25 @@ theorem ideal_brb_totality :
         refine ⟨{ (e.states (k + j')) with set_up := some default }, ?_⟩
         simp only [IdealBRB.ideal_brb]
         refine ⟨h_none_forever (k + j') (by omega), ?_, ?_⟩
-        -- OR condition: (isCorrect ∧ broadcastVal = some default) ∨ ¬ isCorrect.
-        -- From hA + persistence. Sorried for now.
+        -- OR condition: (isCorrect sender ∧ broadcastVal = some default) ∨ ¬ isCorrect sender.
+        --
+        -- Case split on sender correctness at position k + j':
+        --   * Correct sender: hA gives broadcastVal ≠ none at k.
+        --     broadcastVal is monotone (once set, never unset — no BRB
+        --     step clears it; see `IdealBRB.ideal_brb.step` cases).
+        --     So broadcastVal ≠ none at k + j'.  But we need
+        --     `broadcastVal = some default` specifically — the value
+        --     `default` was chosen as our commit value.
+        --     ISSUE: the correct-sender branch of hA says broadcastVal ≠
+        --     none, giving `some v` for some v, but we committed to
+        --     `default`.  Fix: either generalize the commit value to
+        --     match broadcastVal (use Classical.choice on `broadcastVal =
+        --     some v` to extract v, then commit v instead of default), or
+        --     add an existential wrapper around the commit value in the
+        --     outer proof.
+        --   * Corrupt sender: Or.inr (¬ isCorrect sender).  Corruption
+        --     is monotone — once corrupt, stays corrupt.  So ¬ isCorrect
+        --     at k persists to k + j'.
         · exact sorry
         -- s' = { s with set_up := some default }.
         · simp
@@ -349,9 +424,32 @@ theorem ideal_brb_totality :
     exact absurd h_none (by simp)
   -- Step B: from set_up ≠ none, show eventually all correct returned.
   obtain ⟨k₁, hk₁_ge, hk₁_setup⟩ := hStepA
-  -- Now need: ∃ k' ≥ k₁, B(e.states k').
-  -- For each correct p with returned p = none at k₁, fair scheduling
-  -- of output(p, _) fires it. Finite induction.
+  -- Step B: from set_up = some v at k₁, show all correct procs
+  -- eventually return.
+  --
+  -- Strategy: finite induction over the set of correct procs with
+  -- `returned = none`.  At each step:
+  --   1. Pick any correct p with `(e.states k_i).returned p = none`.
+  --   2. Show `output(p, v)` is enabled at k_i:
+  --      * `isCorrect p` — correctness is monotone (once correct, stays
+  --        correct unless corrupted, but fair deadlock doesn't fire
+  --        corrupt for correct procs).
+  --      * `returned p = none` — by assumption.
+  --      * `set_up = some v` — `set_up` is monotone: once set, the only
+  --        step that touches it is `commit`, which requires `set_up =
+  --        none` as a precondition.  So `set_up` persists from k₁.
+  --   3. Show `output(p, v)` is fair: `ideal_brb_fair_labels (.output p
+  --      v) = p ∉ corrupted` which holds since p is correct.
+  --   4. Apply h_ante for `.output p v` at k_i: "always enabled + fair →
+  --      eventually fires".  After output fires, `returned p = some v`.
+  --   5. `returned` is monotone (once set, never unset).  So the count
+  --      of correct procs with `returned = none` strictly decreases.
+  --   6. After at most n steps, all correct procs have `returned ≠ none`.
+  --
+  -- The step-preservation lemmas `set_up_persist_along` and
+  -- `returned_persist_along` (committed earlier in this file) provide
+  -- the monotonicity facts.  The `h_ante` application pattern mirrors
+  -- Step A's `h_commit_always` usage.
   sorry
 
 /-- The concrete-side totality, lifted from `ideal_brb_totality` via the
