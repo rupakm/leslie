@@ -250,6 +250,25 @@ theorem corrupted_mem_persist_along
     · exact h
     · exact corrupted_mem_persist (hv.2 k') (ih (by omega))
 
+theorem broadcastVal_persist_along_stutter
+    {e : Execution (State n Value) (Label n Value)}
+    (hv : (ideal_brb (n := n) (f := f) (Value := Value) sender).valid_exec_stutter
+      (ideal_labelling n Value) e)
+    {k : Nat} {v : Value}
+    (h : (e.states k).broadcastVal = some v) :
+    ∀ k', k ≤ k' → (e.states k').broadcastVal = some v := by
+  intro k'
+  induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle
+    rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · have hprev := ih (by omega)
+      rcases hv.2 k' with hstep | ⟨heq, _⟩
+      · exact broadcastVal_persist hstep hprev
+      · rw [← heq]; exact hprev
+
 /-! #### Stutter-aware monotonicity
 
     The same persistence facts lifted to `valid_exec_stutter`: at
