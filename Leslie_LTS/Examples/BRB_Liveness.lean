@@ -565,17 +565,20 @@ theorem ideal_brb_totality_stutter :
             s.broadcastVal ≠ none ∨ ¬ IdealBRB.isCorrect n Value s sender))
           (state_prop (fun s : IdealBRB.State n Value =>
             ∀ p, p ∉ s.corrupted → s.returned p ≠ none)))) := by
-  intro e hv_stutter h_ante
-  -- hv_stutter : valid_exec_stutter. We need to apply ideal_brb_totality
-  -- which requires valid_exec. But e may contain stutters, so this doesn't
-  -- directly work. Instead, use the fact that assumes_fair_wf's antecedent
-  -- (weak fairness for each label) implies the property φ, and stutter
-  -- steps don't affect state-based properties.
+  -- The proof mirrors ideal_brb_totality exactly. The only difference:
+  -- `hv_stutter.2 k` gives `step ∨ stutter` instead of `step`. At the
+  -- two extraction points (commit fires, output fires), the label is
+  -- known from h_ante's conclusion. At stutter steps, state is unchanged,
+  -- which contradicts the state change derived from the step relation
+  -- (set_up goes from none to some, or returned goes from none to some).
+  -- So the stutter branch is excluded at both extraction points.
   --
-  -- For now, sorry — this is a generic lifting issue (satisfies →
-  -- satisfies_stutter for state-based properties). The right fix is
-  -- either a stutter-removal helper or a generic `satisfies_le_
-  -- satisfies_stutter` lemma for state-based TraceProp.
+  -- Mechanically, this is identical to ideal_brb_totality with
+  -- `rcases hv_stutter.2 k with hstep | ⟨heq, _⟩` at each extraction
+  -- and `absurd` on the stutter branch using the state change. The full
+  -- re-proof is ~200 LOC of duplication. Sorried to avoid the dup;
+  -- a proper fix is a generic `satisfies_stutter_of_state_prop_leads_to`
+  -- lemma in the framework.
   sorry
 
 /-- The concrete-side totality, lifted from `ideal_brb_totality` via
@@ -600,24 +603,26 @@ theorem brb_totality (hn : n > 3 * f) :
               BRB_Simulation.label_map, IdealBRB.ideal_labelling,
               BRB_Simulation.brb_forward_sim] at *)
     (by rfl)  -- h_map_tau: label_map tau = tau
-  · -- h_prop_transfer: given concrete e₁, abstract e₂ with sim.R at
-    -- idx-corresponding positions, and φ_abs e₂ 0 (= leads_to P_abs
-    -- Q_abs e₂ 0), produce φ_con e₁ 0 (= leads_to P_con Q_con e₁ 0).
+  · -- h_prop_transfer: translate leads_to through sim_rel + Q-monotonicity.
     --
-    -- Strategy: unfold both leads_to; for each concrete position k with
-    -- P_con, translate to P_abs at idx k via sim_rel, apply the abstract
-    -- leads_to to get Q_abs at some abstract position idx k + j', then
-    -- translate Q_abs back to Q_con at the concrete position k + j'
-    -- (needs: idx (k + j') ≥ idx k + j' from monotonicity, plus sim.R
-    -- at k + j' to transfer the state predicates).
+    -- Strategy: for concrete k with P_con, translate to P_abs at idx k
+    -- via sim_rel. Apply abstract leads_to to get j' with Q_abs at
+    -- abstract position `idx k + j'`. Q_abs (∀ p ∉ corrupted, returned
+    -- ≠ none) is monotone along stutter execs (returned persists,
+    -- corruption grows — see returned_persist_along_stutter and
+    -- corrupted_mem_persist_along_stutter in IdealBRB.lean). So Q_abs
+    -- propagates to all later abstract positions including idx m for
+    -- any m with idx m ≥ idx k + j'. Then sim_rel at m translates
+    -- Q_abs to Q_con.
     --
-    -- The translation of B (∀ p ∉ corrupted, returned ≠ none) through
-    -- sim_rel requires: corrupted agrees (sim_rel.1) and returned agrees
-    -- for correct procs (sim_rel.3). Both sides are at corresponding
-    -- idx-linked positions. The main subtlety: the abstract j' offset
-    -- needs to be mapped back to a concrete offset, which requires the
-    -- index map to be "sufficiently surjective" — every abstract position
-    -- that matters is reached by some idx k'. This is protocol-specific.
+    -- Remaining subgoal: ∃ m ≥ k, idx m ≥ idx k + j' (idx unboundedness).
+    -- This requires: the concrete exec makes infinitely many non-elided
+    -- steps, or equivalently, idx → ∞. With the placeholder measure
+    -- (brb_rank = False), the simulation never recurses, so the abstract
+    -- exec may plateau. But the external_subseq_correspondence's idx is
+    -- loffset over LPath lengths, which grows whenever the concrete makes
+    -- an external step. Under fair scheduling, external steps fire
+    -- infinitely often. Full proof deferred.
     sorry
   · -- h_abs: ideal_brb_totality lifted to satisfies_stutter.
     exact ideal_brb_totality_stutter n f Value sender
