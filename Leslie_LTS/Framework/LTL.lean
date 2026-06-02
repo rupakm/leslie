@@ -170,6 +170,27 @@ def System.satisfies_stutter (sys : System State Label)
     (φ : TraceProp State Label) : Prop :=
   ∀ e, sys.valid_exec_stutter lab e → φ e 0
 
+/-- Every `valid_exec` is also a `valid_exec_stutter` (with no actual
+    stutter steps).  Hence `satisfies` implies `satisfies_stutter`. -/
+theorem System.valid_exec_to_stutter {sys : System State Label}
+    {lab : Labelling Label} {e : Execution State Label}
+    (hv : sys.valid_exec e) : sys.valid_exec_stutter lab e :=
+  ⟨hv.1, fun k => Or.inl (hv.2 k)⟩
+
+/-- `satisfies` implies `satisfies_stutter`: if φ holds on all non-stutter
+    executions, it also holds on all stutter executions (since every
+    non-stutter execution is a stutter execution too).
+
+    Note: this is the WRONG direction for the transfer theorem's
+    `h_abs` hypothesis — `h_abs` needs `satisfies_stutter` (stronger),
+    not `satisfies` (weaker). This lemma goes the other way. For the
+    transfer, the caller must prove the property directly on stutter
+    executions. -/
+theorem System.satisfies_of_satisfies_stutter {sys : System State Label}
+    {lab : Labelling Label} {φ : TraceProp State Label}
+    (h : sys.satisfies_stutter lab φ) : sys.satisfies φ :=
+  fun e hv => h e (valid_exec_to_stutter hv)
+
 /-- A trace property is valid if it holds on all executions at all positions. -/
 def tp_valid {State : Type u} {Label : Type v}
     (p : TraceProp State Label) : Prop :=
