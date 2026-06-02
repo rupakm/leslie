@@ -605,11 +605,24 @@ theorem brb_totality (hn : n > 3 * f) :
               BRB_Simulation.label_map, IdealBRB.ideal_labelling,
               BRB_Simulation.brb_forward_sim] at *)
     (by rfl)  -- h_map_tau: label_map tau = tau
-  · -- h_prop_transfer: transfer the leads_to property through sim.R.
-    -- Given concrete e₁, abstract e₂ with R at corresponding positions,
-    -- if the abstract leads_to holds (broadcastVal ∨ ¬ isCorrect →
-    -- eventually all returned), translate to concrete (broadcastVal ∨
-    -- ¬ isCorrect → eventually all returned) via sim_rel.
+  · -- h_prop_transfer: given concrete e₁, abstract e₂ with sim.R at
+    -- idx-corresponding positions, and φ_abs e₂ 0 (= leads_to P_abs
+    -- Q_abs e₂ 0), produce φ_con e₁ 0 (= leads_to P_con Q_con e₁ 0).
+    --
+    -- Strategy: unfold both leads_to; for each concrete position k with
+    -- P_con, translate to P_abs at idx k via sim_rel, apply the abstract
+    -- leads_to to get Q_abs at some abstract position idx k + j', then
+    -- translate Q_abs back to Q_con at the concrete position k + j'
+    -- (needs: idx (k + j') ≥ idx k + j' from monotonicity, plus sim.R
+    -- at k + j' to transfer the state predicates).
+    --
+    -- The translation of B (∀ p ∉ corrupted, returned ≠ none) through
+    -- sim_rel requires: corrupted agrees (sim_rel.1) and returned agrees
+    -- for correct procs (sim_rel.3). Both sides are at corresponding
+    -- idx-linked positions. The main subtlety: the abstract j' offset
+    -- needs to be mapped back to a concrete offset, which requires the
+    -- index map to be "sufficiently surjective" — every abstract position
+    -- that matters is reached by some idx k'. This is protocol-specific.
     sorry
   · -- h_abs: ideal_brb_totality lifted to satisfies_stutter.
     exact ideal_brb_totality_stutter n f Value sender
