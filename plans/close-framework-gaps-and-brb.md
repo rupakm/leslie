@@ -1,28 +1,20 @@
-# Close (ii.b.X) and transfers_satisfaction — the two remaining framework gaps
+# Closing framework gaps + BRB liveness — multi-session plan
 
-## Step 0 — persist this plan to the project
+## Current state (last updated 2026-06-02)
 
-The plan-mode file at
-`/Users/mbk-23-0041/.claude/plans/can-you-compare-leslie-piped-sifakis.md`
-is ephemeral. **First action** of implementation: copy this plan
-verbatim to `plans/close-framework-gaps-and-brb.md` in the repo, so
-future sessions (or future me, after compaction) can find it. Commit as:
+**Phases A, B, C, F are DONE.** The framework (`Leslie_LTS/Framework/`)
+is fully sorry-free.  `preserves_fair_weak_divergence` and
+`transfers_satisfaction` are both proven.  All that remains is **Phase D
+— BRB protocol-design closure** in `Leslie_LTS/Examples/BRB_Liveness.lean`.
 
-  `docs: persist multi-session plan for closing framework gaps + BRB`
+Run `grep -n sorry Leslie_LTS/Examples/BRB_Liveness.lean` to see the
+exact current sorries.  See also the dependency graph and attack order
+in the module header of that file.
 
-This is also the file a future continuation should read FIRST to recall
-the design decisions encoded below (Gaspard's 5th-clause recommendation,
-the satisfies_stutter rationale, the fair-deadlock-at-terminated-states
-fix, and BRB protocol-design notes).
+**DO NOT re-do Phases A–C.** They are complete.  The descriptions below
+are preserved as historical context for the design decisions.
 
-## Context
-
-After this session, `preserves_fair_weak_divergence` has sub-cases (i),
-(ii.a), and (ii.b.Y) fully closed, and the rest of the framework builds
-green. Two real `sorry`s remain in
-[`Simulation.lean`](Leslie_LTS/Framework/Simulation.lean), and the comments
-around each understated the resolution path. Both are framework design
-gaps with clean fixes:
+## Design decisions (historical — for understanding, not re-doing)
 
 ### Gap 1 — Case (ii.b.X) of the fair-divergence soundness proof
 
@@ -63,7 +55,7 @@ modulo a wrapper — no real cost.
 
 ## Implementation
 
-### Phase A — Gap 1: 5th witness clause + close (X)
+### Phase A — Gap 1: 5th witness clause + close (X) — ✅ DONE
 
 #### A.1 Add the 5th field to `WeakDivPreserving`
 
@@ -156,7 +148,7 @@ Drop the "OBSTRUCTION / design-level resolutions" comment block.
 
 Commit: `feat: close Case (ii.b.X) of preserves_fair_weak_divergence`.
 
-### Phase B — Gap 2: `satisfies_stutter` + close `transfers_satisfaction`
+### Phase B — Gap 2: `satisfies_stutter` + close `transfers_satisfaction` — ✅ DONE
 
 #### B.1 Add `System.satisfies_stutter` definition
 
@@ -270,7 +262,7 @@ or its own small commit.
    debt.
 5. Spot-check no `decide` / `admit` / `axiom` introduced anywhere.
 
-### Phase C — Fair-deadlock discharge correctness (small but important)
+### Phase C — Fair-deadlock discharge correctness — ✅ DONE
 
 Currently, `brb_weak_div_witness.fair_deadlock_diverges` and
 `bca_weak_div_witness.fair_deadlock_diverges` are discharged by
@@ -332,13 +324,25 @@ Commits (one each):
 - `feat: add ForwardSim.fair_deadlock_lifts helper`
 - `refactor: restate *_no_fair_deadlock_reachable per terminated-states reality`
 
-### Phase D — BRB protocol-design closure
+### Phase D — BRB protocol-design closure — ⏳ IN PROGRESS (this is the remaining work)
 
 Replace the placeholder `brb_progress_measure` with a real lex measure;
 discharge the four `WeakDivPreserving` obligations (including the new
 5th); prove no-fair-deadlock-or-terminated; prove `ideal_brb_totality`
 via LTL leads-to chaining; lift to `brb_totality` via
-`transfers_satisfaction` (now closed by Phase B).
+`transfers_satisfaction` (closed by Phase B).
+
+**Prior overnight progress (2026-06-02 01:00–01:53):**
+- `brb_progress_measure` defined (placeholder 0, with docstring describing
+  the intended lex measure).
+- `brb_rank_wf` proven (trivially for placeholder).
+- `brb_fair_compat` proven (concrete fair labels → abstract fair labels).
+- `ideal_brb_totality` Step A partially proven: until-or-forever structure
+  for `set_up` with step-preservation lemmas (set_up/returned/broadcastVal
+  monotone).  One inner sorry at the OR condition (line ~330), plus the
+  sender-corrupt branch.  Step B fully sorried.
+- See the module header of `BRB_Liveness.lean` for the dependency graph
+  and recommended attack order.
 
 #### D.1 Design `brb_progress_measure`
 
@@ -415,71 +419,89 @@ the existing pre-session BCA sorries (`bca_progress_measure`,
 `bca_rank_wf`, `bca_no_fair_deadlock_reachable`, `ideal_bca_decision`,
 `bca_decision`, etc.) — they stay as they are.
 
-### Phase F — Cleanup
+### Phase F — Cleanup — ✅ DONE
 
-Once everything is closed:
-- Delete the now-stale `fair_non_elision_progress` references in
-  `Simulation.lean` docstrings (the field was renamed mid-design).
-- Audit all "sorried" / "deferred" / "blocker" comments and prune those
-  that are now obsolete.
-- Final `grep -n sorry` should return nothing real anywhere under
-  `Leslie_LTS/Framework/` and `Leslie_LTS/Examples/{BRB_,BCA_}Liveness.lean`.
+Stale `fair_non_elision_progress` references and outdated blocker
+comments have been pruned from `Simulation.lean`.
 
-Commits:
-- `docs: remove stale fair_non_elision_progress references`
-- `chore: prune obsolete blocker / deferred comments`
+## Remaining work
 
-## Scope
-
-| Phase | Scope | Estimate |
+| Phase | Status | Estimate |
 |---|---|---|
-| A | (X) closure via 5th witness clause | small, ~250 LOC across 5 files |
-| B | satisfies_stutter + transfers_satisfaction | medium, ~150-300 LOC |
-| C | Fair-deadlock discharge fix | small, ~100 LOC |
-| D | BRB protocol-design closure | LARGE, ~1500-2500 LOC |
-| F | Cleanup | trivial |
+| A | ✅ Done | — |
+| B | ✅ Done | — |
+| C | ✅ Done | — |
+| D | ⏳ In progress | ~1000-2000 LOC remaining |
+| F | ✅ Done | — |
 
-After Phase C, `Leslie_LTS/Framework/` is sorry-free — the soundness
-chain holds end-to-end. After Phase D, the headline `brb_totality`
-theorem is fully proven without any framework debt. BCA is intentionally
-deferred to a later session.
+### Remaining Phase D commits (in recommended order)
 
-## Commit sequence
+**Highest priority — close ideal_brb_totality (unblocks brb_totality):**
 
-In order, one commit per item. Build green at every commit. All commits
-local (per the established no-push rule).
+1. Close Step A OR-condition sorry (line ~330 of BRB_Liveness.lean):
+   generalize commit value from `default` to match broadcastVal, or add
+   existential wrapper.  See detailed comment in the file.
+2. Close Step A sender-corrupt branch.
+3. Prove Step B (finite induction over correct procs — see detailed
+   strategy comment in the file at line ~355).
+4. `feat: prove brb_totality via transfers_satisfaction` — apply
+   `transfers_satisfaction` with `brb_weak_div_witness` +
+   `ideal_brb_totality` + `brb_fair_compat`.
 
-**Phase A (X closure):**
+**Lower priority — real progress measure (independent of above):**
 
-1. `feat: add rank_non_increasing_on_fair_progress to WeakDivPreserving`
-2. `feat: discharge rank_non_increasing_on_fair_progress for compose_with_compatible`
-3. `feat: add (sorried) rank_non_increasing_on_fair_progress for BRB/BCA witnesses`
-4. `feat: generalise bridge_from_hrank to handle fair-non-empty-AllFair prefix steps`
-5. `feat: close Case (ii.b.X) of preserves_fair_weak_divergence`
+5. Replace placeholder `brb_progress_measure` (currently `0`) with a
+   real lex measure.
+6. Re-prove `brb_rank_wf` for the real measure.
+7. Discharge rank obligations: `rank_non_increasing`,
+   `rank_decreases_on_fair_elision`, `rank_non_increasing_on_fair_progress`.
+8. Prove `brb_fair_deadlock_implies_terminated` and use it to close the
+   `h_fair_reverse` sorry inside `fair_deadlock_diverges`.
 
-**Phase B (transfers_satisfaction):**
+### Phase E — BCA protocol-design closure (after BRB is done)
 
-6. `feat: add System.satisfies_stutter for abstract-side stutter-tolerant obligations`
-7. `feat: prove transfers_satisfaction via satisfies_stutter relaxation`
+Once BRB is fully closed, mirror the same structure for BCA in
+`Leslie_LTS/Examples/BCA_Liveness.lean`.  BCA is more complex than BRB
+(graded protocol with multiple phases: init → echo → vote → decide),
+so expect ~1.5× the BRB effort.
 
-**Phase C (fair-deadlock fix):**
+**First step: study the TLA-side BCA liveness proof** at
+`Leslie/Examples/BindingCrusaderAgreementLiveness.lean` (4513 lines).
+This file contains the complete TLA-level BCA liveness proof, including:
+- `bca_fairness` (line 60) — the TLA fairness predicate.
+- Step-monotonicity lemmas for all local-state fields (`input_persist`,
+  `sent_persist`, `isCorrect_persist`, `initRecv_step_mono`,
+  `echoRecv_step_mono`, `voteRecv_step_mono`, `decided_step_mono`, etc.).
+- Delivery lemmas chaining through protocol phases:
+  `init_delivery_correct_sender` → `init_delivery_from_initRecv` →
+  `amplify_init_delivery` → `echo_delivery_from_approved` →
+  `vote_delivery_from_ready` → `decide_delivery_binary` /
+  `decide_delivery_none`.
+- The headline `totality`-equivalent (decision) via leads-to chaining.
 
-8. `feat: add ForwardSim.fair_deadlock_lifts helper`
-9. `refactor: restate *_no_fair_deadlock_reachable per terminated-states reality`
-10. `fix: replace exfalso discharge of fair_deadlock_diverges with proper lift`
+The LTS-side proof should follow the same phase-by-phase leads-to
+structure but adapted to the `assumes_fair_wf` + `transfers_satisfaction`
+framework instead of TLA-level `pred_implies ... ↝ ...`.
 
-**Phase D (BRB closure):**
+**BCA-specific design decisions:**
+- `bca_fair_labels` and `ideal_bca_fair_labels` are already defined in
+  `BCA_Liveness.lean` (mirroring BRB).
+- The `ideal_bca_internalStar_allFair` helper (vacuous — `.bind` is
+  always fair) and `rank_decreases_on_unfair_abstract` (exfalso) are
+  already proven.
+- The progress measure for BCA is likely lex of
+  `(decided_count, vote_pending, echo_pending, init_pending)` — refer
+  to the TLA file's delivery lemma chain for the decreasing quantities.
+- `bca_forward_sim` is at `BCA_Simulation.lean:2480`.
 
-11. `feat: define brb_progress_measure as lex over protocol phases`
-12. `feat: prove brb_rank_wf`
-13. `feat: prove brb rank_non_increasing`
-14. `feat: prove brb rank_decreases_on_fair_elision`
-15. `feat: prove brb rank_non_increasing_on_fair_progress`
-16. `feat: prove brb_no_unterminated_fair_deadlock_reachable`
-17. `feat: prove ideal_brb_totality via leads-to chaining`
-18. `feat: prove brb_totality via transfers_satisfaction`
-
-**Phase F (cleanup):**
-
-19. `docs: remove stale fair_non_elision_progress references`
-20. `chore: prune obsolete blocker / deferred comments`
+**Attack order for BCA:**
+1. Study `BindingCrusaderAgreementLiveness.lean` to understand the
+   phase-by-phase leads-to chain.
+2. Write step-preservation lemmas for `IdealBCA` (monotonicity of
+   `bound_value`, `decided`, `corrupted`).
+3. Prove `ideal_bca_decision` via leads-to chaining (bind fires →
+   output enabled for each correct p → output fires → all decided).
+4. Prove `bca_decision` via `transfers_satisfaction`.
+5. Design `bca_progress_measure`, prove `bca_rank_wf`, discharge the
+   rank obligations.
+6. Prove `bca_fair_deadlock_implies_terminated` and close `h_fair_reverse`.
