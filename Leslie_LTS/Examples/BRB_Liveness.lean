@@ -598,14 +598,13 @@ theorem ideal_brb_totality_stutter :
         · refine ⟨{ (e.states (0 + k + j')) with set_up := some v₀ }, ?_⟩
           simp only [IdealBRB.ideal_brb]
           refine ⟨h_none_forever (0 + k + j') (by omega), ?_, by simp⟩
-          left
-          constructor
-          · -- isCorrect sender persists... but on stutter exec we need
-            -- the value from hA's position. hA says broadcastVal ≠ none
-            -- at position 0 + k. broadcastVal persists along stutter execs.
-            sorry -- needs isCorrect persistence + broadcastVal persistence on stutter
-          · -- broadcastVal = some v₀ persists from position 0 + k.
-            exact IdealBRB.broadcastVal_persist_along_stutter hv_stutter hv₀ (0 + k + j') (by omega)
+          -- OR condition: case-split on sender correctness at 0 + k + j'.
+          by_cases hcorr_s : IdealBRB.isCorrect n Value (e.states (0 + k + j')) sender
+          · -- Correct sender: broadcastVal persists from 0 + k.
+            exact Or.inl ⟨hcorr_s,
+              IdealBRB.broadcastVal_persist_along_stutter hv_stutter hv₀
+                (0 + k + j') (by omega)⟩
+          · exact Or.inr hcorr_s
         · simp [ideal_brb_fair_labels]
       obtain ⟨j, hlbl, h_real_step⟩ := h_commit h_inner
       -- h_real_step: real step at 0 + k + j. Extract set_up change.
