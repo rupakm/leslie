@@ -407,10 +407,9 @@ theorem ideal_brb_totality :
                h_or_persist (k + j') (by omega), ?_⟩
         simp
       · simp [ideal_brb_fair_labels]
-    obtain ⟨j, hj⟩ := h_commit_always h_inner
+    obtain ⟨j, hj, h_step_kj⟩ := h_commit_always h_inner
     have hpos : 0 + k + j = k + j := by omega
-    rw [hpos] at hj
-    have h_step_kj := hv.2 (k + j)
+    rw [hpos] at hj h_step_kj
     rw [← hj] at h_step_kj
     simp only [IdealBRB.ideal_brb] at h_step_kj
     obtain ⟨_, _, heq_s'⟩ := h_step_kj
@@ -490,10 +489,9 @@ theorem ideal_brb_totality :
       · -- fair: p ∉ corrupted at k₁ + j'
         simp only [ideal_brb_fair_labels]
         exact h_stays_correct (k₁ + j') (by omega)
-    obtain ⟨j, hj⟩ := h_output_always h_output_inner
+    obtain ⟨j, hj, h_step_out⟩ := h_output_always h_output_inner
     have hpos : 0 + k₁ + j = k₁ + j := by omega
-    rw [hpos] at hj
-    have h_step_out := hv.2 (k₁ + j)
+    rw [hpos] at hj h_step_out
     rw [← hj] at h_step_out
     simp only [IdealBRB.ideal_brb] at h_step_out
     obtain ⟨_, _, _, heq_s'⟩ := h_step_out
@@ -557,7 +555,7 @@ theorem ideal_brb_totality :
 theorem ideal_brb_totality_stutter :
     (IdealBRB.ideal_brb n f Value sender).satisfies_stutter
       (IdealBRB.ideal_labelling n Value)
-      (assumes_fair_wf_step
+      (assumes_fair_wf
         (IdealBRB.ideal_brb n f Value sender)
         (ideal_brb_fair_labels n Value)
         (leads_to
@@ -566,7 +564,7 @@ theorem ideal_brb_totality_stutter :
           (state_prop (fun s : IdealBRB.State n Value =>
             ∀ p, p ∉ s.corrupted → s.returned p ≠ none)))) := by
   intro e hv_stutter h_ante
-  -- With assumes_fair_wf_step, h_ante gives "fires" = label match + real
+  -- With assumes_fair_wf, h_ante gives "fires" = label match + real
   -- step. So the proof mirrors ideal_brb_totality exactly: wherever the
   -- non-stutter version uses `hv.2 k` to extract step structure, we use
   -- `h_ante`'s step component instead.

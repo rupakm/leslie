@@ -2132,13 +2132,13 @@ theorem transfers_satisfaction
         (∀ k, sim.R (e₁.states k) (e₂.states (idx k))) →
         φ_abs e₂ 0 → φ_con e₁ 0)
     -- `h_abs` re-typed as `satisfies_stutter` per Option A, with the
-    -- step-aware variant `assumes_fair_wf_step` — on stutter execs,
+    -- step-aware variant `assumes_fair_wf` — on stutter execs,
     -- "fires" means both label match AND a real step (not just a
     -- τ-stutter label). This resolves the fundamental issue where
     -- τ-stutters would "fire" commit without changing state.
     (h_abs :
       abstract.satisfies_stutter lab₂
-        (assumes_fair_wf_step abstract fair_labels₂ φ_abs))
+        (assumes_fair_wf abstract fair_labels₂ φ_abs))
     -- Fair-WF antecedent transfer: concrete fairness assumptions lift
     -- to abstract fairness on the constructed abstract execution.  This
     -- is protocol-specific (depends on how enabled/fair labels relate
@@ -2153,7 +2153,8 @@ theorem transfers_satisfaction
           always (tp_implies
             (always (state_prop (fun s => concrete.enabled l₁ s ∧
               fair_labels₁ s l₁)))
-            (eventually (step_prop (fun _ l' _ => l₁ = l')))))) e₁ 0 →
+            (eventually (fun e k => l₁ = e.labels k ∧
+              concrete.step (e.states k) (e.labels k) (e.states (k + 1))))))) e₁ 0 →
         (tp_forall (fun l₂ =>
           always (tp_implies
             (always (state_prop (fun s => abstract.enabled l₂ s ∧
@@ -2254,7 +2255,7 @@ theorem transfers_leads_to
     (h_Q_step : ∀ s l s', Q_abs s → abstract.step s l s' → Q_abs s')
     (h_abs :
       abstract.satisfies_stutter lab₂
-        (assumes_fair_wf_step abstract fair_labels₂
+        (assumes_fair_wf abstract fair_labels₂
           (leads_to (state_prop P_abs) (state_prop Q_abs))))
     (h_ante_transfer :
       ∀ (e₁ : Execution S₁ L₁) (e₂ : Execution S₂ L₂) (idx : Nat → Nat),
@@ -2266,7 +2267,8 @@ theorem transfers_leads_to
           always (tp_implies
             (always (state_prop (fun s => concrete.enabled l₁ s ∧
               fair_labels₁ s l₁)))
-            (eventually (step_prop (fun _ l' _ => l₁ = l')))))) e₁ 0 →
+            (eventually (fun e k => l₁ = e.labels k ∧
+              concrete.step (e.states k) (e.labels k) (e.states (k + 1))))))) e₁ 0 →
         (tp_forall (fun l₂ =>
           always (tp_implies
             (always (state_prop (fun s => abstract.enabled l₂ s ∧

@@ -424,7 +424,17 @@ theorem weak_fairness_iff_alt (sys : System State Label) (l : Label)
 /-- "Property `φ` holds under fair-WF assumptions for labels selected by
     `fair_labels`". For each label `l`, we conjoin a state-aware weak-fairness
     obligation: whenever `l` is continuously enabled *at states where
-    `fair_labels s l`*, it eventually fires.
+    `fair_labels s l`*, it eventually fires **as a real step** (both
+    `l = e.labels k` AND `sys.step` holds at position `k`).
+
+    The step-awareness is essential for correctness on stutter executions
+    (`valid_exec_stutter`): without it, a τ-stutter position where
+    `e.labels k = τ` would count as "τ fired" even though no state change
+    occurred, breaking proofs that rely on state changes after firings.
+    On non-stutter executions (`valid_exec`), the step conjunct is free
+    (every position has a real step via `hv.2 k`).
+
+    See `Leslie_LTS/issues.md` for the full design rationale.
 
     This is the bridge between the state-dependent label selector used in
     `ForwardSim.WeakDivPreserving` and the existing per-label TraceProp
@@ -437,58 +447,8 @@ def assumes_fair_wf
     (tp_forall (fun l =>
       always (tp_implies
         (always (state_prop (fun s => sys.enabled l s ∧ fair_labels s l)))
-        (eventually (step_prop (fun _ l' _ => l = l'))))))
-    φ
-
-/-- Step-aware variant of `assumes_fair_wf`: the "eventually fires"
-    conclusion requires both `l = e.labels k` AND a real step
-    `sys.step (e.states k) (e.labels k) (e.states (k+1))`.
-
-    On `valid_exec` (non-stutter), this is equivalent to `assumes_fair_wf`
-    since every label match IS a real step. On `valid_exec_stutter`, this
-    is STRICTLY WEAKER than `assumes_fair_wf` (the antecedent is harder
-    to satisfy, so the implication is easier to prove). Used by
-    `transfers_satisfaction`'s `h_abs` hypothesis for honest discharge
-    on stutter execs. -/
-def assumes_fair_wf_step
-    (sys : System State Label)
-    (fair_labels : State → Label → Prop)
-    (φ : TraceProp State Label) : TraceProp State Label :=
-  tp_implies
-    (tp_forall (fun l =>
-      always (tp_implies
-        (always (state_prop (fun s => sys.enabled l s ∧ fair_labels s l)))
         (eventually (fun e k => l = e.labels k ∧
           sys.step (e.states k) (e.labels k) (e.states (k + 1)))))))
     φ
-
-/-- On `valid_exec`, `assumes_fair_wf_step` and `assumes_fair_wf` are
-    equivalent (every position has a real step). -/
-theorem assumes_fair_wf_step_eq_on_valid_exec
-    {sys : System State Label}
-    {fair_labels : State → Label → Prop}
-    {φ : TraceProp State Label}
-    {e : Execution State Label}
-    (hv : sys.valid_exec e) :
-    assumes_fair_wf_step sys fair_labels φ e 0 ↔
-    assumes_fair_wf sys fair_labels φ e 0 := by
-  constructor
-  · -- assumes_fair_wf_step → assumes_fair_wf:
-    -- step-aware antecedent is stronger (requires label + step).
-    -- Strip the step part to get the label-only antecedent.
-    intro h ante
-    apply h
-    intro l k hcont
-    obtain ⟨j, hfires⟩ := ante l k hcont
-    have h_step := hv.2 (k + j)
-    exact ⟨j, by simpa using hfires, by simpa using h_step⟩
-  · -- assumes_fair_wf → assumes_fair_wf_step:
-    -- label-only antecedent is weaker; on valid_exec, every label
-    -- match IS a real step, so add the step witness.
-    intro h ante
-    apply h
-    intro l k hcont
-    obtain ⟨j, hfires, _⟩ := ante l k hcont
-    exact ⟨j, hfires⟩
 
 end LTS
