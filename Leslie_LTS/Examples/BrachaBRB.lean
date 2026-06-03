@@ -1264,6 +1264,54 @@ theorem broadcastVal_persist_along
     · exact h
     · exact step_broadcastVal_persist (hv.2 k') p v (ih (by omega))
 
+/-- `sendRecv p = some v` persists along valid BRB executions. -/
+theorem sendRecv_persist_along
+    {e : Execution (State n Value) (Label n Value)}
+    (hv : (brb n f Value sender).valid_exec e)
+    {k : Nat} {p : Fin n} {v : Value}
+    (h : ((e.states k).local_ p).sendRecv = some v)
+    (k' : Nat) (hk : k ≤ k') :
+    ((e.states k').local_ p).sendRecv = some v := by
+  induction k' with
+  | zero => exact (Nat.le_zero.mp hk) ▸ h
+  | succ k' ih =>
+    rcases Nat.eq_or_lt_of_le hk with rfl | hlt
+    · exact h
+    · exact step_sendRecv_mono (hv.2 k') p v (ih (by omega))
+
+/-- `returned p = some v` persists along valid BRB executions. -/
+theorem returned_persist_along
+    {e : Execution (State n Value) (Label n Value)}
+    (hv : (brb n f Value sender).valid_exec e)
+    {k : Nat} {p : Fin n} {v : Value}
+    (h : ((e.states k).local_ p).returned = some v)
+    (k' : Nat) (hk : k ≤ k') :
+    ((e.states k').local_ p).returned = some v := by
+  induction k' with
+  | zero => exact (Nat.le_zero.mp hk) ▸ h
+  | succ k' ih =>
+    rcases Nat.eq_or_lt_of_le hk with rfl | hlt
+    · exact h
+    · -- returned is unchanged unless the step is output for p.
+      -- If it's output for p, returned p goes from none to some w.
+      -- But returned p was already some v, so either:
+      --   (a) the step is not output for p → preserved by step_returned
+      --   (b) the step is output for p → but output requires returned = none,
+      --       contradicting returned = some v
+      have hprev := ih (by omega)
+      by_cases hout : ∃ w, (e.labels k') = .output p w
+      · obtain ⟨w, hw⟩ := hout
+        -- output p w requires (s.local_ p).returned = none
+        have hstep := hv.2 k'
+        rw [hw] at hstep
+        simp only [brb] at hstep
+        exact absurd hstep.2.1 (by rw [hprev]; exact nofun)
+      · push_neg at hout
+        have hne : ∀ i w, (e.labels k') = .output i w → p ≠ i := by
+          intro i w hlbl hpi; subst hpi; exact hout w hlbl
+        rw [step_returned (hv.2 k') p hne]
+        exact hprev
+
 end execution_persistence
 
 end BRB_LTS
