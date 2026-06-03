@@ -1072,6 +1072,68 @@ theorem step_countEchoRecv_mono {s s' : State n Value} {l : Label n Value} {send
   intro r hr; simp only at hr ⊢
   exact step_echoRecv h q r v hr
 
+/-- `voteRecv p q v` is monotone: if true before a step, still true after. -/
+theorem step_voteRecv {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s')
+    (p q : Fin n) (v : Value)
+    (hrecv : (s.local_ p).voteRecv q v = true) :
+    (s'.local_ p).voteRecv q v = true := by
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := h; exact hrecv
+  | .send src _ _ _ =>
+    obtain ⟨_, rfl⟩ := h; simp only
+    by_cases hp : p = src <;> simp only [hp]
+    · subst hp; exact hrecv
+    · exact hrecv
+  | .recv src dst .init _ =>
+    obtain ⟨_, rfl⟩ := h; simp only
+    by_cases hp : p = dst <;> simp only [hp]
+    · subst hp
+      by_cases hc : (src : Fin n) = sender ∧ (s.local_ p).sendRecv = none
+      · simp only [hc]; exact hrecv
+      · simp only [hc]; exact hrecv
+    · exact hrecv
+  | .recv src dst .echo mv =>
+    obtain ⟨_, rfl⟩ := h; simp only
+    by_cases hp : p = dst <;> simp only [hp]
+    · subst hp
+      by_cases hc : (s.local_ p).echoRecv src mv = false
+      · simp only [hc]; exact hrecv
+      · simp only [hc]; exact hrecv
+    · exact hrecv
+  | .recv src dst .vote mv =>
+    obtain ⟨_, rfl⟩ := h; simp only
+    by_cases hp : p = dst <;> simp only [hp]
+    · subst hp
+      by_cases hc : (s.local_ p).voteRecv src mv = false
+      · simp only [hc]; by_cases hqv : q = src ∧ v = mv
+        · simp [hqv]
+        · simp only [↓reduceIte, Bool.if_true_left, Bool.decide_and, Bool.or_eq_true,
+          Bool.and_eq_true, decide_eq_true_eq, hqv, false_or]; exact hrecv
+      · simp only [hc]; exact hrecv
+    · exact hrecv
+  | .output i _ =>
+    obtain ⟨_, _, _, rfl⟩ := h; simp only
+    by_cases hp : p = i <;> simp only [hp]
+    · subst hp; exact hrecv
+    · exact hrecv
+  | .input i _ =>
+    have := input_eq_sender h; subst this
+    obtain ⟨_, _, rfl⟩ := h; simp only
+    by_cases hp : p = i <;> simp only [hp]
+    · subst hp; exact hrecv
+    · exact hrecv
+
+/-- `countVoteRecv` is monotone across steps. -/
+theorem step_countVoteRecv_mono {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s') (q : Fin n) (v : Value) :
+    countVoteRecv n Value (s.local_ q) v ≤
+    countVoteRecv n Value (s'.local_ q) v := by
+  unfold countVoteRecv
+  apply filter_length_mono
+  intro r hr; simp only at hr ⊢
+  exact step_voteRecv h q r v hr
+
 end mechanical_helpers
 
 
