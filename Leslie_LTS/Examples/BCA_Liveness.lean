@@ -17,6 +17,123 @@ import Leslie_LTS.Examples.BCA_Simulation
   Phase-3 protocol design work.
 -/
 
+/-! ## BCA Protocol Reasoning Cheatsheet
+
+    For the full TLA-level proof, see
+    `Leslie/Examples/BindingCrusaderAgreementLiveness.lean` (4513 lines).
+
+    ### Protocol structure (Graded BCA under n > 3f, binary values T)
+
+    The concrete BCA has 5 label types: `corrupt`, `input`, `send`,
+    `recv`, `output` (called `decide` in the TLA version). Fair labels
+    are `send`/`recv`/`output` where all involved processes are correct.
+
+    BCA operates over a binary value type `T` with at most 2 input
+    values (`b₀`, `b₁`). The `Val T` type adds `none` (⊥ = "no binary
+    decision") to `some b : T`.
+
+    ### Thresholds (from `BCA.lean`)
+
+    * `amplifyThreshold f = f + 1`  (for init amplification)
+    * `approveThreshold n f = n - f` (for approval → echo)
+    * `echoThreshold n f = n - f`    (for echo quorum → vote binary)
+    * `returnThreshold n f = n - f`  (for decision)
+
+    ### The delivery chain (from TLA-side proof, lines 3062–3470)
+
+    Much more complex than BRB — 4 message phases instead of BRB's 2:
+
+    1. **Init delivery** (`init_delivery_correct_sender`, line 3068):
+       Correct sender p with `input = some b` → `init(some b)` delivered
+       to every receiver q. Uses `wf_send` + `wf_recv`.
+
+    2. **Init amplification** (`amplify_init_delivery`, line 3156):
+       If `countInitRecv ≥ f+1` for value `b`, re-broadcast `init(b)`
+       to all. Under n > 3f with binary inputs, enough correct procs
+       have the same input → amplification threshold crossed.
+
+    3. **Echo delivery** (`echo_delivery_from_approved`, line 3195):
+       If correct p has `approved b` (got enough init receipts), p
+       echoes. Once `countEchoRecv ≥ n-f` for some b, p can vote
+       binary (some b). If two distinct values approved, p votes ⊥.
+
+    4. **Vote delivery** (`vote_delivery_from_ready`, line 3307):
+       Given echo quorum OR both-approved, p sends vote. Each vote is
+       delivered to every receiver via `wf_chain_type` (handles the
+       "vote-once" constraint — once voted, the value is fixed).
+
+    5. **Decision delivery**:
+       * `decide_delivery_binary` (line 3419): ≥ n-f binary votes
+         for some b → decide (some b).
+       * `decide_delivery_none` (line 3456): two distinct approved
+         values + ≥ n-f total votes → decide none (⊥).
+
+    ### Key difference from BRB
+
+    BRB has a single "commit" phase on the ideal side. BCA has a
+    multi-phase delivery chain (init → echo → vote → decide) where
+    each phase depends on the previous one's quorum being reached.
+    The ideal BCA has a single "bind" internal step (analogous to
+    BRB's "commit") that sets the `bound_value`.
+
+    ### Fairness (TLA-side, line 60)
+
+    ```
+    bca_fairness = WF(correct send) ∧ WF(recv) ∧ WF(decide)
+    ```
+
+    Three weak-fairness obligations. In the LTS framework, these map
+    to `assumes_fair_wf` with `bca_fair_labels` selecting the fair
+    labels.
+
+    ### WF applications (TLA-side, lines 2516–2660)
+
+    * `wf_send`: if send gate is open (unfired correct send with
+      preconditions met), the send eventually fires.
+    * `wf_send_type`: type-level send — fires for SOME value in a set
+      of values with open gates. Handles the echo/vote "commitment"
+      (once echoed/voted, the value is fixed).
+    * `wf_recv`: message in buffer → eventually received.
+    * `wf_decide`: if decide gate is open (threshold crossed, not yet
+      decided), the decide eventually fires.
+    * `wf_chain`: composed delivery: gate open → send → buffer →
+      recv → delivered. The workhorse lemma.
+    * `wf_chain_type`: type-level chain — delivers SOME value from a
+      set of values with open gates.
+
+    ### Persistence lemmas (TLA-side, lines 86–920)
+
+    ~20 persistence lemmas covering all local-state fields:
+    `input_persist`, `sent_persist`, `isCorrect_persist`,
+    `initRecv_persist`, `echoRecv_persist`, `echoed_persist`,
+    `approved_persist`, `voteRecv_persist`, `decided_persist`,
+    `voted_persist`, `countEchoRecv_persist`, `countVoteRecv_persist`,
+    `countAnyVoteRecv_persist`, `countInitRecv_persist`.
+
+    ### How this applies to the BCA sorries
+
+    **ideal_bca_decision:**
+    Same until-or-forever structure as ideal_brb_totality:
+    Step A: input ready → bound_value eventually set (via fair bind,
+      which requires inputSupport ≥ f+1 — guaranteed by binary input
+      assumption + n > 3f pigeonhole).
+    Step B: bound_value set → all correct procs eventually decide (via
+      fair output, since set_up = bound_value persists and output
+      requires isCorrect + decided = none + bound_value = some v).
+
+    **bca_decision:**
+    Same `transfers_leads_to` pattern as `brb_totality`.
+
+    **bca_fair_deadlock_implies_terminated:**
+    Same argument as BRB: at a fair-deadlock, no fair step is enabled.
+    If correct p has `decided = none`, show some fair step is enabled
+    (output if enough votes, or fair recv/send upstream).
+
+    **Rank obligations:**
+    Same placeholder pattern as BRB. Design a lex measure over
+    (decided_count, vote_pending, echo_pending, init_pending).
+-/
+
 open LTS
 
 namespace BCA_Liveness
