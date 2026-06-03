@@ -728,17 +728,62 @@ theorem brb_totality (hn : n > 3 * f) :
             ¬ BRB_LTS.isCorrect n Value s sender))
           (state_prop (fun s : BRB_LTS.State n Value =>
             ∀ p, p ∉ s.corrupted → (s.local_ p).returned ≠ none)))) := by
-  -- Apply transfers_satisfaction with the BRB witness.
-  -- h_prop_transfer and h_ante_transfer are the two remaining
-  -- protocol-specific hypotheses. Both require:
-  --   * Q-monotonicity on stutter abstract execs (proven via
-  --     returned_persist_along_stutter + corrupted_mem_persist_along_stutter)
-  --   * idx-unboundedness (loffset over LPath lengths → ∞ under fair
-  --     scheduling, since external steps produce non-empty LPaths)
-  --   * Fair-WF antecedent lift (concrete fairness → abstract fairness
-  --     via sim.R + label_map)
-  -- Both are mechanically substantial (~100 LOC each) but follow
-  -- established patterns. Sorried pending next session.
-  sorry
+  -- Apply transfers_leads_to with brb_weak_div_witness + ideal_brb_totality_stutter.
+  let sim := BRB_Simulation.brb_forward_sim n f Value sender hn
+  exact (brb_weak_div_witness n f Value sender hn).transfers_leads_to
+    -- h_label_ext: external labels preserved
+    (fun l₁ hl₁ => by
+      cases l₁ <;> simp_all [BRB_LTS.brb_labelling, Labelling.is_external,
+        BRB_Simulation.label_map, IdealBRB.ideal_labelling,
+        BRB_Simulation.brb_forward_sim])
+    -- h_map_tau: tau maps to tau
+    (by simp [BRB_Simulation.brb_forward_sim, BRB_Simulation.label_map,
+        BRB_LTS.brb_labelling, IdealBRB.ideal_labelling])
+    -- P_abs, Q_abs, P_con, Q_con
+    (fun s => s.broadcastVal ≠ none ∨ ¬ IdealBRB.isCorrect n Value s sender)
+    (fun s => ∀ p, p ∉ s.corrupted → s.returned p ≠ none)
+    (fun s => (s.local_ sender).broadcastVal ≠ none ∨
+              ¬ BRB_LTS.isCorrect n Value s sender)
+    (fun s => ∀ p, p ∉ s.corrupted → (s.local_ p).returned ≠ none)
+    -- h_P: P_con → P_abs via sim_rel
+    (fun s₁ s₂ hR hP => by
+      have hcorr : s₂.corrupted = s₁.corrupted := hR.1
+      have hbv : s₂.broadcastVal = (s₁.local_ sender).broadcastVal := hR.2.1
+      rcases hP with hbv_ne | hcorrupt
+      · left; rwa [hbv]
+      · right; simp only [IdealBRB.isCorrect, BRB_LTS.isCorrect] at hcorrupt ⊢; rwa [hcorr])
+    -- h_Q: Q_abs → Q_con via sim_rel
+    (fun s₁ s₂ hR hQ p hp => by
+      have hcorr : s₂.corrupted = s₁.corrupted := hR.1
+      have hp' : p ∉ s₂.corrupted := hcorr ▸ hp
+      have hret := hR.2.2.1 p (by simp [BRB_LTS.isCorrect]; exact hp)
+      rw [← hret]; exact hQ p hp')
+    -- h_Q_step: Q_abs preserved by IdealBRB steps
+    (fun s l s' hQ hstep => by
+      intro p hp
+      simp only [IdealBRB.ideal_brb] at hstep
+      cases l with
+      | corrupt i =>
+        obtain ⟨_, _, heq⟩ := hstep
+        -- s' = { s with corrupted := i :: s.corrupted }
+        -- p ∉ s'.corrupted means p ∉ i :: s.corrupted means p ≠ i ∧ p ∉ s.corrupted
+        subst heq; simp at hp; exact hQ p hp.2
+      | input i v =>
+        obtain ⟨_, _, heq⟩ := hstep; subst heq; exact hQ p hp
+      | commit v =>
+        obtain ⟨_, _, heq⟩ := hstep; subst heq; exact hQ p hp
+      | output q v =>
+        obtain ⟨_, _, _, heq⟩ := hstep; subst heq
+        show (if p = q then some v else s.returned p) ≠ none
+        split
+        · simp
+        · exact hQ p hp)
+    -- h_abs: ideal_brb_totality_stutter
+    (ideal_brb_totality_stutter n f Value sender)
+    -- h_ante_transfer: lift concrete fair-WF to abstract step-aware fair-WF
+    (fun e₁ e₂ idx hv₁ hv₂ idx_mono idx_zero h_idx_R h_fair_e1 => by
+      -- For each abstract label l₂, if l₂ is always enabled+fair on e₂,
+      -- show it fires as a real step. Protocol-specific.
+      sorry)
 
 end BRB_Liveness
