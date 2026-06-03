@@ -1136,5 +1136,134 @@ theorem step_countVoteRecv_mono {s s' : State n Value} {l : Label n Value} {send
 
 end mechanical_helpers
 
+/-! ### Execution-level persistence lemmas
+
+    These chain single-step monotonicity across valid executions.
+    Used by the delivery chain proofs in `BRB_Liveness.lean`. -/
+
+section execution_persistence
+
+open LTS
+
+variable {n f : Nat} {Value : Type} [DecidableEq Value] {sender : Fin n}
+
+/-- Corruption membership persists across a single step. -/
+private theorem step_corrupted_mem {s s' : State n Value} {l : Label n Value}
+    (h : (brb n f Value sender).step s l s') {p : Fin n}
+    (hp : p ∈ s.corrupted) : p ∈ s'.corrupted := by
+  have hc := step_corrupted h
+  match l with
+  | .corrupt i => simp [hc]; exact Or.inr hp
+  | .send _ _ _ _ => rw [hc]; exact hp
+  | .recv _ _ _ _ => rw [hc]; exact hp
+  | .output _ _ => rw [hc]; exact hp
+  | .input _ _ => rw [hc]; exact hp
+
+/-- Corruption persists along valid BRB executions. -/
+theorem corrupted_mem_persist_along
+    {e : Execution (State n Value) (Label n Value)}
+    (hv : (brb n f Value sender).valid_exec e)
+    {k : Nat} {p : Fin n}
+    (h : p ∈ (e.states k).corrupted) (k' : Nat) (hk : k ≤ k') :
+    p ∈ (e.states k').corrupted := by
+  induction k' with
+  | zero => exact (Nat.le_zero.mp hk) ▸ h
+  | succ k' ih =>
+    rcases Nat.eq_or_lt_of_le hk with rfl | hlt
+    · exact h
+    · exact step_corrupted_mem (hv.2 k') (ih (by omega))
+
+/-- `voteRecv p q v = true` persists along valid BRB executions. -/
+theorem voteRecv_persist_along
+    {e : Execution (State n Value) (Label n Value)}
+    (hv : (brb n f Value sender).valid_exec e)
+    {k : Nat} {p q : Fin n} {v : Value}
+    (h : ((e.states k).local_ p).voteRecv q v = true)
+    (k' : Nat) (hk : k ≤ k') :
+    ((e.states k').local_ p).voteRecv q v = true := by
+  induction k' with
+  | zero => exact (Nat.le_zero.mp hk) ▸ h
+  | succ k' ih =>
+    rcases Nat.eq_or_lt_of_le hk with rfl | hlt
+    · exact h
+    · exact step_voteRecv (hv.2 k') p q v (ih (by omega))
+
+/-- `countVoteRecv` is non-decreasing along valid BRB executions. -/
+theorem countVoteRecv_mono_along
+    {e : Execution (State n Value) (Label n Value)}
+    (hv : (brb n f Value sender).valid_exec e)
+    (p : Fin n) (v : Value) (k k' : Nat) (hk : k ≤ k') :
+    countVoteRecv n Value ((e.states k).local_ p) v ≤
+    countVoteRecv n Value ((e.states k').local_ p) v := by
+  induction k' with
+  | zero => exact (Nat.le_zero.mp hk) ▸ Nat.le_refl _
+  | succ k' ih =>
+    rcases Nat.eq_or_lt_of_le hk with rfl | hlt
+    · exact Nat.le_refl _
+    · exact Nat.le_trans (ih (by omega)) (step_countVoteRecv_mono (hv.2 k') p v)
+
+/-- `echoRecv p q v = true` persists along valid BRB executions. -/
+theorem echoRecv_persist_along
+    {e : Execution (State n Value) (Label n Value)}
+    (hv : (brb n f Value sender).valid_exec e)
+    {k : Nat} {p q : Fin n} {v : Value}
+    (h : ((e.states k).local_ p).echoRecv q v = true)
+    (k' : Nat) (hk : k ≤ k') :
+    ((e.states k').local_ p).echoRecv q v = true := by
+  induction k' with
+  | zero => exact (Nat.le_zero.mp hk) ▸ h
+  | succ k' ih =>
+    rcases Nat.eq_or_lt_of_le hk with rfl | hlt
+    · exact h
+    · exact step_echoRecv (hv.2 k') p q v (ih (by omega))
+
+/-- `voted p v = true` persists along valid BRB executions. -/
+theorem voted_persist_along
+    {e : Execution (State n Value) (Label n Value)}
+    (hv : (brb n f Value sender).valid_exec e)
+    {k : Nat} {p : Fin n} {v : Value}
+    (h : ((e.states k).local_ p).voted v = true)
+    (k' : Nat) (hk : k ≤ k') :
+    ((e.states k').local_ p).voted v = true := by
+  induction k' with
+  | zero => exact (Nat.le_zero.mp hk) ▸ h
+  | succ k' ih =>
+    rcases Nat.eq_or_lt_of_le hk with rfl | hlt
+    · exact h
+    · exact step_voted (hv.2 k') p v (ih (by omega))
+
+/-- `broadcastVal p = some v` is preserved by a single step. -/
+private theorem step_broadcastVal_persist {s s' : State n Value} {l : Label n Value}
+    (h : (brb n f Value sender).step s l s') (p : Fin n) (v : Value)
+    (hbv : (s.local_ p).broadcastVal = some v) :
+    (s'.local_ p).broadcastVal = some v := by
+  match l with
+  | .input i w =>
+    have := input_eq_sender h; subst this
+    obtain ⟨_, hbv_none, rfl⟩ := h; simp only
+    by_cases hp : p = i
+    · subst hp; simp only [↓reduceIte]; rw [hbv_none] at hbv; exact absurd hbv nofun
+    · simp [hp]; exact hbv
+  | .corrupt _ => rw [step_broadcastVal h p (by intros; nofun)]; exact hbv
+  | .send _ _ _ _ => rw [step_broadcastVal h p (by intros; nofun)]; exact hbv
+  | .recv _ _ _ _ => rw [step_broadcastVal h p (by intros; nofun)]; exact hbv
+  | .output _ _ => rw [step_broadcastVal h p (by intros; nofun)]; exact hbv
+
+/-- `broadcastVal p = some v` persists along valid BRB executions. -/
+theorem broadcastVal_persist_along
+    {e : Execution (State n Value) (Label n Value)}
+    (hv : (brb n f Value sender).valid_exec e)
+    {k : Nat} {p : Fin n} {v : Value}
+    (h : ((e.states k).local_ p).broadcastVal = some v)
+    (k' : Nat) (hk : k ≤ k') :
+    ((e.states k').local_ p).broadcastVal = some v := by
+  induction k' with
+  | zero => exact (Nat.le_zero.mp hk) ▸ h
+  | succ k' ih =>
+    rcases Nat.eq_or_lt_of_le hk with rfl | hlt
+    · exact h
+    · exact step_broadcastVal_persist (hv.2 k') p v (ih (by omega))
+
+end execution_persistence
 
 end BRB_LTS
