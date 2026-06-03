@@ -260,6 +260,70 @@ theorem brb_rank_wf :
 
     See `Leslie_LTS/issues.md` §3 for a detailed analysis of why the
     original (unconditional) statement was false. -/
+/-- At a fair deadlock, no fair send between correct processes is enabled.
+    That is, for correct src and correct dst, no send(src, dst, t, v) step
+    exists with a successor state. -/
+theorem fair_deadlock_no_fair_send
+    (s : BRB_LTS.State n Value) (hfd : FairDeadlock (BRB_LTS.brb n f Value sender)
+      (brb_fair_labels n Value) s)
+    {src dst : Fin n} (hsrc : src ∉ s.corrupted) (hdst : dst ∉ s.corrupted)
+    (t : BRB_LTS.MsgType) (v : Value) :
+    ¬ ∃ s', (BRB_LTS.brb n f Value sender).step s (.send src dst t v) s' := by
+  intro ⟨s', hstep⟩
+  exact hfd (.send src dst t v) s' hstep ⟨hsrc, hdst⟩
+
+/-- At a fair deadlock, no fair recv between correct processes is enabled. -/
+theorem fair_deadlock_no_fair_recv
+    (s : BRB_LTS.State n Value) (hfd : FairDeadlock (BRB_LTS.brb n f Value sender)
+      (brb_fair_labels n Value) s)
+    {src dst : Fin n} (hsrc : src ∉ s.corrupted) (hdst : dst ∉ s.corrupted)
+    (t : BRB_LTS.MsgType) (v : Value) :
+    ¬ ∃ s', (BRB_LTS.brb n f Value sender).step s (.recv src dst t v) s' := by
+  intro ⟨s', hstep⟩
+  exact hfd (.recv src dst t v) s' hstep ⟨hsrc, hdst⟩
+
+/-- At a fair deadlock, no fair output is enabled. -/
+theorem fair_deadlock_no_fair_output
+    (s : BRB_LTS.State n Value) (hfd : FairDeadlock (BRB_LTS.brb n f Value sender)
+      (brb_fair_labels n Value) s)
+    {p : Fin n} (hp : p ∉ s.corrupted) (v : Value) :
+    ¬ ∃ s', (BRB_LTS.brb n f Value sender).step s (.output p v) s' := by
+  intro ⟨s', hstep⟩
+  exact hfd (.output p v) s' hstep hp
+
+/-- At a fair deadlock, a correct-to-correct message is NOT in the buffer.
+    (If it were, recv would be enabled+fair, contradicting FairDeadlock.) -/
+theorem fair_deadlock_no_fair_buffer
+    (s : BRB_LTS.State n Value) (hfd : FairDeadlock (BRB_LTS.brb n f Value sender)
+      (brb_fair_labels n Value) s)
+    {src dst : Fin n} (hsrc : src ∉ s.corrupted) (hdst : dst ∉ s.corrupted)
+    (t : BRB_LTS.MsgType) (v : Value) :
+    s.buffer ⟨src, dst, t, v⟩ = false := by
+  by_contra hbuf
+  simp only [Bool.not_eq_false] at hbuf
+  -- recv(src, dst, t, v) is enabled (buffer has the message).
+  -- Construct the successor state explicitly from the recv definition.
+  have : ∃ s', (BRB_LTS.brb n f Value sender).step s (.recv src dst t v) s' := by
+    let ls := s.local_ dst
+    let msg : BRB_LTS.Message n Value := ⟨src, dst, t, v⟩
+    let ls' := match t with
+      | .init => if src = sender ∧ ls.sendRecv = none
+                 then { ls with sendRecv := some v } else ls
+      | .echo => if ls.echoRecv src v = false
+                 then { ls with echoRecv := fun q w =>
+                   if q = src ∧ w = v then true else ls.echoRecv q w }
+                 else ls
+      | .vote => if ls.voteRecv src v = false
+                 then { ls with voteRecv := fun q w =>
+                   if q = src ∧ w = v then true else ls.voteRecv q w }
+                 else ls
+    exact ⟨{ s with
+              buffer := fun m => if m = msg then false else s.buffer m
+              local_ := fun p => if p = dst then ls' else s.local_ p },
+           hbuf, rfl⟩
+  obtain ⟨s', hstep⟩ := this
+  exact hfd (.recv src dst t v) s' hstep ⟨hsrc, hdst⟩
+
 theorem brb_fair_deadlock_implies_terminated (hn : n > 3 * f) :
     ∀ s, Reachable (BRB_LTS.brb n f Value sender) s →
       FairDeadlock (BRB_LTS.brb n f Value sender)
