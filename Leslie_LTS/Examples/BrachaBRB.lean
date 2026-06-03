@@ -1376,6 +1376,21 @@ theorem returned_persist_along
         rw [step_returned (hv.2 k') p hne]
         exact hprev
 
+/-- `echoed p = some v` persists along valid BRB executions. -/
+theorem echoed_persist_along
+    {e : Execution (State n Value) (Label n Value)}
+    (hv : (brb n f Value sender).valid_exec e)
+    {k : Nat} {p : Fin n} {v : Value}
+    (h : ((e.states k).local_ p).echoed = some v)
+    (k' : Nat) (hk : k ≤ k') :
+    ((e.states k').local_ p).echoed = some v := by
+  induction k' with
+  | zero => exact (Nat.le_zero.mp hk) ▸ h
+  | succ k' ih =>
+    rcases Nat.eq_or_lt_of_le hk with rfl | hlt
+    · exact h
+    · exact step_echoed (hv.2 k') p v (ih (by omega))
+
 end execution_persistence
 
 end BRB_LTS
