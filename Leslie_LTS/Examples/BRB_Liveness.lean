@@ -917,6 +917,33 @@ theorem brb_totality (hn : n > 3 * f) :
     -- enabled+fair but can't fire (no concrete fair step causes the
     -- threshold crossing). The output case requires the BRB delivery chain.
     (fun e₁ e₂ idx hv₁ hv₂ idx_mono idx_zero h_idx_R h_fair_e1 => by
-      sorry)
+      -- Case-split on abstract label l₂.
+      -- corrupt/input: fair_labels = False, so antecedent is impossible.
+      -- commit/output: protocol-specific; sorried pending delivery chain.
+      intro l₂ k₂ h_always
+      cases l₂ with
+      | corrupt i =>
+        -- ideal_brb_fair_labels (.corrupt i) = False
+        exact absurd (h_always 0).2 (by simp [ideal_brb_fair_labels])
+      | input i v =>
+        -- ideal_brb_fair_labels (.input i v) = False
+        exact absurd (h_always 0).2 (by simp [ideal_brb_fair_labels])
+      | commit v =>
+        -- commit is always fair (True). Enabled means set_up = none ∧
+        -- OR condition. If sender is correct with broadcastVal ≠ none,
+        -- the concrete fair-WF drives init delivery → initSupport crosses
+        -- echoThreshold → commit fires in e₂ → contradiction with
+        -- "always enabled". If sender is corrupt, this is unprovable
+        -- (see issues.md §4).
+        sorry
+      | output p v =>
+        -- output p v is fair when p ∉ corrupted. Enabled means
+        -- set_up = some v ∧ returned p = none ∧ p ∉ corrupted.
+        -- The BRB delivery chain (echo → vote → output) under fair
+        -- scheduling eventually makes countVoteRecv ≥ returnThreshold,
+        -- at which point concrete output fires → abstract output fires
+        -- → contradiction with "always enabled" (returned p becomes
+        -- some v ≠ none).
+        sorry)
 
 end BRB_Liveness
