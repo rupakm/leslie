@@ -38,25 +38,28 @@ echo $$ > scripts/bca-agent.pid
 4. **No decide / admit / axiom / extra sorries.**
 5. **Commit messages.** Include Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>.
 6. **State file.** After EVERY commit, overwrite \`scripts/bca-state.md\` with: what you did, what's next, what's blocked, sorry count. MAX 10 lines.
-7. **FILE RESTRICTION.** You are running in parallel with a BRB agent. You may ONLY edit:
+7. **FILE RESTRICTION.** You are running in parallel with a BRB agent. You may edit:
    - \`Leslie_LTS/Examples/BCA_Liveness.lean\`
    - \`Leslie_LTS/Examples/IdealBCA.lean\`
-   Do NOT edit any Framework files, BRB files, or BCA_Simulation.lean. If you need a framework helper, add it to BCA_Liveness.lean as a local lemma. If you get a merge conflict at build time, stop editing and document what happened in bca-state.md.
+   - \`Leslie_LTS/Examples/BCA.lean\` (concrete BCA definitions)
+   - \`Leslie_LTS/Examples/BCA_Simulation.lean\` (simulation, sim_rel)
+   Do NOT edit any Framework files (\`Leslie_LTS/Framework/\`) or BRB files (\`BRB_Liveness.lean\`, \`BrachaBRB.lean\`, \`IdealBRB.lean\`, \`BRB_Simulation.lean\`). The BRB agent may be editing those concurrently.
 
 # Project overview
 Lean 4 formal verification project at /Users/mbk-23-0041/code/leslie, branch Leslie_LTS. Build: \`make LTS\`.
 
-# Key files (READ ONLY for you)
+# Key files (READ ONLY)
 - \`Leslie_LTS/Framework/Simulation.lean\` — framework (sorry-free, DO NOT EDIT)
 - \`Leslie_LTS/Framework/Liveness.lean\` — assumes_fair_wf (step-aware), leads_to
 - \`Leslie_LTS/Framework/LTL.lean\` — TraceProp, satisfies, satisfies_stutter
-- \`Leslie_LTS/Examples/BCA_Simulation.lean\` — bca_forward_sim, sim_rel, label_map
 - \`Leslie_LTS/issues.md\` — design decisions (assumes_fair_wf, corrupt-sender fix)
 - \`plans/liveness-closure.md\` — multi-session plan
 
 # Files you EDIT
 - \`Leslie_LTS/Examples/BCA_Liveness.lean\` — the main target
 - \`Leslie_LTS/Examples/IdealBCA.lean\` — persistence lemmas (12 already proven)
+- \`Leslie_LTS/Examples/BCA.lean\` — concrete BCA definitions (add persistence lemmas here if needed)
+- \`Leslie_LTS/Examples/BCA_Simulation.lean\` — simulation, sim_rel, label_map (reference for bca_fair_compat)
 
 # Current state
 Run \`grep -n sorry Leslie_LTS/Examples/BCA_Liveness.lean\` for BCA sorries (~9).
