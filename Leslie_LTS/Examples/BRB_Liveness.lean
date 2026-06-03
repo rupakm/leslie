@@ -6,65 +6,53 @@ import Leslie_LTS.Examples.BRB_Simulation
 /-! # BRB Liveness: Fair-Weak-Divergence Witness and Lifted Totality
 
   This file instantiates `ForwardSim.WeakDivPreserving` for the existing
-  `BRB_Simulation.brb_forward_sim` and uses `transfers_satisfaction` to
+  `BRB_Simulation.brb_forward_sim` and uses `transfers_leads_to` to
   lift a fair-scheduling totality property from `IdealBRB` to the
   concrete Bracha BRB.
 
-  ## Current state (see also `plans/liveness-closure.md`)
+  ## Current state (2026-06-03)
 
   Framework (`Leslie_LTS/Framework/Simulation.lean`) is sorry-free.
-  This file has the remaining protocol-specific sorries:
+  This file has 7 remaining protocol-specific sorries.
 
-  ### Dependency graph of remaining sorries
+  **Fully proven (zero sorries):**
+  - `ideal_brb_totality` (Step A + Step B)
+  - `ideal_brb_totality_stutter` (stutter-tolerant version)
+  - `brb_fair_compat`
+  - `brb_rank_wf` (trivially for placeholder measure)
+  - `rank_decreases_on_unfair_abstract` (vacuous — all InternalStars AllFair)
+  - `ideal_brb_internal_label_fair`, `ideal_brb_internalStar_allFair`
+
+  **Remaining sorries (7 total):**
 
   ```
-  brb_progress_measure (D.1: currently placeholder 0)
-      │
-      ├─→ brb_rank_wf (D.2: proven trivially for placeholder; re-prove for real measure)
-      ├─→ rank_non_increasing (D.3: sorry — unfair steps don't grow measure)
-      ├─→ rank_decreases_on_fair_elision (D.3: sorry — helpful fair steps decrease measure)
-      ├─→ rank_non_increasing_on_fair_progress (D.3: sorry — lockstep AllFair steps ≤ measure)
-      │
-      └─→ [none of these block ideal_brb_totality or brb_totality — with
-           the placeholder measure, brb_rank = False everywhere, so all
-           rank clauses are vacuously satisfied.  The measure only matters
-           if you want the composed `preserves_fair_weak_divergence` to
-           produce the right witnesses at non-trivial BRB states.]
+  WeakDivPreserving witness:
+    rank_non_increasing (sorry — placeholder measure)
+    rank_decreases_on_fair_elision (sorry — placeholder measure)
+    rank_non_increasing_on_fair_progress (sorry — placeholder measure)
+    brb_fair_deadlock_implies_terminated (sorry — deep protocol invariant)
+    h_fair_reverse (sorry — see issues.md §3, fairness mismatch)
 
-  brb_fair_deadlock_implies_terminated (D.4: sorry)
-      │
-      └─→ h_fair_reverse inside brb_weak_div_witness.fair_deadlock_diverges
-           (line ~219: sorry — reverse fair-step correspondence)
-
-  ideal_brb_totality (D.5: partially proven)
-      │  Step A: broadcastVal → set_up ≠ none.
-      │    — until-or-forever structure in place, 1 inner sorry at line ~330
-      │      (OR condition: needs broadcastVal_persist_along + isCorrect case split)
-      │  Step B: set_up ≠ none → all correct returned (line ~355: sorry)
-      │    — finite induction: for each correct p, fair output(p, _) fires.
-      │
-      └─→ brb_totality (D.6: sorry — apply transfers_satisfaction with
-           brb_weak_div_witness + ideal_brb_totality + brb_fair_compat)
+  brb_totality (via transfers_leads_to):
+    h_ante_transfer / commit case (sorry — see issues.md §4)
+    h_ante_transfer / output case (sorry — needs delivery chain)
   ```
 
-  ### Attack order for a fresh session
+  ### Design issues (see `Leslie_LTS/issues.md` §3-4)
 
-  1. ~~ideal_brb_totality~~ — ✅ FULLY PROVEN (zero sorries).
-  2. ~~brb_totality skeleton~~ — wired through transfers_satisfaction.
-     Three inner sorries remain: ideal_brb_totality_stutter (generic
-     satisfies → satisfies_stutter lift), h_prop_transfer (leads_to
-     translation through sim_rel), h_ante_transfer (fair-WF antecedent
-     lift from concrete to abstract).
-  4. **Design brb_progress_measure** — replace placeholder 0 with a
-     real lex measure. This is independent of Steps 1–3 but required for
-     the simulation to produce meaningful abstract witnesses at BRB
-     states (without it, `brb_rank = False` everywhere and the rank
-     obligations are all vacuous).
-  5. **Prove the rank obligations** (rank_non_increasing, rank_decreases_
-     on_fair_elision, rank_non_increasing_on_fair_progress) against the
-     real measure.
-  6. **Prove brb_fair_deadlock_implies_terminated** and use it to close
-     the `h_fair_reverse` sorry.
+  - **h_fair_reverse** and **h_ante_transfer (commit)** are fundamentally
+    blocked by the corrupt-sender fairness mismatch: in IdealBRB, commit
+    is always fair, but the corresponding concrete init delivery from a
+    corrupt sender involves only unfair steps. See issues.md for detailed
+    counterexamples and proposed fixes.
+
+  - **brb_totality** antecedent narrowed to `broadcastVal ≠ none` only
+    (dropped `¬ isCorrect sender`). The corrupt-sender case is unprovable
+    at the concrete level.
+
+  - **brb_fair_deadlock_implies_terminated** statement corrected with a
+    `broadcastVal ≠ none` precondition (the old unconditional version was
+    false at the initial state).
 -/
 
 open LTS
