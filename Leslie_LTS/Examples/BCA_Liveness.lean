@@ -303,9 +303,57 @@ theorem ideal_bca_decision :
             s.bound_value ≠ none))
           (state_prop (fun s : IdealBCA.State T n =>
             ∀ p, p ∉ s.corrupted → s.decided p ≠ none)))) := by
-  -- Step A + Step B, same until-or-forever pattern as ideal_brb_totality.
-  -- Uses: bound_value_persist_along, decided_persist_along,
-  --   corrupted_mem_persist_along, input_persist_along from IdealBCA.lean.
+  /-
+  PROOF SKETCH (follow this structure — it mirrors ideal_brb_totality exactly):
+
+  ```
+  intro e hv h_ante
+  intro k hA
+
+  -- Step A: show ∃ k' ≥ k, bound_value ≠ none.
+  have hStepA : ∃ k' ≥ k, (e.states k').bound_value ≠ none := by
+    by_contra h_never
+    have h_none_forever : ∀ k', k' ≥ k → (e.states k').bound_value = none := by
+      intro k' hk'; by_contra hne; exact h_never ⟨k', hk', hne⟩
+    -- From hA, extract value b with inputSupport ≥ f+1 (or bound_value ≠ none,
+    -- which contradicts h_none_forever).
+    -- KEY LEMMA NEEDED: show the inputSupport condition persists:
+    --   corrupted.length + inputSupport b ≥ f+1 at k → same at all k' ≥ k.
+    --   Proof: input_ persists (input_persist_along), corrupted only grows
+    --   (so corrupted.length increases or stays), inputSupport counts
+    --   correct procs with input (input stays, but proc may get corrupted →
+    --   inputSupport might decrease by 1 BUT corrupted.length increases by 1
+    --   → the SUM is non-decreasing).
+    -- bind(b) is permanently enabled: bound_value = none ∧ condition persists.
+    -- bind(b) is fair: ideal_bca_fair_labels (.bind _) = True.
+    -- h_ante fires it: obtain ⟨j, hlbl, h_step⟩ := h_ante (.bind b) k h_inner
+    -- Extract: (e.states (k+j+1)).bound_value = some b (from step relation).
+    -- Contradiction: h_none_forever (k+j+1) vs bound_value = some b.
+
+  -- Step B: from bound_value ≠ none, all correct decided.
+  obtain ⟨k₁, hk₁_ge, hk₁_bv⟩ := hStepA
+  obtain ⟨b, hb⟩ := Option.ne_none_iff_exists'.mp hk₁_bv
+  have h_bv_persist : ∀ k', k₁ ≤ k' → (e.states k').bound_value = some b :=
+    IdealBCA.bound_value_persist_along hv hb
+  -- Per-proc: for each p that stays correct, output(p, some b) is enabled + fair.
+  --   enabled: isCorrect p, decided p = none, bound_value = some b. All hold.
+  --   fair: p ∉ corrupted.
+  --   h_ante fires it → decided p := some (some b) ≠ none.
+  --   Pattern: by_contra → h_ret_none → h_output_inner → obtain ⟨j, hlbl, h_step⟩
+  --   → extract decided change → contradiction.
+  -- Per-proc-persist + Finset.sup finite-max wrapper (same as BRB).
+  -- Use decided_persist_along, corrupted_mem_persist_along.
+  ```
+
+  The proof is ~100 LOC. Copy the structure from ideal_brb_totality
+  (in BRB_Liveness.lean) and adapt:
+    - broadcastVal → bound_value (renamed field)
+    - returned → decided (renamed field)
+    - .commit v → .bind b (renamed label)
+    - .output p v → .output p (some b) (output takes Val T not Value)
+    - ideal_brb_fair_labels → ideal_bca_fair_labels
+    - IdealBRB.* persistence → IdealBCA.* persistence
+  -/
   sorry
 
 /-- Stutter variant of `ideal_bca_decision` for use as `h_abs` in
