@@ -270,34 +270,93 @@ noncomputable def bca_weak_div_witness (hn : n > 3 * f) :
     The ideal-level decision liveness, plus the concrete-level decision
     obtained by transferring it through `bca_weak_div_witness`.
 
-    Status: BCA full closure is out of scope for
-    plans/close-framework-gaps-and-brb.md (BRB is the prioritised
-    end-to-end target).  The statements below remain `sorry`'d.  When
-    `transfers_satisfaction` is used here, `ideal_bca_decision` may need
-    to be expressed as `IdealBCA.ideal_bca.satisfies_stutter
-    (IdealBCA.ideal_labelling T n) (...)` to match the relaxed `h_abs`
-    signature — see the analogous note in BRB_Liveness.lean. -/
+    ### Proof structure (mirrors BRB_Liveness.lean)
 
-/-- Decision property on the IDEAL: under fair scheduling, every correct
-    process eventually decides. -/
+    `ideal_bca_decision`: two steps through `bound_value ≠ none`:
+      Step A: input_ready precondition → bound_value eventually set
+        (until-or-forever: bind(b) permanently enabled + fair → fires).
+      Step B: bound_value set → all correct decided
+        (per-proc: output(p, v) enabled + fair → fires;
+         finite-max wrapper via Finset.sup).
+
+    `ideal_bca_decision_stutter`: same proof, step-aware h_ante.
+    `bca_decision`: via `transfers_leads_to` + `bca_fair_compat`. -/
+
+/-- Decision property on the IDEAL: under fair scheduling, once enough
+    correct processes have input (the `input_ready` precondition:
+    `∃ b, corrupted.length + inputSupport b ≥ f + 1`, which holds under
+    binary inputs + n > 3f), every correct process eventually decides.
+
+    The precondition is necessary: without it, `bind` is never enabled
+    (no value has enough support), so no progress occurs.
+
+    Compare BRB's `ideal_brb_totality` which has
+    `broadcastVal ≠ none ∨ ¬ isCorrect sender` as precondition. -/
 theorem ideal_bca_decision :
     (IdealBCA.ideal_bca T n f).satisfies
       (assumes_fair_wf
         (IdealBCA.ideal_bca T n f)
         (ideal_bca_fair_labels T n)
-        (eventually (state_prop (fun s : IdealBCA.State T n =>
-          ∀ p, p ∉ s.corrupted → s.decided p ≠ none)))) := by
+        (leads_to
+          (state_prop (fun s : IdealBCA.State T n =>
+            (∃ b, s.corrupted.length + IdealBCA.inputSupport T n s b ≥ f + 1) ∨
+            s.bound_value ≠ none))
+          (state_prop (fun s : IdealBCA.State T n =>
+            ∀ p, p ∉ s.corrupted → s.decided p ≠ none)))) := by
+  -- Step A + Step B, same until-or-forever pattern as ideal_brb_totality.
+  -- Uses: bound_value_persist_along, decided_persist_along,
+  --   corrupted_mem_persist_along, input_persist_along from IdealBCA.lean.
   sorry
 
-/-- The concrete-side decision property, lifted from `ideal_bca_decision`
-    via the transfer theorem applied to `bca_weak_div_witness`. -/
+/-- Stutter variant of `ideal_bca_decision` for use as `h_abs` in
+    `transfers_satisfaction`. Uses unified `assumes_fair_wf` (step-aware
+    "fires"). Same proof structure — at extraction points, h_ante gives
+    real steps via the step conjunct. -/
+theorem ideal_bca_decision_stutter :
+    (IdealBCA.ideal_bca T n f).satisfies_stutter
+      (IdealBCA.ideal_labelling T n)
+      (assumes_fair_wf
+        (IdealBCA.ideal_bca T n f)
+        (ideal_bca_fair_labels T n)
+        (leads_to
+          (state_prop (fun s : IdealBCA.State T n =>
+            (∃ b, s.corrupted.length + IdealBCA.inputSupport T n s b ≥ f + 1) ∨
+            s.bound_value ≠ none))
+          (state_prop (fun s : IdealBCA.State T n =>
+            ∀ p, p ∉ s.corrupted → s.decided p ≠ none)))) := by
+  sorry
+
+/-! ## Fair-label compatibility -/
+
+/-- Concrete fair labels map to abstract fair labels via `label_map`.
+    Used as `h_fair_compat` in `transfers_satisfaction`. -/
+theorem bca_fair_compat (hn : n > 3 * f) :
+    ∀ s₁ l₁ s₂,
+      (BCA_Simulation.bca_forward_sim T n f hn).R s₁ s₂ →
+      bca_fair_labels T n s₁ l₁ →
+      ideal_bca_fair_labels T n s₂
+        ((BCA_Simulation.bca_forward_sim T n f hn).label_map l₁) := by
+  sorry
+
+/-- The concrete-side decision property, lifted from
+    `ideal_bca_decision_stutter` via `transfers_leads_to` applied to
+    `bca_weak_div_witness`.
+
+    **Precondition:** the concrete analog of `input_ready` — either
+    some value has enough concrete-side support to cross the echo
+    threshold (which maps to abstract inputSupport via sim_rel), or
+    the abstract bound_value is already set. -/
 theorem bca_decision (hn : n > 3 * f) :
     (BCA_LTS.bca T n f).satisfies
       (assumes_fair_wf
         (BCA_LTS.bca T n f)
         (bca_fair_labels T n)
-        (eventually (state_prop (fun s : BCA_LTS.State T n =>
-          ∀ p, p ∉ s.corrupted → (s.local_ p).decided ≠ none)))) := by
+        (leads_to
+          (state_prop (fun s : BCA_LTS.State T n =>
+            (∃ b, BCA_Simulation.echoSupport T n s b ≥ BCA_LTS.echoThreshold n f) ∨
+            (∃ p : Fin n, ∃ v : BCA_LTS.Val T, (s.local_ p).decided = some v)))
+          (state_prop (fun s : BCA_LTS.State T n =>
+            ∀ p, p ∉ s.corrupted → (s.local_ p).decided ≠ none)))) := by
   sorry
 
 end BCA_Liveness
