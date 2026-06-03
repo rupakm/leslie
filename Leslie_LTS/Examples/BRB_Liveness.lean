@@ -10,7 +10,7 @@ import Leslie_LTS.Examples.BRB_Simulation
   lift a fair-scheduling totality property from `IdealBRB` to the
   concrete Bracha BRB.
 
-  ## Current state (see also `plans/close-framework-gaps-and-brb.md`)
+  ## Current state (see also `plans/liveness-closure.md`)
 
   Framework (`Leslie_LTS/Framework/Simulation.lean`) is sorry-free.
   This file has the remaining protocol-specific sorries:
@@ -134,6 +134,114 @@ theorem brb_rank_wf :
     WellFounded (brb_rank n Value) :=
   ⟨fun a => ⟨a, fun _ h => absurd h (Nat.not_lt_zero _)⟩⟩
 
+/-! ## BRB Protocol Reasoning Cheatsheet
+
+    This section documents the BRB protocol's quorum structure and the
+    delivery chain needed for the remaining protocol-specific sorries.
+    For the full TLA-level proof, see
+    `Leslie/Examples/ByzantineReliableBroadcast.lean` (lines 2333–3080).
+
+    ### Protocol structure (Bracha BRB under n > 3f)
+
+    The concrete BRB has 5 label types: `corrupt`, `input`, `send`,
+    `recv`, `output`. Fair labels are `send`/`recv`/`output` where all
+    involved processes are correct (not corrupted). `corrupt` and `input`
+    are unfair (adversary/environment-controlled).
+
+    ### Thresholds (from `BrachaBRB.lean`)
+
+    * `echoThreshold n f = n - f`  (for echoing after receiving SEND)
+    * `voteThreshold f = f + 1`    (for vote amplification)
+    * `returnThreshold n f = n - f` (for returning/outputting)
+
+    ### The delivery chain (from TLA-side `totality` proof)
+
+    The TLA proof of totality (`ByzantineReliableBroadcast.lean:3008`)
+    chains through these steps:
+
+    1. **Vote backing:** if some process returned `v`, then ≥ `n-f`
+       processes have `voted v = true` (invariant from safety proof).
+
+    2. **Vote delivery to all receivers:** for each receiver `r`, each
+       voting process `q` eventually sends `vote(v)` to `r` (WF on
+       correct send), and the message is eventually delivered (WF on
+       recv). After delivery, `r` has `voteRecv q v = true`.
+       Combined: every receiver gets ≥ `f+1` vote receipts or the
+       source gets corrupted.
+       See `combine_vote_delivery_all_receivers` (line 2900).
+
+    3. **Vote threshold delivery:** once `r` has `f+1` vote receipts,
+       `r` itself votes and sends `vote(v)` to all (WF on send), then
+       delivers to target (WF on recv). See
+       `combine_vote_threshold_delivery` (line 2806).
+
+    4. **Counting under n > 3f:** at most `f` processes are corrupt.
+       Since ≥ `n-f` processes voted (step 1) and at most `f` got
+       corrupted, ≥ `n-2f ≥ f+1` delivered votes reach `r`. After
+       threshold delivery (step 3), `r` has ≥ `n-f` vote receipts.
+       This is ≥ `returnThreshold`.
+
+    5. **Return:** once `countVoteRecv ≥ returnThreshold`, `output(r,v)`
+       is enabled. WF on output fires it. `returned r = some v`.
+       See `wf_return` (line 2527).
+
+    ### Fair WF applications (from TLA-side, lines 2333–2630)
+
+    The TLA proof uses 4 core weak-fairness applications:
+
+    * `wf_vote_send`: voted → send vote (WF on correct send action)
+    * `wf_vote_threshold_send`: f+1 votes → send vote
+    * `wf_return`: n-f votes → return (WF on doReturn action)
+    * `wf_deliver`: message in buffer → received (WF on recv action)
+
+    Each uses `wf1` (the TLA WF1 rule): show the action is enabled,
+    fair, and that firing it makes progress (or some other action
+    achieves the goal). In the LTS framework, these translate to
+    applications of `h_ante` (the `assumes_fair_wf` antecedent) with
+    the appropriate label.
+
+    ### Key persistence lemmas (already proven for IdealBRB)
+
+    For the concrete BRB, the same persistence facts hold but are NOT
+    yet proven in `BrachaBRB.lean`. The TLA-side proofs are at:
+    * `corrupt_persistent` (line 2027)
+    * `voteRecv_persist` (line 2285)
+    * `isCorrect_persist` (line 2298)
+    * `countVoteRecv_persist` (line 2310)
+    * `voted_persist` (line 2322)
+
+    ### How this applies to the remaining sorries
+
+    **brb_fair_deadlock_implies_terminated (line 164):**
+    At a fair-deadlock, no fair step is enabled. For correct `p` with
+    `returned = none`:
+    * If `countVoteRecv p v ≥ returnThreshold`: then `output(p, v)` is
+      enabled (preconditions: isCorrect p, returned = none,
+      countVoteRecv ≥ threshold) and fair (p correct). Contradiction
+      with FairDeadlock.
+    * If `countVoteRecv p v < returnThreshold` for all v: then by the
+      delivery chain (steps 1–4 above), some fair `recv` must be
+      enabled somewhere (pending vote messages from correct senders).
+      Or, if no fair recv is enabled, all vote messages have been
+      delivered — but then countVoteRecv ≥ returnThreshold by counting
+      (n > 3f ensures enough correct voters). Contradiction.
+
+    The argument requires BRB invariants (vote backing, message
+    integrity) which are proven in `BRB_Simulation.lean` as part of the
+    safety proof. The key invariant: `initSupport` crossing the echo
+    threshold implies enough correct processes have `sendRecv = some v`,
+    which triggers the echo/vote chain.
+
+    **h_fair_reverse (line 272):**
+    Once `brb_fair_deadlock_implies_terminated` is proven, `h_fair_reverse`
+    follows: at a terminated state, `sim_rel` gives us that the ideal
+    state also has all `returned` set. In IdealBRB, `output(p, v)`
+    requires `returned p = none` — so no output is enabled. And
+    `commit(v)` requires `set_up = none` — but if everyone returned,
+    `set_up` was already set (by the commit that happened earlier in the
+    execution). So no fair ideal step is enabled → abstract fair-deadlock.
+-/
+
 /-! ## Reachable fair-deadlocks are terminated
 
     The original `brb_no_fair_deadlock_reachable` (no reachable BRB
@@ -250,7 +358,7 @@ noncomputable def brb_weak_div_witness (hn : n > 3 * f) :
     -- whose IdealBRB response is non-empty AllFair (i.e. `.commit v` is
     -- the abstract response), `brb_progress_measure` does not increase.
     -- Tied to the deferred `brb_progress_measure` design (Phase 3.2 /
-    -- D.1 in plans/close-framework-gaps-and-brb.md).
+    -- D.1 in plans/liveness-closure.md).
     sorry
   fair_deadlock_diverges := by
     -- Honest discharge via the deadlock disjunct of FairlyWeaklyDiverges.
@@ -276,7 +384,7 @@ noncomputable def brb_weak_div_witness (hn : n > 3 * f) :
     The ideal-level liveness, plus the concrete-level liveness obtained by
     transferring it through `brb_weak_div_witness`.
 
-    Status (per plans/close-framework-gaps-and-brb.md):
+    Status (per plans/liveness-closure.md):
     * `ideal_brb_totality`: pure LTL leads-to chaining on the ideal
       (commit eventually fires → output enabled → output fires →
       every correct proc has `returned`).  Phase D.5.
