@@ -254,21 +254,35 @@ theorem brb_rank_wf :
     `ForwardSim.fair_deadlock_lifts`, the framework no longer needs
     that false claim.
 
-    What IS true and useful: every reachable fair-deadlock is
-    terminated.  This is the right invariant for the protocol-level
-    `h_fair_reverse` discharge — if `s₁` is a reachable BRB
-    fair-deadlock, every correct proc has returned, and the matched
-    ideal state is also "done" (no commit/output enabled), so no fair
-    abstract step is enabled either. -/
+    What IS true and useful: every reachable fair-deadlock where the
+    sender has broadcast is terminated (all correct procs returned).
+    The theorem is FALSE without the `broadcastVal ≠ none` precondition:
+    the initial state (or any state after `corrupt(sender)` before input)
+    is a fair-deadlock with `returned = none` for all procs.
+
+    **Why broadcastVal ≠ none is sufficient:** if broadcastVal is set at a
+    fair-deadlock, the init-send chain must have completed (otherwise some
+    fair `send(sender, dst, init, v)` or `recv(sender, dst, init, v)`
+    would be enabled for correct sender/dst). With all init recvs done,
+    the echo chain must have completed (otherwise some fair echo
+    send/recv would be enabled). Same for the vote chain. Finally,
+    countVoteRecv ≥ returnThreshold for all correct procs with
+    returned = none, making output enabled+fair — contradicting
+    FairDeadlock.
+
+    See `Leslie_LTS/issues.md` §3 for a detailed analysis of why the
+    original (unconditional) statement was false. -/
 theorem brb_fair_deadlock_implies_terminated (hn : n > 3 * f) :
     ∀ s, Reachable (BRB_LTS.brb n f Value sender) s →
       FairDeadlock (BRB_LTS.brb n f Value sender)
         (brb_fair_labels n Value) s →
+      (s.local_ sender).broadcastVal ≠ none →
       ∀ p, p ∉ s.corrupted → (s.local_ p).returned ≠ none := by
-  -- Protocol-specific: at a fair-deadlock no fair send/recv/output is
-  -- enabled.  Under n > 3f, the only way no fair output(p, _) is
-  -- enabled for a correct p is `(s.local_ p).returned ≠ none` already.
-  -- Proof sketched in plan §D.4; sorried for now.
+  -- Protocol-specific: at a fair-deadlock with broadcastVal set,
+  -- no fair send/recv/output is enabled.  Under n > 3f, the protocol's
+  -- delivery chain ensures that if broadcastVal is set and no fair step
+  -- remains, every correct proc must already have returned.
+  -- Deep protocol reasoning; sorried for now.
   sorry
 
 /-! ## Fair-label compatibility through the simulation
@@ -821,8 +835,23 @@ theorem ideal_brb_totality_stutter :
     intro p hp
     exact (hk'_spec p).2 k_max (hk_max_ge p) hp
 
-/-- The concrete-side totality, lifted from `ideal_brb_totality` via
-    `transfers_satisfaction` applied to `brb_weak_div_witness`. -/
+/-- The concrete-side totality: under fair scheduling, once the sender
+    has broadcast, every correct process eventually returns.
+
+    **Antecedent**: `broadcastVal ≠ none` only (not the stronger
+    `broadcastVal ≠ none ∨ ¬ isCorrect sender`).  The corrupt-sender
+    case is NOT provable at the concrete level: when the sender is
+    corrupt, all init sends/recvs involving the corrupt sender are
+    unfair, so the concrete fair-WF provides no delivery guarantee.
+    This matches the standard BRB specification: totality is only
+    guaranteed for correct senders.
+
+    **Proof approach**: uses `transfers_leads_to` with the ideal
+    `ideal_brb_totality_stutter` as `h_abs`.  The `h_ante_transfer`
+    obligation (lifting concrete fair-WF to abstract fair-WF) requires
+    showing that every perpetually-enabled-and-fair abstract label
+    eventually fires; see `Leslie_LTS/issues.md` §4 for the proof
+    strategy and known difficulties. -/
 theorem brb_totality (hn : n > 3 * f) :
     (BRB_LTS.brb n f Value sender).satisfies
       (assumes_fair_wf
@@ -830,11 +859,13 @@ theorem brb_totality (hn : n > 3 * f) :
         (brb_fair_labels n Value)
         (leads_to
           (state_prop (fun s : BRB_LTS.State n Value =>
-            (s.local_ sender).broadcastVal ≠ none ∨
-            ¬ BRB_LTS.isCorrect n Value s sender))
+            (s.local_ sender).broadcastVal ≠ none))
           (state_prop (fun s : BRB_LTS.State n Value =>
             ∀ p, p ∉ s.corrupted → (s.local_ p).returned ≠ none)))) := by
   -- Apply transfers_leads_to with brb_weak_div_witness + ideal_brb_totality_stutter.
+  -- The ideal-side antecedent (broadcastVal ≠ none ∨ ¬ isCorrect sender) is
+  -- STRONGER than the concrete-side antecedent (broadcastVal ≠ none), so the
+  -- h_P transfer is straightforward.
   let sim := BRB_Simulation.brb_forward_sim n f Value sender hn
   exact (brb_weak_div_witness n f Value sender hn).transfers_leads_to
     -- h_label_ext: external labels preserved
@@ -848,16 +879,12 @@ theorem brb_totality (hn : n > 3 * f) :
     -- P_abs, Q_abs, P_con, Q_con
     (fun s => s.broadcastVal ≠ none ∨ ¬ IdealBRB.isCorrect n Value s sender)
     (fun s => ∀ p, p ∉ s.corrupted → s.returned p ≠ none)
-    (fun s => (s.local_ sender).broadcastVal ≠ none ∨
-              ¬ BRB_LTS.isCorrect n Value s sender)
+    (fun s => (s.local_ sender).broadcastVal ≠ none)
     (fun s => ∀ p, p ∉ s.corrupted → (s.local_ p).returned ≠ none)
-    -- h_P: P_con → P_abs via sim_rel
+    -- h_P: P_con → P_abs via sim_rel (broadcastVal ≠ none → left disjunct)
     (fun s₁ s₂ hR hP => by
-      have hcorr : s₂.corrupted = s₁.corrupted := hR.1
       have hbv : s₂.broadcastVal = (s₁.local_ sender).broadcastVal := hR.2.1
-      rcases hP with hbv_ne | hcorrupt
-      · left; rwa [hbv]
-      · right; simp only [IdealBRB.isCorrect, BRB_LTS.isCorrect] at hcorrupt ⊢; rwa [hcorr])
+      exact Or.inl (hbv ▸ hP))
     -- h_Q: Q_abs → Q_con via sim_rel
     (fun s₁ s₂ hR hQ p hp => by
       have hcorr : s₂.corrupted = s₁.corrupted := hR.1
@@ -871,8 +898,6 @@ theorem brb_totality (hn : n > 3 * f) :
       cases l with
       | corrupt i =>
         obtain ⟨_, _, heq⟩ := hstep
-        -- s' = { s with corrupted := i :: s.corrupted }
-        -- p ∉ s'.corrupted means p ∉ i :: s.corrupted means p ≠ i ∧ p ∉ s.corrupted
         subst heq; simp at hp; exact hQ p hp.2
       | input i v =>
         obtain ⟨_, _, heq⟩ := hstep; subst heq; exact hQ p hp
@@ -887,9 +912,11 @@ theorem brb_totality (hn : n > 3 * f) :
     -- h_abs: ideal_brb_totality_stutter
     (ideal_brb_totality_stutter n f Value sender)
     -- h_ante_transfer: lift concrete fair-WF to abstract step-aware fair-WF
+    -- See Leslie_LTS/issues.md §4 for analysis. The commit case is the
+    -- main difficulty: with a corrupt sender, abstract commit is always
+    -- enabled+fair but can't fire (no concrete fair step causes the
+    -- threshold crossing). The output case requires the BRB delivery chain.
     (fun e₁ e₂ idx hv₁ hv₂ idx_mono idx_zero h_idx_R h_fair_e1 => by
-      -- For each abstract label l₂, if l₂ is always enabled+fair on e₂,
-      -- show it fires as a real step. Protocol-specific.
       sorry)
 
 end BRB_Liveness
