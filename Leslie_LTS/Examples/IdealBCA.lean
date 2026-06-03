@@ -386,4 +386,204 @@ theorem ideal_binding :
     a binary decision in the concrete state corresponds to one in the ideal state
 -/
 
+/-! ### Persistence Lemmas (for liveness proofs)
+
+    Each fact: once `P` holds at a step, it holds after any single step.
+    Lifted to execution-level and stutter-aware variants below. -/
+
+section persistence
+
+variable {T : Type} {n f : Nat} [DecidableEq T]
+
+/-- `bound_value` is monotone: once `some b`, it stays `some b`. -/
+theorem bound_value_persist {s s' : State T n}
+    {l : Label T n}
+    (hstep : (ideal_bca (T := T) (n := n) (f := f)).step s l s')
+    {b : T} (h : s.bound_value = some b) :
+    s'.bound_value = some b := by
+  simp only [ideal_bca] at hstep
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := hstep; exact h
+  | .input _ _ => obtain ⟨_, rfl⟩ := hstep; exact h
+  | .output _ _ => obtain ⟨_, _, _, rfl⟩ := hstep; exact h
+  | .bind _ =>
+    obtain ⟨hnone, _, rfl⟩ := hstep
+    simp [hnone] at h
+
+/-- `decided p` is monotone: once `some v`, it stays. -/
+theorem decided_persist {s s' : State T n}
+    {l : Label T n}
+    (hstep : (ideal_bca (T := T) (n := n) (f := f)).step s l s')
+    {p : Fin n} {v : Val T} (h : s.decided p = some v) :
+    s'.decided p = some v := by
+  simp only [ideal_bca] at hstep
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := hstep; exact h
+  | .input _ _ => obtain ⟨_, rfl⟩ := hstep; exact h
+  | .bind _ => obtain ⟨_, _, rfl⟩ := hstep; exact h
+  | .output i _ =>
+    obtain ⟨_, hdec_none, _, rfl⟩ := hstep
+    simp only
+    by_cases hip : p = i
+    · subst hip; rw [hdec_none] at h; exact absurd h (by simp)
+    · simp [hip]; exact h
+
+/-- Corruption is monotone: if `p ∈ s.corrupted`, then `p ∈ s'.corrupted`. -/
+theorem corrupted_mem_persist {s s' : State T n}
+    {l : Label T n}
+    (hstep : (ideal_bca (T := T) (n := n) (f := f)).step s l s')
+    {p : Fin n} (h : p ∈ s.corrupted) :
+    p ∈ s'.corrupted := by
+  simp only [ideal_bca] at hstep
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := hstep; exact List.mem_cons.mpr (Or.inr h)
+  | .input _ _ => obtain ⟨_, rfl⟩ := hstep; exact h
+  | .output _ _ => obtain ⟨_, _, _, rfl⟩ := hstep; exact h
+  | .bind _ => obtain ⟨_, _, rfl⟩ := hstep; exact h
+
+/-- `input_ p` is monotone: once `some v`, it stays. -/
+theorem input_persist {s s' : State T n}
+    {l : Label T n}
+    (hstep : (ideal_bca (T := T) (n := n) (f := f)).step s l s')
+    {p : Fin n} {v : T} (h : s.input_ p = some v) :
+    s'.input_ p = some v := by
+  simp only [ideal_bca] at hstep
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := hstep; exact h
+  | .output _ _ => obtain ⟨_, _, _, rfl⟩ := hstep; exact h
+  | .bind _ => obtain ⟨_, _, rfl⟩ := hstep; exact h
+  | .input i _ =>
+    obtain ⟨hnone, rfl⟩ := hstep
+    simp; by_cases hip : p = i
+    · subst hip; rw [h] at hnone; exact absurd hnone (by simp)
+    · simp [hip]; exact h
+
+-- Execution-level persistence
+
+theorem bound_value_persist_along
+    {e : Execution (State T n) (Label T n)}
+    (hv : (ideal_bca (T := T) (n := n) (f := f)).valid_exec e)
+    {k : Nat} {b : T}
+    (h : (e.states k).bound_value = some b) :
+    ∀ k', k ≤ k' → (e.states k').bound_value = some b := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · exact bound_value_persist (hv.2 k') (ih (by omega))
+
+theorem decided_persist_along
+    {e : Execution (State T n) (Label T n)}
+    (hv : (ideal_bca (T := T) (n := n) (f := f)).valid_exec e)
+    {k : Nat} {p : Fin n} {v : Val T}
+    (h : (e.states k).decided p = some v) :
+    ∀ k', k ≤ k' → (e.states k').decided p = some v := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · exact decided_persist (hv.2 k') (ih (by omega))
+
+theorem corrupted_mem_persist_along
+    {e : Execution (State T n) (Label T n)}
+    (hv : (ideal_bca (T := T) (n := n) (f := f)).valid_exec e)
+    {k : Nat} {p : Fin n}
+    (h : p ∈ (e.states k).corrupted) :
+    ∀ k', k ≤ k' → p ∈ (e.states k').corrupted := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · exact corrupted_mem_persist (hv.2 k') (ih (by omega))
+
+theorem input_persist_along
+    {e : Execution (State T n) (Label T n)}
+    (hv : (ideal_bca (T := T) (n := n) (f := f)).valid_exec e)
+    {k : Nat} {p : Fin n} {v : T}
+    (h : (e.states k).input_ p = some v) :
+    ∀ k', k ≤ k' → (e.states k').input_ p = some v := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · exact input_persist (hv.2 k') (ih (by omega))
+
+-- Stutter-aware persistence
+
+variable [Inhabited T]
+
+theorem bound_value_persist_along_stutter
+    {e : Execution (State T n) (Label T n)}
+    (hv : (ideal_bca (T := T) (n := n) (f := f)).valid_exec_stutter
+      (ideal_labelling T n) e)
+    {k : Nat} {b : T}
+    (h : (e.states k).bound_value = some b) :
+    ∀ k', k ≤ k' → (e.states k').bound_value = some b := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · have hprev := ih (by omega)
+      rcases hv.2 k' with hstep | ⟨heq, _⟩
+      · exact bound_value_persist hstep hprev
+      · rw [← heq]; exact hprev
+
+theorem decided_persist_along_stutter
+    {e : Execution (State T n) (Label T n)}
+    (hv : (ideal_bca (T := T) (n := n) (f := f)).valid_exec_stutter
+      (ideal_labelling T n) e)
+    {k : Nat} {p : Fin n} {v : Val T}
+    (h : (e.states k).decided p = some v) :
+    ∀ k', k ≤ k' → (e.states k').decided p = some v := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · have hprev := ih (by omega)
+      rcases hv.2 k' with hstep | ⟨heq, _⟩
+      · exact decided_persist hstep hprev
+      · rw [← heq]; exact hprev
+
+theorem corrupted_mem_persist_along_stutter
+    {e : Execution (State T n) (Label T n)}
+    (hv : (ideal_bca (T := T) (n := n) (f := f)).valid_exec_stutter
+      (ideal_labelling T n) e)
+    {k : Nat} {p : Fin n}
+    (h : p ∈ (e.states k).corrupted) :
+    ∀ k', k ≤ k' → p ∈ (e.states k').corrupted := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · have hprev := ih (by omega)
+      rcases hv.2 k' with hstep | ⟨heq, _⟩
+      · exact corrupted_mem_persist hstep hprev
+      · rw [← heq]; exact hprev
+
+theorem input_persist_along_stutter
+    {e : Execution (State T n) (Label T n)}
+    (hv : (ideal_bca (T := T) (n := n) (f := f)).valid_exec_stutter
+      (ideal_labelling T n) e)
+    {k : Nat} {p : Fin n} {v : T}
+    (h : (e.states k).input_ p = some v) :
+    ∀ k', k ≤ k' → (e.states k').input_ p = some v := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · have hprev := ih (by omega)
+      rcases hv.2 k' with hstep | ⟨heq, _⟩
+      · exact input_persist hstep hprev
+      · rw [← heq]; exact hprev
+
+end persistence
+
 end IdealBCA
