@@ -1062,6 +1062,55 @@ theorem send_vote_sets_voted {s s' : State n Value} {src dst v} {sender : Fin n}
   obtain ⟨_, rfl⟩ := h; simp only [isCorrect] at hcorr; simp only [↓reduceIte,
     Bool.if_true_left, Bool.decide_and, hcorr, not_false_eq_true, decide_true, Bool.true_or]
 
+/-- `sent p dst t v = true` is monotone across steps. -/
+theorem step_sent_mono {s s' : State n Value} {l : Label n Value} {sender : Fin n}
+    (h : (brb n f Value sender).step s l s')
+    (p dst : Fin n) (t : MsgType) (v : Value)
+    (hsent : (s.local_ p).sent dst t v = true) :
+    (s'.local_ p).sent dst t v = true := by
+  -- sent is only changed by send steps; all other steps preserve sent.
+  -- For send(src, dst', t', mv): p ≠ src → unchanged; p = src → OR gate
+  -- with new (dst', t', mv) entry set to true, old entries preserved.
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := h; exact hsent
+  | .send src dst' t' mv =>
+    obtain ⟨_, rfl⟩ := h; simp only
+    by_cases hp : p = src
+    · subst hp; simp only [↓reduceIte]; split <;> [rfl; exact hsent]
+    · simp [hp]; exact hsent
+  | .recv _ rdst .init _ =>
+    have : (s'.local_ p).sent = (s.local_ p).sent := by
+      obtain ⟨_, rfl⟩ := h; simp only
+      by_cases hp : p = rdst
+      · subst hp; simp only [↓reduceIte]; split <;> rfl
+      · simp [hp]
+    exact this ▸ hsent
+  | .recv _ rdst .echo _ =>
+    have : (s'.local_ p).sent = (s.local_ p).sent := by
+      obtain ⟨_, rfl⟩ := h; simp only
+      by_cases hp : p = rdst
+      · subst hp; simp only [↓reduceIte]; split <;> rfl
+      · simp [hp]
+    exact this ▸ hsent
+  | .recv _ rdst .vote _ =>
+    have : (s'.local_ p).sent = (s.local_ p).sent := by
+      obtain ⟨_, rfl⟩ := h; simp only
+      by_cases hp : p = rdst
+      · subst hp; simp only [↓reduceIte]; split <;> rfl
+      · simp [hp]
+    exact this ▸ hsent
+  | .output i _ =>
+    have : (s'.local_ p).sent = (s.local_ p).sent := by
+      obtain ⟨_, _, _, rfl⟩ := h; simp only
+      by_cases hp : p = i <;> simp [hp]
+    exact this ▸ hsent
+  | .input i _ =>
+    have : (s'.local_ p).sent = (s.local_ p).sent := by
+      have := input_eq_sender h; subst this
+      obtain ⟨_, _, rfl⟩ := h; simp only
+      by_cases hp : p = i <;> simp [hp]
+    exact this ▸ hsent
+
 /-- `countEchoRecv` is monotone across steps. -/
 theorem step_countEchoRecv_mono {s s' : State n Value} {l : Label n Value} {sender : Fin n}
     (h : (brb n f Value sender).step s l s') (q : Fin n) (v : Value) :
@@ -1263,6 +1312,21 @@ theorem broadcastVal_persist_along
     rcases Nat.eq_or_lt_of_le hk with rfl | hlt
     · exact h
     · exact step_broadcastVal_persist (hv.2 k') p v (ih (by omega))
+
+/-- `sent p dst t v = true` persists along valid BRB executions. -/
+theorem sent_persist_along
+    {e : Execution (State n Value) (Label n Value)}
+    (hv : (brb n f Value sender).valid_exec e)
+    {k : Nat} {p dst : Fin n} {t : MsgType} {v : Value}
+    (h : ((e.states k).local_ p).sent dst t v = true)
+    (k' : Nat) (hk : k ≤ k') :
+    ((e.states k').local_ p).sent dst t v = true := by
+  induction k' with
+  | zero => exact (Nat.le_zero.mp hk) ▸ h
+  | succ k' ih =>
+    rcases Nat.eq_or_lt_of_le hk with rfl | hlt
+    · exact h
+    · exact step_sent_mono (hv.2 k') p dst t v (ih (by omega))
 
 /-- `sendRecv p = some v` persists along valid BRB executions. -/
 theorem sendRecv_persist_along
