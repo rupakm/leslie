@@ -551,7 +551,10 @@ private noncomputable def flattenLPaths {S : Type u} {L : Type v}
       -- In-range positions always have a real step (no stutter).
       -- Strengthening of step_or_stutter for the in-range case.
       (∀ t, (∃ k, t + 1 ≤ loffset (fun k => (paths k).length) (k + 1)) →
-        step (e.states t) (e.labels t) (e.states (t + 1))) } := by
+        step (e.states t) (e.labels t) (e.states (t + 1))) ∧
+      -- States at out-of-range positions are preserved (stutter).
+      (∀ t, (¬∃ k, t + 1 ≤ loffset (fun k => (paths k).length) (k + 1)) →
+        e.states (t + 1) = e.states t) } := by
   let len := fun k => (paths k).length
   let off := loffset len
   -- Lookup: given t in range, find the segment and index within it
@@ -745,7 +748,7 @@ private noncomputable def flattenLPaths {S : Type u} {L : Type v}
       rw [hst, hst1, hlt, hget_k, hidx_k1, hwit_s1_s', hlbl_idx]
       exact hstep
   refine ⟨⟨ea_states, ea_labels⟩, ?remap, ?step_or_stutter, ?labels_seg,
-          ?labels_stutter, ?step_in_range⟩
+          ?labels_stutter, ?step_in_range, ?states_stutter⟩
   case remap =>
     intro k
     have hex : ∃ j, off k ≤ off (j + 1) := ⟨k, loffset_mono len k⟩
@@ -824,6 +827,9 @@ private noncomputable def flattenLPaths {S : Type u} {L : Type v}
   case step_in_range =>
     intro t ht
     exact h_step_in_range t ht
+  case states_stutter =>
+    intro t ht
+    exact ea_states_stutter t ht
 
 /-- Length of the `LPath` obtained from `InternalStar.toInternalLPath` equals
     the original `InternalStar.length`. -/
@@ -887,7 +893,7 @@ private noncomputable def flattenInternalStars
   have hlen_eq : ∀ k, (lpaths k).length = (paths k).length :=
     fun k => InternalStar.toInternalLPath_length (paths k)
   -- Flatten LPaths using the existing helper
-  obtain ⟨e, hboundary, hsos, hlabels_seg, hlabels_stutter, hstep_in_range⟩ :=
+  obtain ⟨e, hboundary, hsos, hlabels_seg, hlabels_stutter, hstep_in_range, _⟩ :=
     flattenLPaths lab.tau states lpaths
   -- Rewrite loffset over LPath lengths to loffset over InternalStar lengths
   have hoff_eq : (fun k => (lpaths k).length) = (fun k => (paths k).length) := by
@@ -973,7 +979,7 @@ theorem ForwardSim.external_subseq_correspondence
   let wit := sim.buildWitness e₁ hv₁
   let lpaths := sim.buildLPath e₁ hv₁
   -- Flatten into a single abstract execution (step-or-stutter)
-  obtain ⟨e₂, hremap, hsos, hlabels_seg, hlabels_stutter, _hstep_in_range⟩ :=
+  obtain ⟨e₂, hremap, hsos, hlabels_seg, hlabels_stutter, _hstep_in_range, _⟩ :=
     flattenLPaths lab₂.tau (fun k => (wit k).val) lpaths
   refine ⟨e₂, ⟨?_, ?_⟩, ?_⟩
   · -- Init: e₂.states 0 = (wit 0).val, which is an abstract initial state
@@ -2164,7 +2170,7 @@ theorem transfers_satisfaction
   haveI : Inhabited L₂ := ⟨lab₂.tau⟩
   let wit := sim.buildWitness e₁ hv₁
   let lpaths := sim.buildLPath e₁ hv₁
-  obtain ⟨e₂, hremap, hsos, _hlabels_seg, _hlabels_stutter, _hstep_in_range⟩ :=
+  obtain ⟨e₂, hremap, hsos, _hlabels_seg, _hlabels_stutter, _hstep_in_range, _hstates_stutter⟩ :=
     flattenLPaths lab₂.tau (fun k => (wit k).val) lpaths
   have hv₂_stutter : abstract.valid_exec_stutter lab₂ e₂ := by
     refine ⟨?_, hsos⟩
@@ -2193,6 +2199,187 @@ theorem transfers_satisfaction
   -- 6. Apply `h_prop_transfer` to obtain φ_con e₁ 0.
   exact h_prop_transfer e₁ e₂ idx hv₁ hv₂_stutter idx_mono idx_zero
     h_idx_R hφ_abs
+
+/-- A weakly monotone bounded sequence of naturals eventually stabilises. -/
+private theorem mono_bounded_stabilizes
+    (f : Nat → Nat) (start : Nat) (B : Nat)
+    (hmono : ∀ k, f k ≤ f (k + 1))
+    (hbound : ∀ k, k ≥ start → f k ≤ B) :
+    ∃ M, start ≤ M ∧ ∀ m, m ≥ M → f m = f M := by
+  by_contra h_no
+  push_neg at h_no
+  -- Monotonicity extended to ≤
+  have hmono_le : ∀ k₁ k₂, k₁ ≤ k₂ → f k₁ ≤ f k₂ := by
+    intro k₁ k₂ hle
+    induction hle with
+    | refl => exact Nat.le_refl _
+    | step _ ih => exact Nat.le_trans ih (hmono _)
+  -- Build a chain of strict increases to exceed the bound
+  have chain : ∀ n, n ≤ B - f start + 1 →
+      ∃ M, start ≤ M ∧ f M ≥ f start + n := by
+    intro n; induction n with
+    | zero => intro _; exact ⟨start, le_refl _, by omega⟩
+    | succ n ih =>
+      intro hn
+      obtain ⟨M₀, hM₀, hfM₀⟩ := ih (by omega)
+      obtain ⟨m, hm, hne⟩ := h_no M₀ hM₀
+      have hgt : f m > f M₀ :=
+        Nat.lt_of_le_of_ne (hmono_le M₀ m hm) (Ne.symm hne)
+      exact ⟨m, by omega, by omega⟩
+  obtain ⟨M_final, hM_final, hf_final⟩ := chain (B - f start + 1) (le_refl _)
+  have := hbound M_final (by omega)
+  omega
+
+/-- Specialised `transfers_satisfaction` for `leads_to` between state
+    properties where the postcondition `Q_abs` is forward-monotone through
+    abstract steps.  Internalises the property-translation argument:
+
+    * `h_P`: precondition transfers forward (concrete → abstract via R).
+    * `h_Q`: postcondition transfers backward (abstract → concrete via R).
+    * `h_Q_step`: `Q_abs` is preserved by every abstract step (forward mono).
+
+    The flat execution `e₂` built by `flattenLPaths` may stutter beyond all
+    `LPath` segments; the states-stutter property together with `h_Q_step`
+    guarantees `Q_abs` propagates to every indexed position once it holds at
+    any later abstract position. -/
+theorem transfers_leads_to
+    {sim : ForwardSim concrete lab₁ abstract lab₂}
+    (_wd : sim.WeakDivPreserving fair_labels₁ fair_labels₂)
+    (h_label_ext : ∀ l₁, lab₁.is_external l₁ = true →
+      lab₂.is_external (sim.label_map l₁) = true)
+    (h_map_tau : sim.label_map lab₁.tau = lab₂.tau)
+    (P_abs Q_abs : S₂ → Prop) (P_con Q_con : S₁ → Prop)
+    (h_P : ∀ s₁ s₂, sim.R s₁ s₂ → P_con s₁ → P_abs s₂)
+    (h_Q : ∀ s₁ s₂, sim.R s₁ s₂ → Q_abs s₂ → Q_con s₁)
+    (h_Q_step : ∀ s l s', Q_abs s → abstract.step s l s' → Q_abs s')
+    (h_abs :
+      abstract.satisfies_stutter lab₂
+        (assumes_fair_wf_step abstract fair_labels₂
+          (leads_to (state_prop P_abs) (state_prop Q_abs))))
+    (h_ante_transfer :
+      ∀ (e₁ : Execution S₁ L₁) (e₂ : Execution S₂ L₂) (idx : Nat → Nat),
+        concrete.valid_exec e₁ → abstract.valid_exec_stutter lab₂ e₂ →
+        (∀ k, idx k ≤ idx (k + 1)) →
+        idx 0 = 0 →
+        (∀ k, sim.R (e₁.states k) (e₂.states (idx k))) →
+        (tp_forall (fun l₁ =>
+          always (tp_implies
+            (always (state_prop (fun s => concrete.enabled l₁ s ∧
+              fair_labels₁ s l₁)))
+            (eventually (step_prop (fun _ l' _ => l₁ = l')))))) e₁ 0 →
+        (tp_forall (fun l₂ =>
+          always (tp_implies
+            (always (state_prop (fun s => abstract.enabled l₂ s ∧
+              fair_labels₂ s l₂)))
+            (eventually (fun e k => l₂ = e.labels k ∧
+              abstract.step (e.states k) (e.labels k) (e.states (k + 1))))))) e₂ 0) :
+    concrete.satisfies (assumes_fair_wf concrete fair_labels₁
+        (leads_to (state_prop P_con) (state_prop Q_con))) := by
+  intro e₁ hv₁ h_fair_wf_e1
+  haveI : Inhabited L₂ := ⟨lab₂.tau⟩
+  let wit := sim.buildWitness e₁ hv₁
+  let lpaths := sim.buildLPath e₁ hv₁
+  obtain ⟨e₂, hremap, hsos, _hlabels_seg, _hlabels_stutter, _hstep_in_range,
+          hstates_stutter⟩ :=
+    flattenLPaths lab₂.tau (fun k => (wit k).val) lpaths
+  have hv₂_stutter : abstract.valid_exec_stutter lab₂ e₂ := by
+    constructor
+    · have h0 := hremap 0; simp [show loffset (fun k => (lpaths k).length) 0 = 0 from rfl] at h0
+      rw [h0]; exact (sim.init_sim (e₁.states 0) hv₁.1).2.1
+    · exact hsos
+  let idx : Nat → Nat := loffset (fun k => (lpaths k).length)
+  have idx_mono : ∀ k, idx k ≤ idx (k + 1) := fun k => loffset_mono _ _
+  have idx_mono_le' : ∀ a b, a ≤ b → idx a ≤ idx b :=
+    fun a b hab => loffset_mono_le _ hab
+  have h_idx_R : ∀ k, sim.R (e₁.states k) (e₂.states (idx k)) := by
+    intro k
+    have hk := hremap k
+    simp only [idx] at hk ⊢
+    rw [hk]; exact (wit k).property
+  have h_ante_e2 :=
+    h_ante_transfer e₁ e₂ idx hv₁ hv₂_stutter idx_mono rfl h_idx_R h_fair_wf_e1
+  have hφ := h_abs e₂ hv₂_stutter h_ante_e2
+  -- Q_abs forward-monotone on e₂
+  have Q_mono : ∀ p q, p ≤ q → Q_abs (e₂.states p) → Q_abs (e₂.states q) := by
+    intro p q hpq hQ
+    induction hpq with
+    | refl => exact hQ
+    | step _ ih =>
+      rcases hsos _ with h_step | ⟨h_eq, _⟩
+      · exact h_Q_step _ _ _ ih h_step
+      · rwa [show e₂.states (_ + 1) = e₂.states _ from h_eq.symm]
+  -- Helper: the stutter condition in terms of idx
+  have not_in_range : ∀ t, (∀ k, idx (k + 1) ≤ t) →
+      ¬∃ k, t + 1 ≤ loffset (fun k => (lpaths k).length) (k + 1) := by
+    intro t ht ⟨k, hk⟩
+    have := ht k; simp only [idx] at this; omega
+  -- States stable beyond all LPath boundaries
+  have states_stable : ∀ d p, (∀ k, idx (k + 1) ≤ p) →
+      e₂.states (p + d) = e₂.states p := by
+    intro d; induction d with
+    | zero => intro _ _; rfl
+    | succ d ih =>
+      intro p hbeyond
+      have ih' := ih p hbeyond
+      rw [show p + (d + 1) = (p + d) + 1 from by omega,
+          hstates_stutter (p + d) (not_in_range (p + d) (fun k => by
+            have := hbeyond k; omega)),
+          ih']
+  -- Translate leads_to from e₂ to e₁.
+  -- Unfold: leads_to P Q e 0 = always (tp_implies P (eventually Q)) e 0
+  --       = ∀ j, (P e (0+j) → ∃ j', Q e (0+j+j'))
+  -- Work with the raw function forms to avoid type mismatch issues.
+  show ∀ j₁, state_prop P_con e₁ (0 + j₁) →
+    ∃ j₁', state_prop Q_con e₁ (0 + j₁ + j₁')
+  intro j₁ hP_raw
+  -- Extract P_con (e₁.states j₁) from hP_raw
+  have hP_con : P_con (e₁.states j₁) := by
+    have := hP_raw; simp only [state_prop, Nat.zero_add] at this; exact this
+  -- P_con → P_abs via sim_rel
+  have hP_abs : P_abs (e₂.states (idx j₁)) := h_P _ _ (h_idx_R j₁) hP_con
+  -- Apply abstract leads_to at position idx j₁
+  have hφ_raw := hφ (idx j₁)
+  -- hφ_raw : state_prop P_abs e₂ (0 + idx j₁) →
+  --          ∃ j', state_prop Q_abs e₂ (0 + idx j₁ + j')
+  have hP_abs_raw : state_prop P_abs e₂ (0 + idx j₁) := by
+    show P_abs (e₂.states (0 + idx j₁)); rwa [Nat.zero_add]
+  obtain ⟨j', hQ_raw⟩ := hφ_raw hP_abs_raw
+  -- hQ_raw : state_prop Q_abs e₂ (0 + idx j₁ + j') = Q_abs (e₂.states (0 + idx j₁ + j'))
+  have hQ_abs : Q_abs (e₂.states (idx j₁ + j')) := by
+    have : Q_abs (e₂.states (0 + idx j₁ + j')) := hQ_raw
+    rwa [Nat.zero_add] at this
+  -- Find concrete m ≥ j₁ with Q_con (e₁.states m)
+  suffices h : ∃ m, j₁ ≤ m ∧ Q_con (e₁.states m) by
+    obtain ⟨m, hm, hqc⟩ := h
+    refine ⟨m - j₁, ?_⟩
+    show Q_con (e₁.states (0 + j₁ + (m - j₁)))
+    rw [show 0 + j₁ + (m - j₁) = m from by omega]; exact hqc
+  by_cases h_unbounded : ∃ m, j₁ ≤ m ∧ idx j₁ + j' ≤ idx m
+  · obtain ⟨m, hm_ge, hm_idx⟩ := h_unbounded
+    exact ⟨m, hm_ge, h_Q _ _ (h_idx_R m) (Q_mono _ _ hm_idx hQ_abs)⟩
+  · push_neg at h_unbounded
+    -- j' > 0
+    have hj'_pos : 0 < j' := by
+      by_contra h; push_neg at h
+      exact absurd (show idx j₁ + j' ≤ idx j₁ by omega)
+        (Nat.not_le.mpr (by have := h_unbounded j₁ (le_refl _); omega))
+    -- idx stabilises
+    obtain ⟨M, hM_ge, hM_stable⟩ :=
+      mono_bounded_stabilizes idx j₁ (idx j₁ + j' - 1)
+        idx_mono (fun k hk => by have := h_unbounded k hk; omega)
+    -- ∀ k, idx(k+1) ≤ idx M
+    have h_idx_le_M : ∀ k, idx (k + 1) ≤ idx M := by
+      intro k
+      by_cases hk : k + 1 ≥ M
+      · have h1 := hM_stable (k + 1) hk; have h2 := idx_mono k; omega
+      · exact idx_mono_le' (k + 1) M (by omega)
+    -- states(idx j₁ + j') = states(idx M) by stutter-beyond
+    have h_states_eq : e₂.states (idx j₁ + j') = e₂.states (idx M) := by
+      have hM_lt : idx M < idx j₁ + j' := by
+        have := h_unbounded M hM_ge; omega
+      rw [show idx j₁ + j' = idx M + (idx j₁ + j' - idx M) from by omega]
+      exact states_stable (idx j₁ + j' - idx M) (idx M) h_idx_le_M
+    exact ⟨M, hM_ge, h_Q _ _ (h_idx_R M) (h_states_eq ▸ hQ_abs)⟩
 
 -- `compose_with_compatible` (Gaspard Lemma 12) lives in `Composition.lean`
 -- because its statement depends on `parallel_forward_sim`.
