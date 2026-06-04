@@ -266,12 +266,21 @@ theorem fair_deadlock_no_fair_buffer
     terminated reachable states (vacuously fair-deadlocks); replaced
     after Phase C.2 by the honest claim that any reachable
     fair-deadlock is terminated. -/
+/-- At a reachable fair-deadlock where some correct process has input,
+    every correct process has decided.
+
+    **Precondition:** `∃ q, q ∉ s.corrupted ∧ (s.local_ q).input ≠ none`.
+    Without this, the initial state (before any input) is a fair-deadlock
+    with all `decided = none`, making the unconditional version false.
+    With the precondition, the BCA delivery chain ensures enough progress
+    for every correct process to eventually decide. -/
 theorem bca_fair_deadlock_implies_terminated (hn : n > 3 * f) :
     ∀ s, Reachable (BCA_LTS.bca T n f) s →
       FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s →
+      (∃ q, q ∉ s.corrupted ∧ (s.local_ q).input ≠ none) →
       ∀ p, p ∉ s.corrupted → (s.local_ p).decided ≠ none := by
-  -- Protocol-specific: at a fair-deadlock with n > 3f, every correct
-  -- process has already decided. The argument:
+  -- Protocol-specific: at a fair-deadlock with n > 3f and at least one
+  -- correct process with input, every correct process has decided.
   --
   -- At a fair-deadlock:
   --   1. No correct-to-correct message is in the buffer
@@ -282,13 +291,12 @@ theorem bca_fair_deadlock_implies_terminated (hn : n > 3 * f) :
   --   * output(p, some b) would be enabled if countVoteRecv ≥ n-f.
   --     Since output is fair (p correct), it can't be enabled → contradiction.
   --   * So countVoteRecv(p, some b) < n-f for all b.
-  --   * But the protocol delivery chain ensures that at a fair-deadlock
-  --     with all correct-to-correct messages delivered, every correct
-  --     process has enough votes. This requires BCA invariants
-  --     (vote backing, quorum completion) which are proven in
-  --     BCA_Simulation.lean as part of the safety proof.
+  --   * The delivery chain argument (using fair_deadlock_no_fair_buffer,
+  --     fair_deadlock_no_fair_send, and BCA invariants from
+  --     BCA_Simulation.lean) shows this is impossible under n > 3f
+  --     when a correct input exists.
   --
-  -- Deep protocol reasoning; sorried pending BCA invariant work.
+  -- Deep protocol reasoning; sorried pending BCA delivery chain proof.
   sorry
 
 /-! ## The headline witness -/
