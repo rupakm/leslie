@@ -1458,6 +1458,18 @@ theorem sendRecv_value_inv
     w = v := by
   sorry
 
+/-- **Echoed value invariant**: with correct sender and broadcastVal = some v,
+    if correct process q has echoed = some w, then w = v. -/
+theorem echoed_value_inv
+    (s : State n Value)
+    (hr : Reachable (brb n f Value sender) s)
+    (hcorr : isCorrect n Value s sender)
+    (hbv : (s.local_ sender).broadcastVal = some v)
+    (q : Fin n) (hq : isCorrect n Value s q) (w : Value)
+    (hechoed : (s.local_ q).echoed = some w) :
+    w = v := by
+  sorry
+
 end reachability_invariants
 
 end BRB_LTS

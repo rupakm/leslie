@@ -420,7 +420,7 @@ theorem brb_fair_deadlock_implies_terminated (hn : n > 3 * f) :
         · exact Or.inr ⟨rfl, hsrv⟩
         · -- echoed = some w: need w = v. With correct sender, echoed can only be
           -- set to v (from sendRecv = some v). This requires an echoed-value invariant.
-          have : w = v := sorry -- echoed value matches sendRecv/broadcastVal
+          have : w = v := BRB_LTS.echoed_value_inv s hreach hcorr_sender hv q hq w h_echoed
           exact Or.inl (this ▸ rfl)
       obtain ⟨s', hstep⟩ := h_enabled
       exact hfd (.send q r .echo v) s' hstep ⟨hq, hr⟩
