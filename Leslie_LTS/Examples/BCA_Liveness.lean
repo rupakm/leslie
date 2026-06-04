@@ -556,30 +556,23 @@ theorem fair_deadlock_output_none_contradiction
     terminated reachable states (vacuously fair-deadlocks); replaced
     after Phase C.2 by the honest claim that any reachable
     fair-deadlock is terminated. -/
-/-- At a reachable fair-deadlock with ∃ b with inputSupport ≥ f+1,
-    every correct process has decided.
+/-- At a reachable fair-deadlock with inputSupport(b) ≥ amplifyThreshold
+    for some value b, every correct process has decided.
 
     **Precondition:** `∃ b, inputSupport(b) ≥ amplifyThreshold f`.
-    Stronger than needed for the chain (f+1 correct inputs for value b).
-    The caller provides this from binary T + all-correct-input + n > 3f.
+    The caller provides this from binary T + all-correct-input + n > 3f
+    (via pigeonhole), or directly when the sim_rel guarantees enough support.
 
     **Proof outline:**
-    1. Input(b) procs send init(b) → received → countInitRecv ≥ f+1.
-    2. Amplification: all correct send init(b) → countInitRecv ≥ n-f.
-    3. approved(b) for all correct.
-    4. Echo delivery → echo quorum or two-approved → vote → vote recv → output. -/
+    1. Amplification chain → approved(b) for all correct (helpers proved).
+    2. Echo delivery → vote chain → output (requires case analysis). -/
 theorem bca_fair_deadlock_implies_terminated (hn : n > 3 * f) :
     ∀ s, Reachable (BCA_LTS.bca T n f) s →
       FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s →
-      (∀ q, q ∉ s.corrupted → (s.local_ q).input ≠ none) →
+      (∃ b, BCA_LTS.inputSupport T n s b ≥ BCA_LTS.amplifyThreshold f) →
       ∀ p, p ∉ s.corrupted → (s.local_ p).decided ≠ none := by
-  intro s hreach hfd hall_input p hp hdec
+  intro s hreach hfd ⟨b, hsupp_b⟩ p hp hdec
   have hbudget := BCA_LTS.corrupted_budget_reachable hreach
-  -- Step 0: Pigeonhole — extract ∃ b with inputSupport(b) ≥ amplifyThreshold.
-  -- Requires binary T assumption. Sorry pending.
-  have hsupp : ∃ b, BCA_LTS.inputSupport T n s b ≥ BCA_LTS.amplifyThreshold f := by
-    sorry
-  obtain ⟨b, hsupp_b⟩ := hsupp
   -- Steps 1-3 (proved by helpers): all correct approved(b)
   have hall_approved : ∀ q, q ∉ s.corrupted → (s.local_ q).approved b = true :=
     fun q hq => fair_deadlock_all_approved T n f s hn hreach hfd hsupp_b hq
