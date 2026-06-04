@@ -1103,6 +1103,18 @@ theorem recv_init_countInitRecv_inc {s s' : State T n} {src dst : Fin n} {b : T}
       subst heq; rw [hdup] at hq; exact absurd hq (by simp)⟩
   omega
 
+/-- Exact count: recv_init with new entry increments countInitRecv by exactly 1.
+    Proof: initRecv changes only at (src, b), adding one new true entry.
+    The lower bound is recv_init_countInitRecv_inc; the upper bound follows from
+    the filter growing by at most {src}. -/
+theorem recv_init_countInitRecv_eq {s s' : State T n} {src dst : Fin n} {b : T}
+    (h : (bca T n f).step s (.recv src dst .init (some b)) s')
+    (hdup : (s.local_ dst).initRecv src b = false) :
+    countInitRecv T n (s'.local_ dst) b = countInitRecv T n (s.local_ dst) b + 1 := by
+  -- initRecv changes only at (src, b): false → true, all others unchanged
+  -- Lower bound: recv_init_countInitRecv_inc; upper bound: at most 1 new filter entry
+  sorry
+
 /-- Recv init that sets approved(b) crossed the approval threshold. -/
 theorem recv_init_approved_threshold {s s' : State T n} {src dst : Fin n} {b : T}
     (h : (bca T n f).step s (.recv src dst .init (some b)) s')
@@ -2214,6 +2226,132 @@ theorem vote_delivery_inv {s : State T n}
   | step hreach' hstep ih =>
     exact step_vote_delivery_inv hstep src dst v hsent ih
 
+/-- At a reachable state, a correct process that has sent echo(some b)
+    to any destination has echoed = some b.
+    Proof: echo send by correct src sets echoed := some b. The echoed field
+    persists. So if sent = true, echoed was set and persists. -/
+theorem sent_echo_implies_echoed {s : State T n}
+    (hreach : LTS.Reachable (bca T n f) s)
+    {p : Fin n} (b : T)
+    (hcorr : isCorrect T n s p)
+    {dst : Fin n}
+    (hsent : (s.local_ p).sent dst .echo (some b) = true) :
+    (s.local_ p).echoed = some b := by
+  induction hreach with
+  | init hinit =>
+    obtain ⟨hlocal, _, _⟩ := hinit
+    simp [hlocal p, LocalState.init] at hsent
+  | step hreach_prev hstep ih =>
+    rename_i s_prev l _
+    have hcp := step_correct_prev hstep p hcorr
+    by_cases hprev : (s_prev.local_ p).sent dst .echo (some b) = true
+    · exact step_echoed_persist hstep p b hcorr (ih hcp hprev)
+    · -- Newly sent in this step: must be send echo(some b) from p.
+      simp only [Bool.not_eq_true] at hprev
+      match l with
+      | .send src dst' .echo (some b') =>
+        by_cases hp : p = src
+        · subst hp
+          rw [send_sent hstep dst .echo (some b)] at hsent
+          split_ifs at hsent with heq
+          · have hbb := Option.some.inj heq.2.2
+            subst hbb; exact send_echo_echoed_correct hstep hcp
+          · exact absurd hsent (by rw [hprev]; simp)
+        · rw [send_sent_other hstep p hp dst .echo (some b)] at hsent
+          exact absurd hsent (by rw [hprev]; simp)
+      | .send src dst' .echo none =>
+        by_cases hp : p = src
+        · subst hp; obtain ⟨_, rfl⟩ := hstep; simp at hsent
+          exact absurd hsent (by rw [hprev]; simp)
+        · rw [send_sent_other hstep p hp dst .echo (some b)] at hsent
+          exact absurd hsent (by rw [hprev]; simp)
+      | .send src dst' .init mv =>
+        by_cases hp : p = src
+        · subst hp; obtain ⟨_, rfl⟩ := hstep; simp at hsent
+          exact absurd hsent (by rw [hprev]; simp)
+        · rw [send_sent_other hstep p hp dst .echo (some b)] at hsent
+          exact absurd hsent (by rw [hprev]; simp)
+      | .send src dst' .vote mv =>
+        by_cases hp : p = src
+        · subst hp; obtain ⟨_, rfl⟩ := hstep; simp at hsent
+          exact absurd hsent (by rw [hprev]; simp)
+        · rw [send_sent_other hstep p hp dst .echo (some b)] at hsent
+          exact absurd hsent (by rw [hprev]; simp)
+      | .corrupt _ =>
+        rw [corrupt_local hstep] at hsent; exact absurd hsent (by rw [hprev]; simp)
+      | .input _ _ =>
+        rw [input_sent hstep p dst .echo (some b)] at hsent
+        exact absurd hsent (by rw [hprev]; simp)
+      | .output _ _ =>
+        rw [output_sent hstep p dst .echo (some b)] at hsent
+        exact absurd hsent (by rw [hprev]; simp)
+      | .recv _ _ _ _ =>
+        rw [recv_sent hstep p dst .echo (some b)] at hsent
+        exact absurd hsent (by rw [hprev]; simp)
+
 end DeliveryInvariants
+
+/-! ### Reachable Invariants -/
+
+section ReachableInvariants
+
+variable {T : Type} {n f : Nat} [DecidableEq T]
+
+/-- At a reachable state, corrupted.length ≤ f. -/
+theorem corrupted_budget_reachable {s : State T n}
+    (hreach : LTS.Reachable (bca T n f) s) :
+    s.corrupted.length ≤ f := by
+  induction hreach with
+  | init hinit => obtain ⟨_, _, hcorr⟩ := hinit; rw [hcorr]; simp
+  | step _ hstep ih =>
+    rename_i s_prev l s' _
+    match l with
+    | .corrupt i =>
+      obtain ⟨_, hbudget, rfl⟩ := hstep
+      simp only [List.length_cons]; omega
+    | .send .. => rw [send_corrupted hstep]; exact ih
+    | .recv .. => rw [recv_corrupted hstep]; exact ih
+    | .output .. => rw [output_corrupted hstep]; exact ih
+    | .input .. => rw [input_corrupted hstep]; exact ih
+
+/-- At a reachable state, if countInitRecv ≥ approveThreshold and approveThreshold > 0,
+    then approved = true. The threshold positivity holds whenever n > f. -/
+theorem countInitRecv_ge_implies_approved {s : State T n}
+    (hreach : LTS.Reachable (bca T n f) s)
+    (p : Fin n) (b : T)
+    (hpos : approveThreshold n f > 0)
+    (hge : countInitRecv T n (s.local_ p) b ≥ approveThreshold n f) :
+    (s.local_ p).approved b = true := by
+  -- The approved field is set when countInitRecv + 1 ≥ approveThreshold
+  -- at the recv_init step that crosses the threshold. Once set, it persists.
+  -- Proof uses recv_init_countInitRecv_eq (exact count = prev + 1).
+  sorry
+
+/-- Output(none) is enabled when p is correct, undecided, has two approved values,
+    and enough total votes. -/
+theorem output_none_enabled {s : State T n} {p : Fin n}
+    (hcorr : isCorrect T n s p)
+    (hdec : (s.local_ p).decided = none)
+    (v₁ v₂ : T) (hne : v₁ ≠ v₂)
+    (happr1 : (s.local_ p).approved v₁ = true)
+    (happr2 : (s.local_ p).approved v₂ = true)
+    (vals : List (Val T))
+    (hvotes : countAnyVoteRecv T n (s.local_ p) vals ≥ returnThreshold n f) :
+    (bca T n f).enabled (.output p none) s := by
+  exact ⟨_, hcorr, hdec, ⟨⟨v₁, v₂, hne, happr1, happr2⟩, vals, hvotes⟩, rfl⟩
+
+/-- A correct-to-correct vote(none) send is enabled when src has two
+    distinct approved values, is vote-consistent, and hasn't sent yet. -/
+theorem send_vote_none_enabled {s : State T n} {src dst : Fin n}
+    (hcorr : isCorrect T n s src)
+    (hsent : (s.local_ src).sent dst .vote none = false)
+    (huniq : ∀ w, (s.local_ src).voted w = true → w = none)
+    (v₁ v₂ : T) (hne : v₁ ≠ v₂)
+    (happr1 : (s.local_ src).approved v₁ = true)
+    (happr2 : (s.local_ src).approved v₂ = true) :
+    (bca T n f).enabled (.send src dst .vote none) s := by
+  refine ⟨_, Or.inr ⟨hcorr, hsent, huniq, v₁, v₂, hne, happr1, happr2⟩, rfl⟩
+
+end ReachableInvariants
 
 end BCA_LTS

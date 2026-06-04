@@ -351,7 +351,7 @@ theorem fair_deadlock_echoed_ne_none
     by_contra hsent
     simp only [Bool.not_eq_false] at hsent
     have := BCA_LTS.sent_echo_implies_echoed hreach b hp hsent
-    rw [this] at hechoed; exact absurd rfl hechoed
+    rw [this] at hechoed; simp at hechoed
   have henabled := BCA_LTS.send_echo_enabled (f := f) hp hsent_false happroved hcompat
   obtain ⟨s', hstep⟩ := henabled
   exact hfd (.send p p .echo (some b)) s' hstep ⟨hp, hp⟩
