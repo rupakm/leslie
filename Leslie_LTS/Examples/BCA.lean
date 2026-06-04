@@ -1685,6 +1685,42 @@ theorem sent_persist_along {e : Execution (State T n) (Label T n)}
     · exact h
     · exact step_sent_mono (hv.2 k') p dst t v (ih (by omega))
 
+theorem initRecv_mono_along {e : Execution (State T n) (Label T n)}
+    (hv : (bca T n f).valid_exec e)
+    {k : Nat} {p q : Fin n} {b : T}
+    (h : ((e.states k).local_ p).initRecv q b = true) :
+    ∀ k', k ≤ k' → ((e.states k').local_ p).initRecv q b = true := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · exact step_initRecv_mono (hv.2 k') p q b (ih (by omega))
+
+theorem echoRecv_mono_along {e : Execution (State T n) (Label T n)}
+    (hv : (bca T n f).valid_exec e)
+    {k : Nat} {p q : Fin n} {b : T}
+    (h : ((e.states k).local_ p).echoRecv q b = true) :
+    ∀ k', k ≤ k' → ((e.states k').local_ p).echoRecv q b = true := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · exact step_echoRecv_mono (hv.2 k') p q b (ih (by omega))
+
+theorem voteRecv_mono_along {e : Execution (State T n) (Label T n)}
+    (hv : (bca T n f).valid_exec e)
+    {k : Nat} {p q : Fin n} {v : Val T}
+    (h : ((e.states k).local_ p).voteRecv q v = true) :
+    ∀ k', k ≤ k' → ((e.states k').local_ p).voteRecv q v = true := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · exact step_voteRecv_mono (hv.2 k') p q v (ih (by omega))
+
 end StepHelpers
 
 end BCA_LTS
