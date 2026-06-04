@@ -404,7 +404,24 @@ theorem brb_fair_deadlock_implies_terminated (hn : n > 3 * f) :
       -- If echoed = some v already, first disjunct. If echoed = none, second (sendRecv = some v).
       -- Either way, the send is enabled. Constructing the exact successor is mechanical.
       have h_enabled : ∃ s', (BRB_LTS.brb n f Value sender).step s (.send q r .echo v) s' := by
-        sorry -- mechanical: construct successor state from echo send definition
+        let msg : BRB_LTS.Message n Value := ⟨q, r, .echo, v⟩
+        refine ⟨{ s with
+          buffer := fun m => if m = msg then true else s.buffer m
+          local_ := fun p' => if p' = q then
+            { s.local_ q with
+              sent := fun d t w => if d = r ∧ t = .echo ∧ w = v then true
+                else (s.local_ q).sent d t w
+              echoed := if q ∉ s.corrupted then some v else (s.local_ q).echoed }
+            else s.local_ p' }, ?_⟩
+        simp only [BRB_LTS.brb]
+        refine ⟨Or.inr ⟨hq, h_not_sent, ?_⟩, rfl⟩
+        -- Echo condition: echoed = some v OR (echoed = none ∧ sendRecv = some v)
+        rcases h_echoed : (s.local_ q).echoed with _ | w
+        · exact Or.inr ⟨rfl, hsrv⟩
+        · -- echoed = some w: need w = v. With correct sender, echoed can only be
+          -- set to v (from sendRecv = some v). This requires an echoed-value invariant.
+          have : w = v := sorry -- echoed value matches sendRecv/broadcastVal
+          exact Or.inl (this ▸ rfl)
       obtain ⟨s', hstep⟩ := h_enabled
       exact hfd (.send q r .echo v) s' hstep ⟨hq, hr⟩
     have h_buf := fair_deadlock_no_fair_buffer n f Value sender s hfd hq hr .echo v
@@ -431,7 +448,21 @@ theorem brb_fair_deadlock_implies_terminated (hn : n > 3 * f) :
       simp only [Bool.not_eq_true] at h_not_sent
       -- vote send is enabled: echoRecv ≥ echoThreshold satisfies the vote condition
       have h_enabled : ∃ s', (BRB_LTS.brb n f Value sender).step s (.send q r .vote v) s' := by
-        sorry -- mechanical: construct successor from vote send with echoCount condition
+        let msg : BRB_LTS.Message n Value := ⟨q, r, .vote, v⟩
+        refine ⟨{ s with
+          buffer := fun m => if m = msg then true else s.buffer m
+          local_ := fun p' => if p' = q then
+            { s.local_ q with
+              sent := fun d t w => if d = r ∧ t = .vote ∧ w = v then true
+                else (s.local_ q).sent d t w
+              voted := if q ∉ s.corrupted
+                then fun w => if w = v then true else (s.local_ q).voted w
+                else (s.local_ q).voted }
+            else s.local_ p' }, ?_⟩
+        simp only [BRB_LTS.brb]
+        refine ⟨Or.inr ⟨hq, h_not_sent, ?_⟩, rfl⟩
+        -- Vote condition: voted ∨ echoRecv ≥ echoThreshold ∨ voteRecv ≥ voteThreshold
+        exact Or.inr (Or.inl hecho)
       obtain ⟨s', hstep⟩ := h_enabled
       exact hfd (.send q r .vote v) s' hstep ⟨hq, hr⟩
     have h_buf := fair_deadlock_no_fair_buffer n f Value sender s hfd hq hr .vote v
