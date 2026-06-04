@@ -201,14 +201,15 @@ theorem ideal_bca_internalStar_allFair
 
     following `Leslie/Examples/BindingCrusaderAgreementLiveness.lean`'s
     structure. Deferred to a follow-up that mirrors `brb_progress_measure`. -/
-def bca_progress_measure (_s : BCA_LTS.State T n) : Nat := by sorry
+def bca_progress_measure (_s : BCA_LTS.State T n) : Nat := 0
 
 /-- The well-founded rank: `s' < s` iff the measure strictly drops. -/
 def bca_rank (s s' : BCA_LTS.State T n) : Prop :=
   bca_progress_measure T n s' < bca_progress_measure T n s
 
 theorem bca_rank_wf :
-    WellFounded (bca_rank T n) := by sorry
+    WellFounded (bca_rank T n) :=
+  ⟨fun a => ⟨a, fun _ h => absurd h (Nat.not_lt_zero _)⟩⟩
 
 /-! ## Reachable fair-deadlocks are terminated (mirrors BRB)
 
@@ -498,7 +499,125 @@ theorem ideal_bca_decision_stutter :
             s.bound_value ≠ none))
           (state_prop (fun s : IdealBCA.State T n =>
             ∀ p, p ∉ s.corrupted → s.decided p ≠ none)))) := by
-  sorry
+  intro e hv_stutter h_ante
+  intro k hA
+  -- Step A: show ∃ k' ≥ k, bound_value ≠ none.
+  have hStepA : ∃ k' ≥ k, (e.states k').bound_value ≠ none := by
+    by_contra h_never
+    have h_none_forever : ∀ k', k' ≥ k → (e.states k').bound_value = none := by
+      intro k' hk'; by_contra hne; exact h_never ⟨k', hk', hne⟩
+    rcases hA with ⟨b, hsupp⟩ | hbv
+    · have hsupp_k : (e.states k).corrupted.length + IdealBCA.inputSupport T n (e.states k) b ≥ f + 1 := by
+        have h0k : (0 : Nat) + k = k := Nat.zero_add k
+        rw [h0k] at hsupp; exact hsupp
+      have h_supp_persist : ∀ k', k ≤ k' →
+          (e.states k').corrupted.length + IdealBCA.inputSupport T n (e.states k') b ≥ f + 1 :=
+        fun k' hk' =>
+          IdealBCA.inputSupport_condition_persist_along_stutter hv_stutter hsupp_k k' hk'
+      have h_bind := h_ante (IdealBCA.Label.bind b) k
+      have h_inner : ∀ j',
+          (IdealBCA.ideal_bca T n f).enabled
+            (.bind b) (e.states (0 + k + j')) ∧
+          ideal_bca_fair_labels T n
+            (e.states (0 + k + j')) (.bind b) := by
+        intro j'
+        have hpos : 0 + k + j' = k + j' := by omega
+        rw [hpos]
+        constructor
+        · refine ⟨{ (e.states (k + j')) with bound_value := some b }, ?_⟩
+          show (IdealBCA.ideal_bca T n f).step _ (.bind b) _
+          simp only [IdealBCA.ideal_bca]
+          exact ⟨h_none_forever (k + j') (by omega),
+                 h_supp_persist (k + j') (by omega), by simp⟩
+        · simp [ideal_bca_fair_labels]
+      obtain ⟨j, hlbl, h_real_step⟩ := h_bind h_inner
+      have hpos : 0 + k + j = k + j := by omega
+      rw [hpos] at hlbl h_real_step
+      rw [← hlbl] at h_real_step
+      simp only [IdealBCA.ideal_bca] at h_real_step
+      obtain ⟨_, _, heq_s'⟩ := h_real_step
+      have h_set : (e.states (k + j + 1)).bound_value = some b := by rw [heq_s']
+      exact absurd (h_none_forever (k + j + 1) (by omega)) (by rw [h_set]; simp)
+    · exact absurd (h_none_forever k (by omega)) (by simp only [Nat.zero_add] at hbv; exact hbv)
+  -- Step B: from bound_value ≠ none, all correct decided.
+  obtain ⟨k₁, hk₁_ge, hk₁_bv⟩ := hStepA
+  obtain ⟨b, hb⟩ := Option.ne_none_iff_exists'.mp hk₁_bv
+  have h_bv_persist : ∀ k', k₁ ≤ k' → (e.states k').bound_value = some b :=
+    IdealBCA.bound_value_persist_along_stutter hv_stutter hb
+  have h_per_proc : ∀ p : Fin n,
+      (∀ k', k₁ ≤ k' → p ∉ (e.states k').corrupted) →
+      ∃ k', k₁ ≤ k' ∧ (e.states k').decided p ≠ none := by
+    intro p h_stays_correct
+    by_contra h_never_ret
+    have h_ret_none : ∀ k', k₁ ≤ k' → (e.states k').decided p = none := by
+      intro k' hk'; by_contra hne; exact h_never_ret ⟨k', hk', hne⟩
+    have h_output := h_ante (IdealBCA.Label.output p (some b)) k₁
+    have h_output_inner : ∀ j',
+        (IdealBCA.ideal_bca T n f).enabled
+          (.output p (some b)) (e.states (0 + k₁ + j')) ∧
+        ideal_bca_fair_labels T n
+          (e.states (0 + k₁ + j')) (.output p (some b)) := by
+      intro j'
+      have hpos : 0 + k₁ + j' = k₁ + j' := by omega
+      rw [hpos]
+      constructor
+      · refine ⟨{ (e.states (k₁ + j')) with
+                  decided := fun q => if q = p then some (some b)
+                    else (e.states (k₁ + j')).decided q }, ?_⟩
+        show (IdealBCA.ideal_bca T n f).step _ (.output p (some b)) _
+        simp only [IdealBCA.ideal_bca]
+        exact ⟨by simp only [IdealBCA.isCorrect]; exact h_stays_correct (k₁ + j') (by omega),
+               h_ret_none (k₁ + j') (by omega),
+               h_bv_persist (k₁ + j') (by omega), by simp⟩
+      · simp only [ideal_bca_fair_labels]
+        exact h_stays_correct (k₁ + j') (by omega)
+    obtain ⟨j, hlbl, h_real_step⟩ := h_output h_output_inner
+    have hpos : 0 + k₁ + j = k₁ + j := by omega
+    rw [hpos] at hlbl h_real_step
+    rw [← hlbl] at h_real_step
+    simp only [IdealBCA.ideal_bca] at h_real_step
+    obtain ⟨_, _, _, heq_s'⟩ := h_real_step
+    have h_dec_set : (e.states (k₁ + j + 1)).decided p = some (some b) := by
+      rw [heq_s']; simp
+    exact absurd (h_ret_none (k₁ + j + 1) (by omega)) (by rw [h_dec_set]; simp)
+  -- Per-proc-persist + finite-max wrapper.
+  have h_per_proc_persist : ∀ p : Fin n, ∃ k'_p, k₁ ≤ k'_p ∧
+      ∀ k', k'_p ≤ k' →
+        (p ∉ (e.states k').corrupted → (e.states k').decided p ≠ none) := by
+    intro p
+    by_cases h_correct : ∀ k', k₁ ≤ k' → p ∉ (e.states k').corrupted
+    · obtain ⟨k'_p, hk'_p, hret⟩ := h_per_proc p h_correct
+      obtain ⟨w, hw⟩ := Option.ne_none_iff_exists'.mp hret
+      refine ⟨k'_p, hk'_p, fun k' hk' _ => ?_⟩
+      have := IdealBCA.decided_persist_along_stutter hv_stutter hw k' hk'
+      simp [this]
+    · push_neg at h_correct
+      obtain ⟨k₂, hk₂, hc⟩ := h_correct
+      refine ⟨k₂, by omega, fun k' hk' hcorr => ?_⟩
+      exact absurd (IdealBCA.corrupted_mem_persist_along_stutter hv_stutter hc k' hk') hcorr
+  classical
+  let k'_fn : Fin n → Nat := fun p => (h_per_proc_persist p).choose
+  have hk'_spec : ∀ p, k₁ ≤ k'_fn p ∧
+      ∀ k', k'_fn p ≤ k' →
+        (p ∉ (e.states k').corrupted → (e.states k').decided p ≠ none) :=
+    fun p => (h_per_proc_persist p).choose_spec
+  simp only [eventually, state_prop]
+  by_cases hn0 : n = 0
+  · subst hn0
+    exact ⟨k₁ - k, by intro p; exact Fin.elim0 p⟩
+  · haveI : Nonempty (Fin n) := ⟨⟨0, by omega⟩⟩
+    let k_max := Finset.univ.sup k'_fn
+    have hk_max_ge : ∀ p, k'_fn p ≤ k_max :=
+      fun p => Finset.le_sup (Finset.mem_univ p)
+    have hk_max_ge_k₁ : k₁ ≤ k_max := by
+      have := (hk'_spec ⟨0, by omega⟩).1
+      have := hk_max_ge ⟨0, by omega⟩
+      omega
+    refine ⟨k_max - k, ?_⟩
+    have hkmax_eq : 0 + k + (k_max - k) = k_max := by omega
+    rw [hkmax_eq]
+    intro p hp
+    exact (hk'_spec p).2 k_max (hk_max_ge p) hp
 
 /-! ## Fair-label compatibility -/
 
@@ -510,7 +629,21 @@ theorem bca_fair_compat (hn : n > 3 * f) :
       bca_fair_labels T n s₁ l₁ →
       ideal_bca_fair_labels T n s₂
         ((BCA_Simulation.bca_forward_sim T n f hn).label_map l₁) := by
-  sorry
+  intro s₁ l₁ s₂ hR hfair
+  have hcorr : s₂.corrupted = s₁.corrupted := hR.1
+  match l₁ with
+  | .corrupt _ => exact absurd hfair (by simp [bca_fair_labels])
+  | .input _ _ => exact absurd hfair (by simp [bca_fair_labels])
+  | .output p v =>
+    simp only [BCA_Simulation.bca_forward_sim, BCA_Simulation.label_map,
+               bca_fair_labels, ideal_bca_fair_labels] at hfair ⊢
+    rw [hcorr]; exact hfair
+  | .send _ _ _ _ =>
+    simp [BCA_Simulation.bca_forward_sim, BCA_Simulation.label_map,
+          ideal_bca_fair_labels]
+  | .recv _ _ _ _ =>
+    simp [BCA_Simulation.bca_forward_sim, BCA_Simulation.label_map,
+          ideal_bca_fair_labels]
 
 /-- The concrete-side decision property, lifted from
     `ideal_bca_decision_stutter` via `transfers_leads_to` applied to
