@@ -1216,6 +1216,14 @@ theorem concrete_init_delivery
     (hcorr_d : dst ∉ (e.states k).corrupted) :
     ∃ k', k ≤ k' ∧ (((e.states k').local_ dst).sendRecv = some v ∨
       dst ∈ (e.states k').corrupted) := by
+  -- Proof sketch (by contradiction):
+  -- 1. Assume sendRecv ≠ some v ∧ dst ∉ corrupted forever from k.
+  -- 2. broadcastVal persists, sender stays correct, dst stays correct.
+  -- 3. send(sender, dst, init, v) is always enabled+fair → fires (h_ante)
+  --    → sent(sender, dst, init, v) = true + buffer has message.
+  -- 4. recv(sender, dst, init, v) is always enabled+fair → fires (h_ante)
+  --    → sendRecv(dst) := some v. Contradiction.
+  -- Each step uses persistence lemmas + h_ante + step_sent_mono etc.
   sorry
 
 /-- Variant of `brb_totality` with an explicit sender-correctness assumption.
