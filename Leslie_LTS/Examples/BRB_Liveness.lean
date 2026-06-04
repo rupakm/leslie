@@ -3,79 +3,50 @@ import Leslie_LTS.Examples.BrachaBRB
 import Leslie_LTS.Examples.IdealBRB
 import Leslie_LTS.Examples.BRB_Simulation
 
-/-! # BRB Liveness: Fair-Weak-Divergence Witness and Lifted Totality
+/-! # BRB Liveness: Ideal Totality and Concrete Delivery Chain
 
-  This file instantiates `ForwardSim.WeakDivPreserving` for the existing
-  `BRB_Simulation.brb_forward_sim` and uses `transfers_leads_to` to
-  lift a fair-scheduling totality property from `IdealBRB` to the
-  concrete Bracha BRB.
+  This file proves the BRB totality (liveness) property at both the
+  ideal and concrete levels. The concrete proof uses the fair-WF
+  antecedent to chain the BRB delivery steps directly, without the
+  simulation-based `transfers_leads_to` machinery.
 
   ## Current state (2026-06-04)
 
-  Framework (`Leslie_LTS/Framework/Simulation.lean`) is sorry-free.
+  **This file is sorry-free.**
 
-  **Fully proven (zero sorries):**
-  - `ideal_brb_totality` (Step A + Step B)
-  - `ideal_brb_totality_stutter` (stutter-tolerant version)
-  - `brb_fair_compat`
-  - `brb_rank_wf` (trivially for placeholder measure)
-  - `rank_decreases_on_unfair_abstract` (vacuous — all InternalStars AllFair)
+  Framework (`Leslie_LTS/Framework/Simulation.lean`) is sorry-free.
+  **BrachaBRB.lean** is sorry-free: all reachability invariants proven.
+
+  **Key theorems (all sorry-free):**
+  - `ideal_brb_totality` — ideal-level totality (Step A + Step B)
+  - `ideal_brb_totality_stutter` — stutter-tolerant version
+  - `brb_fair_compat` — fair-label compatibility between levels
   - `ideal_brb_internal_label_fair`, `ideal_brb_internalStar_allFair`
-  - `brb_fair_deadlock_implies_terminated` FULLY proven
-    (6-step chain: init→echo→vote→output, by contradiction)
+  - `brb_fair_deadlock_implies_terminated` — 6-step chain by contradiction
   - `concrete_init_delivery`, `concrete_echo_delivery`,
     `concrete_vote_delivery`, `concrete_output_delivery`
-    (temporal delivery chain building blocks)
-  - `brb_totality_correct_sender` — the main concrete-level totality
-    theorem, bypassing transfers_leads_to. Under fair scheduling with
-    a correct sender, every correct process eventually returns.
+    — temporal delivery chain building blocks
+  - `brb_totality_correct_sender` — **the main theorem**: under fair
+    scheduling with a correct sender, every correct process eventually
+    returns. Proved directly via the concrete delivery chain.
 
-  **Remaining sorries (6 in BRB_Liveness, 0 in BrachaBRB):**
+  ### Why `transfers_leads_to` was not used for concrete totality
 
-  ```
-  WeakDivPreserving witness (NOT used by transfers_leads_to — _wd unused):
-    rank_non_increasing (sorry — placeholder measure; needs real measure)
-    rank_decreases_on_fair_elision (sorry — same)
-    rank_non_increasing_on_fair_progress (sorry — same)
-    h_fair_reverse (sorry — see issues.md §3, corrupt-sender mismatch)
+  The simulation-based approach via `WeakDivPreserving` +
+  `transfers_leads_to` is fundamentally blocked by a corrupt-sender
+  fairness mismatch (see `issues.md` §3-5):
 
-  brb_totality (via transfers_leads_to):
-    h_ante_transfer / commit case (sorry — see issues.md §4-5)
-    h_ante_transfer / output case (sorry — same root cause)
-  ```
+  - In IdealBRB, `commit` is always fair — but the corresponding
+    concrete init delivery from a corrupt sender involves only unfair
+    steps. This makes `h_ante_transfer` (commit case) and
+    `h_fair_reverse` unprovable.
+  - The output case is also blocked: with a corrupt sender,
+    `initSupport ≥ echoThreshold` does not guarantee enough correct
+    `sendRecv`s for the echo chain to complete.
 
-  **Note**: The 4 WeakDivPreserving sorries do NOT block `brb_totality`
-  because `transfers_leads_to` takes `_wd` as an unused parameter (it only
-  uses `h_abs`, `h_ante_transfer`, and the property callbacks). The only
-  BLOCKING sorries are h_ante_transfer commit/output, which require the
-  sender to be correct — a structural limitation of the simulation-based
-  approach (see issues.md §4-5 for analysis and recommended fixes).
-
-  **BrachaBRB.lean** is now sorry-free: all reachability invariants
-  (init/echo/vote delivery, buffer-init-broadcastVal, sendRecv-value,
-  echoed-value) are fully proven, along with auxiliary invariants
-  sendRecv_none_of_broadcastVal_none and echoed_none_of_broadcastVal_none.
-
-  ### Design issues (see `Leslie_LTS/issues.md` §3-5)
-
-  - **h_fair_reverse** and **h_ante_transfer (commit)** are fundamentally
-    blocked by the corrupt-sender fairness mismatch: in IdealBRB, commit
-    is always fair, but the corresponding concrete init delivery from a
-    corrupt sender involves only unfair steps. See issues.md §3-4.
-
-  - **h_ante_transfer (output)** is ALSO blocked by the corrupt-sender
-    issue: when sender is corrupt, initSupport ≥ echoThreshold does NOT
-    guarantee enough correct sendRecvs for the echo chain to complete.
-    With corrupted.length = f: |{correct with sendRecv}| ≥ n-2f, but
-    echoThreshold = n-f > n-2f. See issues.md §5.
-
-  - **brb_totality** antecedent narrowed to `broadcastVal ≠ none` only
-    (dropped `¬ isCorrect sender`). The corrupt-sender case is unprovable
-    at the concrete level.
-
-  - **brb_fair_deadlock_implies_terminated** strengthened with a
-    `sender ∉ corrupted` precondition (needed; statement is false when
-    sender is corrupt and broadcastVal was set before corruption).
+  The simulation (`brb_forward_sim`) remains fully used for safety
+  property transfer (validity, agreement) — only liveness requires
+  the direct approach.
 -/
 
 open LTS
@@ -113,37 +84,6 @@ def ideal_brb_fair_labels
   | .input _ _   => False
   | .output p _  => p ∉ s.corrupted
   | .commit _    => True
-
-/-! ## Well-founded rank on concrete states (definitions deferred to Phase 3.2) -/
-
-/-- A `Nat`-valued progress measure on concrete BRB states.
-
-    **Placeholder** (currently returns 0 for all states).  The intended
-    lex measure over protocol phases is:
-
-      Dim 1: #correct procs with `returned = none`
-      Dim 2: total pending fair messages in buffer (between correct procs)
-      Dim 3: #correct (src, dst, t, v) tuples eligible to send but unsent
-
-    Encoded as `D1 * K² + D2 * K + D3` with `K ≥ n² · 3` (bounded per
-    value `v` — the protocol commits to at most one value per `sender`).
-
-    The real definition replaces this when the rank obligations (D.3)
-    are discharged.  Until then, `brb_rank = False` everywhere (since
-    `0 < 0` is false), and `brb_rank_wf` is trivially well-founded. -/
-def brb_progress_measure (_s : BRB_LTS.State n Value) : Nat := 0
-
-/-- The well-founded rank: `s' < s` iff the measure strictly drops. -/
-def brb_rank (s s' : BRB_LTS.State n Value) : Prop :=
-  brb_progress_measure n Value s' < brb_progress_measure n Value s
-
-/-- With the placeholder measure (= 0 for all states), `brb_rank` is
-    `False` everywhere (0 < 0 is false), so well-foundedness is trivial
-    — no infinite descending chain exists because no pair is related.
-    This will need re-proof when the real measure is plugged in. -/
-theorem brb_rank_wf :
-    WellFounded (brb_rank n Value) :=
-  ⟨fun a => ⟨a, fun _ h => absurd h (Nat.not_lt_zero _)⟩⟩
 
 /-! ## BRB Protocol Reasoning Cheatsheet
 
@@ -578,84 +518,18 @@ theorem ideal_brb_internalStar_allFair
     star.AllFair (ideal_brb_fair_labels n Value) :=
   star.allFair_of_all_internal_fair (ideal_brb_internal_label_fair n Value)
 
-/-! ## The headline witness -/
-
-/-- `brb_forward_sim` is weak-divergence-preserving under the fair-label
-    classification above. The headline witness lifting all the per-field
-    obligations together. -/
-noncomputable def brb_weak_div_witness (hn : n > 3 * f) :
-    (BRB_Simulation.brb_forward_sim n f Value sender hn).WeakDivPreserving
-      (brb_fair_labels n Value)
-      (ideal_brb_fair_labels n Value) where
-  rank := brb_rank n Value
-  rank_wf := brb_rank_wf n Value
-  rank_non_increasing := by
-    -- Sorried: BRB-protocol-specific obligation that unfair (Byzantine)
-    -- internal steps do not grow the rank. Should follow from the
-    -- definition of brb_progress_measure (Phase 3.2 sorried).
-    sorry
-  rank_decreases_on_fair_elision := by
-    -- Sorried: BRB-protocol-specific obligation that a fair internal
-    -- concrete step elided by IdealBRB decreases brb_rank. This is the
-    -- "helpful directions" condition: every correct-process action that
-    -- the ideal abstracts away must record progress in the measure.
-    sorry
-  rank_decreases_on_unfair_abstract := by
-    -- Vacuous: IdealBRB's only internal label is `.commit _`, which
-    -- `ideal_brb_fair_labels` always classifies as fair (`True`). Hence
-    -- every abstract `InternalStar` produced by `step_internal` is
-    -- `AllFair`, contradicting the `¬ AllFair` hypothesis. `exfalso`.
-    intro s₁ _l₁ _s₁' _s₂ _hreach _hR _hint _hfair _hstep _hne hnaf
-    exact absurd
-      (ideal_brb_internalStar_allFair n f Value sender _) hnaf
-  rank_non_increasing_on_fair_progress := by
-    -- Protocol-specific: at a fair correct-process internal BRB step
-    -- whose IdealBRB response is non-empty AllFair (i.e. `.commit v` is
-    -- the abstract response), `brb_progress_measure` does not increase.
-    -- Tied to the deferred `brb_progress_measure` design (Phase 3.2 /
-    -- D.1 in plans/liveness-closure.md).
-    sorry
-  fair_deadlock_diverges := by
-    -- Honest discharge via the deadlock disjunct of FairlyWeaklyDiverges.
-    -- Uses the framework helper `ForwardSim.fair_deadlock_lifts` plus a
-    -- protocol-specific "reverse fair-step correspondence" hypothesis.
-    --
-    -- The reverse correspondence: at any reachable BRB state s₁ related
-    -- to IdealBRB state s₂, every fair-enabled abstract step at s₂
-    -- (fair commit or fair output) has SOME fair-enabled concrete step
-    -- at s₁ (the concrete output 1:1 for fair output, or a concrete
-    -- recv that crosses the relevant threshold for fair commit).
-    -- Protocol-specific; sorried here pending the BRB invariant work.
-    intro s₁ s₂ hreach hR hfd
-    apply FairDeadlock.fairlyWeaklyDiverges
-    apply (BRB_Simulation.brb_forward_sim n f Value sender hn).fair_deadlock_lifts
-      (brb_fair_labels n Value) (ideal_brb_fair_labels n Value) ?_ hreach hR hfd
-    -- h_fair_reverse: at any reachable s₁ related to s₂, every fair
-    -- abstract step has a fair concrete preimage.  Protocol-specific.
-    sorry
-
 /-! ## Liveness statements
 
-    The ideal-level liveness, plus the concrete-level liveness obtained by
-    transferring it through `brb_weak_div_witness`.
+    The ideal-level totality and its stutter-tolerant lift, plus the
+    concrete-level totality proved directly via the delivery chain
+    (init → echo → vote → output) under fair scheduling.
 
-    Status (per plans/liveness-closure.md):
-    * `ideal_brb_totality`: pure LTL leads-to chaining on the ideal
-      (commit eventually fires → output enabled → output fires →
-      every correct proc has `returned`).  Phase D.5.
-    * `brb_totality`: lift of `ideal_brb_totality` via
-      `transfers_satisfaction` (signature relaxed and skeleton in
-      place in Phase B.2; two inner sorries remain — boundary R
-      witness and the fair-WF antecedent lift).  Phase D.6.
-
-    Note: when transfers_satisfaction is consumed here, `ideal_brb_
-    totality` may need to be expressed as
-    `IdealBRB.ideal_brb.satisfies_stutter (IdealBRB.ideal_labelling
-    n Value) (...)` to match the relaxed `h_abs` signature.  For
-    state-based `eventually` properties (which both totality goals
-    are), `satisfies → satisfies_stutter` is straightforward (τ-
-    stutters preserve state, so the eventually fires at the same
-    real-step position). -/
+    The `WeakDivPreserving` witness and `transfers_leads_to`-based
+    `brb_totality` were removed: both `h_ante_transfer` cases and
+    `h_fair_reverse` are fundamentally blocked by the corrupt-sender
+    fairness mismatch (see issues.md §3-5). The correct theorem is
+    `brb_totality_correct_sender`, which requires sender-correctness
+    and proves the delivery chain directly at the concrete level. -/
 
 /-- Totality / delivery property on the IDEAL: under fair scheduling,
     once the sender has broadcast (or has been corrupted), every correct
@@ -1076,116 +950,24 @@ theorem ideal_brb_totality_stutter :
     intro p hp
     exact (hk'_spec p).2 k_max (hk_max_ge p) hp
 
-/-- The concrete-side totality: under fair scheduling, once the sender
-    has broadcast, every correct process eventually returns.
+/-! ### Why `brb_totality` via `transfers_leads_to` was removed
 
-    **Antecedent**: `broadcastVal ≠ none` only (not the stronger
-    `broadcastVal ≠ none ∨ ¬ isCorrect sender`).  The corrupt-sender
-    case is NOT provable at the concrete level: when the sender is
-    corrupt, all init sends/recvs involving the corrupt sender are
-    unfair, so the concrete fair-WF provides no delivery guarantee.
-    This matches the standard BRB specification: totality is only
-    guaranteed for correct senders.
+    The simulation-based `brb_totality` (via `transfers_leads_to` +
+    `WeakDivPreserving`) was removed because both `h_ante_transfer`
+    cases and the `h_fair_reverse` clause are fundamentally unprovable
+    due to the corrupt-sender fairness mismatch (see issues.md §3-5):
 
-    **Proof approach**: uses `transfers_leads_to` with the ideal
-    `ideal_brb_totality_stutter` as `h_abs`.  The `h_ante_transfer`
-    obligation (lifting concrete fair-WF to abstract fair-WF) requires
-    showing that every perpetually-enabled-and-fair abstract label
-    eventually fires; see `Leslie_LTS/issues.md` §4 for the proof
-    strategy and known difficulties. -/
-theorem brb_totality (hn : n > 3 * f) :
-    (BRB_LTS.brb n f Value sender).satisfies
-      (assumes_fair_wf
-        (BRB_LTS.brb n f Value sender)
-        (brb_fair_labels n Value)
-        (leads_to
-          (state_prop (fun s : BRB_LTS.State n Value =>
-            (s.local_ sender).broadcastVal ≠ none))
-          (state_prop (fun s : BRB_LTS.State n Value =>
-            ∀ p, p ∉ s.corrupted → (s.local_ p).returned ≠ none)))) := by
-  -- Apply transfers_leads_to with brb_weak_div_witness + ideal_brb_totality_stutter.
-  -- The ideal-side antecedent (broadcastVal ≠ none ∨ ¬ isCorrect sender) is
-  -- STRONGER than the concrete-side antecedent (broadcastVal ≠ none), so the
-  -- h_P transfer is straightforward.
-  let sim := BRB_Simulation.brb_forward_sim n f Value sender hn
-  exact (brb_weak_div_witness n f Value sender hn).transfers_leads_to
-    -- h_label_ext: external labels preserved
-    (fun l₁ hl₁ => by
-      cases l₁ <;> simp_all [BRB_LTS.brb_labelling, Labelling.is_external,
-        BRB_Simulation.label_map, IdealBRB.ideal_labelling,
-        BRB_Simulation.brb_forward_sim])
-    -- h_map_tau: tau maps to tau
-    (by simp [BRB_Simulation.brb_forward_sim, BRB_Simulation.label_map,
-        BRB_LTS.brb_labelling, IdealBRB.ideal_labelling])
-    -- P_abs, Q_abs, P_con, Q_con
-    (fun s => s.broadcastVal ≠ none ∨ ¬ IdealBRB.isCorrect n Value s sender)
-    (fun s => ∀ p, p ∉ s.corrupted → s.returned p ≠ none)
-    (fun s => (s.local_ sender).broadcastVal ≠ none)
-    (fun s => ∀ p, p ∉ s.corrupted → (s.local_ p).returned ≠ none)
-    -- h_P: P_con → P_abs via sim_rel (broadcastVal ≠ none → left disjunct)
-    (fun s₁ s₂ hR hP => by
-      have hbv : s₂.broadcastVal = (s₁.local_ sender).broadcastVal := hR.2.1
-      exact Or.inl (hbv ▸ hP))
-    -- h_Q: Q_abs → Q_con via sim_rel
-    (fun s₁ s₂ hR hQ p hp => by
-      have hcorr : s₂.corrupted = s₁.corrupted := hR.1
-      have hp' : p ∉ s₂.corrupted := hcorr ▸ hp
-      have hret := hR.2.2.1 p (by simp [BRB_LTS.isCorrect]; exact hp)
-      rw [← hret]; exact hQ p hp')
-    -- h_Q_step: Q_abs preserved by IdealBRB steps
-    (fun s l s' hQ hstep => by
-      intro p hp
-      simp only [IdealBRB.ideal_brb] at hstep
-      cases l with
-      | corrupt i =>
-        obtain ⟨_, _, heq⟩ := hstep
-        subst heq; simp at hp; exact hQ p hp.2
-      | input i v =>
-        obtain ⟨_, _, heq⟩ := hstep; subst heq; exact hQ p hp
-      | commit v =>
-        obtain ⟨_, _, heq⟩ := hstep; subst heq; exact hQ p hp
-      | output q v =>
-        obtain ⟨_, _, _, heq⟩ := hstep; subst heq
-        show (if p = q then some v else s.returned p) ≠ none
-        split
-        · simp
-        · exact hQ p hp)
-    -- h_abs: ideal_brb_totality_stutter
-    (ideal_brb_totality_stutter n f Value sender)
-    -- h_ante_transfer: lift concrete fair-WF to abstract step-aware fair-WF
-    -- See Leslie_LTS/issues.md §4 for analysis. The commit case is the
-    -- main difficulty: with a corrupt sender, abstract commit is always
-    -- enabled+fair but can't fire (no concrete fair step causes the
-    -- threshold crossing). The output case requires the BRB delivery chain.
-    (fun e₁ e₂ idx hv₁ hv₂ idx_mono idx_zero h_idx_R h_fair_e1 => by
-      -- Case-split on abstract label l₂.
-      -- corrupt/input: fair_labels = False, so antecedent is impossible.
-      -- commit/output: protocol-specific; sorried pending delivery chain.
-      intro l₂ k₂ h_always
-      cases l₂ with
-      | corrupt i =>
-        -- ideal_brb_fair_labels (.corrupt i) = False
-        exact absurd (h_always 0).2 (by simp [ideal_brb_fair_labels])
-      | input i v =>
-        -- ideal_brb_fair_labels (.input i v) = False
-        exact absurd (h_always 0).2 (by simp [ideal_brb_fair_labels])
-      | commit v =>
-        -- commit is always fair (True). Enabled means set_up = none ∧
-        -- OR condition. If sender is correct with broadcastVal ≠ none,
-        -- the concrete fair-WF drives init delivery → initSupport crosses
-        -- echoThreshold → commit fires in e₂ → contradiction with
-        -- "always enabled". If sender is corrupt, this is unprovable
-        -- (see issues.md §4).
-        sorry
-      | output p v =>
-        -- output p v is fair when p ∉ corrupted. Enabled means
-        -- set_up = some v ∧ returned p = none ∧ p ∉ corrupted.
-        -- The BRB delivery chain (echo → vote → output) under fair
-        -- scheduling eventually makes countVoteRecv ≥ returnThreshold,
-        -- at which point concrete output fires → abstract output fires
-        -- → contradiction with "always enabled" (returned p becomes
-        -- some v ≠ none).
-        sorry)
+    * **Commit case**: abstract commit is always fair (`True`), but the
+      corresponding concrete init delivery from a corrupt sender involves
+      only unfair steps.
+    * **Output case**: with corrupt sender, initSupport ≥ echoThreshold
+      does NOT guarantee enough correct sendRecvs for the echo chain.
+    * **h_fair_reverse**: at a corrupt-sender fair-deadlock, abstract has
+      fair commit enabled but concrete has no fair steps.
+
+    The correct theorem is `brb_totality_correct_sender` below, which
+    proves the delivery chain directly at the concrete level with an
+    explicit sender-correctness assumption. -/
 
 /-! ## Concrete-level delivery chain building blocks
 
@@ -1532,20 +1314,16 @@ theorem concrete_output_delivery
     rw [h_eq]; simp
   exact absurd (h_never (k + j + 1) (by omega)) (by rw [this]; simp)
 
-/-- Variant of `brb_totality` with an explicit sender-correctness assumption.
-    This version IS provable (unlike the unrestricted version which is blocked
-    by the corrupt-sender fairness mismatch — see issues.md §4-5).
+/-- **Concrete BRB totality** (the main liveness theorem).
 
-    **Statement**: For every valid execution where sender is never corrupted,
-    under fair scheduling, once broadcastVal is set, every correct process
-    eventually returns.
+    For every valid execution where sender is never corrupted, under fair
+    scheduling, once broadcastVal is set, every correct process eventually
+    returns.
 
-    **Status**: Work in progress. The h_ante_transfer commit and output cases
-    become provable with sender-correctness because:
-    - Commit: correct sender → all correct dst eventually get sendRecv = some v
-      via fair init send/recv → initSupport crosses echoThreshold → commit fires
-    - Output: correct sender → echo/vote delivery chain completes under fair
-      scheduling → countVoteRecv ≥ returnThreshold → output fires -/
+    Proved directly via the concrete delivery chain (init → echo → vote →
+    output) without `transfers_leads_to`. This avoids the corrupt-sender
+    fairness mismatch that blocks the simulation-based approach (see
+    `issues.md` §3-5). -/
 theorem brb_totality_correct_sender (hn : n > 3 * f) :
     ∀ (e : Execution (BRB_LTS.State n Value) (BRB_LTS.Label n Value)),
       (BRB_LTS.brb n f Value sender).valid_exec e →
