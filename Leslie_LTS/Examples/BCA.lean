@@ -1289,6 +1289,112 @@ theorem step_approved_persist {s s' : State T n} {l : Label T n}
     · subst hp; obtain ⟨_, rfl⟩ := h; simp only; exact happroved
     · obtain ⟨_, rfl⟩ := h; simp only [hp]; exact happroved
 
+/-- echoRecv is monotone. -/
+theorem step_echoRecv_mono {s s' : State T n} {l : Label T n}
+    (h : (bca T n f).step s l s') (p q : Fin n) (b : T)
+    (hrecv : (s.local_ p).echoRecv q b = true) :
+    (s'.local_ p).echoRecv q b = true := by
+  match l with
+  | .corrupt _ => rw [corrupt_local h]; exact hrecv
+  | .send src dst t mv =>
+    by_cases hp : p = src
+    · subst hp; obtain ⟨_, rfl⟩ := h; simp only; exact hrecv
+    · obtain ⟨_, rfl⟩ := h; simp only [hp]; exact hrecv
+  | .recv src dst .echo mv =>
+    by_cases hp : p = dst
+    · subst hp; obtain ⟨_, rfl⟩ := h; simp only
+      rcases mv with _ | bv <;> simp only
+      · exact hrecv
+      · by_cases hdup : (s.local_ p).echoRecv src bv = false
+        · simp only [hdup]; by_cases hqb : q = src ∧ b = bv <;> simp [hqb, hrecv]
+        · simp only [hdup]; exact hrecv
+    · rw [recv_local_other h p hp]; exact hrecv
+  | .recv src dst .init mv =>
+    by_cases hp : p = dst
+    · subst hp; obtain ⟨_, rfl⟩ := h; simp only
+      rcases mv with _ | bv <;> simp only
+      · exact hrecv
+      · by_cases hdup : (s.local_ p).initRecv src bv = false
+        · simp only [hdup]; exact hrecv
+        · simp only [hdup]; exact hrecv
+    · rw [recv_local_other h p hp]; exact hrecv
+  | .recv src dst .vote mv =>
+    by_cases hp : p = dst
+    · subst hp; obtain ⟨_, rfl⟩ := h; simp only
+      by_cases hdup : (s.local_ p).voteRecv src mv = false
+      · simp only [hdup]; exact hrecv
+      · simp only [hdup]; exact hrecv
+    · rw [recv_local_other h p hp]; exact hrecv
+  | .output i mv =>
+    by_cases hp : p = i
+    · subst hp; obtain ⟨_, _, _, rfl⟩ := h; simp only; exact hrecv
+    · obtain ⟨_, _, _, rfl⟩ := h; simp only [hp]; exact hrecv
+  | .input i v =>
+    by_cases hp : p = i
+    · subst hp; obtain ⟨_, rfl⟩ := h; simp only; exact hrecv
+    · obtain ⟨_, rfl⟩ := h; simp only [hp]; exact hrecv
+
+/-- voteRecv is monotone. -/
+theorem step_voteRecv_mono {s s' : State T n} {l : Label T n}
+    (h : (bca T n f).step s l s') (p q : Fin n) (v : Val T)
+    (hrecv : (s.local_ p).voteRecv q v = true) :
+    (s'.local_ p).voteRecv q v = true := by
+  match l with
+  | .corrupt _ => rw [corrupt_local h]; exact hrecv
+  | .send src dst t mv =>
+    by_cases hp : p = src
+    · subst hp; obtain ⟨_, rfl⟩ := h; simp only; exact hrecv
+    · obtain ⟨_, rfl⟩ := h; simp only [hp]; exact hrecv
+  | .recv src dst .vote mv =>
+    by_cases hp : p = dst
+    · subst hp; obtain ⟨_, rfl⟩ := h; simp only
+      by_cases hdup : (s.local_ p).voteRecv src mv = false
+      · simp only [hdup]; by_cases hqv : q = src ∧ v = mv <;> simp [hqv, hrecv]
+      · simp only [hdup]; exact hrecv
+    · rw [recv_local_other h p hp]; exact hrecv
+  | .recv src dst .echo mv =>
+    by_cases hp : p = dst
+    · subst hp; obtain ⟨_, rfl⟩ := h; simp only
+      rcases mv with _ | bv <;> simp only
+      · exact hrecv
+      · by_cases hdup : (s.local_ p).echoRecv src bv = false
+        · simp only [hdup]; exact hrecv
+        · simp only [hdup]; exact hrecv
+    · rw [recv_local_other h p hp]; exact hrecv
+  | .recv src dst .init mv =>
+    by_cases hp : p = dst
+    · subst hp; obtain ⟨_, rfl⟩ := h; simp only
+      rcases mv with _ | bv <;> simp only
+      · exact hrecv
+      · by_cases hdup : (s.local_ p).initRecv src bv = false
+        · simp only [hdup]; exact hrecv
+        · simp only [hdup]; exact hrecv
+    · rw [recv_local_other h p hp]; exact hrecv
+  | .output i mv =>
+    by_cases hp : p = i
+    · subst hp; obtain ⟨_, _, _, rfl⟩ := h; simp only; exact hrecv
+    · obtain ⟨_, _, _, rfl⟩ := h; simp only [hp]; exact hrecv
+  | .input i w =>
+    by_cases hp : p = i
+    · subst hp; obtain ⟨_, rfl⟩ := h; simp only; exact hrecv
+    · obtain ⟨_, rfl⟩ := h; simp only [hp]; exact hrecv
+
+/-- countEchoRecv is monotone. -/
+theorem step_countEchoRecv_mono {s s' : State T n} {l : Label T n}
+    (h : (bca T n f).step s l s') (p : Fin n) (b : T) :
+    countEchoRecv T n (s.local_ p) b ≤ countEchoRecv T n (s'.local_ p) b := by
+  unfold countEchoRecv
+  apply filter_length_mono; intro q hq; simp only at hq ⊢
+  exact step_echoRecv_mono h p q b hq
+
+/-- countVoteRecv is monotone. -/
+theorem step_countVoteRecv_mono {s s' : State T n} {l : Label T n}
+    (h : (bca T n f).step s l s') (p : Fin n) (v : Val T) :
+    countVoteRecv T n (s.local_ p) v ≤ countVoteRecv T n (s'.local_ p) v := by
+  unfold countVoteRecv
+  apply filter_length_mono; intro q hq; simp only at hq ⊢
+  exact step_voteRecv_mono h p q v hq
+
 /-- decided is persistent: once `some v`, it stays `some v`. -/
 theorem step_decided_persist {s s' : State T n} {l : Label T n}
     (h : (bca T n f).step s l s') (p : Fin n) (v : Val T)
