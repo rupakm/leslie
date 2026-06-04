@@ -2534,7 +2534,70 @@ theorem sent_init_implies_gate {s : State T n}
     (hsent : (s.local_ src).sent dst .init (some b) = true) :
     (s.local_ src).input = some b ∨
     countInitRecv T n (s.local_ src) b ≥ amplifyThreshold f := by
-  sorry
+  induction hreach with
+  | init hinit =>
+    obtain ⟨hlocal, _, _⟩ := hinit
+    simp [hlocal src, LocalState.init] at hsent
+  | step _ hstep ih =>
+    rename_i s_prev l s' _
+    have hcp := step_correct_prev hstep src hcorr
+    by_cases hprev : (s_prev.local_ src).sent dst .init (some b) = true
+    · -- Already sent: gate conditions persist
+      rcases ih hcp hprev with hinput | hcount
+      · left; exact step_input_persist hstep src b hinput
+      · right; exact Nat.le_trans hcount (step_countInitRecv_mono hstep src b)
+    · -- Newly sent at this step: must be a send step from src
+      simp only [Bool.not_eq_true] at hprev
+      match l with
+      | .send src' dst' .init (some b') =>
+        by_cases hp : src = src'
+        · subst hp
+          rw [send_sent hstep dst .init (some b)] at hsent
+          split_ifs at hsent with heq
+          · obtain ⟨_, _, hvv⟩ := heq
+            have hbb := Option.some.inj hvv; subst hbb
+            -- The send gate was open at pre-state: extract it
+            have hgate : (s_prev.local_ src).input = some b ∨
+                countInitRecv T n (s_prev.local_ src) b ≥ amplifyThreshold f := by
+              rcases hstep.1 with hcorrupt | ⟨_, _, hg⟩
+              · exact absurd hcorrupt hcp
+              · exact hg
+            -- Gate conditions persist to post-state
+            rcases hgate with hinput | hamplify
+            · left; exact step_input_persist hstep src b hinput
+            · right; exact Nat.le_trans hamplify (step_countInitRecv_mono hstep src b)
+          · exact absurd hsent (by rw [hprev]; simp)
+        · rw [send_sent_other hstep src hp dst .init (some b)] at hsent
+          exact absurd hsent (by rw [hprev]; simp)
+      | .send src' _ .init none =>
+        by_cases hp : src = src'
+        · subst hp; rw [send_sent hstep dst .init (some b)] at hsent
+          simp at hsent; exact absurd hsent (by rw [hprev]; simp)
+        · rw [send_sent_other hstep src hp dst .init (some b)] at hsent
+          exact absurd hsent (by rw [hprev]; simp)
+      | .send src' _ .echo _ =>
+        by_cases hp : src = src'
+        · subst hp; rw [send_sent hstep dst .init (some b)] at hsent
+          simp at hsent; exact absurd hsent (by rw [hprev]; simp)
+        · rw [send_sent_other hstep src hp dst .init (some b)] at hsent
+          exact absurd hsent (by rw [hprev]; simp)
+      | .send src' _ .vote _ =>
+        by_cases hp : src = src'
+        · subst hp; rw [send_sent hstep dst .init (some b)] at hsent
+          simp at hsent; exact absurd hsent (by rw [hprev]; simp)
+        · rw [send_sent_other hstep src hp dst .init (some b)] at hsent
+          exact absurd hsent (by rw [hprev]; simp)
+      | .corrupt _ =>
+        rw [corrupt_local hstep] at hsent; exact absurd hsent (by rw [hprev]; simp)
+      | .recv _ _ _ _ =>
+        rw [recv_sent hstep src dst .init (some b)] at hsent
+        exact absurd hsent (by rw [hprev]; simp)
+      | .output _ _ =>
+        rw [output_sent hstep src dst .init (some b)] at hsent
+        exact absurd hsent (by rw [hprev]; simp)
+      | .input _ _ =>
+        rw [input_sent hstep src dst .init (some b)] at hsent
+        exact absurd hsent (by rw [hprev]; simp)
 
 end ReachableInvariants
 
