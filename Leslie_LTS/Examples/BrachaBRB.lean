@@ -1413,7 +1413,114 @@ theorem init_delivery_inv
     (dst : Fin n) (v : Value)
     (hsent : (s.local_ sender).sent dst .init v = true) :
     s.buffer ⟨sender, dst, .init, v⟩ = true ∨ (s.local_ dst).sendRecv ≠ none := by
-  sorry
+  induction hr with
+  | init hinit => simp [hinit.1 sender, LocalState.init] at hsent
+  | @step s₀ l s _ hstep ih =>
+    match l with
+    | .corrupt _ =>
+      obtain ⟨_, _, rfl⟩ := hstep; exact ih hsent
+    | .input i v' =>
+      -- input only changes broadcastVal; sent/buffer/sendRecv unchanged
+      have hsent₀ : (s₀.local_ sender).sent dst .init v = true := by
+        have hi := input_eq_sender hstep; subst hi
+        obtain ⟨_, _, rfl⟩ := hstep
+        dsimp only at hsent; rw [if_pos rfl] at hsent; exact hsent
+      rcases ih hsent₀ with h | h
+      · left; rw [input_buffer hstep]; exact h
+      · right; rw [input_sendRecv hstep]; exact h
+    | .output i v' =>
+      -- output only changes returned; sent/buffer/sendRecv unchanged
+      have hsent₀ : (s₀.local_ sender).sent dst .init v = true := by
+        obtain ⟨_, _, _, rfl⟩ := hstep; dsimp only at hsent
+        by_cases h : sender = i
+        · subst h; rw [if_pos rfl] at hsent; exact hsent
+        · rw [if_neg h] at hsent; exact hsent
+      rcases ih hsent₀ with h | h
+      · left; rw [output_buffer hstep]; exact h
+      · right; rw [output_sendRecv hstep]; exact h
+    | .send src dst' t' mv' =>
+      -- sent and buffer both change; sendRecv unchanged
+      by_cases hps : sender = src
+      · subst hps
+        -- Check if this is the message being sent
+        have hstep' := hstep; obtain ⟨_, rfl⟩ := hstep'
+        simp only [ite_true] at hsent
+        by_cases heq : dst = dst' ∧ MsgType.init = t' ∧ v = mv'
+        · obtain ⟨rfl, rfl, rfl⟩ := heq; left; simp
+        · simp only [heq, ite_false] at hsent
+          rcases ih hsent with h | h
+          · left; simp [h]
+          · right; rw [send_sendRecv hstep]; exact h
+      · -- sender ≠ src: sent unchanged via step_local_other
+        have hsent₀ : (s₀.local_ sender).sent dst .init v = true := by
+          rw [step_local_other hstep sender hps] at hsent; exact hsent
+        rcases ih hsent₀ with h | h
+        · left; obtain ⟨_, rfl⟩ := hstep; simp [h]
+        · right; rw [send_sendRecv hstep]; exact h
+    | .recv src' dst' .init mv' =>
+      -- sent unchanged; buffer may lose our message → sendRecv gets set
+      have hsent₀ : (s₀.local_ sender).sent dst .init v = true := by
+        obtain ⟨_, rfl⟩ := hstep; simp only at hsent
+        by_cases h : sender = dst'
+        · subst h; simp only [ite_true] at hsent; split at hsent <;> exact hsent
+        · simp only [h, ite_false] at hsent; exact hsent
+      rcases ih hsent₀ with hbuf | hrecv
+      · -- Buffer had our message. Check if consumed.
+        by_cases hm : sender = src' ∧ dst = dst' ∧ v = mv'
+        · -- Our message consumed by this recv
+          obtain ⟨rfl, rfl, rfl⟩ := hm
+          right
+          obtain ⟨_, rfl⟩ := hstep; dsimp only
+          by_cases hc : (s₀.local_ dst).sendRecv = none
+          · simp [hc]
+          · simp [hc]
+        · -- Different message consumed; our message preserved
+          left
+          have hne : ¬(⟨sender, dst, MsgType.init, v⟩ : Message n Value) =
+              ⟨src', dst', .init, mv'⟩ := by
+            intro heq; apply hm
+            simp only [Message.mk.injEq] at heq
+            exact ⟨heq.1, heq.2.1, heq.2.2.2⟩
+          obtain ⟨_, rfl⟩ := hstep; simp only [hne, ite_false]; exact hbuf
+      · -- sendRecv was non-none, stays non-none
+        right
+        by_cases hd : dst = dst'
+        · subst hd
+          obtain ⟨_, rfl⟩ := hstep; simp only [ite_true]
+          by_cases hc : src' = sender ∧ (s₀.local_ dst).sendRecv = none
+          · exact absurd hc.2 hrecv
+          · simp only [hc, ite_false]; exact hrecv
+        · obtain ⟨_, rfl⟩ := hstep; simp only [hd, ite_false]; exact hrecv
+    | .recv src' dst' .echo mv' =>
+      -- sent unchanged; buffer only removes echo message (≠ init); sendRecv unchanged
+      have hsent₀ : (s₀.local_ sender).sent dst .init v = true := by
+        obtain ⟨_, rfl⟩ := hstep; simp only at hsent
+        by_cases h : sender = dst'
+        · subst h; simp only [ite_true] at hsent; split at hsent <;> exact hsent
+        · simp only [h, ite_false] at hsent; exact hsent
+      rcases ih hsent₀ with h | h
+      · left
+        have hne : ¬(⟨sender, dst, MsgType.init, v⟩ : Message n Value) =
+            ⟨src', dst', .echo, mv'⟩ := by
+          intro heq; simp only [Message.mk.injEq] at heq
+          exact MsgType.noConfusion heq.2.2.1
+        obtain ⟨_, rfl⟩ := hstep; simp only [hne, ite_false]; exact h
+      · right; rw [recv_echo_sendRecv hstep]; exact h
+    | .recv src' dst' .vote mv' =>
+      -- sent unchanged; buffer only removes vote message (≠ init); sendRecv unchanged
+      have hsent₀ : (s₀.local_ sender).sent dst .init v = true := by
+        obtain ⟨_, rfl⟩ := hstep; simp only at hsent
+        by_cases h : sender = dst'
+        · subst h; simp only [ite_true] at hsent; split at hsent <;> exact hsent
+        · simp only [h, ite_false] at hsent; exact hsent
+      rcases ih hsent₀ with h | h
+      · left
+        have hne : ¬(⟨sender, dst, MsgType.init, v⟩ : Message n Value) =
+            ⟨src', dst', .vote, mv'⟩ := by
+          intro heq; simp only [Message.mk.injEq] at heq
+          exact MsgType.noConfusion heq.2.2.1
+        obtain ⟨_, rfl⟩ := hstep; simp only [hne, ite_false]; exact h
+      · right; rw [recv_vote_sendRecv hstep]; exact h
 
 /-- **Echo delivery invariant**: if src has `sent dst echo v = true`,
     then buffer has the message or dst has `echoRecv src v = true`. -/
@@ -1423,7 +1530,91 @@ theorem echo_delivery_inv
     (src dst : Fin n) (v : Value)
     (hsent : (s.local_ src).sent dst .echo v = true) :
     s.buffer ⟨src, dst, .echo, v⟩ = true ∨ (s.local_ dst).echoRecv src v = true := by
-  sorry
+  induction hr with
+  | init hinit => simp [hinit.1 src, LocalState.init] at hsent
+  | @step s₀ l s _ hstep ih =>
+    match l with
+    | .corrupt _ =>
+      obtain ⟨_, _, rfl⟩ := hstep; exact ih hsent
+    | .input i v' =>
+      have hsent₀ : (s₀.local_ src).sent dst .echo v = true := by
+        obtain ⟨_, _, rfl⟩ := hstep; simp only at hsent
+        by_cases h : src = sender
+        · subst h; simp only [ite_true] at hsent; exact hsent
+        · simp only [h, ite_false] at hsent; exact hsent
+      rcases ih hsent₀ with h | h
+      · left; rw [input_buffer hstep]; exact h
+      · right; exact step_echoRecv hstep dst src v h
+    | .output i v' =>
+      have hsent₀ : (s₀.local_ src).sent dst .echo v = true := by
+        obtain ⟨_, _, _, rfl⟩ := hstep; simp only at hsent
+        by_cases h : src = i
+        · subst h; simp only [ite_true] at hsent; exact hsent
+        · simp only [h, ite_false] at hsent; exact hsent
+      rcases ih hsent₀ with h | h
+      · left; rw [output_buffer hstep]; exact h
+      · right; exact step_echoRecv hstep dst src v h
+    | .send src' dst' t' mv' =>
+      have hsent₀_or : (src = src' ∧ dst = dst' ∧ MsgType.echo = t' ∧ v = mv') ∨
+          (s₀.local_ src).sent dst .echo v = true := by
+        obtain ⟨_, rfl⟩ := hstep; simp only at hsent
+        by_cases hps : src = src'
+        · subst hps; simp only [ite_true] at hsent
+          by_cases heq : dst = dst' ∧ MsgType.echo = t' ∧ v = mv'
+          · exact .inl ⟨rfl, heq.1, heq.2.1, heq.2.2⟩
+          · simp only [heq, ite_false] at hsent; exact .inr hsent
+        · simp only [hps, ite_false] at hsent; exact .inr hsent
+      rcases hsent₀_or with ⟨hsrc, hdst, ht, hv⟩ | hsent₀
+      · left; obtain ⟨_, rfl⟩ := hstep; simp only
+        rw [hsrc, hdst, ht, hv, if_pos rfl]
+      · rcases ih hsent₀ with h | h
+        · left; obtain ⟨_, rfl⟩ := hstep; simp [h]
+        · right; exact step_echoRecv hstep dst src v h
+    | .recv src' dst' .echo mv' =>
+      have hsent₀ : (s₀.local_ src).sent dst .echo v = true := by
+        obtain ⟨_, rfl⟩ := hstep; simp only at hsent
+        by_cases h : src = dst'
+        · subst h; simp only [ite_true] at hsent; split at hsent <;> exact hsent
+        · simp only [h, ite_false] at hsent; exact hsent
+      rcases ih hsent₀ with hbuf | hrecv
+      · by_cases hm : src = src' ∧ dst = dst' ∧ v = mv'
+        · -- Our echo message consumed → echoRecv set to true
+          obtain ⟨rfl, rfl, rfl⟩ := hm
+          right; obtain ⟨_, rfl⟩ := hstep; simp only [ite_true]
+          split <;> simp_all
+        · left
+          have hne : ¬(⟨src, dst, MsgType.echo, v⟩ : Message n Value) =
+              ⟨src', dst', .echo, mv'⟩ := by
+            intro heq; apply hm; simp only [Message.mk.injEq] at heq
+            exact ⟨heq.1, heq.2.1, heq.2.2.2⟩
+          obtain ⟨_, rfl⟩ := hstep; simp only [hne, ite_false]; exact hbuf
+      · right; exact step_echoRecv hstep dst src v hrecv
+    | .recv src' dst' .init mv' =>
+      have hsent₀ : (s₀.local_ src).sent dst .echo v = true := by
+        obtain ⟨_, rfl⟩ := hstep; simp only at hsent
+        by_cases h : src = dst'
+        · subst h; simp only [ite_true] at hsent; split at hsent <;> exact hsent
+        · simp only [h, ite_false] at hsent; exact hsent
+      rcases ih hsent₀ with h | h
+      · left
+        have hne : ¬(⟨src, dst, MsgType.echo, v⟩ : Message n Value) =
+            ⟨src', dst', .init, mv'⟩ := by
+          intro heq; simp only [Message.mk.injEq] at heq; exact MsgType.noConfusion heq.2.2.1
+        obtain ⟨_, rfl⟩ := hstep; simp only [hne, ite_false]; exact h
+      · right; exact step_echoRecv hstep dst src v h
+    | .recv src' dst' .vote mv' =>
+      have hsent₀ : (s₀.local_ src).sent dst .echo v = true := by
+        obtain ⟨_, rfl⟩ := hstep; simp only at hsent
+        by_cases h : src = dst'
+        · subst h; simp only [ite_true] at hsent; split at hsent <;> exact hsent
+        · simp only [h, ite_false] at hsent; exact hsent
+      rcases ih hsent₀ with h | h
+      · left
+        have hne : ¬(⟨src, dst, MsgType.echo, v⟩ : Message n Value) =
+            ⟨src', dst', .vote, mv'⟩ := by
+          intro heq; simp only [Message.mk.injEq] at heq; exact MsgType.noConfusion heq.2.2.1
+        obtain ⟨_, rfl⟩ := hstep; simp only [hne, ite_false]; exact h
+      · right; exact step_echoRecv hstep dst src v h
 
 /-- **Vote delivery invariant**: if src has `sent dst vote v = true`,
     then buffer has the message or dst has `voteRecv src v = true`. -/
@@ -1433,7 +1624,91 @@ theorem vote_delivery_inv
     (src dst : Fin n) (v : Value)
     (hsent : (s.local_ src).sent dst .vote v = true) :
     s.buffer ⟨src, dst, .vote, v⟩ = true ∨ (s.local_ dst).voteRecv src v = true := by
-  sorry
+  induction hr with
+  | init hinit => simp [hinit.1 src, LocalState.init] at hsent
+  | @step s₀ l s _ hstep ih =>
+    match l with
+    | .corrupt _ =>
+      obtain ⟨_, _, rfl⟩ := hstep; exact ih hsent
+    | .input i v' =>
+      have hsent₀ : (s₀.local_ src).sent dst .vote v = true := by
+        obtain ⟨_, _, rfl⟩ := hstep; simp only at hsent
+        by_cases h : src = sender
+        · subst h; simp only [ite_true] at hsent; exact hsent
+        · simp only [h, ite_false] at hsent; exact hsent
+      rcases ih hsent₀ with h | h
+      · left; rw [input_buffer hstep]; exact h
+      · right; exact step_voteRecv hstep dst src v h
+    | .output i v' =>
+      have hsent₀ : (s₀.local_ src).sent dst .vote v = true := by
+        obtain ⟨_, _, _, rfl⟩ := hstep; simp only at hsent
+        by_cases h : src = i
+        · subst h; simp only [ite_true] at hsent; exact hsent
+        · simp only [h, ite_false] at hsent; exact hsent
+      rcases ih hsent₀ with h | h
+      · left; rw [output_buffer hstep]; exact h
+      · right; exact step_voteRecv hstep dst src v h
+    | .send src' dst' t' mv' =>
+      have hsent₀_or : (src = src' ∧ dst = dst' ∧ MsgType.vote = t' ∧ v = mv') ∨
+          (s₀.local_ src).sent dst .vote v = true := by
+        obtain ⟨_, rfl⟩ := hstep; simp only at hsent
+        by_cases hps : src = src'
+        · subst hps; simp only [ite_true] at hsent
+          by_cases heq : dst = dst' ∧ MsgType.vote = t' ∧ v = mv'
+          · exact .inl ⟨rfl, heq.1, heq.2.1, heq.2.2⟩
+          · simp only [heq, ite_false] at hsent; exact .inr hsent
+        · simp only [hps, ite_false] at hsent; exact .inr hsent
+      rcases hsent₀_or with ⟨hsrc, hdst, ht, hv⟩ | hsent₀
+      · left; obtain ⟨_, rfl⟩ := hstep; simp only
+        rw [hsrc, hdst, ht, hv, if_pos rfl]
+      · rcases ih hsent₀ with h | h
+        · left; obtain ⟨_, rfl⟩ := hstep; simp [h]
+        · right; exact step_voteRecv hstep dst src v h
+    | .recv src' dst' .vote mv' =>
+      have hsent₀ : (s₀.local_ src).sent dst .vote v = true := by
+        obtain ⟨_, rfl⟩ := hstep; simp only at hsent
+        by_cases h : src = dst'
+        · subst h; simp only [ite_true] at hsent; split at hsent <;> exact hsent
+        · simp only [h, ite_false] at hsent; exact hsent
+      rcases ih hsent₀ with hbuf | hrecv
+      · by_cases hm : src = src' ∧ dst = dst' ∧ v = mv'
+        · -- Our vote message consumed → voteRecv set to true
+          obtain ⟨rfl, rfl, rfl⟩ := hm
+          right; obtain ⟨_, rfl⟩ := hstep; simp only [ite_true]
+          split <;> simp_all
+        · left
+          have hne : ¬(⟨src, dst, MsgType.vote, v⟩ : Message n Value) =
+              ⟨src', dst', .vote, mv'⟩ := by
+            intro heq; apply hm; simp only [Message.mk.injEq] at heq
+            exact ⟨heq.1, heq.2.1, heq.2.2.2⟩
+          obtain ⟨_, rfl⟩ := hstep; simp only [hne, ite_false]; exact hbuf
+      · right; exact step_voteRecv hstep dst src v hrecv
+    | .recv src' dst' .init mv' =>
+      have hsent₀ : (s₀.local_ src).sent dst .vote v = true := by
+        obtain ⟨_, rfl⟩ := hstep; simp only at hsent
+        by_cases h : src = dst'
+        · subst h; simp only [ite_true] at hsent; split at hsent <;> exact hsent
+        · simp only [h, ite_false] at hsent; exact hsent
+      rcases ih hsent₀ with h | h
+      · left
+        have hne : ¬(⟨src, dst, MsgType.vote, v⟩ : Message n Value) =
+            ⟨src', dst', .init, mv'⟩ := by
+          intro heq; simp only [Message.mk.injEq] at heq; exact MsgType.noConfusion heq.2.2.1
+        obtain ⟨_, rfl⟩ := hstep; simp only [hne, ite_false]; exact h
+      · right; exact step_voteRecv hstep dst src v h
+    | .recv src' dst' .echo mv' =>
+      have hsent₀ : (s₀.local_ src).sent dst .vote v = true := by
+        obtain ⟨_, rfl⟩ := hstep; simp only at hsent
+        by_cases h : src = dst'
+        · subst h; simp only [ite_true] at hsent; split at hsent <;> exact hsent
+        · simp only [h, ite_false] at hsent; exact hsent
+      rcases ih hsent₀ with h | h
+      · left
+        have hne : ¬(⟨src, dst, MsgType.vote, v⟩ : Message n Value) =
+            ⟨src', dst', .echo, mv'⟩ := by
+          intro heq; simp only [Message.mk.injEq] at heq; exact MsgType.noConfusion heq.2.2.1
+        obtain ⟨_, rfl⟩ := hstep; simp only [hne, ite_false]; exact h
+      · right; exact step_voteRecv hstep dst src v h
 
 /-- **Buffer-init value invariant**: with correct sender, if a message from
     sender is in the buffer, broadcastVal matches. -/
