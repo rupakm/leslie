@@ -1181,6 +1181,43 @@ theorem brb_totality (hn : n > 3 * f) :
         -- some v ≠ none).
         sorry)
 
+/-! ## Concrete-level delivery chain building blocks
+
+    These lemmas support a direct proof of BRB totality without
+    `transfers_leads_to`. Each lemma chains one step of the BRB delivery
+    (init → echo → vote → output) using the concrete fair-WF.
+
+    Convention: each lemma takes a valid execution, fair-WF antecedent
+    (`h_ante`), and position `k` where the precondition holds. It produces
+    a position `k' ≥ k` where the postcondition holds.
+
+    The fair-WF antecedent is:
+    ```
+    h_ante : ∀ l, ∀ k, (∀ j, enabled l (e.states (k + j)) ∧ fair l (e.states (k + j))) →
+               ∃ j, l = e.labels (k + j) ∧ step (e.states (k + j)) l (e.states (k + j + 1))
+    ```
+    This is exactly the `assumes_fair_wf` antecedent from the framework. -/
+
+/-- **Init delivery**: if broadcastVal = some v, sender correct, dst correct,
+    then eventually sendRecv(dst) = some v (or dst gets corrupted). -/
+theorem concrete_init_delivery
+    {e : Execution (BRB_LTS.State n Value) (BRB_LTS.Label n Value)}
+    (hv : (BRB_LTS.brb n f Value sender).valid_exec e)
+    (h_ante : ∀ (l : BRB_LTS.Label n Value) (k : Nat),
+        (∀ j, (BRB_LTS.brb n f Value sender).enabled l (e.states (k + j)) ∧
+          brb_fair_labels n Value (e.states (k + j)) l) →
+        ∃ j, l = e.labels (k + j) ∧
+          (BRB_LTS.brb n f Value sender).step
+            (e.states (k + j)) (e.labels (k + j)) (e.states (k + j + 1)))
+    (k : Nat)
+    (dst : Fin n)
+    (hbv : ((e.states k).local_ sender).broadcastVal = some v)
+    (hcorr_s : sender ∉ (e.states k).corrupted)
+    (hcorr_d : dst ∉ (e.states k).corrupted) :
+    ∃ k', k ≤ k' ∧ (((e.states k').local_ dst).sendRecv = some v ∨
+      dst ∈ (e.states k').corrupted) := by
+  sorry
+
 /-- Variant of `brb_totality` with an explicit sender-correctness assumption.
     This version IS provable (unlike the unrestricted version which is blocked
     by the corrupt-sender fairness mismatch — see issues.md §4-5).
