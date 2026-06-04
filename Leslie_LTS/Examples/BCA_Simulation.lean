@@ -1045,6 +1045,19 @@ theorem step_echoSupport_mono {s s' : BCA_LTS.State T n} {l : BCA_LTS.Label T n}
     simp only [decide_eq_true_eq] at hech ⊢
     exact BCA_LTS.step_echoed_persist h p b hcorr hech)
 
+/-- echoSupport is monotone along valid executions. -/
+theorem echoSupport_mono_along
+    {e : Execution (BCA_LTS.State T n) (BCA_LTS.Label T n)}
+    (hv : (BCA_LTS.bca T n f).valid_exec e) (b : T)
+    {k : Nat} :
+    ∀ k', k ≤ k' → echoSupport T n (e.states k) b ≤ echoSupport T n (e.states k') b := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle]
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact Nat.le_refl _
+    · exact Nat.le_trans (ih (by omega)) (step_echoSupport_mono T n f (hv.2 k') b)
+
 /-- echoSupport is unchanged when corrupted and echoed are unchanged. -/
 private theorem echoSupport_eq_of_eq {s_r s_r' : BCA_LTS.State T n}
     (hc : s_r'.corrupted = s_r.corrupted)
