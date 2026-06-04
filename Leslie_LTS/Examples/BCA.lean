@@ -1685,6 +1685,36 @@ theorem sent_persist_along {e : Execution (State T n) (Label T n)}
     · exact h
     · exact step_sent_mono (hv.2 k') p dst t v (ih (by omega))
 
+/-- A correct-to-correct init(some b) send is enabled when src has input b
+    or enough initRecvs, and hasn't sent yet. -/
+theorem send_init_enabled {s : State T n} {src dst : Fin n} {b : T}
+    (hcorr : isCorrect T n s src)
+    (hsent : (s.local_ src).sent dst .init (some b) = false)
+    (hgate : (s.local_ src).input = some b ∨
+             countInitRecv T n (s.local_ src) b ≥ amplifyThreshold f) :
+    (bca T n f).enabled (.send src dst .init (some b)) s := by
+  refine ⟨_, Or.inr ⟨hcorr, hsent, ?_⟩, rfl⟩
+  exact hgate
+
+/-- A correct-to-correct echo(some b) send is enabled when src has
+    approved b, echoed is compatible, and hasn't sent yet. -/
+theorem send_echo_enabled {s : State T n} {src dst : Fin n} {b : T}
+    (hcorr : isCorrect T n s src)
+    (hsent : (s.local_ src).sent dst .echo (some b) = false)
+    (happroved : (s.local_ src).approved b = true)
+    (hechoed : (s.local_ src).echoed = none ∨ (s.local_ src).echoed = some b) :
+    (bca T n f).enabled (.send src dst .echo (some b)) s := by
+  refine ⟨_, Or.inr ⟨hcorr, hsent, happroved, hechoed⟩, rfl⟩
+
+/-- Output(p, some b) is enabled when p is correct, undecided, and has
+    enough binary votes. -/
+theorem output_binary_enabled {s : State T n} {p : Fin n} {b : T}
+    (hcorr : isCorrect T n s p)
+    (hdec : (s.local_ p).decided = none)
+    (hvotes : countVoteRecv T n (s.local_ p) (some b) ≥ returnThreshold n f) :
+    (bca T n f).enabled (.output p (some b)) s := by
+  refine ⟨_, hcorr, hdec, hvotes, rfl⟩
+
 theorem echoed_persist_along {e : Execution (State T n) (Label T n)}
     (hv : (bca T n f).valid_exec e)
     {k : Nat} {p : Fin n} {b : T}
