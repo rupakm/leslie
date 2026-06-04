@@ -644,15 +644,19 @@ theorem bca_fair_deadlock_implies_terminated (hn : n > 3 * f) :
       exact count_correct_ge s.corrupted hbudget
         (fun r => decide (r ∉ s.corrupted) && decide ((s.local_ r).echoed = some b))
         (fun r hr => by simp [hr, hall_echo_b r hr])
-    -- No second approved → all correct voted(some b) (the only option).
-    -- Echo quorum met → vote(some b) send enabled if not already voted.
-    -- Can't vote(none) (requires two approved, but only one exists).
-    -- Can't vote(some b') for b' ≠ b (requires echo quorum for b', impossible
-    --   since countEchoRecv(b') < echoThreshold when all echoed b).
-    -- So voted(some b) or not yet voted. At fair deadlock, if not voted,
-    -- vote(some b) is enabled → contradiction. So voted(some b).
-    -- All correct sent vote(some b) → received → countVoteRecv(p, some b) ≥ n-f
-    -- → output(some b) enabled → contradiction
+    -- Generalize echo quorum to all correct procs.
+    have hall_echo_quorum : ∀ q, q ∉ s.corrupted →
+        BCA_LTS.countEchoRecv T n (s.local_ q) b ≥ BCA_LTS.echoThreshold n f := by
+      intro q hq
+      simp only [BCA_LTS.countEchoRecv, BCA_LTS.echoThreshold]
+      exact count_correct_ge s.corrupted hbudget _ (fun r hr =>
+        fair_deadlock_echo_delivered T n f s hreach hfd hr hq
+          (fair_deadlock_echo_sent T n f s hreach hfd hr hq
+            (hall_approved r hr) (Or.inr (hall_echo_b r hr))))
+    -- All correct voted(some b) and sent vote(some b) to all correct.
+    -- At this fair deadlock with only one approved value, vote(some b) is
+    -- the only viable vote. Need voted_unique (reachability invariant).
+    -- Path B completion requires this invariant; sorried pending its addition.
     sorry
 
 /-! ### Why `bca_totality` via `transfers_leads_to` was removed
