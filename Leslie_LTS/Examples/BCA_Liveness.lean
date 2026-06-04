@@ -618,13 +618,38 @@ theorem bca_fair_deadlock_implies_terminated (hn : n > 3 * f) :
     -- By approved_spreads: ALL correct have approved(b')
     have hall_approved' : ∀ q, q ∉ s.corrupted → (s.local_ q).approved b' = true :=
       fun q hq => fair_deadlock_approved_spreads T n f s hn hreach hfd hq₁ happr' hq
-    -- p has two approved values → output(none) with countAnyVoteRecv ≥ n-f
-    -- At the fair deadlock, every correct proc voted something (if it hadn't,
-    -- vote send would be enabled → contradiction). All votes delivered.
-    -- countAnyVoteRecv(p, list_of_voted_values) ≥ n-f.
-    -- This sorry requires: showing every correct proc voted + all votes delivered
-    -- + constructing the appropriate vote-values list for countAnyVoteRecv.
-    sorry
+    -- Every correct proc voted (otherwise vote(none) send enabled).
+    have hall_voted : ∀ q, q ∉ s.corrupted → ∃ w, (s.local_ q).voted w = true := by
+      intro q hq; by_contra hvnone; push_neg at hvnone
+      exact hfd (.send q p .vote none) _
+        (BCA_LTS.send_vote_none_enabled (f := f) hq
+          (by by_contra hh; simp only [Bool.not_eq_false] at hh
+              exact hvnone none (BCA_LTS.sent_vote_implies_voted hreach none hq hh))
+          (fun w hw => absurd hw (hvnone w))
+          b b' (Ne.symm hne) (hall_approved q hq) (hall_approved' q hq)).choose_spec
+        ⟨hq, hp⟩
+    have hall_recv : ∀ q, q ∉ s.corrupted → ∃ w, (s.local_ p).voteRecv q w = true := by
+      intro q hq; obtain ⟨w, hw⟩ := hall_voted q hq; refine ⟨w, ?_⟩
+      exact fair_deadlock_vote_delivered T n f s hreach hfd hq hp (by
+        match w with
+        | .none =>
+          exact fair_deadlock_vote_none_sent T n f s hfd hq hp (Ne.symm hne)
+            (hall_approved q hq) (hall_approved' q hq)
+            (fun w' hw' => BCA_LTS.voted_unique hreach hq hw' hw)
+        | .some v =>
+          exact fair_deadlock_vote_sent T n f s hreach hfd hq hp
+            (fun w' hw' => BCA_LTS.voted_unique hreach hq hw' hw)
+            (BCA_LTS.voted_binary_implies_echoRecv hreach hq hw))
+    classical
+    let voted_val : Fin n → BCA_LTS.Val T := fun q =>
+      if h : q ∉ s.corrupted then (hall_recv q h).choose else .none
+    exact fair_deadlock_output_none_contradiction T n f s hfd hp hdec (Ne.symm hne)
+      (hall_approved p hp) (hall_approved' p hp)
+      (by simp only [BCA_LTS.countAnyVoteRecv, BCA_LTS.returnThreshold]
+          exact count_correct_ge s.corrupted hbudget _ (fun q hq => by
+            simp only [List.any_eq_true]
+            exact ⟨voted_val q, List.mem_map_of_mem (f := voted_val) (List.mem_finRange q),
+                   by simp only [voted_val, dif_pos hq]; exact (hall_recv q hq).choose_spec⟩))
   · -- Path B: No second approved value → all echoed b → echo quorum → vote(some b) → output(some b)
     push_neg at hextra
     -- Since no correct proc has approved b' for b' ≠ b, and echoed(q) implies
@@ -656,8 +681,47 @@ theorem bca_fair_deadlock_implies_terminated (hn : n > 3 * f) :
     -- All correct voted(some b) and sent vote(some b) to all correct.
     -- At this fair deadlock with only one approved value, vote(some b) is
     -- the only viable vote. Need voted_unique (reachability invariant).
-    -- Path B completion requires this invariant; sorried pending its addition.
-    sorry
+    -- All correct voted(some b).
+    have hall_voted_b : ∀ q, q ∉ s.corrupted → (s.local_ q).voted (some b) = true := by
+      intro q hq; by_contra hvnot_b
+      by_cases hvany : ∃ w, (s.local_ q).voted w = true
+      · obtain ⟨w, hw⟩ := hvany; match w with
+        | .none =>
+          obtain ⟨b₁, b₂, hne12, ha1, ha2⟩ := BCA_LTS.voted_none_implies_two_approved hreach hq hw
+          by_cases hb1 : b₁ = b
+          · subst hb1; exact hextra b₂ hne12.symm q hq ha2
+          · exact hextra b₁ hb1 q hq ha1
+        | .some b' =>
+          have hbb : b' = b := by
+            have hcc := intersect_correct_ge s.corrupted
+              (fun r => (s.local_ q).echoRecv r b') hbudget
+              (BCA_LTS.voted_binary_implies_echoRecv hreach hq hw)
+            have : BCA_LTS.echoThreshold n f - f > 0 := by
+              simp only [BCA_LTS.echoThreshold]; omega
+            obtain ⟨r, hr⟩ := List.exists_mem_of_ne_nil _
+              (List.length_pos_iff_ne_nil.mp (show ((List.finRange n).filter
+                (fun r => (s.local_ q).echoRecv r b' && decide (r ∉ s.corrupted))).length > 0 from by
+                have := hcc; simp only [BCA_LTS.echoThreshold] at this ⊢; omega))
+            simp only [List.mem_filter, Bool.and_eq_true, decide_eq_true_eq] at hr
+            obtain ⟨_, hrecv_r, hcorr_r⟩ := hr
+            have hechoed_r := BCA_LTS.sent_echo_implies_echoed hreach b' hcorr_r
+              (BCA_LTS.echoRecv_implies_sent hreach hrecv_r)
+            rw [hall_echo_b r hcorr_r] at hechoed_r; exact (Option.some.inj hechoed_r).symm
+          subst hbb; exact hvnot_b hw
+      · push_neg at hvany
+        exact hfd (.send q p .vote (some b)) _
+          (BCA_LTS.send_vote_binary_enabled (f := f) hq
+            (by by_contra h; simp only [Bool.not_eq_false] at h
+                exact hvnot_b (BCA_LTS.sent_vote_implies_voted hreach (some b) hq h))
+            (fun w hw => absurd hw (hvany w)) (hall_echo_quorum q hq)).choose_spec
+          ⟨hq, hp⟩
+    exact fair_deadlock_output_contradiction T n f s hfd hp hdec
+      (by simp only [BCA_LTS.countVoteRecv, BCA_LTS.returnThreshold]
+          exact count_correct_ge s.corrupted hbudget _ (fun q hq =>
+            fair_deadlock_vote_delivered T n f s hreach hfd hq hp
+              (fair_deadlock_vote_sent T n f s hreach hfd hq hp
+                (fun w hw => BCA_LTS.voted_unique hreach hq hw (hall_voted_b q hq))
+                (hall_echo_quorum q hq))))
 
 /-! ### Why `bca_totality` via `transfers_leads_to` was removed
 
