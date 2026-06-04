@@ -10,10 +10,9 @@ import Leslie_LTS.Examples.BRB_Simulation
   lift a fair-scheduling totality property from `IdealBRB` to the
   concrete Bracha BRB.
 
-  ## Current state (2026-06-03)
+  ## Current state (2026-06-04)
 
   Framework (`Leslie_LTS/Framework/Simulation.lean`) is sorry-free.
-  This file has 7 remaining protocol-specific sorries.
 
   **Fully proven (zero sorries):**
   - `ideal_brb_totality` (Step A + Step B)
@@ -22,37 +21,50 @@ import Leslie_LTS.Examples.BRB_Simulation
   - `brb_rank_wf` (trivially for placeholder measure)
   - `rank_decreases_on_unfair_abstract` (vacuous — all InternalStars AllFair)
   - `ideal_brb_internal_label_fair`, `ideal_brb_internalStar_allFair`
+  - `brb_fair_deadlock_implies_terminated` proof STRUCTURE complete
+    (6-step chain: init→echo→vote→output, by contradiction)
 
-  **Remaining sorries (7 total):**
+  **Remaining sorries (~10 in BRB_Liveness, ~5 in BrachaBRB):**
 
   ```
   WeakDivPreserving witness:
-    rank_non_increasing (sorry — placeholder measure)
-    rank_decreases_on_fair_elision (sorry — placeholder measure)
-    rank_non_increasing_on_fair_progress (sorry — placeholder measure)
-    brb_fair_deadlock_implies_terminated (sorry — deep protocol invariant)
+    rank_non_increasing (sorry — placeholder measure makes rank = False)
+    rank_decreases_on_fair_elision (sorry — same)
+    rank_non_increasing_on_fair_progress (sorry — same)
     h_fair_reverse (sorry — see issues.md §3, fairness mismatch)
 
+  brb_fair_deadlock_implies_terminated (proof structure complete):
+    2 mechanical sorries (echo/vote send successor construction)
+    2 counting sorries (echoRecv/voteRecv count ≥ threshold)
+
   brb_totality (via transfers_leads_to):
-    h_ante_transfer / commit case (sorry — see issues.md §4)
-    h_ante_transfer / output case (sorry — needs delivery chain)
+    h_ante_transfer / commit case (sorry — see §5 below)
+    h_ante_transfer / output case (sorry — same root cause)
+
+  BrachaBRB.lean (reachability invariants):
+    5 sorry'd invariants (init/echo/vote delivery + buffer value + sendRecv value)
   ```
 
-  ### Design issues (see `Leslie_LTS/issues.md` §3-4)
+  ### Design issues (see `Leslie_LTS/issues.md` §3-5)
 
   - **h_fair_reverse** and **h_ante_transfer (commit)** are fundamentally
     blocked by the corrupt-sender fairness mismatch: in IdealBRB, commit
     is always fair, but the corresponding concrete init delivery from a
-    corrupt sender involves only unfair steps. See issues.md for detailed
-    counterexamples and proposed fixes.
+    corrupt sender involves only unfair steps. See issues.md §3-4.
+
+  - **h_ante_transfer (output)** is ALSO blocked by the corrupt-sender
+    issue: when sender is corrupt, initSupport ≥ echoThreshold does NOT
+    guarantee enough correct sendRecvs for the echo chain to complete.
+    With corrupted.length = f: |{correct with sendRecv}| ≥ n-2f, but
+    echoThreshold = n-f > n-2f. See issues.md §5.
 
   - **brb_totality** antecedent narrowed to `broadcastVal ≠ none` only
     (dropped `¬ isCorrect sender`). The corrupt-sender case is unprovable
     at the concrete level.
 
-  - **brb_fair_deadlock_implies_terminated** statement corrected with a
-    `broadcastVal ≠ none` precondition (the old unconditional version was
-    false at the initial state).
+  - **brb_fair_deadlock_implies_terminated** strengthened with a
+    `sender ∉ corrupted` precondition (needed; statement is false when
+    sender is corrupt and broadcastVal was set before corruption).
 -/
 
 open LTS
@@ -403,7 +415,10 @@ theorem brb_fair_deadlock_implies_terminated (hn : n > 3 * f) :
   -- echoRecv from all correct q ≥ n - |corrupted| ≥ n - f = echoThreshold.
   have h_echoCount : ∀ r, r ∉ s.corrupted →
       BRB_LTS.countEchoRecv n Value (s.local_ r) v ≥ BRB_LTS.echoThreshold n f := by
-    sorry -- counting: |{q ∈ finRange n | echoRecv r q v}| ≥ |{q | q ∉ corrupted}| ≥ n - f
+    intro r hr
+    -- countEchoRecv ≥ n - |corrupted| ≥ n - f because echoRecv from all correct q.
+    -- |filter(echoRecv · v)| ≥ |filter(q ∉ corrupted)| = n - |filter(q ∈ corrupted)| ≥ n - f.
+    sorry
   -- Step 4: All correct r have sent vote(v) to all correct r', and voteRecv delivered.
   have h_voteRecv : ∀ q r, q ∉ s.corrupted → r ∉ s.corrupted →
       (s.local_ r).voteRecv q v = true := by

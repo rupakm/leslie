@@ -144,9 +144,47 @@ Split `brb_totality` into two steps:
   weaker `h_ante_transfer` that only handles the output case (commit is
   not enabled when set_up ≠ none).
 
-  The output case of `h_ante_transfer` IS provable: at any reachable
-  state with initSupport ≥ echoThreshold, the echo→vote→output delivery
-  chain between correct processes completes under fair scheduling.  Each
-  link in the chain is a perpetually-enabled fair concrete step.
+  The output case of `h_ante_transfer` was THOUGHT to be provable, but
+  is actually ALSO blocked by the corrupt-sender issue — see §5 below.
 
 See `plans/liveness-closure.md` for context.
+
+## 5. `h_ante_transfer` output case ALSO blocked (2026-06-04)
+
+**The output case has the same corrupt-sender issue as the commit case.**
+
+When abstract `output(p, v)` is always enabled from some position, we have
+`set_up = some v` (i.e., `initSupport v ≥ echoThreshold = n-f`). This means
+`|corrupted| + |{correct with sendRecv = some v}| ≥ n-f`.
+
+With `|corrupted| = c ≤ f`: `|{correct with sendRecv}| ≥ n-f-c`.
+
+For the echo chain to complete, each correct receiver needs echoRecv from
+ALL correct echoing processes. Only processes with `sendRecv = some v` can
+echo (the LTS has no echo amplification based on received echoes). So each
+receiver gets at most `n-f-c` echoes from correct sources.
+
+`echoThreshold = n-f`. We need `n-f-c ≥ n-f`, which requires `c ≤ 0`.
+So the echo threshold is reached ONLY when `c = 0` (no corruption).
+
+**With corrupt sender** (`c ≥ 1`): `n-f-c < n-f = echoThreshold`. The echo
+chain stalls. No process votes. No process returns. Concrete output never
+fires. But abstract output remains "always enabled".
+
+**Exception**: if the sender is correct, more init sends fire (fair-WF),
+eventually giving ALL correct processes `sendRecv = some v`. Then
+`|correct with sendRecv| = n-c ≥ n-f`, and echoRecv ≥ n-f = echoThreshold.
+
+**Conclusion**: both `h_ante_transfer` cases (commit AND output) require
+the sender to be correct. This is a fundamental limitation of the
+`transfers_leads_to` approach for BRB. The abstract IdealBRB can be live
+with a corrupt sender (commit is always fair), but the concrete BRB cannot
+(init sends from corrupt sender are unfair).
+
+**Recommended fix**: either
+1. Prove `brb_totality` directly at the concrete level (without
+   `transfers_leads_to`) with a `sender stays correct` precondition, OR
+2. Split `brb_totality` into two concrete-level lemmas:
+   - Step A: `broadcastVal ≠ none ∧ sender correct → initSupport ≥ echoThreshold`
+   - Step B: `initSupport ≥ echoThreshold ∧ sender correct → all correct returned`
+   Both provable via concrete fair-WF.
