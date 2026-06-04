@@ -2462,6 +2462,80 @@ theorem send_vote_none_enabled {s : State T n} {src dst : Fin n}
     (bca T n f).enabled (.send src dst .vote none) s := by
   refine ⟨_, Or.inr ⟨hcorr, hsent, huniq, v₁, v₂, hne, happr1, happr2⟩, rfl⟩
 
+/-- At a reachable state, approved(b) = true → countInitRecv(b) ≥ approveThreshold.
+    Proof: approved is set when countInitRecv + 1 ≥ threshold (exact count gives = old + 1).
+    After the step, countInitRecv ≥ threshold. Since countInitRecv is monotone, it stays ≥. -/
+theorem approved_implies_countInitRecv_ge {s : State T n}
+    (hreach : LTS.Reachable (bca T n f) s)
+    (p : Fin n) (b : T)
+    (happr : (s.local_ p).approved b = true) :
+    countInitRecv T n (s.local_ p) b ≥ approveThreshold n f := by
+  induction hreach with
+  | init hinit =>
+    obtain ⟨hlocal, _, _⟩ := hinit
+    simp [hlocal p, LocalState.init] at happr
+  | step _ hstep ih =>
+    rename_i s_prev l s' _
+    by_cases hprev : (s_prev.local_ p).approved b = true
+    · -- Already approved: countInitRecv monotone gives ≥
+      exact Nat.le_trans (ih hprev) (step_countInitRecv_mono hstep p b)
+    · -- Newly approved at this step: only recv_init(some b) at p=dst can set approved
+      match l with
+      | .recv src dst .init (some b') =>
+        by_cases hp : p = dst
+        · subst hp
+          by_cases hbb : b = b'
+          · subst hbb
+            by_cases hdup : (s_prev.local_ p).initRecv src b = false
+            · -- This step set approved, so old count + 1 ≥ threshold
+              have hexact := recv_init_countInitRecv_eq hstep hdup
+              -- The fact that approved was set implies old + 1 ≥ threshold
+              -- From recv_init_approved_threshold (the existing lemma):
+              have := recv_init_approved_threshold hstep hdup hprev happr
+              omega
+            · simp only [Bool.not_eq_false] at hdup
+              have : (s'.local_ p) = (s_prev.local_ p) := by
+                obtain ⟨_, rfl⟩ := hstep; simp [hdup]
+              rw [this] at happr; exact absurd happr hprev
+          · rw [recv_init_approved_other hstep hbb] at happr
+            exact absurd happr hprev
+        · have : (s'.local_ p) = (s_prev.local_ p) := by
+            obtain ⟨_, rfl⟩ := hstep; simp [hp]
+          rw [this] at happr; exact absurd happr hprev
+      | .recv _ dst .init none =>
+        have : (s'.local_ p) = (s_prev.local_ p) := by
+          obtain ⟨_, rfl⟩ := hstep; by_cases hp : p = dst <;> simp [hp]
+        rw [this] at happr; exact absurd happr hprev
+      | .corrupt _ =>
+        rw [corrupt_local hstep] at happr; exact absurd happr hprev
+      | .send .. =>
+        rw [step_approved_eq hstep p b (by intro _ _ _; simp)] at happr
+        exact absurd happr hprev
+      | .recv _ _ .echo _ =>
+        rw [step_approved_eq hstep p b (by intro _ _ _; simp)] at happr
+        exact absurd happr hprev
+      | .recv _ _ .vote _ =>
+        rw [step_approved_eq hstep p b (by intro _ _ _; simp)] at happr
+        exact absurd happr hprev
+      | .output .. =>
+        rw [step_approved_eq hstep p b (by intro _ _ _; simp)] at happr
+        exact absurd happr hprev
+      | .input .. =>
+        rw [step_approved_eq hstep p b (by intro _ _ _; simp)] at happr
+        exact absurd happr hprev
+
+/-- At a reachable state, if correct src sent init(some b) to any dst,
+    then src's init gate for b is open: input = some b or
+    countInitRecv ≥ amplifyThreshold. -/
+theorem sent_init_implies_gate {s : State T n}
+    (hreach : LTS.Reachable (bca T n f) s)
+    {src : Fin n} (hcorr : isCorrect T n s src) (b : T)
+    {dst : Fin n}
+    (hsent : (s.local_ src).sent dst .init (some b) = true) :
+    (s.local_ src).input = some b ∨
+    countInitRecv T n (s.local_ src) b ≥ amplifyThreshold f := by
+  sorry
+
 end ReachableInvariants
 
 end BCA_LTS
