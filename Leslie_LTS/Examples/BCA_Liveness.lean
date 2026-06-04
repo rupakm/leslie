@@ -534,6 +534,22 @@ theorem fair_deadlock_vote_none_sent
   obtain ⟨s', hstep⟩ := henabled
   exact hfd (.send src dst .vote none) s' hstep ⟨hsrc, hdst⟩
 
+/-- At a fair deadlock, output(none) contradicts if p is correct, undecided,
+    has two approved values, and enough total votes. -/
+theorem fair_deadlock_output_none_contradiction
+    (s : BCA_LTS.State T n)
+    (hfd : FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s)
+    {p : Fin n} (hp : p ∉ s.corrupted) (hdec : (s.local_ p).decided = none)
+    {b₁ b₂ : T} (hne : b₁ ≠ b₂)
+    (happr1 : (s.local_ p).approved b₁ = true)
+    (happr2 : (s.local_ p).approved b₂ = true)
+    {vals : List (BCA_LTS.Val T)}
+    (hvotes : BCA_LTS.countAnyVoteRecv T n (s.local_ p) vals ≥ BCA_LTS.returnThreshold n f) :
+    False := by
+  have henabled := BCA_LTS.output_none_enabled (f := f) hp hdec b₁ b₂ hne happr1 happr2 vals hvotes
+  obtain ⟨s', hstep⟩ := henabled
+  exact hfd (.output p none) s' hstep hp
+
 /-! ## Reachable fair-deadlocks are terminated
 
     The original `bca_no_fair_deadlock_reachable` was false at
@@ -559,16 +575,25 @@ theorem bca_fair_deadlock_implies_terminated (hn : n > 3 * f) :
       ∀ p, p ∉ s.corrupted → (s.local_ p).decided ≠ none := by
   intro s hreach hfd hall_input p hp hdec
   have hbudget := BCA_LTS.corrupted_budget_reachable hreach
-  have hn_f : n > f := by omega
-  have hpos : BCA_LTS.approveThreshold n f > 0 := by
-    simp only [BCA_LTS.approveThreshold]; omega
-  -- Step 1-3: All correct procs have approved(b) for some b.
-  -- We need ∃ b with inputSupport(b) ≥ f+1 from the all-correct-input precondition.
-  -- For now, sorry this and prove the rest of the chain.
-  -- Chain: input → init sent → init received → amplify → approved for all correct.
-  -- Step 4-8: approved → echo → vote → output → contradiction.
-  -- This requires handling vote type (some b vs none) with case analysis.
-  -- Full proof is ~200 LOC. Sorry pending.
+  -- Step 0: Pigeonhole — extract ∃ b with inputSupport(b) ≥ amplifyThreshold.
+  -- Requires binary T assumption. Sorry pending.
+  have hsupp : ∃ b, BCA_LTS.inputSupport T n s b ≥ BCA_LTS.amplifyThreshold f := by
+    sorry
+  obtain ⟨b, hsupp_b⟩ := hsupp
+  -- Steps 1-3 (proved by helpers): all correct approved(b)
+  have hall_approved : ∀ q, q ∉ s.corrupted → (s.local_ q).approved b = true :=
+    fun q hq => fair_deadlock_all_approved T n f s hn hreach hfd hsupp_b hq
+  -- Step 4: Each correct proc echoed some value b_q ∈ {b, ...}
+  -- At the fair deadlock, echoed ≠ none (from approved + echoed_ne_none)
+  have hall_echoed : ∀ q, q ∉ s.corrupted → (s.local_ q).echoed ≠ none :=
+    fun q hq => fair_deadlock_echoed_ne_none T n f s hreach hfd hq (hall_approved q hq) (by omega)
+  -- Step 5-6: Each correct proc sent echo → received → echo counts.
+  -- By fair_deadlock_echo_sent_echoed and echoRecv_from_echoed.
+  -- Step 7: Vote chain.
+  -- Each correct proc either has echo quorum or two approved values → voted → sent → received.
+  -- Step 8: Output enabled for p → contradiction with fair deadlock.
+  -- The vote chain (steps 5-8) requires detailed case analysis.
+  -- Sorry pending vote chain.
   sorry
 
 /-! ## The headline witness -/
