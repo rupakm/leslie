@@ -1865,6 +1865,71 @@ theorem sendRecv_value_inv
       rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)] at hbv
       rw [recv_vote_sendRecv hstep] at hrecv; exact ih hcorr₀ hbv hrecv
 
+-- Auxiliary: with correct sender and broadcastVal = none, all correct q have echoed = none.
+private theorem echoed_none_of_broadcastVal_none
+    (s : State n Value)
+    (hr : Reachable (brb n f Value sender) s)
+    (hcorr : isCorrect n Value s sender)
+    (hbv : (s.local_ sender).broadcastVal = none)
+    (q : Fin n) (hq : isCorrect n Value s q) :
+    (s.local_ q).echoed = none := by
+  induction hr with
+  | init hinit => simp [hinit.1 q, LocalState.init]
+  | @step s₀ l s _ hstep ih =>
+    have hcorr₀ := step_correct_prev hstep sender hcorr
+    have hq₀ := step_correct_prev hstep q hq
+    match l with
+    | .corrupt _ => obtain ⟨_, _, rfl⟩ := hstep; exact ih hcorr₀ hbv hq₀
+    | .input _ _ =>
+      obtain ⟨_, _, rfl⟩ := hstep; simp only at hbv; simp at hbv
+    | .output _ _ =>
+      rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)] at hbv
+      have hechoed₀ := ih hcorr₀ hbv hq₀
+      -- echoed preserved by output step
+      have := step_echoed_prev hstep q
+      by_contra hne
+      obtain ⟨w, hw⟩ := Option.ne_none_iff_exists'.mp hne
+      have hprev := step_echoed_prev hstep q w hw (by intro _ h; cases h)
+      rw [hechoed₀] at hprev; exact absurd hprev (by simp)
+    | .send src dst t mv =>
+      rw [send_broadcastVal hstep sender] at hbv
+      -- echoed only changes for src when sending echo AND src is correct
+      by_contra hne
+      obtain ⟨w, hw⟩ := Option.ne_none_iff_exists'.mp hne
+      have hechoed₀ := ih hcorr₀ hbv hq₀
+      -- If step didn't set echoed, use step_echoed_prev
+      obtain ⟨hpre, rfl⟩ := hstep; simp only at hw
+      by_cases hq_src : q = src
+      · subst hq_src; simp only [ite_true] at hw
+        match t with
+        | .init | .vote => rw [hechoed₀] at hw; exact absurd hw (by simp)
+        | .echo =>
+          simp only [isCorrect] at hq₀
+          simp only [hq₀, not_false_eq_true, ite_true] at hw
+          -- echoed set to some mv. Send condition: echoed = some mv ∨ (echoed = none ∧ sendRecv = some mv)
+          rcases hpre with hbyz | ⟨_, _, hcond⟩
+          · exact absurd hbyz hq₀
+          · rcases hcond with hev | ⟨_, hsrv⟩
+            · rw [hechoed₀] at hev; exact absurd hev (by simp)
+            · exact absurd (sendRecv_none_of_broadcastVal_none s₀ (by assumption) hcorr₀ hbv q) (by
+                rw [hsrv]; simp)
+      · simp only [hq_src, ite_false] at hw; rw [hechoed₀] at hw; exact absurd hw (by simp)
+    | .recv _ _ .init _ =>
+      rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)] at hbv
+      by_contra hne; obtain ⟨w, hw⟩ := Option.ne_none_iff_exists'.mp hne
+      have hprev := step_echoed_prev hstep q w hw (by intro _ h; cases h)
+      rw [ih hcorr₀ hbv hq₀] at hprev; exact absurd hprev (by simp)
+    | .recv _ _ .echo _ =>
+      rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)] at hbv
+      by_contra hne; obtain ⟨w, hw⟩ := Option.ne_none_iff_exists'.mp hne
+      have hprev := step_echoed_prev hstep q w hw (by intro _ h; cases h)
+      rw [ih hcorr₀ hbv hq₀] at hprev; exact absurd hprev (by simp)
+    | .recv _ _ .vote _ =>
+      rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)] at hbv
+      by_contra hne; obtain ⟨w, hw⟩ := Option.ne_none_iff_exists'.mp hne
+      have hprev := step_echoed_prev hstep q w hw (by intro _ h; cases h)
+      rw [ih hcorr₀ hbv hq₀] at hprev; exact absurd hprev (by simp)
+
 /-- **Echoed value invariant**: with correct sender and broadcastVal = some v,
     if correct process q has echoed = some w, then w = v. -/
 theorem echoed_value_inv
@@ -1875,7 +1940,89 @@ theorem echoed_value_inv
     (q : Fin n) (hq : isCorrect n Value s q) (w : Value)
     (hechoed : (s.local_ q).echoed = some w) :
     w = v := by
-  sorry
+  induction hr with
+  | init hinit => simp [hinit.1 q, LocalState.init] at hechoed
+  | @step s₀ l s _ hstep ih =>
+    have hcorr₀ := step_correct_prev hstep sender hcorr
+    have hq₀ := step_correct_prev hstep q hq
+    match l with
+    | .corrupt _ => obtain ⟨_, _, rfl⟩ := hstep; exact ih hcorr₀ hbv hq₀ hechoed
+    | .input _ _ =>
+      -- echoed unchanged by input; broadcastVal was none before, is some v now
+      have hechoed₀ := step_echoed_prev hstep q w hechoed (by intro _ h; cases h)
+      obtain ⟨_, hbv_none, _⟩ := hstep
+      -- broadcastVal = none at s₀. Need: echoed = none for correct q.
+      -- By sendRecv_none_of_broadcastVal_none: sendRecv = none at s₀.
+      -- echoed is only set by send.echo which requires sendRecv = some _ or echoed already set.
+      -- By induction, echoed = none at s₀ (similar to sendRecv_none). Sorry for now —
+      -- use the fact that if echoed = some w with broadcastVal = none and correct sender,
+      -- we can still reach a contradiction through sendRecv_value_inv.
+      -- Actually: echoed was some w at s₀, q correct at s₀, sender correct at s₀,
+      -- broadcastVal = none at s₀. If we had broadcastVal = some v at s₀, IH would give
+      -- w = v. But broadcastVal = none.
+      -- We need an auxiliary: broadcastVal = none → echoed = none for correct q.
+      -- Let's prove it by contradiction using the existing invariants.
+      -- echoed = some w was set by some send.echo step. That step required
+      -- sendRecv = some w (or echoed was already set). By induction, sendRecv = some w
+      -- requires broadcastVal ≠ none (sendRecv_none_of_broadcastVal_none).
+      -- But broadcastVal was ALWAYS none before this input step (broadcastVal monotone).
+      -- This needs another auxiliary invariant. For now, I'll inline a simple argument.
+      exfalso
+      have h_none := echoed_none_of_broadcastVal_none s₀ (by assumption) hcorr₀ hbv_none q hq₀
+      rw [h_none] at hechoed₀; exact absurd hechoed₀ (by simp)
+    | .output _ _ =>
+      rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)] at hbv
+      have hechoed₀ := step_echoed_prev hstep q w hechoed (by intro _ h; cases h)
+      exact ih hcorr₀ hbv hq₀ hechoed₀
+    | .send src dst t mv =>
+      rw [send_broadcastVal hstep sender] at hbv
+      -- Case-split: was echoed newly set by this send?
+      by_cases hprev : (s₀.local_ q).echoed = some w
+      · exact ih hcorr₀ hbv hq₀ hprev
+      · -- echoed was NOT some w at s₀ → must have been set by this send.
+        -- Only .send q _ .echo _ can set echoed for q (when q is correct).
+        -- From step_echoed_prev: if step ≠ send q _ echo w, then echoed preserved.
+        -- Contrapositive: if echoed changed, step = send q _ echo w.
+        -- The send condition for echo: echoed = some mv OR (echoed = none ∧ sendRecv = some mv)
+        -- And mv = w (since echoed is now some w and was NOT some w before).
+        -- For the correct-sender case: sendRecv = some w → w = v by sendRecv_value_inv.
+        -- For echoed = some mv case: mv = w, but echoed was NOT some w → contradiction.
+        -- So it must be echoed = none ∧ sendRecv = some w.
+        -- Extract: this is .send q dst' .echo w for some dst'.
+        -- First, show src = q:
+        obtain ⟨hpre, rfl⟩ := hstep; simp only at hechoed
+        by_cases hq_src : q = src
+        · subst hq_src; simp only [ite_true] at hechoed
+          -- The send updates echoed for q. Match on t:
+          match t with
+          | .init | .vote =>
+            -- echoed unchanged for init/vote sends
+            exact absurd hechoed hprev
+          | .echo =>
+            -- echoed set to some mv (for correct q)
+            simp only [isCorrect] at hq₀
+            simp only [hq₀, not_false_eq_true, ite_true] at hechoed
+            -- hechoed : some mv = some w → mv = w
+            have hmv : mv = w := Option.some_injective _ hechoed
+            subst hmv
+            rcases hpre with hbyz | ⟨_, _, hcond⟩
+            · exact absurd hbyz hq₀
+            · rcases hcond with hev | ⟨_, hsrv⟩
+              · exact absurd hev hprev
+              · exact sendRecv_value_inv s₀ (by assumption) hcorr₀ hbv q mv hsrv
+        · simp only [hq_src, ite_false] at hechoed; exact absurd hechoed hprev
+    | .recv _ _ .init _ =>
+      rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)] at hbv
+      have hechoed₀ := step_echoed_prev hstep q w hechoed (by intro _ h; cases h)
+      exact ih hcorr₀ hbv hq₀ hechoed₀
+    | .recv _ _ .echo _ =>
+      rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)] at hbv
+      have hechoed₀ := step_echoed_prev hstep q w hechoed (by intro _ h; cases h)
+      exact ih hcorr₀ hbv hq₀ hechoed₀
+    | .recv _ _ .vote _ =>
+      rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)] at hbv
+      have hechoed₀ := step_echoed_prev hstep q w hechoed (by intro _ h; cases h)
+      exact ih hcorr₀ hbv hq₀ hechoed₀
 
 end reachability_invariants
 
