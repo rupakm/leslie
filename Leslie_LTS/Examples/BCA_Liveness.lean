@@ -211,6 +211,55 @@ theorem bca_rank_wf :
     WellFounded (bca_rank T n) :=
   ⟨fun a => ⟨a, fun _ h => absurd h (Nat.not_lt_zero _)⟩⟩
 
+/-! ## Fair-deadlock helpers (mirrors BRB_Liveness) -/
+
+/-- At a fair deadlock, no fair send between correct processes is enabled. -/
+theorem fair_deadlock_no_fair_send
+    (s : BCA_LTS.State T n) (hfd : FairDeadlock (BCA_LTS.bca T n f)
+      (bca_fair_labels T n) s)
+    {src dst : Fin n} (hsrc : src ∉ s.corrupted) (hdst : dst ∉ s.corrupted)
+    (t : BCA_LTS.MsgType) (v : BCA_LTS.Val T) :
+    ¬ ∃ s', (BCA_LTS.bca T n f).step s (.send src dst t v) s' := by
+  intro ⟨s', hstep⟩
+  exact hfd (.send src dst t v) s' hstep ⟨hsrc, hdst⟩
+
+/-- At a fair deadlock, no fair recv between correct processes is enabled. -/
+theorem fair_deadlock_no_fair_recv
+    (s : BCA_LTS.State T n) (hfd : FairDeadlock (BCA_LTS.bca T n f)
+      (bca_fair_labels T n) s)
+    {src dst : Fin n} (hsrc : src ∉ s.corrupted) (hdst : dst ∉ s.corrupted)
+    (t : BCA_LTS.MsgType) (v : BCA_LTS.Val T) :
+    ¬ ∃ s', (BCA_LTS.bca T n f).step s (.recv src dst t v) s' := by
+  intro ⟨s', hstep⟩
+  exact hfd (.recv src dst t v) s' hstep ⟨hsrc, hdst⟩
+
+/-- At a fair deadlock, no fair output is enabled. -/
+theorem fair_deadlock_no_fair_output
+    (s : BCA_LTS.State T n) (hfd : FairDeadlock (BCA_LTS.bca T n f)
+      (bca_fair_labels T n) s)
+    {p : Fin n} (hp : p ∉ s.corrupted) (v : BCA_LTS.Val T) :
+    ¬ ∃ s', (BCA_LTS.bca T n f).step s (.output p v) s' := by
+  intro ⟨s', hstep⟩
+  exact hfd (.output p v) s' hstep hp
+
+/-- At a fair deadlock, a correct-to-correct message is NOT in the buffer. -/
+theorem fair_deadlock_no_fair_buffer
+    (s : BCA_LTS.State T n) (hfd : FairDeadlock (BCA_LTS.bca T n f)
+      (bca_fair_labels T n) s)
+    {src dst : Fin n} (hsrc : src ∉ s.corrupted) (hdst : dst ∉ s.corrupted)
+    (t : BCA_LTS.MsgType) (v : BCA_LTS.Val T) :
+    s.buffer ⟨src, dst, t, v⟩ = false := by
+  by_contra hbuf
+  simp only [Bool.not_eq_false] at hbuf
+  -- recv(src, dst, t, v) is enabled (buffer has the message).
+  -- The BCA recv step requires only that the buffer has the message.
+  -- We use the step definition to construct the successor.
+  have henabled : (BCA_LTS.bca T n f).enabled (.recv src dst t v) s := by
+    simp only [System.enabled, BCA_LTS.bca]
+    exact ⟨_, hbuf, rfl⟩
+  obtain ⟨s', hstep⟩ := henabled
+  exact hfd (.recv src dst t v) s' hstep ⟨hsrc, hdst⟩
+
 /-! ## Reachable fair-deadlocks are terminated (mirrors BRB)
 
     The original `bca_no_fair_deadlock_reachable` was false at
