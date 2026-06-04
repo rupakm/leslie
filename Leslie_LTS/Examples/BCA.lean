@@ -1593,6 +1593,32 @@ theorem step_corrupted_mem_persist {s s' : State T n} {l : Label T n}
   | .output .. => rw [output_corrupted h]; exact hc
   | .input .. => rw [input_corrupted h]; exact hc
 
+-- Execution-level persistence (for liveness proofs)
+
+theorem decided_persist_along {e : Execution (State T n) (Label T n)}
+    (hv : (bca T n f).valid_exec e)
+    {k : Nat} {p : Fin n} {v : Val T}
+    (h : ((e.states k).local_ p).decided = some v) :
+    ∀ k', k ≤ k' → ((e.states k').local_ p).decided = some v := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · exact step_decided_persist (hv.2 k') p v (ih (by omega))
+
+theorem corrupted_mem_persist_along {e : Execution (State T n) (Label T n)}
+    (hv : (bca T n f).valid_exec e)
+    {k : Nat} {p : Fin n}
+    (h : p ∈ (e.states k).corrupted) :
+    ∀ k', k ≤ k' → p ∈ (e.states k').corrupted := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · exact step_corrupted_mem_persist (hv.2 k') p (ih (by omega))
+
 end StepHelpers
 
 end BCA_LTS
