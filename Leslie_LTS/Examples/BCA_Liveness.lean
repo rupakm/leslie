@@ -459,6 +459,63 @@ theorem fair_deadlock_all_approved
   exact BCA_LTS.countInitRecv_ge_implies_approved hreach q b hpos
     (fair_deadlock_countInitRecv_ge_approveThreshold T n f s hn hreach hfd hsupp hq)
 
+/-- At a fair deadlock with inputSupport(b) ≥ amplifyThreshold, every
+    correct proc src has sent echo(some (echoed_value src)) to all correct.
+    The echoed value is echoed(src) = some b' for some b', and this echo
+    was sent because approved(b') and echoed compatible. -/
+theorem fair_deadlock_echo_sent_echoed
+    (s : BCA_LTS.State T n) (hn : n > 3 * f)
+    (hreach : Reachable (BCA_LTS.bca T n f) s)
+    (hfd : FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s)
+    {b : T} (hsupp : BCA_LTS.inputSupport T n s b ≥ BCA_LTS.amplifyThreshold f)
+    {src : Fin n} (hsrc : src ∉ s.corrupted)
+    {dst : Fin n} (hdst : dst ∉ s.corrupted) :
+    ∃ b', (s.local_ src).echoed = some b' ∧
+      (s.local_ src).sent dst .echo (some b') = true := by
+  have happroved := fair_deadlock_all_approved T n f s hn hreach hfd hsupp hsrc
+  have hechoed_ne := fair_deadlock_echoed_ne_none T n f s hreach hfd hsrc happroved
+    (by omega)
+  obtain ⟨b', hb'⟩ := Option.ne_none_iff_exists'.mp hechoed_ne
+  refine ⟨b', hb', ?_⟩
+  -- echoed = some b' → approved(b') by echoed_implies_approved
+  have happroved' := BCA_LTS.echoed_implies_approved hreach src b' hsrc hb'
+  -- echo(some b') sent because approved(b') and echoed = some b' (compatible)
+  exact fair_deadlock_echo_sent T n f s hreach hfd hsrc hdst happroved' (Or.inr hb')
+
+/-- At a fair deadlock with inputSupport(b) ≥ amplifyThreshold, every
+    correct proc src has sent echo(some b') to all correct dst, and
+    dst received it: echoRecv(dst, src, b') = true. -/
+theorem fair_deadlock_echoRecv_from_echoed
+    (s : BCA_LTS.State T n) (hn : n > 3 * f)
+    (hreach : Reachable (BCA_LTS.bca T n f) s)
+    (hfd : FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s)
+    {b : T} (hsupp : BCA_LTS.inputSupport T n s b ≥ BCA_LTS.amplifyThreshold f)
+    {src : Fin n} (hsrc : src ∉ s.corrupted)
+    {dst : Fin n} (hdst : dst ∉ s.corrupted) :
+    ∃ b', (s.local_ src).echoed = some b' ∧
+      (s.local_ dst).echoRecv src b' = true := by
+  obtain ⟨b', hechoed, hsent⟩ := fair_deadlock_echo_sent_echoed T n f s hn hreach hfd hsupp hsrc hdst
+  exact ⟨b', hechoed, fair_deadlock_echo_delivered T n f s hreach hfd hsrc hdst hsent⟩
+
+/-- At a fair deadlock with inputSupport(b) ≥ amplifyThreshold,
+    countEchoRecv(q, b') ≥ |{correct r : echoed(r) = some b'}| for every correct q.
+    The echo chain ensures all correct procs' echoes are received. -/
+theorem fair_deadlock_countEchoRecv_ge_echo_support
+    (s : BCA_LTS.State T n) (hn : n > 3 * f)
+    (hreach : Reachable (BCA_LTS.bca T n f) s)
+    (hfd : FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s)
+    {b : T} (hsupp : BCA_LTS.inputSupport T n s b ≥ BCA_LTS.amplifyThreshold f)
+    {q : Fin n} (hq : q ∉ s.corrupted) (b' : T) :
+    BCA_LTS.countEchoRecv T n (s.local_ q) b' ≥
+      ((List.finRange n).filter (fun r =>
+        decide (r ∉ s.corrupted) && decide ((s.local_ r).echoed = some b'))).length := by
+  simp only [BCA_LTS.countEchoRecv]
+  apply filter_length_mono; intro r hr
+  simp only [Bool.and_eq_true, decide_eq_true_eq] at hr
+  obtain ⟨hcorr, hechoed⟩ := hr
+  obtain ⟨v, hv, hrecv⟩ := fair_deadlock_echoRecv_from_echoed T n f s hn hreach hfd hsupp hcorr hq
+  rw [hechoed] at hv; exact Option.some.inj hv ▸ hrecv
+
 /-! ## Reachable fair-deadlocks are terminated
 
     The original `bca_no_fair_deadlock_reachable` was false at
