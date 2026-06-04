@@ -333,6 +333,33 @@ theorem fair_deadlock_echo_sent
   obtain ⟨s', hstep⟩ := henabled
   exact hfd (.send src dst .echo (some b)) s' hstep ⟨hsrc, hdst⟩
 
+/-- At a fair-deadlock, a correct proc with approved(b) has echoed ≠ none.
+    Proof: if echoed = none and approved(b), then echo(some b) send to any
+    correct dst is enabled (fair), contradicting fair deadlock. -/
+theorem fair_deadlock_echoed_ne_none
+    (s : BCA_LTS.State T n)
+    (hfd : FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s)
+    {p : Fin n} (hp : p ∉ s.corrupted)
+    {b : T} (happroved : (s.local_ p).approved b = true)
+    [Inhabited (Fin n)] (hn : 0 < n) :
+    (s.local_ p).echoed ≠ none := by
+  intro hechoed
+  -- With echoed = none and approved(b), echo send is enabled
+  -- Pick any correct destination (exists since n > 0 and at most f < n corrupt)
+  -- Actually, we just need ANY dst (even p itself)
+  have hcompat : (s.local_ p).echoed = none ∨ (s.local_ p).echoed = some b :=
+    Or.inl hechoed
+  -- echo send to p itself is enabled and fair
+  have hsent_false : (s.local_ p).sent p .echo (some b) = false := by
+    by_contra hsent
+    simp only [Bool.not_eq_false] at hsent
+    -- If already sent, the echoed field would have been set (for correct procs)
+    -- But echoed = none, contradiction
+    sorry -- needs reachable invariant: sent echo → echoed ≠ none
+  have henabled := BCA_LTS.send_echo_enabled (f := f) hp hsent_false happroved hcompat
+  obtain ⟨s', hstep⟩ := henabled
+  exact hfd (.send p p .echo (some b)) s' hstep ⟨hp, hp⟩
+
 /-- At a reachable fair-deadlock, a correct proc with enough echo quorum
     and consistent voting has sent vote(some b) to every correct proc. -/
 theorem fair_deadlock_vote_sent
