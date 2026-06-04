@@ -1719,7 +1719,41 @@ theorem buffer_init_broadcastVal_inv
     (dst : Fin n) (w : Value)
     (hbuf : s.buffer ⟨sender, dst, .init, w⟩ = true) :
     (s.local_ sender).broadcastVal = some w := by
-  sorry
+  induction hr with
+  | init hinit => simp [hinit.2.1] at hbuf
+  | @step s₀ l s _ hstep ih =>
+    have hcorr₀ : isCorrect n Value s₀ sender := step_correct_prev hstep sender hcorr
+    match l with
+    | .corrupt _ =>
+      obtain ⟨_, _, rfl⟩ := hstep; exact ih hcorr₀ hbuf
+    | .input _ _ =>
+      have hbuf₀ := hbuf; rw [input_buffer hstep] at hbuf₀
+      have h_bv := ih hcorr₀ hbuf₀
+      obtain ⟨_, hbv_none, _⟩ := hstep
+      rw [h_bv] at hbv_none; exact absurd hbv_none (by simp)
+    | .output _ _ =>
+      have hbuf₀ := hbuf; rw [output_buffer hstep] at hbuf₀
+      rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)]
+      exact ih hcorr₀ hbuf₀
+    | .send src' dst' t' mv' =>
+      rw [send_broadcastVal hstep sender]
+      obtain ⟨hpre, rfl⟩ := hstep
+      simp only at hbuf
+      by_cases hm : (⟨sender, dst, .init, w⟩ : Message n Value) = ⟨src', dst', t', mv'⟩
+      · simp only [Message.mk.injEq] at hm
+        obtain ⟨hsrc, _, ht, hv⟩ := hm; subst hsrc; subst hv
+        rcases hpre with hcorrupt | ⟨_, _, hcond⟩
+        · exact absurd hcorrupt hcorr₀
+        · cases ht; exact hcond.2
+      · simp only [hm, ite_false] at hbuf
+        exact ih hcorr₀ hbuf
+    | .recv src' dst' t' mv' =>
+      rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)]
+      -- Buffer: recv removes a message. If ours was removed, buffer = false → contradiction.
+      obtain ⟨_, rfl⟩ := hstep; simp only at hbuf
+      by_cases hm : (⟨sender, dst, .init, w⟩ : Message n Value) = ⟨src', dst', t', mv'⟩
+      · simp [hm] at hbuf
+      · simp only [hm, ite_false] at hbuf; exact ih hcorr₀ hbuf
 
 /-- **SendRecv value invariant**: with correct sender and broadcastVal = some v,
     sendRecv = some w implies w = v. -/
