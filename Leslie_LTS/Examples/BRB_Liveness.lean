@@ -1198,8 +1198,10 @@ theorem brb_totality (hn : n > 3 * f) :
     ```
     This is exactly the `assumes_fair_wf` antecedent from the framework. -/
 
-/-- **Init delivery**: if broadcastVal = some v, sender correct, dst correct,
-    then eventually sendRecv(dst) = some v (or dst gets corrupted). -/
+/-- **Init delivery**: if broadcastVal = some v and sender always correct,
+    then eventually sendRecv(dst) = some v (or dst gets corrupted).
+
+    Uses fair-WF antecedent to fire send then recv. -/
 theorem concrete_init_delivery
     {e : Execution (BRB_LTS.State n Value) (BRB_LTS.Label n Value)}
     (hv : (BRB_LTS.brb n f Value sender).valid_exec e)
@@ -1212,19 +1214,317 @@ theorem concrete_init_delivery
     (k : Nat)
     (dst : Fin n)
     (hbv : ((e.states k).local_ sender).broadcastVal = some v)
-    (hcorr_s : sender ∉ (e.states k).corrupted)
+    (hcorr_s : ∀ k', k ≤ k' → sender ∉ (e.states k').corrupted)
     (hcorr_d : dst ∉ (e.states k).corrupted) :
     ∃ k', k ≤ k' ∧ (((e.states k').local_ dst).sendRecv = some v ∨
       dst ∈ (e.states k').corrupted) := by
-  -- Proof sketch (by contradiction):
-  -- 1. Assume sendRecv ≠ some v ∧ dst ∉ corrupted forever from k.
-  -- 2. broadcastVal persists, sender stays correct, dst stays correct.
-  -- 3. send(sender, dst, init, v) is always enabled+fair → fires (h_ante)
-  --    → sent(sender, dst, init, v) = true + buffer has message.
-  -- 4. recv(sender, dst, init, v) is always enabled+fair → fires (h_ante)
-  --    → sendRecv(dst) := some v. Contradiction.
-  -- Each step uses persistence lemmas + h_ante + step_sent_mono etc.
-  sorry
+  by_contra h_never
+  push_neg at h_never
+  -- h_never : ∀ k' ≥ k, sendRecv ≠ some v ∧ dst ∉ corrupted
+  -- By sendRecv_value_inv, sendRecv can only be some v, so sendRecv = none forever.
+  have h_sr_none : ∀ k', k ≤ k' → ((e.states k').local_ dst).sendRecv = none := by
+    intro k' hk'
+    have ⟨hne, _⟩ := h_never k' hk'
+    by_contra h_nn
+    obtain ⟨w, hw⟩ := Option.ne_none_iff_exists'.mp h_nn
+    have := BRB_LTS.sendRecv_value_inv (e.states k') (System.valid_exec_reachable hv k')
+      (hcorr_s k' hk') (BRB_LTS.broadcastVal_persist_along hv hbv k' hk') dst w hw
+    exact hne (this ▸ hw)
+  -- Phase 1: sent(sender, dst, init, v) = true eventually.
+  have h_sent : ∃ k₁, k ≤ k₁ ∧
+      ((e.states k₁).local_ sender).sent dst .init v = true := by
+    by_contra h_not
+    push_neg at h_not
+    -- sent ≠ true at all k' ≥ k
+    have hsf : ∀ k', k ≤ k' →
+        ((e.states k').local_ sender).sent dst .init v = false := by
+      intro k' hk'
+      have := h_not k' hk'
+      simpa using this
+    -- send(sender, dst, init, v) always enabled+fair from k
+    have h_inner : ∀ j, (BRB_LTS.brb n f Value sender).enabled
+        (.send sender dst .init v) (e.states (k + j)) ∧
+        brb_fair_labels n Value (e.states (k + j)) (.send sender dst .init v) := by
+      intro j
+      constructor
+      · refine ⟨{ (e.states (k + j)) with
+          buffer := fun m => if m = ⟨sender, dst, .init, v⟩ then true
+            else (e.states (k + j)).buffer m
+          local_ := fun p => if p = sender then
+            { (e.states (k + j)).local_ sender with
+              sent := fun d t w => if d = dst ∧ t = .init ∧ w = v then true
+                else ((e.states (k + j)).local_ sender).sent d t w }
+            else (e.states (k + j)).local_ p }, ?_⟩
+        simp only [BRB_LTS.brb]
+        exact ⟨Or.inr ⟨hcorr_s (k + j) (by omega), hsf (k + j) (by omega),
+          trivial, BRB_LTS.broadcastVal_persist_along hv hbv (k + j) (by omega)⟩, trivial⟩
+      · exact ⟨hcorr_s (k + j) (by omega), (h_never (k + j) (by omega)).2⟩
+    obtain ⟨j, hlbl, hstep⟩ := h_ante _ k h_inner
+    rw [← hlbl] at hstep
+    simp only [BRB_LTS.brb] at hstep
+    obtain ⟨_, h_eq⟩ := hstep
+    have : ((e.states (k + j + 1)).local_ sender).sent dst .init v = true := by
+      rw [h_eq]; simp
+    exact h_not (k + j + 1) (by omega) this
+  obtain ⟨k₁, hk₁, h_sent_true⟩ := h_sent
+  -- Phase 2: buffer(sender,dst,init,v) = true at all k' ≥ k₁ (via init_delivery_inv + sendRecv = none).
+  have h_buf : ∀ k', k₁ ≤ k' →
+      (e.states k').buffer ⟨sender, dst, .init, v⟩ = true := by
+    intro k' hk'
+    have h_sent' := BRB_LTS.sent_persist_along hv h_sent_true k' hk'
+    rcases BRB_LTS.init_delivery_inv (e.states k') (System.valid_exec_reachable hv k')
+      dst v h_sent' with hbuf | hsr
+    · exact hbuf
+    · exact absurd (h_sr_none k' (by omega)) hsr
+  -- recv(sender, dst, init, v) always enabled+fair from k₁
+  have h_recv_inner : ∀ j, (BRB_LTS.brb n f Value sender).enabled
+      (.recv sender dst .init v) (e.states (k₁ + j)) ∧
+      brb_fair_labels n Value (e.states (k₁ + j)) (.recv sender dst .init v) := by
+    intro j
+    constructor
+    · exact ⟨_, h_buf (k₁ + j) (by omega), rfl⟩
+    · exact ⟨hcorr_s (k₁ + j) (by omega), (h_never (k₁ + j) (by omega)).2⟩
+  obtain ⟨j, hlbl, hstep⟩ := h_ante _ k₁ h_recv_inner
+  rw [← hlbl] at hstep
+  simp only [BRB_LTS.brb] at hstep
+  obtain ⟨_, h_eq⟩ := hstep
+  -- At k₁+j+1: sendRecv was none → recv sets it to some v → contradiction.
+  have h_sr := h_sr_none (k₁ + j) (by omega)
+  have : ((e.states (k₁ + j + 1)).local_ dst).sendRecv = some v := by
+    rw [h_eq]; simp [h_sr]
+  exact (h_never (k₁ + j + 1) (by omega)).1 this
+
+/-- **Echo delivery**: if src has sendRecv = some v (echo condition met),
+    src stays correct, then eventually echoRecv(dst, src, v) = true or dst corrupted. -/
+theorem concrete_echo_delivery
+    {e : Execution (BRB_LTS.State n Value) (BRB_LTS.Label n Value)}
+    (hv : (BRB_LTS.brb n f Value sender).valid_exec e)
+    (h_ante : ∀ (l : BRB_LTS.Label n Value) (k : Nat),
+        (∀ j, (BRB_LTS.brb n f Value sender).enabled l (e.states (k + j)) ∧
+          brb_fair_labels n Value (e.states (k + j)) l) →
+        ∃ j, l = e.labels (k + j) ∧
+          (BRB_LTS.brb n f Value sender).step
+            (e.states (k + j)) (e.labels (k + j)) (e.states (k + j + 1)))
+    (k : Nat)
+    (src dst : Fin n)
+    (hsr : ((e.states k).local_ src).sendRecv = some v)
+    (hcorr_sender : ∀ k', k ≤ k' → sender ∉ (e.states k').corrupted)
+    (hbv : ((e.states k).local_ sender).broadcastVal = some v)
+    (hcorr_src : ∀ k', k ≤ k' → src ∉ (e.states k').corrupted)
+    (hcorr_dst : dst ∉ (e.states k).corrupted) :
+    ∃ k', k ≤ k' ∧ (((e.states k').local_ dst).echoRecv src v = true ∨
+      dst ∈ (e.states k').corrupted) := by
+  by_contra h_never
+  push_neg at h_never
+  have h_er_false : ∀ k', k ≤ k' →
+      ((e.states k').local_ dst).echoRecv src v = false := by
+    intro k' hk'; simpa using (h_never k' hk').1
+  -- Phase 1: sent(src, dst, echo, v) = true eventually.
+  have h_sent : ∃ k₁, k ≤ k₁ ∧
+      ((e.states k₁).local_ src).sent dst .echo v = true := by
+    by_contra h_not
+    push_neg at h_not
+    have hsf : ∀ k', k ≤ k' →
+        ((e.states k').local_ src).sent dst .echo v = false := by
+      intro k' hk'; simpa using h_not k' hk'
+    have h_inner : ∀ j, (BRB_LTS.brb n f Value sender).enabled
+        (.send src dst .echo v) (e.states (k + j)) ∧
+        brb_fair_labels n Value (e.states (k + j)) (.send src dst .echo v) := by
+      intro j
+      constructor
+      · -- enabled: echo condition met via sendRecv = some v
+        have hsr' := BRB_LTS.sendRecv_persist_along hv hsr (k + j) (by omega)
+        -- echoed: either some v (first disjunct) or none (second disjunct with sendRecv)
+        have h_echo_cond : ((e.states (k + j)).local_ src).echoed = some v ∨
+            (((e.states (k + j)).local_ src).echoed = none ∧
+             ((e.states (k + j)).local_ src).sendRecv = some v) := by
+          rcases h_echoed : ((e.states (k + j)).local_ src).echoed with _ | w
+          · exact Or.inr ⟨rfl, hsr'⟩
+          · have hval := BRB_LTS.echoed_value_inv (e.states (k + j))
+              (System.valid_exec_reachable hv (k + j))
+              (hcorr_sender (k + j) (by omega))
+              (BRB_LTS.broadcastVal_persist_along hv hbv (k + j) (by omega))
+              src (hcorr_src (k + j) (by omega)) w h_echoed
+            exact Or.inl (congrArg some hval)
+        refine ⟨{ (e.states (k + j)) with
+          buffer := fun m => if m = ⟨src, dst, .echo, v⟩ then true
+            else (e.states (k + j)).buffer m
+          local_ := fun p => if p = src then
+            { (e.states (k + j)).local_ src with
+              sent := fun d t w => if d = dst ∧ t = .echo ∧ w = v then true
+                else ((e.states (k + j)).local_ src).sent d t w
+              echoed := if src ∉ (e.states (k + j)).corrupted then some v
+                        else ((e.states (k + j)).local_ src).echoed }
+            else (e.states (k + j)).local_ p }, ?_⟩
+        simp only [BRB_LTS.brb]
+        exact ⟨Or.inr ⟨hcorr_src (k + j) (by omega), hsf (k + j) (by omega),
+          h_echo_cond⟩, trivial⟩
+      · exact ⟨hcorr_src (k + j) (by omega), (h_never (k + j) (by omega)).2⟩
+    obtain ⟨j, hlbl, hstep⟩ := h_ante _ k h_inner
+    rw [← hlbl] at hstep; simp only [BRB_LTS.brb] at hstep
+    obtain ⟨_, h_eq⟩ := hstep
+    have : ((e.states (k + j + 1)).local_ src).sent dst .echo v = true := by
+      rw [h_eq]; simp
+    exact h_not (k + j + 1) (by omega) this
+  obtain ⟨k₁, hk₁, h_sent_true⟩ := h_sent
+  -- Phase 2: buffer stays true → recv fires.
+  have h_buf : ∀ k', k₁ ≤ k' →
+      (e.states k').buffer ⟨src, dst, .echo, v⟩ = true := by
+    intro k' hk'
+    have h_sent' := BRB_LTS.sent_persist_along hv h_sent_true k' hk'
+    rcases BRB_LTS.echo_delivery_inv (e.states k') (System.valid_exec_reachable hv k')
+      src dst v h_sent' with hbuf | hrecv
+    · exact hbuf
+    · exact absurd hrecv (by simp [h_er_false k' (by omega)])
+  have h_recv_inner : ∀ j, (BRB_LTS.brb n f Value sender).enabled
+      (.recv src dst .echo v) (e.states (k₁ + j)) ∧
+      brb_fair_labels n Value (e.states (k₁ + j)) (.recv src dst .echo v) := by
+    intro j
+    constructor
+    · exact ⟨_, h_buf (k₁ + j) (by omega), rfl⟩
+    · exact ⟨hcorr_src (k₁ + j) (by omega), (h_never (k₁ + j) (by omega)).2⟩
+  obtain ⟨j, hlbl, hstep⟩ := h_ante _ k₁ h_recv_inner
+  rw [← hlbl] at hstep; simp only [BRB_LTS.brb] at hstep
+  obtain ⟨_, h_eq⟩ := hstep
+  have h_false := h_er_false (k₁ + j) (by omega)
+  have : ((e.states (k₁ + j + 1)).local_ dst).echoRecv src v = true := by
+    rw [h_eq]; simp [h_false]
+  exact (h_never (k₁ + j + 1) (by omega)).1 (by simpa using this)
+
+/-- **Vote delivery**: if src has the vote condition (countEchoRecv ≥ echoThreshold),
+    src stays correct, then eventually voteRecv(dst, src, v) = true or dst corrupted. -/
+theorem concrete_vote_delivery
+    {e : Execution (BRB_LTS.State n Value) (BRB_LTS.Label n Value)}
+    (hv : (BRB_LTS.brb n f Value sender).valid_exec e)
+    (h_ante : ∀ (l : BRB_LTS.Label n Value) (k : Nat),
+        (∀ j, (BRB_LTS.brb n f Value sender).enabled l (e.states (k + j)) ∧
+          brb_fair_labels n Value (e.states (k + j)) l) →
+        ∃ j, l = e.labels (k + j) ∧
+          (BRB_LTS.brb n f Value sender).step
+            (e.states (k + j)) (e.labels (k + j)) (e.states (k + j + 1)))
+    (k : Nat)
+    (src dst : Fin n)
+    (hecho : BRB_LTS.countEchoRecv n Value ((e.states k).local_ src) v ≥
+             BRB_LTS.echoThreshold n f)
+    (hcorr_src : ∀ k', k ≤ k' → src ∉ (e.states k').corrupted)
+    (hcorr_dst : dst ∉ (e.states k).corrupted) :
+    ∃ k', k ≤ k' ∧ (((e.states k').local_ dst).voteRecv src v = true ∨
+      dst ∈ (e.states k').corrupted) := by
+  by_contra h_never
+  push_neg at h_never
+  have h_vr_false : ∀ k', k ≤ k' →
+      ((e.states k').local_ dst).voteRecv src v = false := by
+    intro k' hk'; simpa using (h_never k' hk').1
+  -- Phase 1: sent(src, dst, vote, v) = true eventually.
+  have h_sent : ∃ k₁, k ≤ k₁ ∧
+      ((e.states k₁).local_ src).sent dst .vote v = true := by
+    by_contra h_not
+    push_neg at h_not
+    have hsf : ∀ k', k ≤ k' →
+        ((e.states k').local_ src).sent dst .vote v = false := by
+      intro k' hk'; simpa using h_not k' hk'
+    have h_inner : ∀ j, (BRB_LTS.brb n f Value sender).enabled
+        (.send src dst .vote v) (e.states (k + j)) ∧
+        brb_fair_labels n Value (e.states (k + j)) (.send src dst .vote v) := by
+      intro j
+      constructor
+      · -- enabled: vote condition met via countEchoRecv ≥ echoThreshold (monotone)
+        have h_echo' : BRB_LTS.countEchoRecv n Value
+            ((e.states (k + j)).local_ src) v ≥ BRB_LTS.echoThreshold n f := by
+          exact Nat.le_trans hecho (by
+            induction j with
+            | zero => exact Nat.le_refl _
+            | succ j ih =>
+              exact Nat.le_trans ih (BRB_LTS.step_countEchoRecv_mono (hv.2 (k + j)) src v))
+        refine ⟨{ (e.states (k + j)) with
+          buffer := fun m => if m = ⟨src, dst, .vote, v⟩ then true
+            else (e.states (k + j)).buffer m
+          local_ := fun p => if p = src then
+            { (e.states (k + j)).local_ src with
+              sent := fun d t w => if d = dst ∧ t = .vote ∧ w = v then true
+                else ((e.states (k + j)).local_ src).sent d t w
+              voted := if src ∉ (e.states (k + j)).corrupted
+                then fun w => if w = v then true
+                  else ((e.states (k + j)).local_ src).voted w
+                else ((e.states (k + j)).local_ src).voted }
+            else (e.states (k + j)).local_ p }, ?_⟩
+        simp only [BRB_LTS.brb]
+        exact ⟨Or.inr ⟨hcorr_src (k + j) (by omega), hsf (k + j) (by omega),
+          Or.inr (Or.inl h_echo')⟩, trivial⟩
+      · exact ⟨hcorr_src (k + j) (by omega), (h_never (k + j) (by omega)).2⟩
+    obtain ⟨j, hlbl, hstep⟩ := h_ante _ k h_inner
+    rw [← hlbl] at hstep; simp only [BRB_LTS.brb] at hstep
+    obtain ⟨_, h_eq⟩ := hstep
+    have : ((e.states (k + j + 1)).local_ src).sent dst .vote v = true := by
+      rw [h_eq]; simp
+    exact h_not (k + j + 1) (by omega) this
+  obtain ⟨k₁, hk₁, h_sent_true⟩ := h_sent
+  -- Phase 2: buffer stays true → recv fires.
+  have h_buf : ∀ k', k₁ ≤ k' →
+      (e.states k').buffer ⟨src, dst, .vote, v⟩ = true := by
+    intro k' hk'
+    have h_sent' := BRB_LTS.sent_persist_along hv h_sent_true k' hk'
+    rcases BRB_LTS.vote_delivery_inv (e.states k') (System.valid_exec_reachable hv k')
+      src dst v h_sent' with hbuf | hrecv
+    · exact hbuf
+    · exact absurd hrecv (by simp [h_vr_false k' (by omega)])
+  have h_recv_inner : ∀ j, (BRB_LTS.brb n f Value sender).enabled
+      (.recv src dst .vote v) (e.states (k₁ + j)) ∧
+      brb_fair_labels n Value (e.states (k₁ + j)) (.recv src dst .vote v) := by
+    intro j
+    constructor
+    · exact ⟨_, h_buf (k₁ + j) (by omega), rfl⟩
+    · exact ⟨hcorr_src (k₁ + j) (by omega), (h_never (k₁ + j) (by omega)).2⟩
+  obtain ⟨j, hlbl, hstep⟩ := h_ante _ k₁ h_recv_inner
+  rw [← hlbl] at hstep; simp only [BRB_LTS.brb] at hstep
+  obtain ⟨_, h_eq⟩ := hstep
+  have h_false := h_vr_false (k₁ + j) (by omega)
+  have : ((e.states (k₁ + j + 1)).local_ dst).voteRecv src v = true := by
+    rw [h_eq]; simp [h_false]
+  exact (h_never (k₁ + j + 1) (by omega)).1 (by simpa using this)
+
+/-- **Output delivery**: if p has countVoteRecv ≥ returnThreshold and returned = none,
+    p correct, then eventually returned(p) ≠ none or p corrupted. -/
+theorem concrete_output_delivery
+    {e : Execution (BRB_LTS.State n Value) (BRB_LTS.Label n Value)}
+    (hv : (BRB_LTS.brb n f Value sender).valid_exec e)
+    (h_ante : ∀ (l : BRB_LTS.Label n Value) (k : Nat),
+        (∀ j, (BRB_LTS.brb n f Value sender).enabled l (e.states (k + j)) ∧
+          brb_fair_labels n Value (e.states (k + j)) l) →
+        ∃ j, l = e.labels (k + j) ∧
+          (BRB_LTS.brb n f Value sender).step
+            (e.states (k + j)) (e.labels (k + j)) (e.states (k + j + 1)))
+    (k : Nat) (p : Fin n)
+    (hvote : BRB_LTS.countVoteRecv n Value ((e.states k).local_ p) v ≥
+             BRB_LTS.returnThreshold n f)
+    (hcorr_p : ∀ k', k ≤ k' → p ∉ (e.states k').corrupted) :
+    ∃ k', k ≤ k' ∧ ((e.states k').local_ p).returned ≠ none := by
+  by_contra h_never
+  push_neg at h_never
+  -- h_never : ∀ k', k ≤ k' → returned = none
+  -- output(p, v) is always enabled+fair from k.
+  have h_inner : ∀ j, (BRB_LTS.brb n f Value sender).enabled
+      (.output p v) (e.states (k + j)) ∧
+      brb_fair_labels n Value (e.states (k + j)) (.output p v) := by
+    intro j
+    constructor
+    · -- enabled: p correct, returned = none, countVoteRecv ≥ returnThreshold (monotone)
+      have h_vote' : BRB_LTS.countVoteRecv n Value
+          ((e.states (k + j)).local_ p) v ≥ BRB_LTS.returnThreshold n f :=
+        Nat.le_trans hvote (BRB_LTS.countVoteRecv_mono_along hv p v k (k + j) (by omega))
+      refine ⟨{ (e.states (k + j)) with
+        local_ := fun q => if q = p then
+          { (e.states (k + j)).local_ p with returned := some v }
+          else (e.states (k + j)).local_ q }, ?_⟩
+      simp only [BRB_LTS.brb]
+      exact ⟨hcorr_p (k + j) (by omega), h_never (k + j) (by omega), h_vote', trivial⟩
+    · exact hcorr_p (k + j) (by omega)
+  obtain ⟨j, hlbl, hstep⟩ := h_ante _ k h_inner
+  rw [← hlbl] at hstep; simp only [BRB_LTS.brb] at hstep
+  obtain ⟨_, _, _, h_eq⟩ := hstep
+  have : ((e.states (k + j + 1)).local_ p).returned = some v := by
+    rw [h_eq]; simp
+  exact absurd (h_never (k + j + 1) (by omega)) (by rw [this]; simp)
 
 /-- Variant of `brb_totality` with an explicit sender-correctness assumption.
     This version IS provable (unlike the unrestricted version which is blocked
