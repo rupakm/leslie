@@ -2599,6 +2599,145 @@ theorem sent_init_implies_gate {s : State T n}
         rw [input_sent hstep src dst .init (some b)] at hsent
         exact absurd hsent (by rw [hprev]; simp)
 
+/-! ### Additional invariants for BCA liveness proofs -/
+
+/-- Recv echo preserves initRecv at the destination. -/
+private theorem recv_echo_initRecv {s s' : State T n} {src' dst' mv'}
+    (h : (bca T n f).step s (.recv src' dst' .echo mv') s')
+    (q : Fin n) (b : T) :
+    (s'.local_ dst').initRecv q b = (s.local_ dst').initRecv q b := by
+  obtain ⟨_, rfl⟩ := h; simp only [↓reduceIte]
+  rcases mv' with _ | b'
+  · rfl
+  · by_cases hdup : (s.local_ dst').echoRecv src' b' = false
+    · simp [hdup]
+    · simp only [Bool.not_eq_false] at hdup; simp [hdup]
+
+/-- Recv vote preserves initRecv at the destination. -/
+private theorem recv_vote_initRecv {s s' : State T n} {src' dst' mv'}
+    (h : (bca T n f).step s (.recv src' dst' .vote mv') s')
+    (q : Fin n) (b : T) :
+    (s'.local_ dst').initRecv q b = (s.local_ dst').initRecv q b := by
+  obtain ⟨_, rfl⟩ := h; simp only [↓reduceIte]
+  by_cases hdup : (s.local_ dst').voteRecv src' mv' = false
+  · simp [hdup]
+  · simp only [Bool.not_eq_false] at hdup; simp [hdup]
+
+/-- At a reachable state, if a message is in the buffer, the sender has sent it. -/
+theorem buffer_implies_sent {s : State T n}
+    (hreach : LTS.Reachable (bca T n f) s)
+    {src dst : Fin n} {t : MsgType} {mv : Val T}
+    (hbuf : s.buffer ⟨src, dst, t, mv⟩ = true) :
+    (s.local_ src).sent dst t mv = true := by
+  induction hreach with
+  | init hinit =>
+    obtain ⟨_, hb, _⟩ := hinit
+    exact absurd (hb _ ▸ hbuf) Bool.false_ne_true
+  | step hreach_prev hstep ih =>
+    rename_i s_prev _l _
+    by_cases hprev : s_prev.buffer ⟨src, dst, t, mv⟩ = true
+    · exact step_sent_mono hstep src dst t mv (ih hprev)
+    · simp only [Bool.not_eq_true] at hprev
+      -- The buffer entry was NOT true at s_prev. If it's true at s,
+      -- then the current step must have SET it (send) or we have a contradiction.
+      match _l with
+      | .send src' dst' t' mv' =>
+        by_cases heq : src = src' ∧ dst = dst' ∧ t = t' ∧ mv = mv'
+        · obtain ⟨rfl, rfl, rfl, rfl⟩ := heq
+          rw [send_sent hstep dst t mv]; simp
+        · -- Different message: send doesn't change our buffer entry
+          have hne : ¬ (⟨src, dst, t, mv⟩ : Message T n) = ⟨src', dst', t', mv'⟩ := by
+            intro h; simp only [Message.mk.injEq] at h; exact heq h
+          obtain ⟨_, rfl⟩ := hstep; dsimp only at hbuf
+          rw [if_neg hne] at hbuf; exact absurd hbuf (by rw [hprev]; simp)
+      | .recv src' dst' t' mv' =>
+        -- Recv clears one buffer entry; either ours (contradiction) or another
+        obtain ⟨_, rfl⟩ := hstep; dsimp only at hbuf
+        by_cases heq : (⟨src, dst, t, mv⟩ : Message T n) = ⟨src', dst', t', mv'⟩
+        · rw [if_pos heq] at hbuf; exact absurd hbuf (by simp)
+        · rw [if_neg heq] at hbuf; exact absurd hbuf (by rw [hprev]; simp)
+      | .corrupt _ => rw [corrupt_buffer hstep] at hbuf; exact absurd hbuf (by rw [hprev]; simp)
+      | .output _ _ => obtain ⟨_, _, _, rfl⟩ := hstep; exact absurd hbuf (by rw [hprev]; simp)
+      | .input _ _ => obtain ⟨_, rfl⟩ := hstep; exact absurd hbuf (by rw [hprev]; simp)
+
+/-- At a reachable state, initRecv(dst, src, b) → sent(src, dst, init, some b).
+    Proof: track when initRecv was first set — only a recv-init step can set it,
+    and that step consumes a buffer entry that implies sent. -/
+theorem initRecv_implies_sent {s : State T n}
+    (hreach : LTS.Reachable (bca T n f) s)
+    {src dst : Fin n} {b : T}
+    (hinitRecv : (s.local_ dst).initRecv src b = true) :
+    (s.local_ src).sent dst .init (some b) = true := by
+  induction hreach with
+  | init hinit =>
+    obtain ⟨hlocal, _, _⟩ := hinit
+    simp [hlocal dst, LocalState.init] at hinitRecv
+  | step hreach_prev hstep ih =>
+    rename_i s_prev _l _
+    by_cases hprev : (s_prev.local_ dst).initRecv src b = true
+    · exact step_sent_mono hstep src dst .init (some b) (ih hprev)
+    · simp only [Bool.not_eq_true] at hprev
+      -- initRecv was newly set → must be recv src dst .init (some b)
+      match _l with
+      | .recv src' dst' .init (some b') =>
+        by_cases hdst : dst = dst'
+        · subst hdst
+          by_cases hsrcb : src = src' ∧ b = b'
+          · obtain ⟨rfl, rfl⟩ := hsrcb
+            exact step_sent_mono hstep src dst .init (some b)
+              (buffer_implies_sent hreach_prev hstep.1)
+          · -- Different source or value: initRecv unchanged for (src, b)
+            obtain ⟨_, rfl⟩ := hstep; simp only [↓reduceIte] at hinitRecv
+            by_cases hdup : (s_prev.local_ dst).initRecv src' b' = false
+            · simp only [hdup, ↓reduceIte] at hinitRecv
+              -- The if condition is (q = src' ∧ w = b')
+              by_cases hcond : src = src' ∧ b = b'
+              · exact absurd hcond hsrcb
+              · simp only [hcond, ↓reduceIte] at hinitRecv
+                exact absurd hinitRecv (by simp [hprev])
+            · simp only [Bool.not_eq_false] at hdup; simp only [hdup, ↓reduceIte] at hinitRecv
+              exact absurd hinitRecv (by simp [hprev])
+        · rw [recv_local_other hstep dst hdst] at hinitRecv
+          exact absurd hinitRecv (by simp [hprev])
+      | .recv _ dst' .init none =>
+        by_cases hdst : dst = dst'
+        · subst hdst; obtain ⟨_, rfl⟩ := hstep; simp only [↓reduceIte] at hinitRecv
+          exact absurd hinitRecv (by simp [hprev])
+        · rw [recv_local_other hstep dst hdst] at hinitRecv
+          exact absurd hinitRecv (by simp [hprev])
+      | .recv _ dst' .echo _ =>
+        by_cases hdst : dst = dst'
+        · subst hdst; rw [recv_echo_initRecv hstep src b] at hinitRecv
+          exact absurd hinitRecv (by simp [hprev])
+        · rw [recv_local_other hstep dst hdst] at hinitRecv
+          exact absurd hinitRecv (by simp [hprev])
+      | .recv _ dst' .vote _ =>
+        by_cases hdst : dst = dst'
+        · subst hdst; rw [recv_vote_initRecv hstep src b] at hinitRecv
+          exact absurd hinitRecv (by simp [hprev])
+        · rw [recv_local_other hstep dst hdst] at hinitRecv
+          exact absurd hinitRecv (by simp [hprev])
+      | .send _ _ _ _ =>
+        rw [send_initRecv hstep dst src b] at hinitRecv
+        exact absurd hinitRecv (by simp [hprev])
+      | .corrupt _ =>
+        rw [corrupt_local hstep] at hinitRecv
+        exact absurd hinitRecv (by simp [hprev])
+      | .output i _ =>
+        obtain ⟨_, _, _, rfl⟩ := hstep
+        by_cases hp : dst = i
+        · subst hp; simp only [↓reduceIte] at hinitRecv
+          exact absurd hinitRecv (by simp [hprev])
+        · simp only [hp, ↓reduceIte] at hinitRecv
+          exact absurd hinitRecv (by simp [hprev])
+      | .input i _ =>
+        obtain ⟨_, rfl⟩ := hstep
+        by_cases hp : dst = i
+        · subst hp; simp only [↓reduceIte] at hinitRecv
+          exact absurd hinitRecv (by simp [hprev])
+        · simp only [hp, ↓reduceIte] at hinitRecv
+          exact absurd hinitRecv (by simp [hprev])
+
 end ReachableInvariants
 
 end BCA_LTS

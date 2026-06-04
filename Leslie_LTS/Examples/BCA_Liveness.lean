@@ -525,17 +525,46 @@ theorem fair_deadlock_approved_spreads
     simp only [BCA_LTS.approveThreshold]; omega
   -- Step 1: q₀ has countInitRecv(q₀, b') ≥ approveThreshold = n-f
   have hcount₀ := BCA_LTS.approved_implies_countInitRecv_ge hreach q₀ b' happroved₀
-  -- Step 2: At least n-2f correct procs have initRecv(q₀, src, b') = true
-  -- (intersect_correct_ge on countInitRecv ≥ n-f gives n-f-f = n-2f correct senders)
-  -- These correct senders sent init(b') to q₀ and hence to all correct procs.
-  -- Step 3: Each of those correct senders has gate open for b' → sent init(b') to ALL correct
-  -- Step 4: countInitRecv(q, b') ≥ n-2f ≥ f+1 = amplifyThreshold
-  -- Step 5: Amplification → countInitRecv(q, b') ≥ n-f → approved(q, b')
-  -- The key missing link: initRecv(q₀, src, b') = true → src sent init(b') to q₀
-  -- → src's gate open → src sent to all correct → initRecv(q, src, b') = true.
-  -- This chain uses: delivery invariant (initRecv ← sent), sent_init_implies_gate,
-  -- and fair_deadlock_init_sent + fair_deadlock_init_delivered.
-  sorry
+  -- Step 2: Every correct src that delivered init(b') to q₀ also delivers to ALL correct.
+  -- Chain: initRecv(q₀, src, b') → sent(src, q₀, init, some b') → gate open → sent to all → delivered.
+  have h_correct_src_delivers_all : ∀ src, src ∉ s.corrupted →
+      (s.local_ q₀).initRecv src b' = true →
+      ∀ r, r ∉ s.corrupted → (s.local_ r).initRecv src b' = true := by
+    intro src hsrc hinitRecv r hr
+    have hsent := BCA_LTS.initRecv_implies_sent hreach hinitRecv
+    have hgate := BCA_LTS.sent_init_implies_gate hreach hsrc b' hsent
+    have hsent_r := fair_deadlock_init_sent T n f s hn hreach hfd hsrc hr hgate
+    exact fair_deadlock_init_delivered T n f s hreach hfd hsrc hr hsent_r
+  -- Step 3: Every correct r has countInitRecv(b') ≥ f+1 = amplifyThreshold.
+  -- Among q₀'s n-f initRecv sources, at least n-2f are correct (budget).
+  -- Those n-2f correct sources also delivered to r. And n-2f ≥ f+1 since n > 3f.
+  have h_amplify : ∀ r, r ∉ s.corrupted →
+      BCA_LTS.countInitRecv T n (s.local_ r) b' ≥ BCA_LTS.amplifyThreshold f := by
+    intro r hr
+    -- Count correct sources from q₀'s initRecv that also delivered to r.
+    have hsub := intersect_correct_ge s.corrupted
+      (fun p => (s.local_ q₀).initRecv p b') hbudget hcount₀
+    have hmono := filter_length_mono
+      (fun p => (s.local_ q₀).initRecv p b' && decide (p ∉ s.corrupted))
+      ((s.local_ r).initRecv · b') (List.finRange n)
+      (fun src hsrc_filt => by
+        simp only [Bool.and_eq_true, decide_eq_true_eq] at hsrc_filt
+        exact h_correct_src_delivers_all src hsrc_filt.2 hsrc_filt.1 r hr)
+    simp only [BCA_LTS.countInitRecv, BCA_LTS.amplifyThreshold, BCA_LTS.approveThreshold] at *
+    omega
+  -- Step 4: With amplifyThreshold met, all correct send init(b') to q → delivered.
+  have h_all_delivered : ∀ src, src ∉ s.corrupted →
+      (s.local_ q).initRecv src b' = true := by
+    intro src hsrc
+    have hgate : (s.local_ src).input = some b' ∨
+        BCA_LTS.countInitRecv T n (s.local_ src) b' ≥ BCA_LTS.amplifyThreshold f :=
+      Or.inr (h_amplify src hsrc)
+    have hsent := fair_deadlock_init_sent T n f s hn hreach hfd hsrc hq hgate
+    exact fair_deadlock_init_delivered T n f s hreach hfd hsrc hq hsent
+  -- Step 5: countInitRecv(q, b') ≥ n-f = approveThreshold → approved(q, b')
+  have hcount_q := count_correct_ge s.corrupted hbudget
+    (fun p => (s.local_ q).initRecv p b') (fun p hp => h_all_delivered p hp)
+  exact BCA_LTS.countInitRecv_ge_implies_approved hreach q b' hpos hcount_q
 
 /-- At a fair deadlock, output(none) contradicts if p is correct, undecided,
     has two approved values, and enough total votes. -/
