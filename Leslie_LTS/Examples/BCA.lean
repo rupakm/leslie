@@ -1112,8 +1112,49 @@ theorem recv_init_countInitRecv_eq {s s' : State T n} {src dst : Fin n} {b : T}
     (hdup : (s.local_ dst).initRecv src b = false) :
     countInitRecv T n (s'.local_ dst) b = countInitRecv T n (s.local_ dst) b + 1 := by
   -- initRecv changes only at (src, b): false → true, all others unchanged
-  -- Lower bound: recv_init_countInitRecv_inc; upper bound: at most 1 new filter entry
-  sorry
+  have hge := recv_init_countInitRecv_inc h hdup
+  -- For the upper bound, use filter_length_strict_mono:
+  --   P = old.initRecv · b, Q = new.initRecv · b
+  --   P → Q (initRecv is monotone: step_initRecv_mono)
+  --   P src = false (hdup), Q src = true
+  -- So filter Q ≥ filter P + 1, which means filter Q = filter P + 1 (combined with ≥)
+  have hsrc_new : (s'.local_ dst).initRecv src b = true := by
+    obtain ⟨_, rfl⟩ := h; simp only [↓reduceIte, hdup, ↓reduceIte, and_self, ↓reduceIte]
+  have hmono_rev : ∀ q : Fin n, (s'.local_ dst).initRecv q b = true →
+      (s.local_ dst).initRecv q b = true ∨ q = src := by
+    intro q hq
+    by_cases hqs : q = src
+    · right; exact hqs
+    · left
+      -- For q ≠ src: new.initRecv q b = old.initRecv q b (recv only updates src)
+      obtain ⟨_, rfl⟩ := h; simp only [↓reduceIte, hdup] at hq
+      simp only [hqs, false_and, ↓reduceIte] at hq
+      exact hq
+  -- Upper bound: each new filter entry was either an old entry or src
+  unfold countInitRecv at hge ⊢
+  have hle : ((List.finRange n).filter (fun q => (s'.local_ dst).initRecv q b)).length ≤
+      ((List.finRange n).filter (fun q => (s.local_ dst).initRecv q b)).length + 1 := by
+    have := filter_split
+      (fun q : Fin n => (s'.local_ dst).initRecv q b)
+      (fun q : Fin n => (s.local_ dst).initRecv q b) (List.finRange n)
+    -- |new filter| = |new ∧ old| + |new ∧ ¬old|
+    -- |new ∧ old| ≤ |old| (by filter_and_le)
+    have hle1 := filter_and_le
+      (fun q : Fin n => (s'.local_ dst).initRecv q b)
+      (fun q : Fin n => (s.local_ dst).initRecv q b) (List.finRange n)
+    -- |new ∧ ¬old| ≤ 1 (only src can be new-but-not-old)
+    have hle2 : ((List.finRange n).filter (fun q =>
+        (s'.local_ dst).initRecv q b && !(s.local_ dst).initRecv q b)).length ≤ 1 := by
+      apply Nat.le_trans (filter_length_mono _ _ _ _)
+      · exact Nat.le_trans (filter_mem_le [src]) (by simp)
+      · intro q hq
+        simp only [Bool.and_eq_true, Bool.not_eq_true'] at hq
+        have := hmono_rev q hq.1
+        rcases this with hold | rfl
+        · simp [hold] at hq
+        · simp
+    omega
+  omega
 
 /-- Recv init that sets approved(b) crossed the approval threshold. -/
 theorem recv_init_approved_threshold {s s' : State T n} {src dst : Fin n} {b : T}
@@ -2322,10 +2363,79 @@ theorem countInitRecv_ge_implies_approved {s : State T n}
     (hpos : approveThreshold n f > 0)
     (hge : countInitRecv T n (s.local_ p) b ≥ approveThreshold n f) :
     (s.local_ p).approved b = true := by
-  -- The approved field is set when countInitRecv + 1 ≥ approveThreshold
-  -- at the recv_init step that crosses the threshold. Once set, it persists.
-  -- Proof uses recv_init_countInitRecv_eq (exact count = prev + 1).
-  sorry
+  induction hreach with
+  | init hinit =>
+    obtain ⟨hlocal, _, _⟩ := hinit
+    simp only [hlocal p, LocalState.init, countInitRecv] at hge
+    simp only [List.filter_false, List.length_nil] at hge; omega
+  | step _ hstep ih =>
+    rename_i s_prev l s' _
+    by_cases hprev_ge : countInitRecv T n (s_prev.local_ p) b ≥ approveThreshold n f
+    · exact step_approved_persist hstep p b (ih hprev_ge)
+    · -- countInitRecv newly crossed the threshold at this step.
+      simp only [not_le] at hprev_ge
+      -- Only recv_init(some b) at p=dst with new receipt can increase countInitRecv(p, b)
+      -- For all other steps, countInitRecv is unchanged or unchanged, contradicting hge
+      match l with
+      | .recv src dst .init (some b') =>
+        by_cases hp : p = dst
+        · subst hp
+          by_cases hbb : b = b'
+          · subst hbb
+            by_cases hdup : (s_prev.local_ p).initRecv src b = false
+            · -- Exact count: post = prev + 1
+              have hexact := recv_init_countInitRecv_eq hstep hdup
+              -- prev + 1 ≥ threshold
+              have hthresh : countInitRecv T n (s_prev.local_ p) b + 1 ≥
+                  approveThreshold n f := by omega
+              -- The step sets approved(b) when old_count + 1 ≥ threshold
+              by_cases happr : (s'.local_ p).approved b = true
+              · exact happr
+              · -- approved = false contradicts threshold being met
+                exfalso
+                have : (s'.local_ p).approved b = true := by
+                  obtain ⟨_, rfl⟩ := hstep
+                  simp only [↓reduceIte, hdup]
+                  exact if_pos ⟨trivial, hthresh⟩
+                rw [this] at happr; simp at happr
+            · -- Duplicate receipt: local state unchanged
+              simp only [Bool.not_eq_false] at hdup
+              have hlocal : (s'.local_ p) = (s_prev.local_ p) := by
+                obtain ⟨_, rfl⟩ := hstep; simp [hdup]
+              rw [hlocal] at hge; omega
+          · -- Different value b': countInitRecv(b) unchanged
+            have heq : countInitRecv T n (s'.local_ p) b =
+                countInitRecv T n (s_prev.local_ p) b := by
+              unfold countInitRecv; congr 1; apply List.filter_congr; intro q _
+              obtain ⟨_, rfl⟩ := hstep; simp only [↓reduceIte]
+              by_cases hdup : (s_prev.local_ p).initRecv src b' = false
+              · simp only [hdup, ↓reduceIte]
+                -- if q = src ∧ b = b' then true else old
+                -- Since b ≠ b', the conjunction is false
+                split_ifs with hcond
+                · exact absurd hcond.2 hbb
+                · rfl
+              · simp [hdup]
+            rw [heq] at hge; omega
+        · -- p ≠ dst: local_ p unchanged
+          have hlocal : (s'.local_ p) = (s_prev.local_ p) := by
+            obtain ⟨_, rfl⟩ := hstep; simp [hp]
+          rw [hlocal] at hge; omega
+      | .recv _ dst .init none =>
+        have hlocal : (s'.local_ p) = (s_prev.local_ p) := by
+          obtain ⟨_, rfl⟩ := hstep; by_cases hp : p = dst <;> simp [hp]
+        rw [hlocal] at hge; omega
+      | .corrupt _ => rw [corrupt_local hstep] at hge; omega
+      | .send .. =>
+        rw [step_countInitRecv_eq hstep p b (by intro _ _ _; simp)] at hge; omega
+      | .recv _ _ .echo _ =>
+        rw [step_countInitRecv_eq hstep p b (by intro _ _ _; simp)] at hge; omega
+      | .recv _ _ .vote _ =>
+        rw [step_countInitRecv_eq hstep p b (by intro _ _ _; simp)] at hge; omega
+      | .output .. =>
+        rw [step_countInitRecv_eq hstep p b (by intro _ _ _; simp)] at hge; omega
+      | .input .. =>
+        rw [step_countInitRecv_eq hstep p b (by intro _ _ _; simp)] at hge; omega
 
 /-- Output(none) is enabled when p is correct, undecided, has two approved values,
     and enough total votes. -/
