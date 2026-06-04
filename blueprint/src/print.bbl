@@ -1,0 +1,47 @@
+\begin{thebibliography}{EMMS26}
+
+\bibitem[ABDY22]{Abraham2022Efficient}
+Ittai Abraham, Naama Ben-David, and Sravya Yandamuri.
+\newblock Efficient and adaptively secure asynchronous binary agreement via binding crusader agreement.
+\newblock In {\em 41st ACM Symposium on Principles of Distributed Computing}, pages 381--391, 2022.
+
+\bibitem[AFW25]{Attiya2025Beyond}
+Hagit Attiya, Itay Flam, and Jennifer~L. Welch.
+\newblock Beyond canonical rounds: Communication abstractions for optimal byzantine resilience.
+\newblock {\em CoRR}, abs/2510.04310, 2025.
+
+\bibitem[AW23]{Attiya2023Multi}
+Hagit Attiya and Jennifer~L. Welch.
+\newblock Multi-valued connected consensus: A new perspective on crusader agreement and adopt-commit.
+\newblock In {\em 27th International Conference on Principles of Distributed Systems (OPODIS)}, 2023.
+
+\bibitem[Bra87]{Bracha1987Asynchronous}
+Gabriel Bracha.
+\newblock Asynchronous byzantine agreement protocols.
+\newblock {\em Information and Computation}, 75(2):130--143, 1987.
+
+\bibitem[DSW22]{Dongol2022Weak}
+Brijesh Dongol, Gerhard Schellhorn, and Heike Wehrheim.
+\newblock {Weak Progressive Forward Simulation Is Necessary and Sufficient for Strong Observational Refinement}.
+\newblock In Bartek Klin, S{\l}awomir Lasota, and Anca Muscholl, editors, {\em 33rd International Conference on Concurrency Theory (CONCUR 2022)}, volume 243 of {\em Leibniz International Proceedings in Informatics (LIPIcs)}, pages 31:1--31:23, Dagstuhl, Germany, 2022. Schloss Dagstuhl -- Leibniz-Zentrum f{\"u}r Informatik.
+
+\bibitem[EMMS26]{Enea2026Verifying}
+Constantin Enea, Rupak Majumdar, Harshit~Jitendra Motwani, and V.~R. Sathiyanarayana.
+\newblock Verifying almost-sure termination for randomized distributed algorithms.
+\newblock {\em Proc. {ACM} Program. Lang.}, 10({POPL}):1412--1441, 2026.
+
+\bibitem[FKT22]{Freitas2022Distributed}
+Luciano Freitas, Petr Kuznetsov, and Andrei Tonkikh.
+\newblock Distributed randomness from approximate agreement, 2022.
+
+\bibitem[SA21]{Stern2021Living}
+Gilad Stern and Ittai Abraham.
+\newblock Living with asynchrony: the gather protocol.
+\newblock \url{https://decentralizedthoughts.github.io/2021-03-26-living-with-asynchrony-the-gather-protocol}, 2021.
+
+\bibitem[SA24]{SterA2024Gather}
+Gilad Stern and Ittai Abraham.
+\newblock Gather with binding and verifiability.
+\newblock \url{https://decentralizedthoughts.github.io/2024-01-09-gather-with-binding-and-verifiability/}, 2024.
+
+\end{thebibliography}

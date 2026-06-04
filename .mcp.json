@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "lean-lsp": {
+      "type": "stdio",
+      "command": "/home/greghem/leslie/.venv/bin/lean-lsp-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}

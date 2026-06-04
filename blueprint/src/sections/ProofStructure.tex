@@ -1,0 +1,168 @@
+\section{Proof Decomposition}
+
+The end goal is the correctness of $\mathsf{ABA.Impl}$.
+We establish it via a simulation by $\mathsf{ABA.Spec}$ and transport the spec's correctness.
+The simulation itself is decomposed recursively along the sub-protocol structure.
+
+For a protocol $P$ with concrete sub-protocols $Q_1,\dots,Q_k$, the step ``$\mathsf{P.Spec}$ simulates $\mathsf{P.Impl}$'' is split into:
+\begin{enumerate}
+    \item (Substitution) $\mathsf{P.Impl}[\mathsf{Q_1.Spec},\dots,\mathsf{Q_k.Spec}]$ is simulated by $\mathsf{P.Impl}$, using the child simulations $\mathsf{Q_i.Spec}$ simulates $\mathsf{Q_i.Impl}$ and compositionality.
+    \item (Core) $\mathsf{P.Spec}$ simulates the hybrid $\mathsf{P.Impl}[\mathsf{Q_1.Spec},\dots,\mathsf{Q_k.Spec}]$.
+    \item (Transitivity) Compose (1) and (2).
+\end{enumerate}
+Leaves of the recursion (no sub-protocol, or only the black-box $\mathsf{AVSS.Spec}$) skip the substitution step.
+
+\subsection{Top-level}
+
+\begin{theorem}\label{thm:ABACorrect}
+    \lean{ABA.Correct}
+    %\leanok
+    \uses{def:ABAConcrete, prot:SpecABA}
+    $\mathsf{ABA.Concrete}$ satisfies Validity, Agreement and Almost-Sure Termination.
+\end{theorem}
+\begin{proof}
+    \uses{thm:ABASim}
+    Transport the corresponding properties of $\mathsf{ABA.Spec}$ along the simulation \ref{thm:ABASim}.
+\end{proof}
+
+\subsection{ABA}
+
+\begin{theorem}\label{thm:ABASim}
+    \lean{ABA.Sim}
+    %\leanok
+    \uses{def:ABAConcrete, prot:SpecABA}
+    $\mathsf{ABA.Spec}$ simulates $\mathsf{ABA.Concrete}$.
+\end{theorem}
+\begin{proof}
+    \uses{lem:ABASubst, lem:ABACore}
+    Transitivity of simulation applied to \ref{lem:ABASubst} and \ref{lem:ABACore}.
+\end{proof}
+
+\begin{lemma}\label{lem:ABASubst}
+    \lean{ABA.SubstSim}
+    %\leanok
+    \uses{def:ABAConcrete, def:ABAHybrid}
+    $\mathsf{ABA.Hybrid}$ is simulated by $\mathsf{ABA.Concrete}$.
+\end{lemma}
+\begin{proof}
+    \uses{thm:GBCASim, thm:WCCSim}
+    Compositionality of simulation applied to \ref{thm:GBCASim} and \ref{thm:WCCSim}.
+\end{proof}
+
+\begin{lemma}\label{lem:ABACore}
+    \lean{ABA.CoreSim}
+    %\leanok
+    \uses{def:ABAHybrid, prot:SpecABA}
+    $\mathsf{ABA.Spec}$ simulates $\mathsf{ABA.Hybrid}$.
+\end{lemma}
+
+\subsection{WCC}
+
+\begin{theorem}\label{thm:WCCSim}
+    \lean{WCC.Sim}
+    %\leanok
+    \uses{def:WCCConcrete, prot:SpecWCC}
+    $\mathsf{WCC.Spec}$ simulates $\mathsf{WCC.Concrete}$.
+\end{theorem}
+\begin{proof}
+    \uses{lem:WCCSubst, lem:WCCCore}
+    Transitivity of simulation applied to \ref{lem:WCCSubst} and \ref{lem:WCCCore}.
+\end{proof}
+
+\begin{lemma}\label{lem:WCCSubst}
+    \lean{WCC.SubstSim}
+    %\leanok
+    \uses{def:WCCConcrete, def:WCCHybrid}
+    $\mathsf{WCC.Hybrid}$ is simulated by $\mathsf{WCC.Concrete}$.
+\end{lemma}
+\begin{proof}
+    \uses{thm:GatherSim, thm:RSDSim}
+    Compositionality of simulation applied to \ref{thm:GatherSim} and \ref{thm:RSDSim}.
+\end{proof}
+
+\begin{lemma}\label{lem:WCCCore}
+    \lean{WCC.CoreSim}
+    %\leanok
+    \uses{def:WCCHybrid, prot:SpecWCC}
+    $\mathsf{WCC.Spec}$ simulates $\mathsf{WCC.Hybrid}$.
+\end{lemma}
+
+\subsection{GBCA}
+
+\begin{theorem}\label{thm:GBCASim}
+    \lean{GBCA.Sim}
+    %\leanok
+    \uses{prot:ImplGBCA, prot:SpecGBCA}
+    $\mathsf{GBCA.Spec}$ simulates $\mathsf{GBCA.Impl}$. No sub-protocol: direct proof.
+\end{theorem}
+
+\subsection{Gather}
+
+\begin{theorem}\label{thm:GatherSim}
+    \lean{Gather.Sim}
+    %\leanok
+    \uses{def:GatherConcrete, prot:SpecGather}
+    $\mathsf{Gather.Spec}$ simulates $\mathsf{Gather.Concrete}$.
+\end{theorem}
+\begin{proof}
+    \uses{lem:GatherSubst, lem:GatherCore}
+    Transitivity of simulation applied to \ref{lem:GatherSubst} and \ref{lem:GatherCore}.
+\end{proof}
+
+\begin{lemma}\label{lem:GatherSubst}
+    \lean{Gather.SubstSim}
+    %\leanok
+    \uses{def:GatherConcrete, def:GatherHybrid}
+    $\mathsf{Gather.Hybrid}$ is simulated by $\mathsf{Gather.Concrete}$.
+\end{lemma}
+\begin{proof}
+    \uses{thm:BRBSim}
+    Compositionality of simulation applied to \ref{thm:BRBSim}.
+\end{proof}
+
+\begin{lemma}\label{lem:GatherCore}
+    \lean{Gather.CoreSim}
+    %\leanok
+    \uses{def:GatherHybrid, prot:SpecGather}
+    $\mathsf{Gather.Spec}$ simulates $\mathsf{Gather.Hybrid}$.
+\end{lemma}
+
+\subsection{RSD}
+
+\begin{theorem}\label{thm:RSDSim}
+    \lean{RSD.Sim}
+    %\leanok
+    \uses{def:RSDConcrete, prot:SpecRSD}
+    $\mathsf{RSD.Spec}$ simulates $\mathsf{RSD.Concrete}$.
+\end{theorem}
+\begin{proof}
+    \uses{lem:RSDSubst, lem:RSDCore}
+    Transitivity of simulation applied to \ref{lem:RSDSubst} and \ref{lem:RSDCore}.
+\end{proof}
+
+\begin{lemma}\label{lem:RSDSubst}
+    \lean{RSD.SubstSim}
+    %\leanok
+    \uses{def:RSDConcrete, def:RSDHybrid}
+    $\mathsf{RSD.Hybrid}$ is simulated by $\mathsf{RSD.Concrete}$. Only BRB is substituted; $\mathsf{AVSS.Spec}$ stays fixed on both sides.
+\end{lemma}
+\begin{proof}
+    \uses{thm:BRBSim}
+    Compositionality of simulation applied to \ref{thm:BRBSim}.
+\end{proof}
+
+\begin{lemma}\label{lem:RSDCore}
+    \lean{RSD.CoreSim}
+    %\leanok
+    \uses{def:RSDHybrid, prot:SpecRSD}
+    $\mathsf{RSD.Spec}$ simulates $\mathsf{RSD.Hybrid}$.
+\end{lemma}
+
+\subsection{BRB}
+
+\begin{theorem}\label{thm:BRBSim}
+    \lean{BRB.Sim}
+    %\leanok
+    \uses{prot:ImplBRB, prot:SpecBRB}
+    $\mathsf{BRB.Spec}$ simulates $\mathsf{BRB.Impl}$. No sub-protocol: direct proof.
+\end{theorem}

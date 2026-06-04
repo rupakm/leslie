@@ -1,3 +1,5 @@
+% !TEX root = print.tex
+
 % In this file you should put the actual content of the blueprint.
 % It will be used both by the web and the print version.
 % It should *not* include the \begin{document}
@@ -5,3 +7,21 @@
 % If you want to split the blueprint content into several files then
 % the current file can be a simple sequence of \input. Otherwise It
 % can start with a \section or \chapter for instance.
+
+\begin{abstract}
+    Our main objective is the verification of an implementation of Asynchronous Byzantine Agreement. 
+    The proof of correctness consist in building a simulation relation between the implementation and an implementation runnning in an idealised setting.
+    The simulation ensures that the correctness of the idealised implementation implies the correctness of the original one.
+    However, this implementation is complex, thus, building the simulation in one go is intractable.
+    Fortunately, the implementation is designed as the interlocking of multiple sub-protocols (GBCA, WCC, RSD, Gather, AVSS, BRB).
+    This architecture allows us to decompose the construction of the overall simulation into smaller steps.
+    Each implementation of sub-protocols will be simulated by an idealised version.
+    Thus, when building the simulation for a protocol using sub-protocols, the sub-implementations will be replaced by their idealised versions; making the construction easier.
+\end{abstract}
+
+\input{sections/Preliminaries.tex}
+\input{sections/Protocols.tex}
+\input{sections/ProofStructure.tex}
+
+\bibliographystyle{alpha}    % or plain, abbrv, alphaurl, etc.
+\bibliography{biblio}

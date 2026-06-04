@@ -1,0 +1,49 @@
+\begin{thebibliography}{ABDY22}
+
+\bibitem[ABDY22]{Abraham2022Efficient}
+Ittai Abraham, Naama Ben-David, and Sravya Yandamuri.
+\newblock Efficient and adaptively secure asynchronous binary agreement via
+  binding crusader agreement.
+\newblock In {\em 41st ACM Symposium on Principles of Distributed Computing},
+  pages 381--391, 2022.
+
+\bibitem[AFW25]{Attiya2025Beyond}
+Hagit Attiya, Itay Flam, and Jennifer~L. Welch.
+\newblock Beyond canonical rounds: Communication abstractions for optimal
+  byzantine resilience.
+\newblock {\em CoRR}, abs/2510.04310, 2025.
+
+\bibitem[AW23]{Attiya2023Multi}
+Hagit Attiya and Jennifer~L. Welch.
+\newblock Multi-valued connected consensus: A new perspective on crusader
+  agreement and adopt-commit.
+\newblock In {\em 27th International Conference on Principles of Distributed
+  Systems (OPODIS)}, 2023.
+
+\bibitem[Bra87]{Bracha1987Asynchronous}
+Gabriel Bracha.
+\newblock Asynchronous byzantine agreement protocols.
+\newblock {\em Information and Computation}, 75(2):130--143, 1987.
+
+\bibitem[CR93]{Canetti1993Fast}
+Ran Canetti and Tal Rabin.
+\newblock Fast asynchronous byzantine agreement with optimal resilience.
+\newblock In {\em Proceedings of the Twenty-Fifth Annual ACM Symposium on
+  Theory of Computing}, STOC '93, page 42–51, New York, NY, USA, 1993.
+  Association for Computing Machinery.
+
+\bibitem[SA21]{Stern2021Living}
+Gilad Stern and Ittai Abraham.
+\newblock Living with asynchrony: the gather protocol.
+\newblock
+  \url{https://decentralizedthoughts.github.io/2021-03-26-living-with-asynchrony-the-gather-protocol},
+  2021.
+
+\bibitem[SA24]{SterA2024Gather}
+Gilad Stern and Ittai Abraham.
+\newblock Gather with binding and verifiability.
+\newblock
+  \url{https://decentralizedthoughts.github.io/2024-01-09-gather-with-binding-and-verifiability/},
+  2024.
+
+\end{thebibliography}

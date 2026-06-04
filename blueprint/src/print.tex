@@ -10,16 +10,24 @@
 % It is otherwise a very minimal preamble (you should probably at least
 % add cleveref and tikz-cd).
 
-\documentclass[a4paper]{repot}
+\documentclass[a4paper]{report}
+\renewcommand{\thesection}{\arabic{section}}
+\renewcommand{\thesubsection}{\thesection.\arabic{subsection}}
 
 \usepackage{geometry}
 
 \usepackage{expl3}
 
 \usepackage{amssymb, amsthm, mathtools}
+\usepackage{thm-restate}    % Restating theorems
 \usepackage[unicode,colorlinks=true,linkcolor=blue,urlcolor=magenta, citecolor=blue]{hyperref}
 
+\usepackage{makecell}
+
 \usepackage[warnings-off={mathtools-colon,mathtools-overbracket}]{unicode-math}
+
+\usepackage{algorithm}        % the float wrapper, gives "Algorithm N: ..." captions
+\usepackage{algpseudocode}    % the algorithmic environment + \State, \If, \For, etc.
 
 \input{macros/common}
 \input{macros/print}
@@ -29,5 +37,5 @@
 
 \begin{document}
 \maketitle
-\input{content}
+\input{content.tex}
 \end{document}

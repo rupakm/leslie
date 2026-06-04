@@ -1,0 +1,1766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+  MathJax = { 
+    tex: {
+		    inlineMath: [['$','$'], ['\\(','\\)']]
+	} }
+</script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js">
+</script>
+<meta name="generator" content="plasTeX" />
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>List of the Protocols</title>
+<link rel="next" href="sect0003.html" title="Proof Decomposition" />
+<link rel="prev" href="sect0001.html" title="Preliminaries" />
+<link rel="up" href="index.html" title="Verifying ABA with Leslie" />
+<link rel="stylesheet" href="styles/theme-white.css" />
+<link rel="stylesheet" href="styles/amsthm.css" />
+<link rel="stylesheet" href="styles/showmore.css" />
+<link rel="stylesheet" href="styles/blueprint.css" />
+<link rel="stylesheet" href="styles/extra_styles.css" />
+</head>
+
+<body>
+<header>
+<svg  id="toc-toggle" class="icon icon-list-numbered "><use xlink:href="symbol-defs.svg#icon-list-numbered"></use></svg>
+<h1 id="doc_title"><a href="index.html">Verifying ABA with Leslie</a></h1>
+</header>
+
+<div class="wrapper">
+<nav class="toc">
+<ul class="sub-toc-0">
+<li class="">
+  <a href="sect0001.html"><span class="toc_ref">0.1</span> <span class="toc_entry">Preliminaries</span></a>
+  <span class="expand-toc">▶</span>
+  <ul class="sub-toc-1">
+     <li class="">
+  <a href="sect0001.html#a0000000006"><span class="toc_ref"></span> <span class="toc_entry">Probabilistic Labelled Transition System</span></a>
+ </li>
+<li class="">
+  <a href="sect0001.html#a0000000007"><span class="toc_ref"></span> <span class="toc_entry">Probabilistic forward Simulation</span></a>
+ </li>
+<li class="">
+  <a href="sect0001.html#a0000000008"><span class="toc_ref"></span> <span class="toc_entry">Equivalence in the Non-Probabilistic Setting</span></a>
+ </li>
+
+  </ul>
+ </li>
+<li class=" active current">
+  <a href="sect0002.html"><span class="toc_ref">0.2</span> <span class="toc_entry">List of the Protocols</span></a>
+  <span class="expand-toc">▼</span>
+  <ul class="sub-toc-1 active">
+     <li class="">
+  <a href="sect0002.html#a0000000009"><span class="toc_ref">0.2.1</span> <span class="toc_entry">Main Protocol: Asynchronous Byzantine Agreement (ABA)</span></a>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000010"><span class="toc_ref">0.2.2</span> <span class="toc_entry">ABA Sub-Protocols</span></a>
+  <span class="expand-toc">▶</span>
+  <ul class="sub-toc-2">
+     <li class="">
+  <a href="sect0002.html#a0000000011"><span class="toc_ref"></span> <span class="toc_entry">Graded Binding Crusader Agreement (GBCA)</span></a>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000012"><span class="toc_ref"></span> <span class="toc_entry">Weak Common Coin (WCC)</span></a>
+ </li>
+
+  </ul>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000013"><span class="toc_ref">0.2.3</span> <span class="toc_entry">WCC Sub-Protocols</span></a>
+  <span class="expand-toc">▶</span>
+  <ul class="sub-toc-2">
+     <li class="">
+  <a href="sect0002.html#a0000000014"><span class="toc_ref"></span> <span class="toc_entry">Gather</span></a>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000015"><span class="toc_ref"></span> <span class="toc_entry">Random Secret Draw (RSD)</span></a>
+ </li>
+
+  </ul>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000016"><span class="toc_ref">0.2.4</span> <span class="toc_entry">Basic Primitives</span></a>
+  <span class="expand-toc">▶</span>
+  <ul class="sub-toc-2">
+     <li class="">
+  <a href="sect0002.html#a0000000017"><span class="toc_ref"></span> <span class="toc_entry">Byzantine Reliable Broadcast (BRB)</span></a>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000018"><span class="toc_ref"></span> <span class="toc_entry">Asynchronous Verifiable Secret Sharing (AVSS)</span></a>
+ </li>
+
+  </ul>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000019"><span class="toc_ref">0.2.5</span> <span class="toc_entry">Summary of Properties</span></a>
+ </li>
+
+  </ul>
+ </li>
+<li class="">
+  <a href="sect0003.html"><span class="toc_ref">0.3</span> <span class="toc_entry">Proof Decomposition</span></a>
+  <span class="expand-toc">▶</span>
+  <ul class="sub-toc-1">
+     <li class="">
+  <a href="sect0003.html#a0000000020"><span class="toc_ref">0.3.1</span> <span class="toc_entry">Top-level</span></a>
+ </li>
+<li class="">
+  <a href="sect0003.html#a0000000021"><span class="toc_ref">0.3.2</span> <span class="toc_entry">ABA</span></a>
+ </li>
+<li class="">
+  <a href="sect0003.html#a0000000022"><span class="toc_ref">0.3.3</span> <span class="toc_entry">WCC</span></a>
+ </li>
+<li class="">
+  <a href="sect0003.html#a0000000023"><span class="toc_ref">0.3.4</span> <span class="toc_entry">GBCA</span></a>
+ </li>
+<li class="">
+  <a href="sect0003.html#a0000000024"><span class="toc_ref">0.3.5</span> <span class="toc_entry">Gather</span></a>
+ </li>
+<li class="">
+  <a href="sect0003.html#a0000000025"><span class="toc_ref">0.3.6</span> <span class="toc_entry">RSD</span></a>
+ </li>
+<li class="">
+  <a href="sect0003.html#a0000000026"><span class="toc_ref">0.3.7</span> <span class="toc_entry">BRB</span></a>
+ </li>
+
+  </ul>
+ </li>
+<li class="">
+  <a href="sect0004.html"><span class="toc_ref">1</span> <span class="toc_entry">Bibliography</span></a>
+ </li>
+<li ><a href="dep_graph_document.html">Dependency graph</a></li>
+</ul>
+</nav>
+
+<div class="content">
+<div class="content-wrapper">
+
+
+<div class="main-text">
+<h1 id="a0000000003">0.2 List of the Protocols</h1>
+<h2 id="a0000000009">0.2.1 Main Protocol: Asynchronous Byzantine Agreement (ABA)</h2>
+<p> (taken from <span class="cite">
+	[
+	<a href="sect0004.html#Abraham2022Efficient" >ABDY22</a>
+	]
+</span>) Processes start with a bit \(\{ 0,1\} \) and may return a bit. a program implements ABA if it satisfies three properties: Validity, Agreement, Almost-Sure Termination. </p>
+<ul class="itemize">
+  <li><p>Validity: if a correct process returns \(b\) then a correct process had \(1-b\) as input. </p>
+</li>
+  <li><p>Agreement: if two correct processes return, then their output are equal. </p>
+</li>
+  <li><p>Termination: if \(n-f\) correct processes take part to the protocol then, with probability 1, all correct processes will eventually return. </p>
+</li>
+</ul>
+<div class="protocol_thmwrapper theorem-style-definition" id="prot:SpecABA">
+  <div class="protocol_thmheading">
+    <span class="protocol_thmcaption">
+    Protocol
+    </span>
+    <span class="protocol_thmlabel">1</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#prot:SpecABA">#</a>
+    
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/ABA.Spec" class="lean_decl">ABA.Spec</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="protocol_thmcontent">
+  <p>   <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>Ideal Implementation of ABA  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) <b class="bfseries">Code for every process:</b> send \(\langle input, b\rangle \) to the third party <b class="bfseries">upon</b> receiving \(\langle output, b\rangle \) from third party &#8195;return \(b\) <b class="bfseries">Code for third party:</b> \(bind,call \gets \bot ,(\bot )^{Id}\) <b class="bfseries">upon</b> receiving \(\langle input, b\rangle \) from a process \(id\) and \(bind = \bot \): &#8195;\(call(id) \gets b\) <b class="bfseries">upon</b> \(|F| + \{ id \in Id \setminus F \mid call(id) = b\}  \ge n-f\): &#8195;\(bind,call \gets b,(\bot )^{Id}\) &#8195;<b class="bfseries">if</b> \(\{ id \in Id \setminus F \mid call(id) = 1-b\}  = 0\): &#8195;&#8195;send \(\langle output, b\rangle \) to all <b class="bfseries">upon</b> \(call(id) = \bot \) and \(bind \ne \bot \): &#8195;\(call \gets bind \textbf{ or } \mu \) \(\mu \) can be any non-Dirac probability distriution over \(\{ 0,1\} \)   </p>
+
+  </div>
+</div>
+<div class="protocol_thmwrapper theorem-style-definition" id="prot:ImplABA">
+  <div class="protocol_thmheading">
+    <span class="protocol_thmcaption">
+    Protocol
+    </span>
+    <span class="protocol_thmlabel">2</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#prot:ImplABA">#</a>
+    
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/ABA.Impl" class="lean_decl">ABA.Impl</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="protocol_thmcontent">
+  <p>   <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>Implementation of ABA taken from <span class="cite">
+	[
+	<a href="sect0004.html#Abraham2022Efficient" >ABDY22</a>
+	]
+</span>  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) \(r \gets 1\) \(decided \gets \bot \) \((b, g) \gets \textsc{GBCA}_r(b)\) \(b \in \{ 0,1,\bot \} \), \(g \in \{ A, B, C\} \) \(c \gets \textsc{WCC}_r\) common coin for round \(r\) \(b = \bot \) \(b \gets c\) \(g = A\) \(decided \gets b\)  keep participating to help others \(r \gets r + 1\) TODO: verify termination rule   </p>
+
+  </div>
+</div>
+<div class="definition_thmwrapper theorem-style-definition" id="def:ABAConcrete">
+  <div class="definition_thmheading">
+    <span class="definition_thmcaption">
+    Definition
+    </span>
+    <span class="definition_thmlabel">1</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#def:ABAConcrete">#</a>
+    
+    
+    <button class="modal"><svg  class="icon icon-mindmap "><use xlink:href="symbol-defs.svg#icon-mindmap"></use></svg>
+</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Uses</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="sect0002.html#prot:ImplABA">Protocol 2</a></li>
+          
+          <li><a href="sect0002.html#prot:ImplGBCA">Protocol 4</a></li>
+          
+          <li><a href="sect0002.html#def:WCCConcrete">Definition 3</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/ABA.Concrete" class="lean_decl">ABA.Concrete</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="definition_thmcontent">
+  <p>   \(\mathsf{ABA.Concrete} := \mathsf{ABA.Impl}[\mathsf{GBCA.Impl}, \mathsf{WCC.Impl}]\), the instantiation of \(\mathsf{ABA.Impl}\) with concrete implementations of the sub-protocols. </p>
+
+  </div>
+</div>
+<div class="definition_thmwrapper theorem-style-definition" id="def:ABAHybrid">
+  <div class="definition_thmheading">
+    <span class="definition_thmcaption">
+    Definition
+    </span>
+    <span class="definition_thmlabel">2</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#def:ABAHybrid">#</a>
+    
+    
+    <button class="modal"><svg  class="icon icon-mindmap "><use xlink:href="symbol-defs.svg#icon-mindmap"></use></svg>
+</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Uses</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="sect0002.html#prot:ImplABA">Protocol 2</a></li>
+          
+          <li><a href="sect0002.html#prot:SpecGBCA">Protocol 3</a></li>
+          
+          <li><a href="sect0002.html#prot:SpecWCC">Protocol 5</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/ABA.Hybrid" class="lean_decl">ABA.Hybrid</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="definition_thmcontent">
+  <p>   \(\mathsf{ABA.Hybrid} := \mathsf{ABA.Impl}[\mathsf{GBCA.Spec}, \mathsf{WCC.Spec}]\), the instantiation of \(\mathsf{ABA.Impl}\) with ideal specifications of the sub-protocols. </p>
+
+  </div>
+</div>
+<h2 id="a0000000010">0.2.2 ABA Sub-Protocols</h2>
+<h4 id="a0000000011">Graded Binding Crusader Agreement (GBCA)</h4>
+<p> (taken from <span class="cite">
+	[
+	<a href="sect0004.html#Abraham2022Efficient" >ABDY22</a>
+	, 
+	<a href="sect0004.html#Attiya2023Multi" >AW23</a>
+	]
+</span>) Processes start with a binary input \(\{ 0,1\} \) and may return a value in \(\{ (0,A), (0,B), (\bot ,C), (1,B), (1,A)\} \). A program implements GBCA if it satisfies four properties: Validity, Graded Agreement, Binding, Termination. </p>
+<ul class="itemize">
+  <li><p>Validity: if a correct process does not return \((b,A)\) then a correct process had \(1-b\) as input. </p>
+</li>
+  <li><p>Graded Agreement: if two correct processes return \((b,X)\) and \((b',X')\) then \(b = 0 \implies b' \ne 1\) and \(X = A \implies X' \ne \bot \). </p>
+</li>
+  <li><p>Binding: when a correct process returns then a bound value \(b\) is defined and, in all extensions of the execution, correct processes do not return \((1-b,B)\) or \((1-b,A)\). </p>
+</li>
+  <li><p>Termination: if \(n-f\) correct processes take part to the protocol then all correct processes will eventually return. </p>
+</li>
+</ul>
+<div class="protocol_thmwrapper theorem-style-definition" id="prot:SpecGBCA">
+  <div class="protocol_thmheading">
+    <span class="protocol_thmcaption">
+    Protocol
+    </span>
+    <span class="protocol_thmlabel">3</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#prot:SpecGBCA">#</a>
+    
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/GBCA.Spec" class="lean_decl">GBCA.Spec</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="protocol_thmcontent">
+  <p>  Blablabla  <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>Ideal Implementation of GBCA  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) <b class="bfseries">Code for every process:</b> send \(\langle input, b\rangle \) to the third party <b class="bfseries">upon</b> receiving \(\langle output, (b,g)\rangle \) from third party &#8195;return \((b,g)\) <b class="bfseries">Code for third party:</b> \(bind,grade,call \gets \bot ,\bot ,(\bot )^{Id}\) <b class="bfseries">upon</b> receiving \(\langle input, b\rangle \) from a process \(id\): &#8195;\(call(id) \gets b\) <b class="bfseries">upon</b> \(|F| + \{ id \in Id \setminus F \mid call(id) = b\}  \ge n-f\): &#8195;\(bind \gets b\) &#8195;<b class="bfseries">if</b> \(\{ id \in Id \setminus F \mid call(id) = 1-b\}  = 0\): &#8195;&#8195;\(grade \gets A\) &#8195;<b class="bfseries">else</b> &#8195;&#8195;\(grade \gets C\) <b class="bfseries">upon</b> \(bind = \bot \) and \(grade = A\) and not sent \(\langle output, \cdot \rangle \) to process \(id\): &#8195;send \(\langle bind, B\rangle \) or \(\langle output, (bind, A)\rangle \) to process \(id\) <b class="bfseries">upon</b> \(bind = \bot \) and \(grade = C\) and not sent \(\langle output, \cdot \rangle \) to process \(id\): &#8195;send \(\langle bind, B\rangle \) or \(\langle output, (\bot , C)\rangle \) to process \(id\)   </p>
+
+  </div>
+</div>
+<div class="protocol_thmwrapper theorem-style-definition" id="prot:ImplGBCA">
+  <div class="protocol_thmheading">
+    <span class="protocol_thmcaption">
+    Protocol
+    </span>
+    <span class="protocol_thmlabel">4</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#prot:ImplGBCA">#</a>
+    
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/GBCA.Impl" class="lean_decl">GBCA.Impl</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="protocol_thmcontent">
+  <p>  Parameters: \(n\) processes with at most \(f {\lt} n/3\) corrupted. Each process \(p_i\) has input \(b_i \in \{ 0,1\} \).  <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>Implementation of GBCA taken from <span class="cite">
+	[
+	<a href="sect0004.html#Abraham2022Efficient" >ABDY22</a>
+	]
+</span>  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) send \(\langle \textsc{input}, b_i \rangle \) to all processes <b class="bfseries">upon</b> receiving \(\langle \textsc{input}, b \rangle \) from at least \(f + 1\) processes and not sent \(\langle \textsc{input}, b\rangle \) yet: &#8195;send \(\langle \textsc{input}, b\rangle \) to all <b class="bfseries">upon</b> receiving \(\langle \textsc{input}, b \rangle \) from at least \(n - f\) processes: &#8195;\(Approved \gets Approved \cup \{ b\} \) &#8195;<b class="bfseries">if</b> not sent \(\langle \textsc{echo}, \cdot \rangle \) yet <b class="bfseries">then</b> send \(\langle \textsc{echo}, b\rangle \) to all wait until &#8195;(a) receiving \(\langle \textsc{echo}, b \rangle \) from at least \(n - f\) processes <b class="bfseries">or</b> &#8195;(b) receiving \(\langle \textsc{echo}, \cdot \rangle \) from at least \(n - f\) processes and \(|Approved| {\gt} 1\) &#8195;<b class="bfseries">if</b> (a) <b class="bfseries">then</b> send \(\langle vote, b\rangle \) to all <b class="bfseries">else</b> send \(\langle vote, \bot \rangle \) to all wait until &#8195;(a) receiving \(\langle \textsc{vote}, b \rangle \) from at least \(n - f\) processes <b class="bfseries">or</b> &#8195;(b) receiving \(\langle \textsc{vote}, \cdot \rangle \) from at least \(n - f\) processes and \(|Approved| {\gt} 1\) &#8195;<b class="bfseries">if</b> (a) <b class="bfseries">then</b> send \(\langle bind, b\rangle \) to all <b class="bfseries">else</b> send \(\langle bind, \bot \rangle \) to all wait until &#8195;(a) receiving \(\langle \textsc{vote}, b \rangle \) from at least \(n - f\) processes <b class="bfseries">or</b> &#8195;(b) receiving \(\langle \textsc{vote}, \cdot \rangle \) from at least \(n - f\) processes and there exists \(b \in \{ 0,1\} \) such that \(\langle bind, b\rangle \) has been received once and \(\langle vote, b\rangle \) has been received from \(t+1\) processes and \(|Approved| {\gt} 1\) <b class="bfseries">or</b> &#8195;(c) receiving \(\langle \textsc{vote}, \bot \rangle \) from at least \(n - f\) processes and \(|Approved| {\gt} 1\) &#8195;<b class="bfseries">if</b> (a) <b class="bfseries">then</b> return \((b,A)\) <b class="bfseries">elif</b> (b) <b class="bfseries">then</b> return \((b,B)\) <b class="bfseries">else</b> return \((\bot , C)\)   </p>
+
+  </div>
+</div>
+<h4 id="a0000000012">Weak Common Coin (WCC)</h4>
+<p> Processes start with no input and may return a bit. A program implements WCC if it satisfies three properties: \(\epsilon \)-Goodness, Unpredictability, Termination. </p>
+<ul class="itemize">
+  <li><p>\(\epsilon \)-Goodness: with probability \(\epsilon \), all correct processes return 0 (resp. 1). </p>
+</li>
+  <li><p>Unpredictability: Until \(t+1\) processes have called WCC, all outcomes are still possible. </p>
+</li>
+  <li><p>Termination: if \(n-f\) correct processes take part to the protocol then all correct processes will eventually return. </p>
+</li>
+</ul>
+<div class="protocol_thmwrapper theorem-style-definition" id="prot:SpecWCC">
+  <div class="protocol_thmheading">
+    <span class="protocol_thmcaption">
+    Protocol
+    </span>
+    <span class="protocol_thmlabel">5</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#prot:SpecWCC">#</a>
+    
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/WCC.Spec" class="lean_decl">WCC.Spec</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="protocol_thmcontent">
+  <p>  Blablabla  <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>Ideal Implementation of WCC  <b class="bfseries">Input:</b> none <b class="bfseries">Code for every process:</b> send \(\langle input, b\rangle \) to the third party <b class="bfseries">upon</b> receiving \(\langle output, b\rangle \) from third party &#8195;return \(b\) <b class="bfseries">Code for third party:</b> \(r \gets \mu \) \(\mu : 1 \mapsto \epsilon ; 0 \mapsto \epsilon ; \bot \mapsto 1-2\epsilon \) <b class="bfseries">if</b> \(r \ne \bot \): &#8195;send \(\langle output, r \rangle \) to all <b class="bfseries">alse</b> &#8195;for all \(id \in Id\), send \(\langle output, 0\rangle \) <b class="bfseries">or</b> \(\langle output, 1\rangle \) to process \(id\)   </p>
+
+  </div>
+</div>
+<div class="protocol_thmwrapper theorem-style-definition" id="prot:ImplWCC">
+  <div class="protocol_thmheading">
+    <span class="protocol_thmcaption">
+    Protocol
+    </span>
+    <span class="protocol_thmlabel">6</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#prot:ImplWCC">#</a>
+    
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/WCC.Impl" class="lean_decl">WCC.Impl</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="protocol_thmcontent">
+  <p>  Requires Gather and RSD  <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>Implementation of WCC (yet to be determined)  \(x \gets 0\) \(y {\gt} 0\) loop   </p>
+
+  </div>
+</div>
+<div class="definition_thmwrapper theorem-style-definition" id="def:WCCConcrete">
+  <div class="definition_thmheading">
+    <span class="definition_thmcaption">
+    Definition
+    </span>
+    <span class="definition_thmlabel">3</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#def:WCCConcrete">#</a>
+    
+    
+    <button class="modal"><svg  class="icon icon-mindmap "><use xlink:href="symbol-defs.svg#icon-mindmap"></use></svg>
+</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Uses</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="sect0002.html#prot:ImplWCC">Protocol 6</a></li>
+          
+          <li><a href="sect0002.html#def:GatherConcrete">Definition 5</a></li>
+          
+          <li><a href="sect0002.html#def:RSDConcrete">Definition 7</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/WCC.Concrete" class="lean_decl">WCC.Concrete</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="definition_thmcontent">
+  <p>   \(\mathsf{WCC.Concrete} := \mathsf{WCC.Impl}[\mathsf{Gather.Concrete}, \mathsf{RSD.Concrete}]\), the instantiation of \(\mathsf{WCC.Impl}\) with fully concrete sub-protocols. </p>
+
+  </div>
+</div>
+<div class="definition_thmwrapper theorem-style-definition" id="def:WCCHybrid">
+  <div class="definition_thmheading">
+    <span class="definition_thmcaption">
+    Definition
+    </span>
+    <span class="definition_thmlabel">4</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#def:WCCHybrid">#</a>
+    
+    
+    <button class="modal"><svg  class="icon icon-mindmap "><use xlink:href="symbol-defs.svg#icon-mindmap"></use></svg>
+</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Uses</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="sect0002.html#prot:ImplWCC">Protocol 6</a></li>
+          
+          <li><a href="sect0002.html#prot:SpecGather">Protocol 7</a></li>
+          
+          <li><a href="sect0002.html#prot:SpecRSD">Protocol 9</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/WCC.Hybrid" class="lean_decl">WCC.Hybrid</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="definition_thmcontent">
+  <p>   \(\mathsf{WCC.Hybrid} := \mathsf{WCC.Impl}[\mathsf{Gather.Spec}, \mathsf{RSD.Spec}]\), the instantiation of \(\mathsf{WCC.Impl}\) with ideal specifications of the sub-protocols. </p>
+
+  </div>
+</div>
+<h2 id="a0000000013">0.2.3 WCC Sub-Protocols</h2>
+<h4 id="a0000000014">Gather</h4>
+<p> (taken from <span class="cite">
+	[
+	<a href="sect0004.html#Stern2021Living" >SA21</a>
+	, 
+	<a href="sect0004.html#SterA2024Gather" >SA24</a>
+	, 
+	<a href="sect0004.html#Attiya2025Beyond" >AFW25</a>
+	]
+</span>) Processes start with an input \(x \in X\) and may return a partial function \(f: Proc \rightharpoonup X\). A program implements Gather if it satisfies four properties: Validity, Agreement, Common Core, Binding, Termination. </p>
+<ul class="itemize">
+  <li><p>Validity: if a correct process returns \(f\) and \(f(q)\) is defined and \(q\) is correct then \(f(q)\) is \(q\)’s input. </p>
+</li>
+  <li><p>Agreement: if two correct processes return \(f\) and \(g\) then \(f(q)\) and \(g(q)\) are equal or one of them is undefined. </p>
+</li>
+  <li><p>Binding Common Core: Once a correct process has returned, there exists \(S \subseteq Proc\) of size at least \(n-f\) such that all \(f\) returned by a correct process in the future is defined on \(S\). </p>
+</li>
+  <li><p>Termination: if \(n-f\) correct processes take part to Gather then all correct processes will eventually return. </p>
+</li>
+</ul>
+<div class="protocol_thmwrapper theorem-style-definition" id="prot:SpecGather">
+  <div class="protocol_thmheading">
+    <span class="protocol_thmcaption">
+    Protocol
+    </span>
+    <span class="protocol_thmlabel">7</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#prot:SpecGather">#</a>
+    
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/Gather.Spec" class="lean_decl">Gather.Spec</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="protocol_thmcontent">
+  <p>  Blablabla  <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>Ideal Implementation of Gather  <b class="bfseries">Input:</b> \(m\) <b class="bfseries">Code for every process:</b> send \(\langle input, m\rangle \) to the third party <b class="bfseries">upon</b> receiving \(\langle output, f\rangle \) from third party: &#8195;return \(f\) <b class="bfseries">Code for third party:</b> \(call, bind \gets \emptyset , \emptyset \) <b class="bfseries">upon</b> receiving \(\langle input, m\rangle \) from process \(id\): &#8195;\(call \gets call \cup \{ (id,m)\} \) <b class="bfseries">if</b> \(|F \cup \{ id \in Id \setminus F \mid call[id] \ne \bot \} | {\gt} n-f\) and \(bind = \bot \): &#8195;\(bind \gets S \subseteq F \cup \{ id \in Id \setminus F \mid (id,\cdot ) \in call\} \) Non-deterministic affectation <b class="bfseries">upon</b> \(bind \ne \bot \): &#8195;for all \(id \in Id\), select \(bind \subseteq S \subseteq F \cup \{ id \in Id \setminus F \mid (id,\cdot ) \in call\} \) and <br />send \(\langle output, \{ (id,m) \in call \mid id \in S \setminus F\}  \cup \{ (id, \cdot ) \mid id \in S \cap F\} \rangle \) to process \(id\)   </p>
+
+  </div>
+</div>
+<div class="protocol_thmwrapper theorem-style-definition" id="prot:ImplGather">
+  <div class="protocol_thmheading">
+    <span class="protocol_thmcaption">
+    Protocol
+    </span>
+    <span class="protocol_thmlabel">8</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#prot:ImplGather">#</a>
+    
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/Gather.Impl" class="lean_decl">Gather.Impl</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="protocol_thmcontent">
+  <p>  Might require BRB  <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>Implementation of Gather from <span class="cite">
+	[
+	<a href="sect0004.html#Attiya2025Beyond" >AFW25</a>
+	]
+</span>  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) <b class="bfseries">Sub-Protocols:</b> \(|Id|\) instances of BRB (process \(id\) is leader in \(BRB_{id}\)) \(BRB_{id}.call(m)\) <b class="bfseries">upon</b> \(BRB_i.return(m')\): &#8195;\(AP \gets AP \cup \{ (i,m')\} \) <b class="bfseries">upon</b> \(|AP| {\gt} n-f\) and not sent \(\langle \textsc{echo}, \cdot \rangle \): &#8195;send \(\langle echo, AP\rangle \) to all <b class="bfseries">upon</b> receiving approved \(\langle \textsc{echo}, AP_{id} \rangle \) from at least \(n - f\) processes and not sent \(\langle \textsc{vote}, \cdot \rangle \): &#8195;send \(\langle \textsc{vote}, \bigcup AP_{id} \rangle \) <b class="bfseries">upon</b> receiving approved \(\langle \textsc{vote}, AP_{id} \rangle \) from at least \(n - f\) processes and not sent \(\langle \textsc{bind}, \cdot \rangle \): &#8195;send \(\langle \textsc{bind}, \bigcup AP_{id} \rangle \) <b class="bfseries">upon</b> receiving approved \(\langle \textsc{bind}, AP_{id} \rangle \) from at least \(n - f\) processes: &#8195;return \(\bigcup AP_{id}\)   </p>
+
+  </div>
+</div>
+<div class="definition_thmwrapper theorem-style-definition" id="def:GatherConcrete">
+  <div class="definition_thmheading">
+    <span class="definition_thmcaption">
+    Definition
+    </span>
+    <span class="definition_thmlabel">5</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#def:GatherConcrete">#</a>
+    
+    
+    <button class="modal"><svg  class="icon icon-mindmap "><use xlink:href="symbol-defs.svg#icon-mindmap"></use></svg>
+</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Uses</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="sect0002.html#prot:ImplGather">Protocol 8</a></li>
+          
+          <li><a href="sect0002.html#prot:ImplBRB">Protocol 12</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/Gather.Concrete" class="lean_decl">Gather.Concrete</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="definition_thmcontent">
+  <p>   \(\mathsf{Gather.Concrete} := \mathsf{Gather.Impl}[\mathsf{BRB.Impl}]\), the instantiation of \(\mathsf{Gather.Impl}\) with the concrete implementation of BRB. </p>
+
+  </div>
+</div>
+<div class="definition_thmwrapper theorem-style-definition" id="def:GatherHybrid">
+  <div class="definition_thmheading">
+    <span class="definition_thmcaption">
+    Definition
+    </span>
+    <span class="definition_thmlabel">6</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#def:GatherHybrid">#</a>
+    
+    
+    <button class="modal"><svg  class="icon icon-mindmap "><use xlink:href="symbol-defs.svg#icon-mindmap"></use></svg>
+</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Uses</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="sect0002.html#prot:ImplGather">Protocol 8</a></li>
+          
+          <li><a href="sect0002.html#prot:SpecBRB">Protocol 11</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/Gather.Hybrid" class="lean_decl">Gather.Hybrid</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="definition_thmcontent">
+  <p>   \(\mathsf{Gather.Hybrid} := \mathsf{Gather.Impl}[\mathsf{BRB.Spec}]\), the instantiation of \(\mathsf{Gather.Impl}\) with the ideal specification of BRB. </p>
+
+  </div>
+</div>
+<h4 id="a0000000015">Random Secret Draw (RSD)</h4>
+<p> The RSD protocol is composed of two operations: Assignment and Retrieval. Assignment affects a random and secret value to each process and Retrieval provides these values to processes. Moreover, the API of RSD provides a notification function for each process that records which processes have a value assigned. </p>
+<ul class="itemize">
+  <li><p>Assignment Validity: if all correct processes call Assignment, then all correct processes will eventually be receive a notification for each correct process. </p>
+</li>
+  <li><p>Assignment Totality: if a correct process receives a notification for process \(id\) then all correct processes will get such a notification. </p>
+</li>
+  <li><p>Randomness: If no correct process has called Assignment then the value returned by Retrieval for any process follows the uniform distribution. </p>
+</li>
+  <li><p>Secrecy: If no correct process has called Retrieval then the adversary has no information about the return value of Retrieval. </p>
+</li>
+  <li><p>Retrieval Termination: if all correct processes call Retrieval then the operation terminates for all correct processes </p>
+</li>
+</ul>
+<div class="protocol_thmwrapper theorem-style-definition" id="prot:SpecRSD">
+  <div class="protocol_thmheading">
+    <span class="protocol_thmcaption">
+    Protocol
+    </span>
+    <span class="protocol_thmlabel">9</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#prot:SpecRSD">#</a>
+    
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/RSD.Spec" class="lean_decl">RSD.Spec</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="protocol_thmcontent">
+  <p>  Blablabla  <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>Ideal Implementation of RSD  \(x \gets 0\) \(y {\gt} 0\) loop   </p>
+
+  </div>
+</div>
+<div class="protocol_thmwrapper theorem-style-definition" id="prot:ImplRSD">
+  <div class="protocol_thmheading">
+    <span class="protocol_thmcaption">
+    Protocol
+    </span>
+    <span class="protocol_thmlabel">10</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#prot:ImplRSD">#</a>
+    
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/RSD.Impl" class="lean_decl">RSD.Impl</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="protocol_thmcontent">
+  <p>  Require AVSS and BRB  <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>Implementation of RSD from <span class="cite">
+	[
+</span>  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) <b class="bfseries">Sub-Protocols:</b> \(|Id|\) instances of BRB (process \(id\) is leader in \(BRB_{id}\)) and \(|Id|^2\) instances of AVSS (process \(id\) is dealer in \(AVSS_{id}^{k}\)) <b class="bfseries">Operation:</b> \(RSD.Sh()\) \(retrieveEnabled, S \gets \bot , \emptyset \) for all \(id' \in Id\), \(x_{id'} \gets \mu \) \(\mu \): Uniform distribution over the domain of secerts \(AVSS^{id'}_{id}.Sh.call(x_{id'})\) <b class="bfseries">upon</b> \(AVSS_{id'}^{id}.Sh.return()\): &#8195;\(S \gets S \cup \{ id'\} \) <b class="bfseries">upon</b> \(|AP| {\gt} n-f\) and not called \(BRB_{id}\): &#8195;\(BRB_{id}.call(S)\) <b class="bfseries">upon</b> \(BRB_{id'}.return(S')\) and \(\forall k \in S', AVSS^{id'}_k.Sh.return()\): &#8195;\(src[id'] \gets S'\) &#8195;<b class="bfseries">event</b> \(ValueAssigned(id')\) &#8195;\(\forall k \in S', AVSS^{id'}_k.Rec.call()\) <b class="bfseries">Operation:</b> \(RSD.Rec()\) return \(id' \mapsto \sum _{k \in src[id']}AVSS_k^{id'}.Rec.return()\)   </p>
+
+  </div>
+</div>
+<div class="definition_thmwrapper theorem-style-definition" id="def:RSDConcrete">
+  <div class="definition_thmheading">
+    <span class="definition_thmcaption">
+    Definition
+    </span>
+    <span class="definition_thmlabel">7</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#def:RSDConcrete">#</a>
+    
+    
+    <button class="modal"><svg  class="icon icon-mindmap "><use xlink:href="symbol-defs.svg#icon-mindmap"></use></svg>
+</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Uses</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="sect0002.html#prot:ImplRSD">Protocol 10</a></li>
+          
+          <li><a href="sect0002.html#prot:ImplBRB">Protocol 12</a></li>
+          
+          <li><a href="sect0002.html#prot:SpecAVSS">Protocol 13</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/RSD.Concrete" class="lean_decl">RSD.Concrete</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="definition_thmcontent">
+  <p>   \(\mathsf{RSD.Concrete} := \mathsf{RSD.Impl}[\mathsf{BRB.Impl}, \mathsf{AVSS.Spec}]\), the instantiation of \(\mathsf{RSD.Impl}\) with the concrete implementation of BRB. \(\mathsf{AVSS}\) is used as a black-box, so its specification is plugged in directly. </p>
+
+  </div>
+</div>
+<div class="definition_thmwrapper theorem-style-definition" id="def:RSDHybrid">
+  <div class="definition_thmheading">
+    <span class="definition_thmcaption">
+    Definition
+    </span>
+    <span class="definition_thmlabel">8</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#def:RSDHybrid">#</a>
+    
+    
+    <button class="modal"><svg  class="icon icon-mindmap "><use xlink:href="symbol-defs.svg#icon-mindmap"></use></svg>
+</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Uses</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="sect0002.html#prot:ImplRSD">Protocol 10</a></li>
+          
+          <li><a href="sect0002.html#prot:SpecBRB">Protocol 11</a></li>
+          
+          <li><a href="sect0002.html#prot:SpecAVSS">Protocol 13</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/RSD.Hybrid" class="lean_decl">RSD.Hybrid</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="definition_thmcontent">
+  <p>   \(\mathsf{RSD.Hybrid} := \mathsf{RSD.Impl}[\mathsf{BRB.Spec}, \mathsf{AVSS.Spec}]\), the instantiation of \(\mathsf{RSD.Impl}\) with the ideal specifications of BRB and AVSS. </p>
+
+  </div>
+</div>
+<h2 id="a0000000016">0.2.4 Basic Primitives</h2>
+<h4 id="a0000000017">Byzantine Reliable Broadcast (BRB)</h4>
+<p> (taken from <span class="cite">
+	[
+	<a href="sect0004.html#Bracha1987Asynchronous" >Bra87</a>
+	]
+</span>) Each instance of BRB has a designated <em>leader</em> with an input message \(m\) and processes may return a received message. A program implements BRB if it satisfies three properties: Validity, Totality and Agreement. </p>
+<ul class="itemize">
+  <li><p>Validity: if the leader is not corrupted then all correct processes must return its input. </p>
+</li>
+  <li><p>Agreement: if two correct processes return then they return the same value. </p>
+</li>
+  <li><p>Totality: if a correct process returns then all correct processes eventually return. </p>
+</li>
+</ul>
+<div class="protocol_thmwrapper theorem-style-definition" id="prot:SpecBRB">
+  <div class="protocol_thmheading">
+    <span class="protocol_thmcaption">
+    Protocol
+    </span>
+    <span class="protocol_thmlabel">11</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#prot:SpecBRB">#</a>
+    
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/BRB.Spec" class="lean_decl">BRB.Spec</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="protocol_thmcontent">
+  <p>  Blablabla  <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>Ideal Implementation of BRB  <b class="bfseries">Input:</b> \(m \in \{ 0,1\} ^*\) for the leader <b class="bfseries">Code for the leader:</b> send \(\langle input, m\rangle \) to the third party <b class="bfseries">Code for every process:</b> <b class="bfseries">upon</b> receiving \(\langle output, m\rangle \) from third party: &#8195;return \(m\) <b class="bfseries">Code for third party:</b> <b class="bfseries">upon</b> receiving \(\langle input, m\rangle \) from leader: &#8195;<b class="bfseries">if</b> leader is correct: &#8195;&#8195;send \(\langle output, m\rangle \) to all &#8195;<b class="bfseries">else</b> &#8195;&#8195;send \(\langle output, m'\rangle \) to all Arbitrary \(m'\)   </p>
+
+  </div>
+</div>
+<div class="protocol_thmwrapper theorem-style-definition" id="prot:ImplBRB">
+  <div class="protocol_thmheading">
+    <span class="protocol_thmcaption">
+    Protocol
+    </span>
+    <span class="protocol_thmlabel">12</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#prot:ImplBRB">#</a>
+    
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/BRB.Impl" class="lean_decl">BRB.Impl</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="protocol_thmcontent">
+  <p>  Requires no sub-protocol. Parameters: \(n\) processes with at most \(f {\lt} n/3\) corrupted; leader \(\ell \) with input \(m\).  <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>Implementation of BRB taken from <span class="cite">
+	[
+	<a href="sect0004.html#Bracha1987Asynchronous" >Bra87</a>
+	]
+</span>  <b class="bfseries">Code for the leader \(\ell \) with input \(m\):</b> &#8195;send \(\langle \textsc{init}, m \rangle \) to all processes <b class="bfseries">Code for every process \(p_i\):</b> <b class="bfseries">upon</b> first reception of \(\langle \textsc{init}, m \rangle \) from \(\ell \) <b class="bfseries">do</b> &#8195;send \(\langle \textsc{echo}, m \rangle \) to all processes <b class="bfseries">upon</b> reception of \(\langle \textsc{echo}, m \rangle \) from at least \(n-f\) distinct processes <b class="bfseries">do</b> &#8195;<b class="bfseries">if</b> \(\langle \textsc{ready}, \cdot \rangle \) has not yet been sent <b class="bfseries">then</b> &#8195;&#8195;send \(\langle \textsc{ready}, m \rangle \) to all processes <b class="bfseries">upon</b> reception of \(\langle \textsc{ready}, m \rangle \) from at least \(f+1\) distinct processes <b class="bfseries">do</b> &#8195;<b class="bfseries">if</b> \(\langle \textsc{ready}, \cdot \rangle \) has not yet been sent <b class="bfseries">then</b> &#8195;&#8195;send \(\langle \textsc{ready}, m \rangle \) to all processes <b class="bfseries">upon</b> reception of \(\langle \textsc{ready}, m \rangle \) from at least \(2f+1\) distinct processes <b class="bfseries">do</b> &#8195;deliver \(m\)   </p>
+
+  </div>
+</div>
+<h4 id="a0000000018">Asynchronous Verifiable Secret Sharing (AVSS)</h4>
+<p> AVSS is actually a pair of protocol \((Sh, Ret)\) with a designated <em>dealer</em> owning a secret \(s\). A program implements a \((1-\epsilon )\)-correct AVSS if it satisfies six properties: Valid Termination, Total Termination, \(Rec\) Termination, Binding, Secrecy. </p>
+<ul class="itemize">
+  <li><p>Validity: if the dealer is correct and a correct process returns from \(Ret\) then the return value is the dealer’s secret. </p>
+</li>
+  <li><p>Sharing Termination: if the dealer is correct and calls \(Sh\) then all correct processes will enventually return from \(Sh\). </p>
+</li>
+  <li><p>Sharing Totality: if a correct process returns from \(Sh\) then all correct processes will eventually return from \(Sh\). </p>
+</li>
+  <li><p>Retrieval Termination: if all correct processes call \(Ret\) then all correct processes will eventually return from \(Ret\). </p>
+</li>
+  <li><p>Commitment: if a correct process returns from \(Sh\) then there exists a secret \(s\) such that correct process can only retrieve \(s\) from that point. </p>
+</li>
+  <li><p>Secrecy: if the dealer is correct and no correct process has called \(Ret\) then the adversary has no information about the future retrived value. </p>
+</li>
+</ul>
+<div class="protocol_thmwrapper theorem-style-definition" id="prot:SpecAVSS">
+  <div class="protocol_thmheading">
+    <span class="protocol_thmcaption">
+    Protocol
+    </span>
+    <span class="protocol_thmlabel">13</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="sect0002.html#prot:SpecAVSS">#</a>
+    
+    
+    
+    <button class="modal lean">L∃∀N</button>
+        <div class="modal-container">
+      <div class="modal-content">
+        <header>
+          <h1>Lean declarations</h1>
+          <button class="closebtn"><svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        </header>
+        
+        <ul class="uses">
+          
+          <li><a href="https://rupakm.github.io/leslie/docs/find/#doc/AVSS.Spec" class="lean_decl">AVSS.Spec</a></li>
+          
+        </ul>
+    
+      </div>
+    </div>
+
+    
+        </div>
+  </div>
+  <div class="protocol_thmcontent">
+  <p>  Blablabla  <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>AVSS Specification  \(x \gets 0\) \(y {\gt} 0\) loop   </p>
+
+  </div>
+</div>
+<p>AVSS is used as a blackbox so no implementation. </p>
+<h2 id="a0000000019">0.2.5 Summary of Properties</h2>
+<p>The linear safety properties are preserved by Segala’s probabilistic forward simulation. The branching safety properties can be transformed into linear ones by enhancing the interface with an external binding label. Segala’s simulation does not preserve liveness by default. However, it can be strengthen following <span class="cite">
+	[
+</span> to preserve liveness in a complete manner. </p>
+<div class="table"  id="a0000000027">
+   <div class="centered"><table class="tabular">
+  <tr>
+    <td  style="border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:center; border-right:1px solid black; border-left:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Linear Safety </p>
+
+    </td>
+    <td  style="border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Branching Safety </p>
+
+    </td>
+    <td  style="border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Liveness </p>
+
+    </td>
+  </tr>
+  <tr>
+    <td  style="border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:center; border-right:1px solid black; border-left:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p>ABA </p>
+
+    </td>
+    <td  style="border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Validity &amp; Agreement </p>
+
+    </td>
+    <td  style="border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+  </tr>
+  <tr>
+    <td  style="text-align:center; border-right:1px solid black; border-left:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p>GBCA </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Validity &amp; Agreement </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Binding </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Termination </p>
+
+    </td>
+  </tr>
+  <tr>
+    <td  style="text-align:center; border-right:1px solid black; border-left:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p>WCC </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Termination </p>
+
+    </td>
+  </tr>
+  <tr>
+    <td  style="text-align:center; border-right:1px solid black; border-left:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p>Gather </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Validity &amp; Agreement </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Binding Common Core </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Termination </p>
+
+    </td>
+  </tr>
+  <tr>
+    <td  style="text-align:center; border-right:1px solid black; border-left:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p>RSD </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Assignment Validity &amp; <br /><p>Assignment Totality &amp; </p>
+<p>Retrieval Termination</p>
+ </p>
+
+    </td>
+  </tr>
+  <tr>
+    <td  style="text-align:center; border-right:1px solid black; border-left:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p>BRB </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Validity &amp; Agreement </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Totality </p>
+
+    </td>
+  </tr>
+  <tr>
+    <td  style="text-align:center; border-right:1px solid black; border-left:1px solid black; border-bottom-style:solid; border-bottom-color:black; border-bottom-width:1px" 
+        rowspan=""
+        colspan="">
+      <p>AVSS </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black; border-bottom-style:solid; border-bottom-color:black; border-bottom-width:1px" 
+        rowspan=""
+        colspan="">
+      <p> Validity </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black; border-bottom-style:solid; border-bottom-color:black; border-bottom-width:1px" 
+        rowspan=""
+        colspan="">
+      <p> Commitment </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black; border-bottom-style:solid; border-bottom-color:black; border-bottom-width:1px" 
+        rowspan=""
+        colspan="">
+      <p> Sharing Termination &amp; <br /><p>Sharing Totality &amp; </p>
+<p>Retrieval Termination</p>
+ </p>
+
+    </td>
+  </tr>
+</table> <figcaption>
+  <span class="caption_title">Table</span> 
+  <span class="caption_ref">1</span> 
+  <span class="caption_text">Table of CTL Properties</span> 
+</figcaption> </div>
+</div>
+<p>Segala’s simulation was designed to be sound and complete for trace distribution so it preserves probabilistic safety propreties. Note that Unpredictability is a probabilistic safety property. For probabilistic liveness, we will rely on the liveness preservation as it is sound (but not complete). The lack of completeness is not an isue because the limitations of the termination proof rule is probabilistic convergence which is never dealt with by our simulations. The probabilistic convergence argument will only be necessary to prove that the ideal implementation of ABA almost-surely terminates and can be discharged to the super-Martingale proof rule of <span class="cite">
+	[
+</span>. </p>
+<div class="table"  id="a0000000028">
+   <div class="centered"><table class="tabular">
+  <tr>
+    <td  style="border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:center; border-right:1px solid black; border-left:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Probabilistic Safety </p>
+
+    </td>
+    <td  style="border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Probabilistic Liveness </p>
+
+    </td>
+    <td  style="border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Secrecy </p>
+
+    </td>
+  </tr>
+  <tr>
+    <td  style="border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:center; border-right:1px solid black; border-left:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p>ABA </p>
+
+    </td>
+    <td  style="border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Almost-Sure Termination </p>
+
+    </td>
+    <td  style="border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+  </tr>
+  <tr>
+    <td  style="text-align:center; border-right:1px solid black; border-left:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p>GBCA </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+  </tr>
+  <tr>
+    <td  style="text-align:center; border-right:1px solid black; border-left:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p>WCC </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> \(\epsilon \)-Goodness &amp; Unpredictability </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+  </tr>
+  <tr>
+    <td  style="text-align:center; border-right:1px solid black; border-left:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p>Gather </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+  </tr>
+  <tr>
+    <td  style="text-align:center; border-right:1px solid black; border-left:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p>RSD </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Randomness </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p> Secrecy </p>
+
+    </td>
+  </tr>
+  <tr>
+    <td  style="text-align:center; border-right:1px solid black; border-left:1px solid black" 
+        rowspan=""
+        colspan="">
+      <p>BRB </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="text-align:center; border-right:1px solid black" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+  </tr>
+  <tr>
+    <td  style="text-align:center; border-right:1px solid black; border-left:1px solid black; border-bottom-style:solid; border-bottom-color:black; border-bottom-width:1px" 
+        rowspan=""
+        colspan="">
+      <p>AVSS </p>
+
+    </td>
+    <td  style="text-align:center; border-right:1px solid black; border-bottom-style:solid; border-bottom-color:black; border-bottom-width:1px" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="text-align:center; border-right:1px solid black; border-bottom-style:solid; border-bottom-color:black; border-bottom-width:1px" 
+        rowspan=""
+        colspan="">&nbsp;</td>
+    <td  style="text-align:center; border-right:1px solid black; border-bottom-style:solid; border-bottom-color:black; border-bottom-width:1px" 
+        rowspan=""
+        colspan="">
+      <p> Secrecy </p>
+
+    </td>
+  </tr>
+</table> <figcaption>
+  <span class="caption_title">Table</span> 
+  <span class="caption_ref">2</span> 
+  <span class="caption_text">Table of non-CTL Properties</span> 
+</figcaption> </div>
+</div>
+
+</div> <!--main-text -->
+</div> <!-- content-wrapper -->
+</div> <!-- content -->
+</div> <!-- wrapper -->
+
+<nav class="prev_up_next">
+  <svg  id="showmore-minus" class="icon icon-eye-minus showmore"><use xlink:href="symbol-defs.svg#icon-eye-minus"></use></svg>
+
+  <svg  id="showmore-plus" class="icon icon-eye-plus showmore"><use xlink:href="symbol-defs.svg#icon-eye-plus"></use></svg>
+
+  <a href="sect0001.html" title="Preliminaries"><svg  class="icon icon-arrow-left "><use xlink:href="symbol-defs.svg#icon-arrow-left"></use></svg>
+</a>
+  <a href="index.html" title="Verifying ABA with Leslie"><svg  class="icon icon-arrow-up "><use xlink:href="symbol-defs.svg#icon-arrow-up"></use></svg>
+</a>
+  <a href="sect0003.html" title="Proof Decomposition"><svg  class="icon icon-arrow-right "><use xlink:href="symbol-defs.svg#icon-arrow-right"></use></svg>
+</a>
+</nav>
+
+<script type="text/javascript" src="js/jquery.min.js"></script>
+<script type="text/javascript" src="js/plastex.js"></script>
+<script type="text/javascript" src="js/svgxuse.js"></script>
+<script type="text/javascript" src="js/js.cookie.min.js"></script>
+<script type="text/javascript" src="js/showmore.js"></script>
+</body>
+</html>

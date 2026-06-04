@@ -4,12 +4,18 @@
 % It is otherwise a very minimal preamble (you should probably at least
 % add cleveref and tikz-cd).
 
-\documentclass{repot}
+\documentclass{report}
 
 \usepackage{amssymb, amsthm, amsmath}
-\usepackage{hyperref}
-\usepackage[showmore, dep_graph]{blueprint}
 
+\usepackage{hyperref}
+\usepackage[showmore, dep_graph, thms=protocol+definition+lemma+proposition+theorem+corollary]{blueprint}
+
+% \usepackage{makecell}       % Merging cells in tables
+
+\usepackage{comment}
+\excludecomment{algorithm}
+\excludecomment{algorithmic}
 
 \input{macros/common}
 \input{macros/web}
