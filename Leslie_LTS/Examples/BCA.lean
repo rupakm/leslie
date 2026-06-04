@@ -1649,6 +1649,42 @@ theorem corrupted_mem_persist_along {e : Execution (State T n) (Label T n)}
     · exact h
     · exact step_corrupted_mem_persist (hv.2 k') p (ih (by omega))
 
+theorem input_persist_along {e : Execution (State T n) (Label T n)}
+    (hv : (bca T n f).valid_exec e)
+    {k : Nat} {p : Fin n} {v : T}
+    (h : ((e.states k).local_ p).input = some v) :
+    ∀ k', k ≤ k' → ((e.states k').local_ p).input = some v := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · exact step_input_persist (hv.2 k') p v (ih (by omega))
+
+theorem approved_persist_along {e : Execution (State T n) (Label T n)}
+    (hv : (bca T n f).valid_exec e)
+    {k : Nat} {p : Fin n} {b : T}
+    (h : ((e.states k).local_ p).approved b = true) :
+    ∀ k', k ≤ k' → ((e.states k').local_ p).approved b = true := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · exact step_approved_persist (hv.2 k') p b (ih (by omega))
+
+theorem sent_persist_along {e : Execution (State T n) (Label T n)}
+    (hv : (bca T n f).valid_exec e)
+    {k : Nat} {p dst : Fin n} {t : MsgType} {v : Val T}
+    (h : ((e.states k).local_ p).sent dst t v = true) :
+    ∀ k', k ≤ k' → ((e.states k').local_ p).sent dst t v = true := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · exact step_sent_mono (hv.2 k') p dst t v (ih (by omega))
+
 end StepHelpers
 
 end BCA_LTS
