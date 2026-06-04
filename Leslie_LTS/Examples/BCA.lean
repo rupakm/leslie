@@ -654,6 +654,12 @@ theorem send_buffer {s s' : State T n} {src dst t mv}
   · left; exact hmeq
   · right; simp only [hmeq] at hm; exact hm
 
+/-- After send, the sent message is in the buffer. -/
+theorem send_buffer_new {s s' : State T n} {src dst t mv}
+    (h : (bca T n f).step s (.send src dst t mv) s') :
+    s'.buffer ⟨src, dst, t, mv⟩ = true := by
+  obtain ⟨_, rfl⟩ := h; simp
+
 /-- Recv echo: buffer preservation. -/
 theorem recv_echo_buffer {s s' : State T n} {src dst b}
     (h : (bca T n f).step s (.recv src dst .echo (some b)) s')
@@ -1592,6 +1598,21 @@ theorem step_corrupted_mem_persist {s s' : State T n} {l : Label T n}
   | .recv .. => rw [recv_corrupted h]; exact hc
   | .output .. => rw [output_corrupted h]; exact hc
   | .input .. => rw [input_corrupted h]; exact hc
+
+/-- Buffer is monotone for non-recv steps. -/
+theorem step_buffer_mono_non_recv {s s' : State T n} {l : Label T n}
+    (h : (bca T n f).step s l s')
+    (hl : ∀ src dst t mv, l ≠ .recv src dst t mv)
+    (m : Message T n) (hm : s.buffer m = true) :
+    s'.buffer m = true := by
+  match l with
+  | .corrupt _ => obtain ⟨_, _, rfl⟩ := h; exact hm
+  | .send src dst t mv =>
+    obtain ⟨_, rfl⟩ := h; simp only
+    by_cases hmeq : m = ⟨src, dst, t, mv⟩ <;> simp [hmeq, hm]
+  | .recv src dst t mv => exact absurd rfl (hl src dst t mv)
+  | .output _ _ => obtain ⟨_, _, _, rfl⟩ := h; exact hm
+  | .input _ _ => obtain ⟨_, rfl⟩ := h; exact hm
 
 /-- countAnyVoteRecv is monotone. -/
 theorem step_countAnyVoteRecv_mono {s s' : State T n} {l : Label T n}
