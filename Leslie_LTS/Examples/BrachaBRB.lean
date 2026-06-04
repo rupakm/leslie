@@ -1755,6 +1755,46 @@ theorem buffer_init_broadcastVal_inv
       · simp [hm] at hbuf
       · simp only [hm, ite_false] at hbuf; exact ih hcorr₀ hbuf
 
+-- Auxiliary: with correct sender and broadcastVal = none, all sendRecv fields are none.
+private theorem sendRecv_none_of_broadcastVal_none
+    (s : State n Value)
+    (hr : Reachable (brb n f Value sender) s)
+    (hcorr : isCorrect n Value s sender)
+    (hbv : (s.local_ sender).broadcastVal = none)
+    (dst : Fin n) :
+    (s.local_ dst).sendRecv = none := by
+  induction hr with
+  | init hinit => simp [hinit.1 dst, LocalState.init]
+  | @step s₀ l s _ hstep ih =>
+    have hcorr₀ := step_correct_prev hstep sender hcorr
+    match l with
+    | .corrupt _ => obtain ⟨_, _, rfl⟩ := hstep; exact ih hcorr₀ hbv
+    | .input _ _ =>
+      obtain ⟨_, _, rfl⟩ := hstep; simp only at hbv; simp at hbv
+    | .output _ _ =>
+      rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)] at hbv
+      rw [output_sendRecv hstep]; exact ih hcorr₀ hbv
+    | .send _ _ _ _ =>
+      rw [send_broadcastVal hstep sender] at hbv
+      rw [send_sendRecv hstep]; exact ih hcorr₀ hbv
+    | .recv src' dst' .init mv' =>
+      rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)] at hbv
+      obtain ⟨hb, rfl⟩ := hstep; simp only
+      by_cases hd : dst = dst'
+      · subst hd; simp only [ite_true]
+        by_cases hcond : src' = sender ∧ (s₀.local_ dst).sendRecv = none
+        · exact absurd
+            (buffer_init_broadcastVal_inv s₀ (by assumption) hcorr₀ dst mv' (hcond.1 ▸ hb))
+            (by rw [hbv]; simp)
+        · rw [if_neg hcond]; exact ih hcorr₀ hbv
+      · simp only [hd, ite_false]; exact ih hcorr₀ hbv
+    | .recv _ _ .echo _ =>
+      rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)] at hbv
+      rw [recv_echo_sendRecv hstep]; exact ih hcorr₀ hbv
+    | .recv _ _ .vote _ =>
+      rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)] at hbv
+      rw [recv_vote_sendRecv hstep]; exact ih hcorr₀ hbv
+
 /-- **SendRecv value invariant**: with correct sender and broadcastVal = some v,
     sendRecv = some w implies w = v. -/
 theorem sendRecv_value_inv
@@ -1765,7 +1805,65 @@ theorem sendRecv_value_inv
     (dst : Fin n) (w : Value)
     (hrecv : (s.local_ dst).sendRecv = some w) :
     w = v := by
-  sorry
+  induction hr with
+  | init hinit => simp [hinit.1 dst, LocalState.init] at hrecv
+  | @step s₀ l s _ hstep ih =>
+    have hcorr₀ := step_correct_prev hstep sender hcorr
+    match l with
+    | .corrupt _ => obtain ⟨_, _, rfl⟩ := hstep; exact ih hcorr₀ hbv hrecv
+    | .input _ _ =>
+      have hstep' := hstep
+      obtain ⟨_, hbv_none, _⟩ := hstep'
+      have h_none := sendRecv_none_of_broadcastVal_none s₀ (by assumption) hcorr₀ hbv_none dst
+      rw [input_sendRecv hstep] at hrecv
+      rw [h_none] at hrecv; exact absurd hrecv (by simp)
+    | .output _ _ =>
+      rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)] at hbv
+      rw [output_sendRecv hstep] at hrecv; exact ih hcorr₀ hbv hrecv
+    | .send _ _ _ _ =>
+      rw [send_broadcastVal hstep sender] at hbv
+      rw [send_sendRecv hstep] at hrecv; exact ih hcorr₀ hbv hrecv
+    | .recv src' dst' .init mv' =>
+      rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)] at hbv
+      by_cases hold : (s₀.local_ dst).sendRecv = some w
+      · exact ih hcorr₀ hbv hold
+      · -- sendRecv was NOT some w at s₀, but IS some w now.
+        -- For recv.init, the only change to sendRecv is: if src' = sender and
+        -- sendRecv was none, it becomes some mv'. So w = mv'.
+        -- Use recv_init_sendRecv_other to handle w ≠ mv' case (contradiction).
+        have hstep' := hstep
+        by_cases hwv : w = mv'
+        · -- w = mv': buffer had (src', dst', init, mv') = (src', dst', init, w)
+          subst hwv
+          obtain ⟨hb, _⟩ := hstep'
+          -- The recv step only sets sendRecv from sender. If src' ≠ sender, sendRecv
+          -- unchanged → contradicts hold. So src' = sender.
+          -- buffer_init_broadcastVal_inv: broadcastVal = some w
+          -- But we need src' = sender to apply it. Show by contradiction:
+          -- if src' ≠ sender, sendRecv unchanged, contradicts hold.
+          by_cases hsrc : src' = sender
+          · subst hsrc
+            have hbv' := buffer_init_broadcastVal_inv s₀ (by assumption) hcorr₀ dst' w hb
+            rw [hbv'] at hbv; exact Option.some_injective _ hbv
+          · -- src' ≠ sender: recv.init from non-sender doesn't change sendRecv
+            -- (guard: src = sender ∧ ...) is false. So sendRecv unchanged.
+            have : (s₀.local_ dst).sendRecv = some w := by
+              obtain ⟨_, rfl⟩ := hstep; simp only at hrecv
+              by_cases hd : dst = dst'
+              · subst hd; simp only [ite_true] at hrecv
+                rw [if_neg (by push_neg; intro heq; exact absurd heq hsrc)] at hrecv
+                exact hrecv
+              · simp only [hd, ite_false] at hrecv; exact hrecv
+            exact absurd this hold
+        · -- w ≠ mv': sendRecv was already some w at s₀ (recv_init_sendRecv_other)
+          have hrecv₀ := recv_init_sendRecv_other hstep dst w hwv hrecv
+          exact absurd hrecv₀ hold
+    | .recv _ _ .echo _ =>
+      rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)] at hbv
+      rw [recv_echo_sendRecv hstep] at hrecv; exact ih hcorr₀ hbv hrecv
+    | .recv _ _ .vote _ =>
+      rw [step_broadcastVal hstep sender (by intro _ _ h; cases h)] at hbv
+      rw [recv_vote_sendRecv hstep] at hrecv; exact ih hcorr₀ hbv hrecv
 
 /-- **Echoed value invariant**: with correct sender and broadcastVal = some v,
     if correct process q has echoed = some w, then w = v. -/
