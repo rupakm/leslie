@@ -516,6 +516,24 @@ theorem fair_deadlock_countEchoRecv_ge_echo_support
   obtain ⟨v, hv, hrecv⟩ := fair_deadlock_echoRecv_from_echoed T n f s hn hreach hfd hsupp hcorr hq
   rw [hechoed] at hv; exact Option.some.inj hv ▸ hrecv
 
+/-- At a fair deadlock, if correct src has two approved values and hasn't
+    voted, then vote(none) send is enabled — contradicting fair deadlock.
+    So src MUST have voted. -/
+theorem fair_deadlock_vote_none_sent
+    (s : BCA_LTS.State T n)
+    (hfd : FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s)
+    {src dst : Fin n} (hsrc : src ∉ s.corrupted) (hdst : dst ∉ s.corrupted)
+    {b₁ b₂ : T} (hne : b₁ ≠ b₂)
+    (happr1 : (s.local_ src).approved b₁ = true)
+    (happr2 : (s.local_ src).approved b₂ = true)
+    (huniq : ∀ w, (s.local_ src).voted w = true → w = none) :
+    (s.local_ src).sent dst .vote none = true := by
+  by_contra h
+  simp only [Bool.not_eq_true] at h
+  have henabled := BCA_LTS.send_vote_none_enabled (f := f) hsrc h huniq b₁ b₂ hne happr1 happr2
+  obtain ⟨s', hstep⟩ := henabled
+  exact hfd (.send src dst .vote none) s' hstep ⟨hsrc, hdst⟩
+
 /-! ## Reachable fair-deadlocks are terminated
 
     The original `bca_no_fair_deadlock_reachable` was false at
