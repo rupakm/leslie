@@ -1393,4 +1393,71 @@ theorem echoed_persist_along
 
 end execution_persistence
 
+/-! ### Reachability Invariants (delivery + value)
+    IMPORTANT: These are sorry'd pending mechanical induction proofs.
+    Each follows the same pattern: induction on Reachable, case-split on step label,
+    use projection lemmas to show field relationships are preserved.
+
+    These connect sent, buffer, and recv-effect fields in reachable states.
+    Used by `brb_fair_deadlock_implies_terminated` in `BRB_Liveness.lean`. -/
+
+section reachability_invariants
+variable {n f : Nat} {Value : Type} [DecidableEq Value] {sender : Fin n}
+open LTS
+
+/-- **Init delivery invariant**: if sender has `sent dst init v = true`,
+    then buffer has the message or dst has `sendRecv ≠ none`. -/
+theorem init_delivery_inv
+    (s : State n Value)
+    (hr : Reachable (brb n f Value sender) s)
+    (dst : Fin n) (v : Value)
+    (hsent : (s.local_ sender).sent dst .init v = true) :
+    s.buffer ⟨sender, dst, .init, v⟩ = true ∨ (s.local_ dst).sendRecv ≠ none := by
+  sorry
+
+/-- **Echo delivery invariant**: if src has `sent dst echo v = true`,
+    then buffer has the message or dst has `echoRecv src v = true`. -/
+theorem echo_delivery_inv
+    (s : State n Value)
+    (hr : Reachable (brb n f Value sender) s)
+    (src dst : Fin n) (v : Value)
+    (hsent : (s.local_ src).sent dst .echo v = true) :
+    s.buffer ⟨src, dst, .echo, v⟩ = true ∨ (s.local_ dst).echoRecv src v = true := by
+  sorry
+
+/-- **Vote delivery invariant**: if src has `sent dst vote v = true`,
+    then buffer has the message or dst has `voteRecv src v = true`. -/
+theorem vote_delivery_inv
+    (s : State n Value)
+    (hr : Reachable (brb n f Value sender) s)
+    (src dst : Fin n) (v : Value)
+    (hsent : (s.local_ src).sent dst .vote v = true) :
+    s.buffer ⟨src, dst, .vote, v⟩ = true ∨ (s.local_ dst).voteRecv src v = true := by
+  sorry
+
+/-- **Buffer-init value invariant**: with correct sender, if a message from
+    sender is in the buffer, broadcastVal matches. -/
+theorem buffer_init_broadcastVal_inv
+    (s : State n Value)
+    (hr : Reachable (brb n f Value sender) s)
+    (hcorr : isCorrect n Value s sender)
+    (dst : Fin n) (w : Value)
+    (hbuf : s.buffer ⟨sender, dst, .init, w⟩ = true) :
+    (s.local_ sender).broadcastVal = some w := by
+  sorry
+
+/-- **SendRecv value invariant**: with correct sender and broadcastVal = some v,
+    sendRecv = some w implies w = v. -/
+theorem sendRecv_value_inv
+    (s : State n Value)
+    (hr : Reachable (brb n f Value sender) s)
+    (hcorr : isCorrect n Value s sender)
+    (hbv : (s.local_ sender).broadcastVal = some v)
+    (dst : Fin n) (w : Value)
+    (hrecv : (s.local_ dst).sendRecv = some w) :
+    w = v := by
+  sorry
+
+end reachability_invariants
+
 end BRB_LTS

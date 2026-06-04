@@ -329,12 +329,78 @@ theorem brb_fair_deadlock_implies_terminated (hn : n > 3 * f) :
       FairDeadlock (BRB_LTS.brb n f Value sender)
         (brb_fair_labels n Value) s →
       (s.local_ sender).broadcastVal ≠ none →
+      sender ∉ s.corrupted →
       ∀ p, p ∉ s.corrupted → (s.local_ p).returned ≠ none := by
-  -- Protocol-specific: at a fair-deadlock with broadcastVal set,
-  -- no fair send/recv/output is enabled.  Under n > 3f, the protocol's
-  -- delivery chain ensures that if broadcastVal is set and no fair step
-  -- remains, every correct proc must already have returned.
-  -- Deep protocol reasoning; sorried for now.
+  -- Chain argument: at a fair deadlock with correct sender and broadcastVal set,
+  -- the init→echo→vote→output delivery chain must have completed.
+  -- Each unfinished link would provide a fair+enabled step, contradicting FairDeadlock.
+  intro s hreach hfd hbv hcorr_sender p hp_corr
+  obtain ⟨v, hv⟩ := Option.ne_none_iff_exists'.mp hbv
+  -- Step 1: All correct dst have sendRecv = some v.
+  -- For each correct dst: send(sender, dst, init, v) would be fair+enabled if not sent.
+  -- So sent = true. Buffer = false (no fair buffer). By init_delivery_inv: sendRecv ≠ none.
+  -- By sendRecv_value_inv: sendRecv = some v.
+  have h_sendRecv : ∀ dst, dst ∉ s.corrupted → (s.local_ dst).sendRecv = some v := by
+    intro dst hdst
+    -- send(sender, dst, init, v) must have been sent
+    by_contra h_not_v
+    -- First show sent = true
+    have h_sent : (s.local_ sender).sent dst .init v = true := by
+      by_contra h_not_sent
+      simp only [Bool.not_eq_true] at h_not_sent
+      -- send(sender, dst, init, v) is enabled: correct sender, broadcastVal = some v, sent = false
+      have h_enabled : ∃ s', (BRB_LTS.brb n f Value sender).step s (.send sender dst .init v) s' := by
+        refine ⟨{ s with
+          buffer := fun m => if m = ⟨sender, dst, .init, v⟩ then true else s.buffer m
+          local_ := fun q => if q = sender then
+            { s.local_ sender with
+              sent := fun d t w => if d = dst ∧ t = .init ∧ w = v then true
+                else (s.local_ sender).sent d t w }
+            else s.local_ q }, ?_⟩
+        simp only [BRB_LTS.brb]
+        exact ⟨Or.inr ⟨hcorr_sender, h_not_sent, trivial, hv⟩, trivial⟩
+      obtain ⟨s', hstep⟩ := h_enabled
+      exact hfd (.send sender dst .init v) s' hstep ⟨hcorr_sender, hdst⟩
+    -- Buffer = false for correct-to-correct
+    have h_buf := fair_deadlock_no_fair_buffer n f Value sender s hfd hcorr_sender hdst .init v
+    -- By init_delivery_inv: sendRecv ≠ none
+    rcases BRB_LTS.init_delivery_inv s hreach dst v h_sent with hbuf | hsr
+    · rw [hbuf] at h_buf; exact absurd h_buf (by simp)
+    · -- sendRecv ≠ none → sendRecv = some w for some w → w = v
+      obtain ⟨w, hw⟩ := Option.ne_none_iff_exists'.mp hsr
+      have := BRB_LTS.sendRecv_value_inv s hreach hcorr_sender hv dst w hw
+      subst this; exact h_not_v hw
+  -- Step 2: All correct q have sent echo(v) to all correct r, and echoRecv delivered.
+  -- Each correct q has sendRecv = some v → echo condition met.
+  -- send(q, r, echo, v) would be fair+enabled if not sent → contradiction. So sent = true.
+  -- Buffer = false → by echo_delivery_inv: echoRecv r q v = true.
+  have h_echoRecv : ∀ q r, q ∉ s.corrupted → r ∉ s.corrupted →
+      (s.local_ r).echoRecv q v = true := by
+    intro q r hq hr
+    have h_sent : (s.local_ q).sent r .echo v = true := by
+      by_contra h_not_sent
+      simp only [Bool.not_eq_true] at h_not_sent
+      -- Echo condition met: sendRecv = some v
+      have hsrv := h_sendRecv q hq
+      -- send(q, r, echo, v) is enabled: q correct, sent = false, echo condition met
+      -- The echo condition: echoed = some v OR (echoed = none ∧ sendRecv = some v)
+      -- If echoed = some v already, first disjunct. If echoed = none, second (sendRecv = some v).
+      -- Either way, the send is enabled. Constructing the exact successor is mechanical.
+      have h_enabled : ∃ s', (BRB_LTS.brb n f Value sender).step s (.send q r .echo v) s' := by
+        sorry -- mechanical: construct successor state from echo send definition
+      obtain ⟨s', hstep⟩ := h_enabled
+      exact hfd (.send q r .echo v) s' hstep ⟨hq, hr⟩
+    have h_buf := fair_deadlock_no_fair_buffer n f Value sender s hfd hq hr .echo v
+    rcases BRB_LTS.echo_delivery_inv s hreach q r v h_sent with hbuf | hrecv
+    · rw [hbuf] at h_buf; exact absurd h_buf (by simp)
+    · exact hrecv
+  -- Step 3: countEchoRecv ≥ echoThreshold for each correct r.
+  -- echoRecv from all correct q → count ≥ n - |corrupted| ≥ n - f = echoThreshold.
+  -- (This step needs a counting lemma relating echoRecv to countEchoRecv.)
+  -- Step 4: All correct r sent vote(v) to all correct r'. voteRecv delivered.
+  -- Step 5: countVoteRecv ≥ returnThreshold for p.
+  -- Step 6: output(p, v) enabled + fair → contradiction with FairDeadlock.
+  -- Steps 3-6 require counting lemmas; sorry'd pending formalization.
   sorry
 
 /-! ## Fair-label compatibility through the simulation
