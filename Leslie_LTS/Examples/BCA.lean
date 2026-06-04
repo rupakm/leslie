@@ -1696,6 +1696,48 @@ theorem send_init_enabled {s : State T n} {src dst : Fin n} {b : T}
   refine ⟨_, Or.inr ⟨hcorr, hsent, ?_⟩, rfl⟩
   exact hgate
 
+/-- At a reachable state, a correct process with echoed = some b has approved b. -/
+theorem echoed_implies_approved {s : State T n}
+    (hreach : LTS.Reachable (bca T n f) s)
+    (p : Fin n) (b : T)
+    (hcorr : isCorrect T n s p)
+    (hechoed : (s.local_ p).echoed = some b) :
+    (s.local_ p).approved b = true := by
+  induction hreach with
+  | init hinit =>
+    obtain ⟨hlocal, _, _⟩ := hinit
+    simp [hlocal p, LocalState.init] at hechoed
+  | step hreach_prev hstep ih =>
+    rename_i s_prev l _
+    have hcp := step_correct_prev hstep p hcorr
+    by_cases hprev : (s_prev.local_ p).echoed = some b
+    · -- Already echoed: approved b persists.
+      exact step_approved_persist hstep p b (ih hcp hprev)
+    · -- Newly echoed: must be send echo (some b) from p.
+      match l with
+      | .send src dst .echo (some b') =>
+        by_cases hp : p = src
+        · subst hp
+          have happr := (send_echo_gate hstep hcp).1
+          have hechoed_new := send_echo_echoed_correct hstep hcp
+          rw [hechoed_new] at hechoed
+          have hbb : b' = b := Option.some.inj hechoed
+          subst hbb
+          exact step_approved_persist hstep p b' happr
+        · rw [send_echo_echoed_other hstep p hp] at hechoed
+          exact absurd hechoed hprev
+      | .send src dst .echo none =>
+        rw [send_echo_none_echoed hstep p] at hechoed
+        exact absurd hechoed hprev
+      | .corrupt _ => rw [corrupt_local hstep] at hechoed; exact absurd hechoed hprev
+      | .send _ _ .init _ => rw [send_init_echoed hstep] at hechoed; exact absurd hechoed hprev
+      | .send _ _ .vote _ => rw [send_vote_echoed hstep] at hechoed; exact absurd hechoed hprev
+      | .recv _ _ .init _ => rw [recv_init_echoed hstep] at hechoed; exact absurd hechoed hprev
+      | .recv _ _ .echo _ => rw [recv_echo_echoed hstep] at hechoed; exact absurd hechoed hprev
+      | .recv _ _ .vote _ => rw [recv_vote_echoed hstep] at hechoed; exact absurd hechoed hprev
+      | .output _ _ => rw [output_echoed hstep] at hechoed; exact absurd hechoed hprev
+      | .input _ _ => rw [input_echoed hstep] at hechoed; exact absurd hechoed hprev
+
 /-- Recv is enabled when the message is in the buffer. -/
 theorem recv_enabled {s : State T n} {src dst : Fin n} {t : MsgType} {v : Val T}
     (hbuf : s.buffer ⟨src, dst, t, v⟩ = true) :
