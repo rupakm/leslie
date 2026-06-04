@@ -1713,6 +1713,16 @@ theorem send_echo_enabled {s : State T n} {src dst : Fin n} {b : T}
     (bca T n f).enabled (.send src dst .echo (some b)) s := by
   refine ⟨_, Or.inr ⟨hcorr, hsent, happroved, hechoed⟩, rfl⟩
 
+/-- A correct-to-correct vote(some b) send is enabled when src has
+    enough echo quorum, is vote-consistent, and hasn't sent yet. -/
+theorem send_vote_binary_enabled {s : State T n} {src dst : Fin n} {b : T}
+    (hcorr : isCorrect T n s src)
+    (hsent : (s.local_ src).sent dst .vote (some b) = false)
+    (huniq : ∀ w, (s.local_ src).voted w = true → w = some b)
+    (hquorum : countEchoRecv T n (s.local_ src) b ≥ echoThreshold n f) :
+    (bca T n f).enabled (.send src dst .vote (some b)) s := by
+  refine ⟨_, Or.inr ⟨hcorr, hsent, huniq, hquorum⟩, rfl⟩
+
 /-- Output(p, some b) is enabled when p is correct, undecided, and has
     enough binary votes. -/
 theorem output_binary_enabled {s : State T n} {p : Fin n} {b : T}
