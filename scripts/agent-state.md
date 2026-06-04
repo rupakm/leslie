@@ -1,5 +1,5 @@
 # Agent State
-- **Last action**: Completed brb_fair_deadlock_implies_terminated with 0 sorries in BRB_Liveness.lean. All protocol sorries pushed to 6 BrachaBRB.lean reachability invariants. Net reduction: 7→6 sorries in BRB_Liveness.
-- **Next**: Attempt proving BrachaBRB reachability invariants (init/echo/vote delivery + buffer/sendRecv/echoed value). These are mechanical induction proofs.
-- **Blocked**: h_ante_transfer commit + output (corrupt sender, issues.md §5). Rank sorries need real measure.
-- **Sorry count**: 6 in BRB_Liveness.lean (3 rank + 1 h_fair_reverse + 2 h_ante_transfer). 6 in BrachaBRB.lean (reachability invariants).
+- **Last action**: BrachaBRB.lean now sorry-free (proved vote_delivery_inv, buffer_init_broadcastVal_inv, sendRecv_value_inv, echoed_value_inv + two auxiliary invariants).
+- **Next**: Tackle h_fair_reverse and h_ante_transfer in BRB_Liveness.lean.
+- **Blocked**: h_ante_transfer commit + output (corrupt sender, issues.md §5). Rank measure sorries (placeholder).
+- **Sorry count**: 6 in BRB_Liveness.lean. 0 in BrachaBRB.lean.

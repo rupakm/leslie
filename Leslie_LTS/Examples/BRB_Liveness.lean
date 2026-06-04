@@ -24,26 +24,31 @@ import Leslie_LTS.Examples.BRB_Simulation
   - `brb_fair_deadlock_implies_terminated` proof STRUCTURE complete
     (6-step chain: init→echo→vote→output, by contradiction)
 
-  **Remaining sorries (~10 in BRB_Liveness, ~5 in BrachaBRB):**
+  **Remaining sorries (6 in BRB_Liveness, 0 in BrachaBRB):**
 
   ```
-  WeakDivPreserving witness:
-    rank_non_increasing (sorry — placeholder measure makes rank = False)
+  WeakDivPreserving witness (NOT used by transfers_leads_to — _wd unused):
+    rank_non_increasing (sorry — placeholder measure; needs real measure)
     rank_decreases_on_fair_elision (sorry — same)
     rank_non_increasing_on_fair_progress (sorry — same)
-    h_fair_reverse (sorry — see issues.md §3, fairness mismatch)
-
-  brb_fair_deadlock_implies_terminated (proof structure complete):
-    2 mechanical sorries (echo/vote send successor construction)
-    2 counting sorries (echoRecv/voteRecv count ≥ threshold)
+    h_fair_reverse (sorry — see issues.md §3, corrupt-sender mismatch)
 
   brb_totality (via transfers_leads_to):
-    h_ante_transfer / commit case (sorry — see §5 below)
+    h_ante_transfer / commit case (sorry — see issues.md §4-5)
     h_ante_transfer / output case (sorry — same root cause)
-
-  BrachaBRB.lean (reachability invariants):
-    5 sorry'd invariants (init/echo/vote delivery + buffer value + sendRecv value)
   ```
+
+  **Note**: The 4 WeakDivPreserving sorries do NOT block `brb_totality`
+  because `transfers_leads_to` takes `_wd` as an unused parameter (it only
+  uses `h_abs`, `h_ante_transfer`, and the property callbacks). The only
+  BLOCKING sorries are h_ante_transfer commit/output, which require the
+  sender to be correct — a structural limitation of the simulation-based
+  approach (see issues.md §4-5 for analysis and recommended fixes).
+
+  **BrachaBRB.lean** is now sorry-free: all reachability invariants
+  (init/echo/vote delivery, buffer-init-broadcastVal, sendRecv-value,
+  echoed-value) are fully proven, along with auxiliary invariants
+  sendRecv_none_of_broadcastVal_none and echoed_none_of_broadcastVal_none.
 
   ### Design issues (see `Leslie_LTS/issues.md` §3-5)
 
