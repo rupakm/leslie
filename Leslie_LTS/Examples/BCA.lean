@@ -1289,6 +1289,36 @@ theorem step_approved_persist {s s' : State T n} {l : Label T n}
     · subst hp; obtain ⟨_, rfl⟩ := h; simp only; exact happroved
     · obtain ⟨_, rfl⟩ := h; simp only [hp]; exact happroved
 
+/-- decided is persistent: once `some v`, it stays `some v`. -/
+theorem step_decided_persist {s s' : State T n} {l : Label T n}
+    (h : (bca T n f).step s l s') (p : Fin n) (v : Val T)
+    (hdec : (s.local_ p).decided = some v) :
+    (s'.local_ p).decided = some v := by
+  match l with
+  | .corrupt _ => rw [corrupt_local h]; exact hdec
+  | .send .. => rw [send_decided h]; exact hdec
+  | .recv _ _ .init _ => rw [recv_init_decided h]; exact hdec
+  | .recv _ _ .echo _ => rw [recv_echo_decided h]; exact hdec
+  | .recv _ _ .vote _ => rw [recv_vote_decided h]; exact hdec
+  | .input _ _ => rw [input_decided h]; exact hdec
+  | .output i mv =>
+    by_cases hp : p = i
+    · subst hp; exact absurd (output_decided_none h) (by rw [hdec]; simp)
+    · rw [output_decided_other h p hp]; exact hdec
+
+/-- Corruption is persistent. -/
+theorem step_corrupted_mem_persist {s s' : State T n} {l : Label T n}
+    (h : (bca T n f).step s l s') (p : Fin n)
+    (hc : p ∈ s.corrupted) :
+    p ∈ s'.corrupted := by
+  match l with
+  | .corrupt i =>
+    rw [corrupt_eq h]; exact List.mem_cons.mpr (Or.inr hc)
+  | .send .. => rw [send_corrupted h]; exact hc
+  | .recv .. => rw [recv_corrupted h]; exact hc
+  | .output .. => rw [output_corrupted h]; exact hc
+  | .input .. => rw [input_corrupted h]; exact hc
+
 end StepHelpers
 
 end BCA_LTS
