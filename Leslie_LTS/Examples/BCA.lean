@@ -2599,6 +2599,57 @@ theorem sent_init_implies_gate {s : State T n}
         rw [input_sent hstep src dst .init (some b)] at hsent
         exact absurd hsent (by rw [hprev]; simp)
 
+/-- At a reachable state, a correct process has at most one voted value. -/
+theorem voted_unique {s : State T n}
+    (hreach : LTS.Reachable (bca T n f) s)
+    {p : Fin n} (hp : p ∉ s.corrupted)
+    {w₁ w₂ : Val T}
+    (h1 : (s.local_ p).voted w₁ = true)
+    (h2 : (s.local_ p).voted w₂ = true) :
+    w₁ = w₂ := by
+  induction hreach with
+  | init hinit =>
+    obtain ⟨hlocal, _, _⟩ := hinit
+    simp [hlocal p, LocalState.init] at h1
+  | step hreach_prev hstep ih =>
+    rename_i s_prev l _
+    have hp_prev := step_correct_prev hstep p hp
+    match l with
+    | .send src _ .vote mv =>
+      by_cases hsrc : p = src
+      · subst hsrc
+        have hguard : ∀ w, (s_prev.local_ p).voted w = true → w = mv :=
+          (hstep.1.resolve_left hp_prev).2.2.1
+        have hw1 : w₁ = mv := by
+          by_cases heq : w₁ = mv
+          · exact heq
+          · rw [send_vote_voted_correct_other hstep hp_prev w₁ heq] at h1
+            exact hguard w₁ h1
+        have hw2 : w₂ = mv := by
+          by_cases heq : w₂ = mv
+          · exact heq
+          · rw [send_vote_voted_correct_other hstep hp_prev w₂ heq] at h2
+            exact hguard w₂ h2
+        rw [hw1, hw2]
+      · rw [send_vote_voted_other hstep p hsrc] at h1 h2
+        exact ih hp_prev h1 h2
+    | .send _ _ .init _ =>
+      rw [send_init_voted hstep p] at h1 h2; exact ih hp_prev h1 h2
+    | .send _ _ .echo _ =>
+      rw [send_echo_voted hstep p] at h1 h2; exact ih hp_prev h1 h2
+    | .corrupt _ =>
+      rw [corrupt_local hstep] at h1 h2; exact ih hp_prev h1 h2
+    | .recv _ _ .init _ =>
+      rw [recv_init_voted hstep p] at h1 h2; exact ih hp_prev h1 h2
+    | .recv _ _ .echo _ =>
+      rw [recv_echo_voted hstep p] at h1 h2; exact ih hp_prev h1 h2
+    | .recv _ _ .vote _ =>
+      rw [recv_vote_voted hstep p] at h1 h2; exact ih hp_prev h1 h2
+    | .output _ _ =>
+      rw [output_voted hstep p] at h1 h2; exact ih hp_prev h1 h2
+    | .input _ _ =>
+      rw [input_voted hstep p] at h1 h2; exact ih hp_prev h1 h2
+
 /-! ### Additional invariants for BCA liveness proofs -/
 
 /-- Recv echo preserves initRecv at the destination. -/
@@ -2737,6 +2788,263 @@ theorem initRecv_implies_sent {s : State T n}
           exact absurd hinitRecv (by simp [hprev])
         · simp only [hp, ↓reduceIte] at hinitRecv
           exact absurd hinitRecv (by simp [hprev])
+
+/-- echoRecv(q, r, b) → sent(r, q, echo, some b). -/
+theorem echoRecv_implies_sent {s : State T n}
+    (hreach : LTS.Reachable (bca T n f) s)
+    {q r : Fin n} {b : T}
+    (hrecv : (s.local_ q).echoRecv r b = true) :
+    (s.local_ r).sent q .echo (some b) = true := by
+  induction hreach with
+  | init hinit =>
+    obtain ⟨hlocal, _, _⟩ := hinit
+    simp [hlocal q, LocalState.init] at hrecv
+  | step hreach_prev hstep ih =>
+    rename_i s_prev _l _
+    by_cases hprev : (s_prev.local_ q).echoRecv r b = true
+    · exact step_sent_mono hstep r q .echo (some b) (ih hprev)
+    · simp only [Bool.not_eq_true] at hprev
+      match _l with
+      | .recv src' dst' .echo (some b') =>
+        by_cases hdst : q = dst'
+        · subst hdst
+          by_cases hsrcb : r = src' ∧ b = b'
+          · obtain ⟨rfl, rfl⟩ := hsrcb
+            exact step_sent_mono hstep r q .echo (some b)
+              (buffer_implies_sent hreach_prev hstep.1)
+          · obtain ⟨_, rfl⟩ := hstep; simp only [↓reduceIte] at hrecv
+            by_cases hdup : (s_prev.local_ q).echoRecv src' b' = false
+            · simp only [hdup, ↓reduceIte] at hrecv
+              by_cases hcond : r = src' ∧ b = b'
+              · exact absurd hcond hsrcb
+              · simp only [hcond, ↓reduceIte] at hrecv
+                exact absurd hrecv (by simp [hprev])
+            · simp only [Bool.not_eq_false] at hdup; simp only [hdup, ↓reduceIte] at hrecv
+              exact absurd hrecv (by simp [hprev])
+        · rw [recv_local_other hstep q hdst] at hrecv
+          exact absurd hrecv (by simp [hprev])
+      | .recv _ dst' .echo none =>
+        by_cases hdst : q = dst'
+        · subst hdst; obtain ⟨_, rfl⟩ := hstep; simp only [↓reduceIte] at hrecv
+          exact absurd hrecv (by simp [hprev])
+        · rw [recv_local_other hstep q hdst] at hrecv
+          exact absurd hrecv (by simp [hprev])
+      | .recv _ dst' .init _ =>
+        by_cases hdst : q = dst'
+        · subst hdst
+          have := step_echoRecv_prev hstep q r b hrecv (by intro d h; cases h)
+          exact absurd this (by simp [hprev])
+        · rw [recv_local_other hstep q hdst] at hrecv
+          exact absurd hrecv (by simp [hprev])
+      | .recv _ dst' .vote _ =>
+        by_cases hdst : q = dst'
+        · subst hdst
+          have := step_echoRecv_prev hstep q r b hrecv (by intro d h; cases h)
+          exact absurd this (by simp [hprev])
+        · rw [recv_local_other hstep q hdst] at hrecv
+          exact absurd hrecv (by simp [hprev])
+      | .corrupt _ =>
+        rw [corrupt_local hstep] at hrecv; exact absurd hrecv (by simp [hprev])
+      | .send .. =>
+        rw [send_echoRecv hstep q r b] at hrecv
+        exact absurd hrecv (by simp [hprev])
+      | .output .. =>
+        have := step_echoRecv_prev hstep q r b hrecv (by intro d h; cases h)
+        exact absurd this (by simp [hprev])
+      | .input .. =>
+        have := step_echoRecv_prev hstep q r b hrecv (by intro d h; cases h)
+        exact absurd this (by simp [hprev])
+
+/-- voted(none) → two distinct approved values. -/
+theorem voted_none_implies_two_approved {s : State T n}
+    (hreach : LTS.Reachable (bca T n f) s)
+    {p : Fin n} (hp : p ∉ s.corrupted)
+    (hvoted : (s.local_ p).voted none = true) :
+    ∃ b₁ b₂, b₁ ≠ b₂ ∧ (s.local_ p).approved b₁ = true ∧
+      (s.local_ p).approved b₂ = true := by
+  induction hreach with
+  | init hinit =>
+    obtain ⟨hlocal, _, _⟩ := hinit
+    simp [hlocal p, LocalState.init] at hvoted
+  | step hreach_prev hstep ih =>
+    rename_i s_prev _l _
+    have hp_prev := step_correct_prev hstep p hp
+    match _l with
+    | .send src _ .vote mv =>
+      by_cases hsrc : p = src
+      · subst hsrc
+        by_cases hprev_voted : (s_prev.local_ p).voted none = true
+        · obtain ⟨b₁, b₂, hne, h1, h2⟩ := ih hp_prev hprev_voted
+          exact ⟨b₁, b₂, hne, step_approved_persist hstep p b₁ h1,
+                 step_approved_persist hstep p b₂ h2⟩
+        · simp only [Bool.not_eq_true] at hprev_voted
+          have hmv : mv = none := by
+            by_contra hne
+            rw [send_vote_voted_correct_other hstep hp_prev none (Ne.symm hne)] at hvoted
+            exact absurd hvoted (by rw [hprev_voted]; simp)
+          subst hmv
+          rcases hstep.1 with hcorrupt | ⟨_, _, _, hgate⟩
+          · exact absurd hcorrupt hp_prev
+          · obtain ⟨v₁, v₂, hne, h1, h2⟩ := hgate
+            exact ⟨v₁, v₂, hne, step_approved_persist hstep p v₁ h1,
+                   step_approved_persist hstep p v₂ h2⟩
+      · rw [send_vote_voted_other hstep p hsrc] at hvoted
+        obtain ⟨b₁, b₂, hne, h1, h2⟩ := ih hp_prev hvoted
+        exact ⟨b₁, b₂, hne, step_approved_persist hstep p b₁ h1,
+               step_approved_persist hstep p b₂ h2⟩
+    | .send _ _ .init _ =>
+      rw [send_init_voted hstep] at hvoted
+      obtain ⟨b₁, b₂, hne, h1, h2⟩ := ih hp_prev hvoted
+      exact ⟨b₁, b₂, hne, step_approved_persist hstep p b₁ h1,
+             step_approved_persist hstep p b₂ h2⟩
+    | .send _ _ .echo _ =>
+      rw [send_echo_voted hstep] at hvoted
+      obtain ⟨b₁, b₂, hne, h1, h2⟩ := ih hp_prev hvoted
+      exact ⟨b₁, b₂, hne, step_approved_persist hstep p b₁ h1,
+             step_approved_persist hstep p b₂ h2⟩
+    | .recv _ _ .init _ =>
+      rw [recv_init_voted hstep] at hvoted
+      obtain ⟨b₁, b₂, hne, h1, h2⟩ := ih hp_prev hvoted
+      exact ⟨b₁, b₂, hne, step_approved_persist hstep p b₁ h1,
+             step_approved_persist hstep p b₂ h2⟩
+    | .recv _ _ .echo _ =>
+      rw [recv_echo_voted hstep] at hvoted
+      obtain ⟨b₁, b₂, hne, h1, h2⟩ := ih hp_prev hvoted
+      exact ⟨b₁, b₂, hne, step_approved_persist hstep p b₁ h1,
+             step_approved_persist hstep p b₂ h2⟩
+    | .recv _ _ .vote _ =>
+      rw [recv_vote_voted hstep] at hvoted
+      obtain ⟨b₁, b₂, hne, h1, h2⟩ := ih hp_prev hvoted
+      exact ⟨b₁, b₂, hne, step_approved_persist hstep p b₁ h1,
+             step_approved_persist hstep p b₂ h2⟩
+    | .output .. =>
+      rw [output_voted hstep] at hvoted
+      obtain ⟨b₁, b₂, hne, h1, h2⟩ := ih hp_prev hvoted
+      exact ⟨b₁, b₂, hne, step_approved_persist hstep p b₁ h1,
+             step_approved_persist hstep p b₂ h2⟩
+    | .input .. =>
+      rw [input_voted hstep] at hvoted
+      obtain ⟨b₁, b₂, hne, h1, h2⟩ := ih hp_prev hvoted
+      exact ⟨b₁, b₂, hne, step_approved_persist hstep p b₁ h1,
+             step_approved_persist hstep p b₂ h2⟩
+    | .corrupt _ =>
+      rw [corrupt_local hstep] at hvoted
+      obtain ⟨b₁, b₂, hne, h1, h2⟩ := ih hp_prev hvoted
+      exact ⟨b₁, b₂, hne, step_approved_persist hstep p b₁ h1,
+             step_approved_persist hstep p b₂ h2⟩
+
+/-- voted(some b) → countEchoRecv(p, b) ≥ echoThreshold. -/
+theorem voted_binary_implies_echoRecv {s : State T n}
+    (hreach : LTS.Reachable (bca T n f) s)
+    {p : Fin n} (hp : p ∉ s.corrupted) {b : T}
+    (hvoted : (s.local_ p).voted (some b) = true) :
+    countEchoRecv T n (s.local_ p) b ≥ echoThreshold n f := by
+  induction hreach with
+  | init hinit =>
+    obtain ⟨hlocal, _, _⟩ := hinit
+    simp [hlocal p, LocalState.init] at hvoted
+  | step hreach_prev hstep ih =>
+    rename_i s_prev _l _
+    have hp_prev := step_correct_prev hstep p hp
+    match _l with
+    | .send src _ .vote mv =>
+      by_cases hsrc : p = src
+      · subst hsrc
+        by_cases hprev : (s_prev.local_ p).voted (some b) = true
+        · exact Nat.le_trans (ih hp_prev hprev) (step_countEchoRecv_mono hstep p b)
+        · simp only [Bool.not_eq_true] at hprev
+          have hmv : mv = some b := by
+            by_contra hne
+            rw [send_vote_voted_correct_other hstep hp_prev (some b) (Ne.symm hne)] at hvoted
+            exact absurd hvoted (by rw [hprev]; simp)
+          subst hmv
+          rcases hstep.1 with hcorrupt | ⟨_, _, _, hgate⟩
+          · exact absurd hcorrupt hp_prev
+          · exact Nat.le_trans hgate (step_countEchoRecv_mono hstep p b)
+      · rw [send_vote_voted_other hstep p hsrc] at hvoted
+        exact Nat.le_trans (ih hp_prev hvoted) (step_countEchoRecv_mono hstep p b)
+    | .send _ _ .init _ =>
+      rw [send_init_voted hstep] at hvoted
+      exact Nat.le_trans (ih hp_prev hvoted) (step_countEchoRecv_mono hstep p b)
+    | .send _ _ .echo _ =>
+      rw [send_echo_voted hstep] at hvoted
+      exact Nat.le_trans (ih hp_prev hvoted) (step_countEchoRecv_mono hstep p b)
+    | .recv _ _ .init _ =>
+      rw [recv_init_voted hstep] at hvoted
+      exact Nat.le_trans (ih hp_prev hvoted) (step_countEchoRecv_mono hstep p b)
+    | .recv _ _ .echo _ =>
+      rw [recv_echo_voted hstep] at hvoted
+      exact Nat.le_trans (ih hp_prev hvoted) (step_countEchoRecv_mono hstep p b)
+    | .recv _ _ .vote _ =>
+      rw [recv_vote_voted hstep] at hvoted
+      exact Nat.le_trans (ih hp_prev hvoted) (step_countEchoRecv_mono hstep p b)
+    | .output .. =>
+      rw [output_voted hstep] at hvoted
+      exact Nat.le_trans (ih hp_prev hvoted) (step_countEchoRecv_mono hstep p b)
+    | .input .. =>
+      rw [input_voted hstep] at hvoted
+      exact Nat.le_trans (ih hp_prev hvoted) (step_countEchoRecv_mono hstep p b)
+    | .corrupt _ =>
+      rw [corrupt_local hstep] at hvoted
+      exact Nat.le_trans (ih hp_prev hvoted) (step_countEchoRecv_mono hstep p b)
+
+/-- sent vote(v) → voted(v). -/
+theorem sent_vote_implies_voted {s : State T n}
+    (hreach : LTS.Reachable (bca T n f) s)
+    {p : Fin n} (v : Val T) (hp : p ∉ s.corrupted)
+    {dst : Fin n} (hsent : (s.local_ p).sent dst .vote v = true) :
+    (s.local_ p).voted v = true := by
+  induction hreach with
+  | init hinit =>
+    obtain ⟨hlocal, _, _⟩ := hinit
+    simp [hlocal p, LocalState.init] at hsent
+  | step hreach_prev hstep ih =>
+    rename_i s_prev _l _
+    have hcp := step_correct_prev hstep p hp
+    by_cases hprev : (s_prev.local_ p).sent dst .vote v = true
+    · have hvoted_prev := ih hcp hprev
+      by_cases hl : ∃ dst' mv, _l = .send p dst' .vote mv
+      · obtain ⟨dst', mv, rfl⟩ := hl
+        by_cases hv : v = mv
+        · subst hv; exact send_vote_voted_correct hstep hcp
+        · rw [send_vote_voted_correct_other hstep hcp v hv]; exact hvoted_prev
+      · push_neg at hl
+        rw [step_voted_eq hstep p v hl]; exact hvoted_prev
+    · simp only [Bool.not_eq_true] at hprev
+      match _l with
+      | .send src dst' .vote mv =>
+        by_cases hp2 : p = src
+        · subst hp2
+          rw [send_sent hstep dst .vote v] at hsent
+          split_ifs at hsent with heq
+          · obtain ⟨_, _, hv⟩ := heq; subst hv
+            exact send_vote_voted_correct hstep hcp
+          · exact absurd hsent (by rw [hprev]; simp)
+        · rw [send_sent_other hstep p hp2 dst .vote v] at hsent
+          exact absurd hsent (by rw [hprev]; simp)
+      | .send src _ .init _ =>
+        by_cases hp2 : p = src
+        · subst hp2; rw [send_sent hstep dst .vote v] at hsent; simp at hsent
+          exact absurd hsent (by rw [hprev]; simp)
+        · rw [send_sent_other hstep p hp2 dst .vote v] at hsent
+          exact absurd hsent (by rw [hprev]; simp)
+      | .send src _ .echo _ =>
+        by_cases hp2 : p = src
+        · subst hp2; rw [send_sent hstep dst .vote v] at hsent; simp at hsent
+          exact absurd hsent (by rw [hprev]; simp)
+        · rw [send_sent_other hstep p hp2 dst .vote v] at hsent
+          exact absurd hsent (by rw [hprev]; simp)
+      | .corrupt _ =>
+        rw [corrupt_local hstep] at hsent; exact absurd hsent (by rw [hprev]; simp)
+      | .recv .. =>
+        rw [recv_sent hstep p dst .vote v] at hsent
+        exact absurd hsent (by rw [hprev]; simp)
+      | .output .. =>
+        rw [output_sent hstep p dst .vote v] at hsent
+        exact absurd hsent (by rw [hprev]; simp)
+      | .input .. =>
+        rw [input_sent hstep p dst .vote v] at hsent
+        exact absurd hsent (by rw [hprev]; simp)
 
 end ReachableInvariants
 
