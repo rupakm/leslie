@@ -1732,6 +1732,41 @@ theorem output_binary_enabled {s : State T n} {p : Fin n} {b : T}
     (bca T n f).enabled (.output p (some b)) s := by
   refine ⟨_, hcorr, hdec, hvotes, rfl⟩
 
+/-- At a reachable state, if a correct process decided (some b),
+    then it had countVoteRecv(some b) ≥ returnThreshold at the time of decision.
+    Since countVoteRecv is monotone, it still holds. -/
+theorem decided_binary_implies_voteRecv {s : State T n}
+    (hreach : LTS.Reachable (bca T n f) s)
+    (p : Fin n) (b : T)
+    (hdec : (s.local_ p).decided = some (some b)) :
+    countVoteRecv T n (s.local_ p) (some b) ≥ returnThreshold n f := by
+  induction hreach with
+  | init hinit =>
+    obtain ⟨hlocal, _, _⟩ := hinit
+    simp [hlocal p, LocalState.init] at hdec
+  | step hreach_prev hstep ih =>
+    rename_i s_prev l _
+    by_cases hdec_prev : (s_prev.local_ p).decided = some (some b)
+    · have := ih hdec_prev
+      exact Nat.le_trans this (step_countVoteRecv_mono hstep p (some b))
+    · -- Newly decided: must be output(p, some b)
+      match l with
+      | .output i mv =>
+        by_cases hp : p = i
+        · subst hp
+          have hguard := hstep.2.2.1
+          have hdec_self := output_decided_self hstep
+          rw [hdec_self] at hdec; simp at hdec; subst hdec
+          exact Nat.le_trans hguard (step_countVoteRecv_mono hstep p (some b))
+        · rw [output_decided_other hstep p hp] at hdec
+          exact absurd hdec hdec_prev
+      | .corrupt _ => rw [corrupt_local hstep] at hdec; exact absurd hdec hdec_prev
+      | .send .. => rw [send_decided hstep] at hdec; exact absurd hdec hdec_prev
+      | .recv _ _ .init _ => rw [recv_init_decided hstep] at hdec; exact absurd hdec hdec_prev
+      | .recv _ _ .echo _ => rw [recv_echo_decided hstep] at hdec; exact absurd hdec hdec_prev
+      | .recv _ _ .vote _ => rw [recv_vote_decided hstep] at hdec; exact absurd hdec hdec_prev
+      | .input _ _ => rw [input_decided hstep] at hdec; exact absurd hdec hdec_prev
+
 theorem echoed_persist_along {e : Execution (State T n) (Label T n)}
     (hv : (bca T n f).valid_exec e)
     {k : Nat} {p : Fin n} {b : T}
