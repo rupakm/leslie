@@ -1395,6 +1395,64 @@ theorem step_countVoteRecv_mono {s s' : State T n} {l : Label T n}
   apply filter_length_mono; intro q hq; simp only at hq ⊢
   exact step_voteRecv_mono h p q v hq
 
+/-- Recv echo with a new entry increments countEchoRecv by at least 1. -/
+theorem recv_echo_countEchoRecv_inc {s s' : State T n} {src dst : Fin n} {b : T}
+    (h : (bca T n f).step s (.recv src dst .echo (some b)) s')
+    (hdup : (s.local_ dst).echoRecv src b = false) :
+    countEchoRecv T n (s'.local_ dst) b ≥ countEchoRecv T n (s.local_ dst) b + 1 := by
+  have hmono := step_countEchoRecv_mono h dst b
+  have hsrc_new : (s'.local_ dst).echoRecv src b = true := by
+    obtain ⟨_, rfl⟩ := h; simp [hdup]
+  unfold countEchoRecv at hmono ⊢
+  have hsplit := filter_split
+    (fun q : Fin n => (s'.local_ dst).echoRecv q b)
+    (fun q : Fin n => !decide (q = src))
+    (List.finRange n)
+  have hone : ((List.finRange n).filter (fun q =>
+      (s'.local_ dst).echoRecv q b && !!decide (q = src))).length ≥ 1 := by
+    have : src ∈ (List.finRange n).filter (fun q =>
+        (s'.local_ dst).echoRecv q b && !!decide (q = src)) := by
+      simp [List.mem_filter, List.mem_finRange, hsrc_new, Bool.not_not]
+    exact Nat.lt_of_lt_of_le Nat.zero_lt_one (List.length_pos_of_mem this)
+  have hrest : ((List.finRange n).filter (fun q =>
+      (s.local_ dst).echoRecv q b)).length ≤
+    ((List.finRange n).filter (fun q =>
+      (s'.local_ dst).echoRecv q b && !decide (q = src))).length := by
+    apply filter_length_mono; intro q hq; simp only [Bool.and_eq_true, Bool.not_eq_eq_eq_not,
+      Bool.not_true, decide_eq_false_iff_not] at hq ⊢
+    exact ⟨step_echoRecv_mono h dst q b hq, fun heq => by
+      subst heq; rw [hdup] at hq; exact absurd hq (by simp)⟩
+  omega
+
+/-- Recv vote with a new entry increments countVoteRecv by at least 1. -/
+theorem recv_vote_countVoteRecv_inc {s s' : State T n} {src dst : Fin n} {v : Val T}
+    (h : (bca T n f).step s (.recv src dst .vote v) s')
+    (hdup : (s.local_ dst).voteRecv src v = false) :
+    countVoteRecv T n (s'.local_ dst) v ≥ countVoteRecv T n (s.local_ dst) v + 1 := by
+  have hmono := step_countVoteRecv_mono h dst v
+  have hsrc_new : (s'.local_ dst).voteRecv src v = true := by
+    obtain ⟨_, rfl⟩ := h; simp [hdup]
+  unfold countVoteRecv at hmono ⊢
+  have hsplit := filter_split
+    (fun q : Fin n => (s'.local_ dst).voteRecv q v)
+    (fun q : Fin n => !decide (q = src))
+    (List.finRange n)
+  have hone : ((List.finRange n).filter (fun q =>
+      (s'.local_ dst).voteRecv q v && !!decide (q = src))).length ≥ 1 := by
+    have : src ∈ (List.finRange n).filter (fun q =>
+        (s'.local_ dst).voteRecv q v && !!decide (q = src)) := by
+      simp [List.mem_filter, List.mem_finRange, hsrc_new, Bool.not_not]
+    exact Nat.lt_of_lt_of_le Nat.zero_lt_one (List.length_pos_of_mem this)
+  have hrest : ((List.finRange n).filter (fun q =>
+      (s.local_ dst).voteRecv q v)).length ≤
+    ((List.finRange n).filter (fun q =>
+      (s'.local_ dst).voteRecv q v && !decide (q = src))).length := by
+    apply filter_length_mono; intro q hq; simp only [Bool.and_eq_true, Bool.not_eq_eq_eq_not,
+      Bool.not_true, decide_eq_false_iff_not] at hq ⊢
+    exact ⟨step_voteRecv_mono h dst q v hq, fun heq => by
+      subst heq; rw [hdup] at hq; exact absurd hq (by simp)⟩
+  omega
+
 /-- sent is monotone. -/
 theorem step_sent_mono {s s' : State T n} {l : Label T n}
     (h : (bca T n f).step s l s') (p : Fin n) (dst : Fin n)
