@@ -584,6 +584,64 @@ theorem input_persist_along_stutter
       · exact input_persist hstep hprev
       · rw [← heq]; exact hprev
 
+/-- The combined measure `corrupted.length + inputSupport b` is non-decreasing
+    across any single step of the ideal BCA. -/
+theorem inputSupport_condition_persist {s s' : State T n}
+    {l : Label T n}
+    (hstep : (ideal_bca (T := T) (n := n) (f := f)).step s l s')
+    {b : T} (h : s.corrupted.length + inputSupport T n s b ≥ f + 1) :
+    s'.corrupted.length + inputSupport T n s' b ≥ f + 1 := by
+  simp only [ideal_bca] at hstep
+  match l with
+  | .corrupt i =>
+    obtain ⟨_, _, rfl⟩ := hstep
+    have := inputSupport_le_succ_corrupt T n s i b
+    simp only [List.length_cons]
+    omega
+  | .input i v =>
+    obtain ⟨hnone, rfl⟩ := hstep
+    have := inputSupport_mono_input T n s i v hnone b
+    simp only
+    omega
+  | .output _ _ =>
+    obtain ⟨_, _, _, rfl⟩ := hstep; exact h
+  | .bind _ =>
+    obtain ⟨_, _, rfl⟩ := hstep; exact h
+
+theorem inputSupport_condition_persist_along
+    {e : Execution (State T n) (Label T n)}
+    (hv : (ideal_bca (T := T) (n := n) (f := f)).valid_exec e)
+    {k : Nat} {b : T}
+    (h : (e.states k).corrupted.length + inputSupport T n (e.states k) b ≥ f + 1) :
+    ∀ k', k ≤ k' →
+      (e.states k').corrupted.length + inputSupport T n (e.states k') b ≥ f + 1 := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · exact inputSupport_condition_persist (hv.2 k') (ih (by omega))
+
+theorem inputSupport_condition_persist_along_stutter
+    {e : Execution (State T n) (Label T n)}
+    (hv : (ideal_bca (T := T) (n := n) (f := f)).valid_exec_stutter
+      (ideal_labelling T n) e)
+    {k : Nat} {b : T}
+    (h : (e.states k).corrupted.length + inputSupport T n (e.states k) b ≥ f + 1) :
+    ∀ k', k ≤ k' →
+      (e.states k').corrupted.length + inputSupport T n (e.states k') b ≥ f + 1 := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · have hprev := ih (by omega)
+      rcases hv.2 k' with hstep | ⟨heq, _⟩
+      · exact inputSupport_condition_persist hstep hprev
+      · rw [show (e.states (k' + 1)).corrupted = (e.states k').corrupted from by rw [← heq],
+             show inputSupport T n (e.states (k' + 1)) b = inputSupport T n (e.states k') b from by rw [← heq]]
+        exact hprev
+
 end persistence
 
 end IdealBCA

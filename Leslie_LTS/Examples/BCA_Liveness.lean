@@ -354,7 +354,133 @@ theorem ideal_bca_decision :
     - ideal_brb_fair_labels → ideal_bca_fair_labels
     - IdealBRB.* persistence → IdealBCA.* persistence
   -/
-  sorry
+  intro e hv h_ante
+  intro k hA
+  -- Step A: show ∃ k' ≥ k, bound_value ≠ none.
+  have hStepA : ∃ k' ≥ k, (e.states k').bound_value ≠ none := by
+    by_contra h_never
+    have h_none_forever : ∀ k', k' ≥ k → (e.states k').bound_value = none := by
+      intro k' hk'; by_contra hne; exact h_never ⟨k', hk', hne⟩
+    -- From hA, either ∃ b with inputSupport condition, or bound_value ≠ none.
+    -- The right disjunct contradicts h_none_forever directly.
+    rcases hA with ⟨b, hsupp⟩ | hbv
+    · -- Left: inputSupport condition at k.  The condition persists along valid execs.
+      -- bind(b) is permanently enabled + fair from k.
+      have hsupp_k : (e.states k).corrupted.length + IdealBCA.inputSupport T n (e.states k) b ≥ f + 1 := by
+        have h0k : (0 : Nat) + k = k := Nat.zero_add k
+        rw [h0k] at hsupp; exact hsupp
+      have h_supp_persist : ∀ k', k ≤ k' →
+          (e.states k').corrupted.length + IdealBCA.inputSupport T n (e.states k') b ≥ f + 1 :=
+        fun k' hk' =>
+          IdealBCA.inputSupport_condition_persist_along hv hsupp_k k' hk'
+      have h_bind := h_ante (IdealBCA.Label.bind b) k
+      have h_inner : ∀ j',
+          (IdealBCA.ideal_bca T n f).enabled
+            (.bind b) (e.states (0 + k + j')) ∧
+          ideal_bca_fair_labels T n
+            (e.states (0 + k + j')) (.bind b) := by
+        intro j'
+        have hpos : 0 + k + j' = k + j' := by omega
+        rw [hpos]
+        constructor
+        · refine ⟨{ (e.states (k + j')) with bound_value := some b }, ?_⟩
+          show (IdealBCA.ideal_bca T n f).step _ (.bind b) _
+          simp only [IdealBCA.ideal_bca]
+          exact ⟨h_none_forever (k + j') (by omega),
+                 h_supp_persist (k + j') (by omega), by simp⟩
+        · simp [ideal_bca_fair_labels]
+      obtain ⟨j, hj, h_step_kj⟩ := h_bind h_inner
+      have hpos : 0 + k + j = k + j := by omega
+      rw [hpos] at hj h_step_kj
+      rw [← hj] at h_step_kj
+      simp only [IdealBCA.ideal_bca] at h_step_kj
+      obtain ⟨_, _, heq_s'⟩ := h_step_kj
+      have h_set : (e.states (k + j + 1)).bound_value = some b := by rw [heq_s']
+      exact absurd (h_none_forever (k + j + 1) (by omega)) (by rw [h_set]; simp)
+    · -- Right: bound_value ≠ none at k.  Contradicts h_none_forever directly.
+      exact absurd (h_none_forever k (by omega)) (by simp only [Nat.zero_add] at hbv; exact hbv)
+  -- Step B: from bound_value ≠ none, all correct decided.
+  obtain ⟨k₁, hk₁_ge, hk₁_bv⟩ := hStepA
+  obtain ⟨b, hb⟩ := Option.ne_none_iff_exists'.mp hk₁_bv
+  have h_bv_persist : ∀ k', k₁ ≤ k' → (e.states k').bound_value = some b :=
+    IdealBCA.bound_value_persist_along hv hb
+  -- Per-proc: if p stays correct forever, output fires and decided persists.
+  have h_per_proc : ∀ p : Fin n,
+      (∀ k', k₁ ≤ k' → p ∉ (e.states k').corrupted) →
+      ∃ k', k₁ ≤ k' ∧ (e.states k').decided p ≠ none := by
+    intro p h_stays_correct
+    by_contra h_never_ret
+    have h_ret_none : ∀ k', k₁ ≤ k' → (e.states k').decided p = none := by
+      intro k' hk'; by_contra hne; exact h_never_ret ⟨k', hk', hne⟩
+    -- output(p, some b) permanently enabled + fair from k₁.
+    have h_output := h_ante (IdealBCA.Label.output p (some b)) k₁
+    have h_output_inner : ∀ j',
+        (IdealBCA.ideal_bca T n f).enabled
+          (.output p (some b)) (e.states (0 + k₁ + j')) ∧
+        ideal_bca_fair_labels T n
+          (e.states (0 + k₁ + j')) (.output p (some b)) := by
+      intro j'
+      have hpos : 0 + k₁ + j' = k₁ + j' := by omega
+      rw [hpos]
+      constructor
+      · refine ⟨{ (e.states (k₁ + j')) with
+                  decided := fun q => if q = p then some (some b)
+                    else (e.states (k₁ + j')).decided q }, ?_⟩
+        show (IdealBCA.ideal_bca T n f).step _ (.output p (some b)) _
+        simp only [IdealBCA.ideal_bca]
+        exact ⟨by simp only [IdealBCA.isCorrect]; exact h_stays_correct (k₁ + j') (by omega),
+               h_ret_none (k₁ + j') (by omega),
+               h_bv_persist (k₁ + j') (by omega), by simp⟩
+      · -- fair: p ∉ corrupted at k₁ + j'
+        simp only [ideal_bca_fair_labels]
+        exact h_stays_correct (k₁ + j') (by omega)
+    obtain ⟨j, hj, h_step_out⟩ := h_output h_output_inner
+    have hpos : 0 + k₁ + j = k₁ + j := by omega
+    rw [hpos] at hj h_step_out
+    rw [← hj] at h_step_out
+    simp only [IdealBCA.ideal_bca] at h_step_out
+    obtain ⟨_, _, _, heq_s'⟩ := h_step_out
+    have h_dec_set : (e.states (k₁ + j + 1)).decided p = some (some b) := by
+      rw [heq_s']; simp
+    exact absurd (h_ret_none (k₁ + j + 1) (by omega)) (by rw [h_dec_set]; simp)
+  -- Per-proc-persist + finite-max wrapper.
+  have h_per_proc_persist : ∀ p : Fin n, ∃ k'_p, k₁ ≤ k'_p ∧
+      ∀ k', k'_p ≤ k' →
+        (p ∉ (e.states k').corrupted → (e.states k').decided p ≠ none) := by
+    intro p
+    by_cases h_correct : ∀ k', k₁ ≤ k' → p ∉ (e.states k').corrupted
+    · obtain ⟨k'_p, hk'_p, hret⟩ := h_per_proc p h_correct
+      obtain ⟨w, hw⟩ := Option.ne_none_iff_exists'.mp hret
+      refine ⟨k'_p, hk'_p, fun k' hk' _ => ?_⟩
+      have := IdealBCA.decided_persist_along hv hw k' hk'
+      simp [this]
+    · push_neg at h_correct
+      obtain ⟨k₂, hk₂, hc⟩ := h_correct
+      refine ⟨k₂, by omega, fun k' hk' hcorr => ?_⟩
+      exact absurd (IdealBCA.corrupted_mem_persist_along hv hc k' hk') hcorr
+  classical
+  let k'_fn : Fin n → Nat := fun p => (h_per_proc_persist p).choose
+  have hk'_spec : ∀ p, k₁ ≤ k'_fn p ∧
+      ∀ k', k'_fn p ≤ k' →
+        (p ∉ (e.states k').corrupted → (e.states k').decided p ≠ none) :=
+    fun p => (h_per_proc_persist p).choose_spec
+  simp only [eventually, state_prop]
+  by_cases hn0 : n = 0
+  · subst hn0
+    exact ⟨k₁ - k, by intro p; exact Fin.elim0 p⟩
+  · haveI : Nonempty (Fin n) := ⟨⟨0, by omega⟩⟩
+    let k_max := Finset.univ.sup k'_fn
+    have hk_max_ge : ∀ p, k'_fn p ≤ k_max :=
+      fun p => Finset.le_sup (Finset.mem_univ p)
+    have hk_max_ge_k₁ : k₁ ≤ k_max := by
+      have := (hk'_spec ⟨0, by omega⟩).1
+      have := hk_max_ge ⟨0, by omega⟩
+      omega
+    refine ⟨k_max - k, ?_⟩
+    have hkmax_eq : 0 + k + (k_max - k) = k_max := by omega
+    rw [hkmax_eq]
+    intro p hp
+    exact (hk'_spec p).2 k_max (hk_max_ge p) hp
 
 /-- Stutter variant of `ideal_bca_decision` for use as `h_abs` in
     `transfers_satisfaction`. Uses unified `assumes_fair_wf` (step-aware
