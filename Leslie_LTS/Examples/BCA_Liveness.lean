@@ -385,51 +385,115 @@ theorem fair_deadlock_output_contradiction
   obtain ⟨s', hstep⟩ := henabled
   exact hfd (.output p (some b)) s' hstep hp
 
+/-! ## Delivery chain helpers for fair-deadlock termination -/
+
+/-- At a fair deadlock, if correct src has input = some b, every correct
+    dst has initRecv(src, b) = true (init delivered). -/
+theorem fair_deadlock_initRecv_from_input
+    (s : BCA_LTS.State T n) (hn : n > 3 * f)
+    (hreach : Reachable (BCA_LTS.bca T n f) s)
+    (hfd : FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s)
+    {src : Fin n} (hsrc : src ∉ s.corrupted)
+    {b : T} (hinput : (s.local_ src).input = some b)
+    {dst : Fin n} (hdst : dst ∉ s.corrupted) :
+    (s.local_ dst).initRecv src b = true := by
+  have hsent := fair_deadlock_init_sent T n f s hn hreach hfd hsrc hdst (Or.inl hinput)
+  exact fair_deadlock_init_delivered T n f s hreach hfd hsrc hdst hsent
+
+/-- At a fair deadlock, countInitRecv(q, b) ≥ inputSupport(b) for every correct q.
+    Proof: every correct proc p with input=b sent init(b) to q and it was received. -/
+theorem fair_deadlock_countInitRecv_ge_inputSupport
+    (s : BCA_LTS.State T n) (hn : n > 3 * f)
+    (hreach : Reachable (BCA_LTS.bca T n f) s)
+    (hfd : FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s)
+    {q : Fin n} (hq : q ∉ s.corrupted) (b : T) :
+    BCA_LTS.countInitRecv T n (s.local_ q) b ≥ BCA_LTS.inputSupport T n s b := by
+  simp only [BCA_LTS.countInitRecv, BCA_LTS.inputSupport]
+  apply filter_length_mono
+  intro p hp
+  simp only [Bool.and_eq_true, decide_eq_true_eq] at hp
+  obtain ⟨hcorr, hinput⟩ := hp
+  exact fair_deadlock_initRecv_from_input T n f s hn hreach hfd hcorr hinput hq
+
+/-- At a fair deadlock with inputSupport(b) ≥ amplifyThreshold,
+    countInitRecv(q, b) ≥ approveThreshold for every correct q.
+    Chain: input procs → init(b) → received → amplify → all correct send init(b)
+    → received → count ≥ n-f = approveThreshold. -/
+theorem fair_deadlock_countInitRecv_ge_approveThreshold
+    (s : BCA_LTS.State T n) (hn : n > 3 * f)
+    (hreach : Reachable (BCA_LTS.bca T n f) s)
+    (hfd : FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s)
+    {b : T} (hsupp : BCA_LTS.inputSupport T n s b ≥ BCA_LTS.amplifyThreshold f)
+    {q : Fin n} (hq : q ∉ s.corrupted) :
+    BCA_LTS.countInitRecv T n (s.local_ q) b ≥ BCA_LTS.approveThreshold n f := by
+  -- Step 1: inputSupport ≥ amplifyThreshold → countInitRecv ≥ amplifyThreshold
+  have hstep1 : ∀ r, r ∉ s.corrupted →
+      BCA_LTS.countInitRecv T n (s.local_ r) b ≥ BCA_LTS.amplifyThreshold f :=
+    fun r hr => Nat.le_trans hsupp
+      (fair_deadlock_countInitRecv_ge_inputSupport T n f s hn hreach hfd hr b)
+  -- Step 2: With amplifyThreshold met, ALL correct procs send init(b)
+  -- to all correct procs (amplification gate opens).
+  -- So ∀ correct src, ∀ correct dst, initRecv(dst, src, b) = true.
+  have hstep2 : ∀ src dst, src ∉ s.corrupted → dst ∉ s.corrupted →
+      (s.local_ dst).initRecv src b = true := by
+    intro src dst hsrc hdst
+    have hsent := fair_deadlock_init_sent T n f s hn hreach hfd hsrc hdst
+      (Or.inr (hstep1 src hsrc))
+    exact fair_deadlock_init_delivered T n f s hreach hfd hsrc hdst hsent
+  -- Step 3: countInitRecv(q, b) counts at least all correct procs ≥ n - f
+  have hbudget := BCA_LTS.corrupted_budget_reachable hreach
+  exact count_correct_ge s.corrupted hbudget
+    (fun p => (s.local_ q).initRecv p b) (fun p hp => hstep2 p q hp hq)
+
+/-- At a fair deadlock with inputSupport(b) ≥ amplifyThreshold,
+    approved(b) = true for every correct process. -/
+theorem fair_deadlock_all_approved
+    (s : BCA_LTS.State T n) (hn : n > 3 * f)
+    (hreach : Reachable (BCA_LTS.bca T n f) s)
+    (hfd : FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s)
+    {b : T} (hsupp : BCA_LTS.inputSupport T n s b ≥ BCA_LTS.amplifyThreshold f)
+    {q : Fin n} (hq : q ∉ s.corrupted) :
+    (s.local_ q).approved b = true := by
+  have hpos : BCA_LTS.approveThreshold n f > 0 := by
+    simp only [BCA_LTS.approveThreshold]; omega
+  exact BCA_LTS.countInitRecv_ge_implies_approved hreach q b hpos
+    (fair_deadlock_countInitRecv_ge_approveThreshold T n f s hn hreach hfd hsupp hq)
+
 /-! ## Reachable fair-deadlocks are terminated
 
     The original `bca_no_fair_deadlock_reachable` was false at
     terminated reachable states (vacuously fair-deadlocks); replaced
     after Phase C.2 by the honest claim that any reachable
     fair-deadlock is terminated. -/
-/-- At a reachable fair-deadlock where ALL correct processes have input,
+/-- At a reachable fair-deadlock with ∃ b with inputSupport ≥ f+1,
     every correct process has decided.
 
-    **Precondition:** `∀ q, q ∉ s.corrupted → (s.local_ q).input ≠ none`.
-    The weaker precondition `∃ q correct with input` is FALSE: with n=7,
-    f=2, 2 corrupt procs, and only 1 correct input, the delivery chain
-    stalls (countInitRecv = 1 < amplifyThreshold = 3) and all decided
-    remain none. The stronger "all correct have input" ensures pigeonhole
-    over binary values: some b has ≥ ⌈(n-f)/2⌉ > f correct inputs,
-    guaranteeing amplification and the full delivery chain.
+    **Precondition:** `∃ b, inputSupport(b) ≥ amplifyThreshold f`.
+    Stronger than needed for the chain (f+1 correct inputs for value b).
+    The caller provides this from binary T + all-correct-input + n > 3f.
 
-    **Proof outline** (under all-correct-input + n > 3f):
-    1. Pigeonhole: some value b has ≥ f+1 correct inputs.
-    2. Those procs send init(b) to all correct → received (fair deadlock).
-    3. countInitRecv(b) ≥ f+1 = amplifyThreshold → all correct amplify.
-    4. After amplification: countInitRecv(b) ≥ n-f = approveThreshold
-       → approved(b) = true for all correct.
-    5. All correct echo(some b) or already echoed → sent and received.
-    6. countEchoRecv(b) ≥ n-f = echoThreshold → all correct vote.
-    7. All correct vote → sent and received → countVoteRecv ≥ n-f.
-    8. output enabled for undecided correct → contradiction with deadlock. -/
+    **Proof outline:**
+    1. Input(b) procs send init(b) → received → countInitRecv ≥ f+1.
+    2. Amplification: all correct send init(b) → countInitRecv ≥ n-f.
+    3. approved(b) for all correct.
+    4. Echo delivery → echo quorum or two-approved → vote → vote recv → output. -/
 theorem bca_fair_deadlock_implies_terminated (hn : n > 3 * f) :
     ∀ s, Reachable (BCA_LTS.bca T n f) s →
       FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s →
       (∀ q, q ∉ s.corrupted → (s.local_ q).input ≠ none) →
       ∀ p, p ∉ s.corrupted → (s.local_ p).decided ≠ none := by
-  intro s hreach hfd hall_input p hp
-  -- By contradiction: suppose correct p has decided = none.
-  intro hdec
-  -- The delivery chain argument shows this is impossible.
-  -- We need: ∃ b, countVoteRecv(p, some b) ≥ returnThreshold.
-  -- This follows from the chain:
-  --   input → init sent → init received → amplify → approve
-  --   → echo sent → echo received → vote sent → vote received → output
-  -- Each step uses the fair-deadlock delivery lemmas above.
-  -- The chain requires: ∃ b with inputSupport(b) ≥ amplifyThreshold.
-  -- This needs pigeonhole over binary T or a direct assumption.
-  -- Counting sub-lemma: at the fair deadlock, the delivery chain
-  -- ensures enough voteRecvs. Sorry pending counting-over-Finset work.
+  intro s hreach hfd hall_input p hp hdec
+  have hbudget := BCA_LTS.corrupted_budget_reachable hreach
+  have hn_f : n > f := by omega
+  have hpos : BCA_LTS.approveThreshold n f > 0 := by
+    simp only [BCA_LTS.approveThreshold]; omega
+  -- Step 1-3: All correct procs have approved(b) for some b.
+  -- We need ∃ b with inputSupport(b) ≥ f+1 from the all-correct-input precondition.
+  -- For now, sorry this and prove the rest of the chain.
+  -- Chain: input → init sent → init received → amplify → approved for all correct.
+  -- Step 4-8: approved → echo → vote → output → contradiction.
+  -- This requires handling vote type (some b vs none) with case analysis.
+  -- Full proof is ~200 LOC. Sorry pending.
   sorry
 
 /-! ## The headline witness -/
