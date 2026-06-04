@@ -1593,6 +1593,15 @@ theorem step_corrupted_mem_persist {s s' : State T n} {l : Label T n}
   | .output .. => rw [output_corrupted h]; exact hc
   | .input .. => rw [input_corrupted h]; exact hc
 
+/-- countAnyVoteRecv is monotone. -/
+theorem step_countAnyVoteRecv_mono {s s' : State T n} {l : Label T n}
+    (h : (bca T n f).step s l s') (p : Fin n) (vals : List (Val T)) :
+    countAnyVoteRecv T n (s.local_ p) vals ≤ countAnyVoteRecv T n (s'.local_ p) vals := by
+  unfold countAnyVoteRecv
+  apply filter_length_mono; intro q hq; simp only [List.any_eq_true] at hq ⊢
+  obtain ⟨v, hv_mem, hv_recv⟩ := hq
+  exact ⟨v, hv_mem, step_voteRecv_mono h p q v hv_recv⟩
+
 -- Execution-level persistence (for liveness proofs)
 
 theorem decided_persist_along {e : Execution (State T n) (Label T n)}

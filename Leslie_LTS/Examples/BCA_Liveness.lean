@@ -270,6 +270,25 @@ theorem bca_fair_deadlock_implies_terminated (hn : n > 3 * f) :
     ∀ s, Reachable (BCA_LTS.bca T n f) s →
       FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s →
       ∀ p, p ∉ s.corrupted → (s.local_ p).decided ≠ none := by
+  -- Protocol-specific: at a fair-deadlock with n > 3f, every correct
+  -- process has already decided. The argument:
+  --
+  -- At a fair-deadlock:
+  --   1. No correct-to-correct message is in the buffer
+  --      (fair_deadlock_no_fair_buffer).
+  --   2. No fair send/recv/output is enabled.
+  --
+  -- By contradiction, if correct p has decided = none:
+  --   * output(p, some b) would be enabled if countVoteRecv ≥ n-f.
+  --     Since output is fair (p correct), it can't be enabled → contradiction.
+  --   * So countVoteRecv(p, some b) < n-f for all b.
+  --   * But the protocol delivery chain ensures that at a fair-deadlock
+  --     with all correct-to-correct messages delivered, every correct
+  --     process has enough votes. This requires BCA invariants
+  --     (vote backing, quorum completion) which are proven in
+  --     BCA_Simulation.lean as part of the safety proof.
+  --
+  -- Deep protocol reasoning; sorried pending BCA invariant work.
   sorry
 
 /-! ## The headline witness -/
