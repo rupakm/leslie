@@ -1,20 +1,21 @@
 import Leslie_LTS.Framework
 import Leslie_LTS.Examples.BCA
 import Leslie_LTS.Examples.IdealBCA
-import Leslie_LTS.Examples.BCA_Simulation
 
-/-! # BCA Liveness: Fair-Weak-Divergence Witness and Lifted Decision
+/-! # BCA Liveness: Fair-Deadlock Analysis and Ideal Decision
 
-  This file instantiates `ForwardSim.WeakDivPreserving` for the existing
-  `BCA_Simulation.bca_forward_sim` and uses the transfer theorem to lift
-  a fair-scheduling decision property from `IdealBCA` to the concrete BCA.
+  This file provides:
+  1. Fair-label classification (`bca_fair_labels`, `ideal_bca_fair_labels`).
+  2. Fair-deadlock analysis: at a reachable fair-deadlock with enough input
+     support, the delivery chain forces all correct processes to have decided
+     (`bca_fair_deadlock_implies_terminated` — 3 sorries remaining in
+     `fair_deadlock_approved_spreads` and `bca_fair_deadlock_implies_terminated`).
+  3. Ideal-level decision theorems (`ideal_bca_decision`,
+     `ideal_bca_decision_stutter`) — sorry-free.
 
-  Structurally mirrors `BRB_Liveness.lean`. All declarations here are
-  statements only (the Phase-3-equivalent scaffolding for the BCA family).
-  The vacuous-`AllFair` clause of the witness is fully proven; the
-  protocol-specific obligations (progress measure, rank well-foundedness,
-  no-fair-deadlock, and the lifted decision theorems) are sorried as
-  Phase-3 protocol design work.
+  The `WeakDivPreserving` witness and simulation-based `bca_decision` via
+  `transfers_leads_to` were removed (same reason as BRB — see the
+  "Why bca_totality via transfers_leads_to was removed" section below).
 -/
 
 /-! ## BCA Protocol Reasoning Cheatsheet
@@ -110,28 +111,18 @@ import Leslie_LTS.Examples.BCA_Simulation
     `voted_persist`, `countEchoRecv_persist`, `countVoteRecv_persist`,
     `countAnyVoteRecv_persist`, `countInitRecv_persist`.
 
-    ### How this applies to the BCA sorries
+    ### Theorem overview
 
-    **ideal_bca_decision:**
+    **ideal_bca_decision / ideal_bca_decision_stutter:**
     Same until-or-forever structure as ideal_brb_totality:
-    Step A: input ready → bound_value eventually set (via fair bind,
-      which requires inputSupport ≥ f+1 — guaranteed by binary input
-      assumption + n > 3f pigeonhole).
+    Step A: input ready → bound_value eventually set (via fair bind).
     Step B: bound_value set → all correct procs eventually decide (via
-      fair output, since set_up = bound_value persists and output
-      requires isCorrect + decided = none + bound_value = some v).
-
-    **bca_decision:**
-    Same `transfers_leads_to` pattern as `brb_totality`.
+      fair output).
 
     **bca_fair_deadlock_implies_terminated:**
-    Same argument as BRB: at a fair-deadlock, no fair step is enabled.
-    If correct p has `decided = none`, show some fair step is enabled
-    (output if enough votes, or fair recv/send upstream).
-
-    **Rank obligations:**
-    Same placeholder pattern as BRB. Design a lex measure over
-    (decided_count, vote_pending, echo_pending, init_pending).
+    At a fair-deadlock with inputSupport ≥ amplifyThreshold, no fair
+    step is enabled, but every correct process has already decided.
+    3 sorries remain: approval spreading and case-split completion.
 -/
 
 open LTS
@@ -191,25 +182,6 @@ theorem ideal_bca_internalStar_allFair
   star.allFair_of_all_internal_fair (ideal_bca_internal_label_fair T n)
 
 /-! ## Well-founded rank on concrete states (definitions deferred) -/
-
-/-- A `Nat`-valued progress measure on concrete BCA states. Should decrease
-    on every fair correct-process step. Designing this measure is itself a
-    significant protocol-specific undertaking — a natural lexicographic
-    candidate is
-
-      (round/phase, undelivered honest messages, undecided correct procs)
-
-    following `Leslie/Examples/BindingCrusaderAgreementLiveness.lean`'s
-    structure. Deferred to a follow-up that mirrors `brb_progress_measure`. -/
-def bca_progress_measure (_s : BCA_LTS.State T n) : Nat := 0
-
-/-- The well-founded rank: `s' < s` iff the measure strictly drops. -/
-def bca_rank (s s' : BCA_LTS.State T n) : Prop :=
-  bca_progress_measure T n s' < bca_progress_measure T n s
-
-theorem bca_rank_wf :
-    WellFounded (bca_rank T n) :=
-  ⟨fun a => ⟨a, fun _ h => absurd h (Nat.not_lt_zero _)⟩⟩
 
 /-! ## Fair-deadlock helpers (mirrors BRB_Liveness) -/
 
@@ -654,90 +626,37 @@ theorem bca_fair_deadlock_implies_terminated (hn : n > 3 * f) :
     -- → output(some b) enabled → contradiction
     sorry
 
-/-! ## The headline witness -/
+/-! ### Why `bca_totality` via `transfers_leads_to` was removed
 
-/-- `bca_forward_sim` is weak-divergence-preserving under the fair-label
-    classification above. Mirrors `brb_weak_div_witness`. -/
-noncomputable def bca_weak_div_witness (hn : n > 3 * f) :
-    (BCA_Simulation.bca_forward_sim T n f hn).WeakDivPreserving
-      (bca_fair_labels T n)
-      (ideal_bca_fair_labels T n) where
-  rank := bca_rank T n
-  rank_wf := bca_rank_wf T n
-  rank_non_increasing := by
-    -- Protocol-specific: unfair (Byzantine) internal BCA steps do not
-    -- grow the rank. Tied to the definition of `bca_progress_measure`.
-    sorry
-  rank_decreases_on_fair_elision := by
-    -- Protocol-specific: a fair internal concrete step elided by
-    -- IdealBCA decreases `bca_rank` — the "helpful directions"
-    -- condition. Tied to the definition of `bca_progress_measure`.
-    sorry
-  rank_decreases_on_unfair_abstract := by
-    -- Vacuous: IdealBCA's only internal label is `.bind _`, which
-    -- `ideal_bca_fair_labels` always classifies as fair (`True`).
-    -- Hence every abstract `InternalStar` produced by `step_internal`
-    -- is `AllFair`, contradicting the `¬ AllFair` hypothesis. `exfalso`.
-    intro s₁ _l₁ _s₁' _s₂ _hreach _hR _hint _hfair _hstep _hne hnaf
-    exact absurd
-      (ideal_bca_internalStar_allFair T n f _) hnaf
-  rank_non_increasing_on_fair_progress := by
-    -- Protocol-specific: at a fair correct-process internal BCA step
-    -- whose IdealBCA response is non-empty AllFair (i.e. `.bind b` is
-    -- the abstract response), `bca_progress_measure` does not increase.
-    -- Tied to the deferred `bca_progress_measure` design (out of scope
-    -- for plans/close-framework-gaps-and-brb.md).
-    sorry
-  fair_deadlock_diverges := by
-    -- Directly construct a FairDeadlock on the ideal side (or FairDiverges).
-    -- Case analysis on ideal labels:
-    --   * corrupt/input: not fair → trivial.
-    --   * bind b: fair (= True). Need: bind not enabled.
-    --     bind requires: bound_value = none ∧ inputSupport ≥ f+1.
-    --     BLOCKED: sim_rel with bound_value = none gives echoSupport < echoThreshold
-    --     for all b, but does NOT constrain inputSupport. Counter-example:
-    --     n=7, f=2, 2 corrupt, 1 correct input b → corrupted.length + inputSupport
-    --     = 2+1 = 3 = f+1, so bind IS enabled. Yet the concrete IS a valid fair
-    --     deadlock (only 1 correct init source, amplifyThreshold = 3, no progress).
-    --     The ideal is NOT a fair deadlock in this case, and there's no infinite
-    --     internal divergence (bind fires once). So FairlyWeaklyDiverges genuinely
-    --     fails here. This is a design gap in the sim_rel — it doesn't track enough
-    --     structure about corrupt-to-correct init delivery. See issues.md §3.
-    --   * output p v: fair iff p correct. Need: output not enabled for correct p.
-    --     output requires: isCorrect, decided = none, bound_value conditions.
-    --     If bound_value = none: output impossible (guard needs bound_value = some _).
-    --     If bound_value ≠ none: need all correct decided ≠ none (delivery chain).
-    intro s₁ s₂ hreach hR hfd
-    apply FairDeadlock.fairlyWeaklyDiverges
-    intro l₂ s₂' hstep hfair
-    match l₂ with
-    | .corrupt _ => exact absurd hfair (by simp [ideal_bca_fair_labels])
-    | .input _ _ => exact absurd hfair (by simp [ideal_bca_fair_labels])
-    | .bind b =>
-      -- bind step requires bound_value = none ∧ inputSupport ≥ f+1.
-      -- Blocked: inputSupport ≥ f+1 CAN hold at a concrete fair deadlock
-      -- when corrupted.length + correct_inputs ≥ f+1, even if echoSupport is
-      -- below threshold (init chain incomplete due to missing corrupt help).
-      simp only [IdealBCA.ideal_bca] at hstep
-      obtain ⟨_, _, _⟩ := hstep
-      sorry
-    | .output p v =>
-      -- output requires isCorrect p, decided = none, value guard.
-      -- Value guard requires bound_value ≠ none (both some/none branches).
-      simp only [IdealBCA.ideal_bca] at hstep
-      obtain ⟨_, hdec_none, hguard, _⟩ := hstep
-      -- If bound_value = none, neither output branch is satisfiable.
-      -- If bound_value ≠ none, need decided p ≠ none for all correct p
-      -- (the delivery chain argument: echoSupport ≥ threshold or
-      -- voteContention → vote/output chain completed at fair deadlock).
-      sorry
+    The simulation-based `bca_totality` (via `transfers_leads_to` +
+    `WeakDivPreserving`) was removed because both `h_ante_transfer`
+    cases and the `fair_deadlock_diverges` clause are fundamentally
+    unprovable due to the corrupt-sender fairness mismatch (same issue
+    as BRB — see BRB_Liveness.lean §"Why brb_totality was removed"):
+
+    * **Bind case**: abstract bind is always fair (`True`), but the
+      corresponding concrete init delivery from corrupt senders involves
+      only unfair steps. At a concrete fair deadlock with
+      `corrupted.length + inputSupport ≥ f+1`, bind IS enabled on the
+      ideal side, so `FairlyWeaklyDiverges` genuinely fails.
+    * **Rank obligations**: the progress measure approach requires a
+      real `bca_progress_measure` where every fair concrete step strictly
+      decreases the rank. Designing such a measure is non-trivial and
+      orthogonal to the core liveness argument.
+    * **h_ante_transfer**: same structural issue as BRB — transferring
+      the fair-WF antecedent across the simulation boundary fails when
+      abstract labels are fair but corresponding concrete steps are unfair.
+
+    The correct approach (matching BRB) is to prove concrete-level
+    liveness directly via the delivery chain. The ideal-level decision
+    theorems (`ideal_bca_decision`, `ideal_bca_decision_stutter`) remain
+    as standalone results. -/
 
 /-! ## Liveness statements
 
-    The ideal-level decision liveness, plus the concrete-level decision
-    obtained by transferring it through `bca_weak_div_witness`.
+    The ideal-level decision liveness.
 
-    ### Proof structure (mirrors BRB_Liveness.lean)
+    ### Proof structure
 
     `ideal_bca_decision`: two steps through `bound_value ≠ none`:
       Step A: input_ready precondition → bound_value eventually set
@@ -746,8 +665,7 @@ noncomputable def bca_weak_div_witness (hn : n > 3 * f) :
         (per-proc: output(p, v) enabled + fair → fires;
          finite-max wrapper via Finset.sup).
 
-    `ideal_bca_decision_stutter`: same proof, step-aware h_ante.
-    `bca_decision`: via `transfers_leads_to` + `bca_fair_compat`. -/
+    `ideal_bca_decision_stutter`: same proof, step-aware h_ante. -/
 
 /-- Decision property on the IDEAL: under fair scheduling, once enough
     correct processes have input (the `input_ready` precondition:
@@ -1084,112 +1002,5 @@ theorem ideal_bca_decision_stutter :
     rw [hkmax_eq]
     intro p hp
     exact (hk'_spec p).2 k_max (hk_max_ge p) hp
-
-/-! ## Fair-label compatibility -/
-
-/-- Concrete fair labels map to abstract fair labels via `label_map`.
-    Used as `h_fair_compat` in `transfers_satisfaction`. -/
-theorem bca_fair_compat (hn : n > 3 * f) :
-    ∀ s₁ l₁ s₂,
-      (BCA_Simulation.bca_forward_sim T n f hn).R s₁ s₂ →
-      bca_fair_labels T n s₁ l₁ →
-      ideal_bca_fair_labels T n s₂
-        ((BCA_Simulation.bca_forward_sim T n f hn).label_map l₁) := by
-  intro s₁ l₁ s₂ hR hfair
-  have hcorr : s₂.corrupted = s₁.corrupted := hR.1
-  match l₁ with
-  | .corrupt _ => exact absurd hfair (by simp [bca_fair_labels])
-  | .input _ _ => exact absurd hfair (by simp [bca_fair_labels])
-  | .output p v =>
-    simp only [BCA_Simulation.bca_forward_sim, BCA_Simulation.label_map,
-               bca_fair_labels, ideal_bca_fair_labels] at hfair ⊢
-    rw [hcorr]; exact hfair
-  | .send _ _ _ _ =>
-    simp [BCA_Simulation.bca_forward_sim, BCA_Simulation.label_map,
-          ideal_bca_fair_labels]
-  | .recv _ _ _ _ =>
-    simp [BCA_Simulation.bca_forward_sim, BCA_Simulation.label_map,
-          ideal_bca_fair_labels]
-
-/-- The concrete-side decision property, lifted from
-    `ideal_bca_decision_stutter` via `transfers_leads_to` applied to
-    `bca_weak_div_witness`.
-
-    **Precondition:** the concrete analog of `input_ready` — either
-    some value has enough concrete-side support to cross the echo
-    threshold (which maps to abstract inputSupport via sim_rel), or
-    the abstract bound_value is already set. -/
-theorem bca_decision (hn : n > 3 * f) :
-    (BCA_LTS.bca T n f).satisfies
-      (assumes_fair_wf
-        (BCA_LTS.bca T n f)
-        (bca_fair_labels T n)
-        (leads_to
-          (state_prop (fun s : BCA_LTS.State T n =>
-            ∃ b, BCA_Simulation.echoSupport T n s b ≥ BCA_LTS.echoThreshold n f))
-          (state_prop (fun s : BCA_LTS.State T n =>
-            ∀ p, p ∉ s.corrupted → (s.local_ p).decided ≠ none)))) := by
-  exact (bca_weak_div_witness T n f hn).transfers_leads_to
-    -- h_label_ext: external labels preserved
-    (fun l₁ hl₁ => by
-      cases l₁ <;> simp_all [BCA_LTS.bca_labelling, Labelling.is_external,
-        BCA_Simulation.label_map, IdealBCA.ideal_labelling,
-        BCA_Simulation.bca_forward_sim])
-    -- h_map_tau: tau maps to tau
-    (by simp [BCA_Simulation.bca_forward_sim, BCA_Simulation.label_map,
-        BCA_LTS.bca_labelling, IdealBCA.ideal_labelling])
-    -- P_abs, Q_abs, P_con, Q_con
-    (fun s => (∃ b, s.corrupted.length + IdealBCA.inputSupport T n s b ≥ f + 1) ∨
-              s.bound_value ≠ none)
-    (fun s => ∀ p, p ∉ s.corrupted → s.decided p ≠ none)
-    (fun s => ∃ b, BCA_Simulation.echoSupport T n s b ≥ BCA_LTS.echoThreshold n f)
-    (fun s => ∀ p, p ∉ s.corrupted → (s.local_ p).decided ≠ none)
-    -- h_P: P_con → P_abs via sim_rel
-    (fun s₁ s₂ hR hP => by
-      obtain ⟨b, hsupp⟩ := hP
-      -- echoSupport ≥ echoThreshold → sim_rel gives bound_value or voteContention
-      -- Either way, bound_value ≠ none.
-      right
-      rcases hR.2.2.2.1 b hsupp with hbv | hvote
-      · rw [hbv]; simp
-      · exact hR.2.2.2.2.1 hvote)
-    -- h_Q: Q_abs → Q_con via sim_rel
-    (fun s₁ s₂ hR hQ p hp => by
-      have hcorr : s₂.corrupted = s₁.corrupted := hR.1
-      have hp' : p ∉ s₂.corrupted := hcorr ▸ hp
-      have hdec := hR.2.2.1 p
-      rw [← hdec]; exact hQ p hp')
-    -- h_Q_step: Q_abs preserved by IdealBCA steps
-    (fun s l s' hQ hstep => by
-      intro p hp
-      simp only [IdealBCA.ideal_bca] at hstep
-      cases l with
-      | corrupt i =>
-        obtain ⟨_, _, heq⟩ := hstep
-        subst heq; simp at hp; exact hQ p hp.2
-      | input i v =>
-        obtain ⟨_, heq⟩ := hstep; subst heq; exact hQ p hp
-      | bind b =>
-        obtain ⟨_, _, heq⟩ := hstep; subst heq; exact hQ p hp
-      | output q v =>
-        obtain ⟨_, _, _, heq⟩ := hstep; subst heq
-        show (if p = q then some v else s.decided p) ≠ none
-        split
-        · simp
-        · exact hQ p hp)
-    -- h_abs: ideal_bca_decision_stutter
-    (ideal_bca_decision_stutter T n f)
-    -- h_ante_transfer: sorry (same structural issue as BRB)
-    (fun e₁ e₂ idx hv₁ hv₂ idx_mono idx_zero h_idx_R h_fair_e1 => by
-      intro l₂ k₂ h_always
-      cases l₂ with
-      | corrupt i =>
-        exact absurd (h_always 0).2 (by simp [ideal_bca_fair_labels])
-      | input i v =>
-        exact absurd (h_always 0).2 (by simp [ideal_bca_fair_labels])
-      | bind b =>
-        sorry
-      | output p v =>
-        sorry)
 
 end BCA_Liveness
