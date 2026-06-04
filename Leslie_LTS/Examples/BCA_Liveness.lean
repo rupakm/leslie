@@ -660,10 +660,70 @@ theorem bca_decision (hn : n > 3 * f) :
         (bca_fair_labels T n)
         (leads_to
           (state_prop (fun s : BCA_LTS.State T n =>
-            (∃ b, BCA_Simulation.echoSupport T n s b ≥ BCA_LTS.echoThreshold n f) ∨
-            (∃ p : Fin n, ∃ v : BCA_LTS.Val T, (s.local_ p).decided = some v)))
+            ∃ b, BCA_Simulation.echoSupport T n s b ≥ BCA_LTS.echoThreshold n f))
           (state_prop (fun s : BCA_LTS.State T n =>
             ∀ p, p ∉ s.corrupted → (s.local_ p).decided ≠ none)))) := by
-  sorry
+  exact (bca_weak_div_witness T n f hn).transfers_leads_to
+    -- h_label_ext: external labels preserved
+    (fun l₁ hl₁ => by
+      cases l₁ <;> simp_all [BCA_LTS.bca_labelling, Labelling.is_external,
+        BCA_Simulation.label_map, IdealBCA.ideal_labelling,
+        BCA_Simulation.bca_forward_sim])
+    -- h_map_tau: tau maps to tau
+    (by simp [BCA_Simulation.bca_forward_sim, BCA_Simulation.label_map,
+        BCA_LTS.bca_labelling, IdealBCA.ideal_labelling])
+    -- P_abs, Q_abs, P_con, Q_con
+    (fun s => (∃ b, s.corrupted.length + IdealBCA.inputSupport T n s b ≥ f + 1) ∨
+              s.bound_value ≠ none)
+    (fun s => ∀ p, p ∉ s.corrupted → s.decided p ≠ none)
+    (fun s => ∃ b, BCA_Simulation.echoSupport T n s b ≥ BCA_LTS.echoThreshold n f)
+    (fun s => ∀ p, p ∉ s.corrupted → (s.local_ p).decided ≠ none)
+    -- h_P: P_con → P_abs via sim_rel
+    (fun s₁ s₂ hR hP => by
+      obtain ⟨b, hsupp⟩ := hP
+      -- echoSupport ≥ echoThreshold → sim_rel gives bound_value or voteContention
+      -- Either way, bound_value ≠ none.
+      right
+      rcases hR.2.2.2.1 b hsupp with hbv | hvote
+      · rw [hbv]; simp
+      · exact hR.2.2.2.2.1 hvote)
+    -- h_Q: Q_abs → Q_con via sim_rel
+    (fun s₁ s₂ hR hQ p hp => by
+      have hcorr : s₂.corrupted = s₁.corrupted := hR.1
+      have hp' : p ∉ s₂.corrupted := hcorr ▸ hp
+      have hdec := hR.2.2.1 p
+      rw [← hdec]; exact hQ p hp')
+    -- h_Q_step: Q_abs preserved by IdealBCA steps
+    (fun s l s' hQ hstep => by
+      intro p hp
+      simp only [IdealBCA.ideal_bca] at hstep
+      cases l with
+      | corrupt i =>
+        obtain ⟨_, _, heq⟩ := hstep
+        subst heq; simp at hp; exact hQ p hp.2
+      | input i v =>
+        obtain ⟨_, heq⟩ := hstep; subst heq; exact hQ p hp
+      | bind b =>
+        obtain ⟨_, _, heq⟩ := hstep; subst heq; exact hQ p hp
+      | output q v =>
+        obtain ⟨_, _, _, heq⟩ := hstep; subst heq
+        show (if p = q then some v else s.decided p) ≠ none
+        split
+        · simp
+        · exact hQ p hp)
+    -- h_abs: ideal_bca_decision_stutter
+    (ideal_bca_decision_stutter T n f)
+    -- h_ante_transfer: sorry (same structural issue as BRB)
+    (fun e₁ e₂ idx hv₁ hv₂ idx_mono idx_zero h_idx_R h_fair_e1 => by
+      intro l₂ k₂ h_always
+      cases l₂ with
+      | corrupt i =>
+        exact absurd (h_always 0).2 (by simp [ideal_bca_fair_labels])
+      | input i v =>
+        exact absurd (h_always 0).2 (by simp [ideal_bca_fair_labels])
+      | bind b =>
+        sorry
+      | output p v =>
+        sorry)
 
 end BCA_Liveness
