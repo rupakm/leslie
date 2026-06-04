@@ -1685,6 +1685,32 @@ theorem sent_persist_along {e : Execution (State T n) (Label T n)}
     · exact h
     · exact step_sent_mono (hv.2 k') p dst t v (ih (by omega))
 
+theorem echoed_persist_along {e : Execution (State T n) (Label T n)}
+    (hv : (bca T n f).valid_exec e)
+    {k : Nat} {p : Fin n} {b : T}
+    (h : ((e.states k).local_ p).echoed = some b)
+    (hcorr : ∀ k', k ≤ k' → p ∉ (e.states k').corrupted) :
+    ∀ k', k ≤ k' → ((e.states k').local_ p).echoed = some b := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · exact step_echoed_persist (hv.2 k') p b (hcorr (k' + 1) (by omega)) (ih (by omega))
+
+theorem voted_persist_along {e : Execution (State T n) (Label T n)}
+    (hv : (bca T n f).valid_exec e)
+    {k : Nat} {p : Fin n} {b : T}
+    (h : ((e.states k).local_ p).voted (some b) = true)
+    (hcorr : ∀ k', k ≤ k' → p ∉ (e.states k').corrupted) :
+    ∀ k', k ≤ k' → ((e.states k').local_ p).voted (some b) = true := by
+  intro k'; induction k' with
+  | zero => intro hle; rw [show k = 0 from Nat.le_zero.mp hle] at h; exact h
+  | succ k' ih =>
+    intro hle; rcases Nat.eq_or_lt_of_le hle with rfl | hlt
+    · exact h
+    · exact step_voted_persist (hv.2 k') p b (hcorr (k' + 1) (by omega)) (ih (by omega))
+
 theorem initRecv_mono_along {e : Execution (State T n) (Label T n)}
     (hv : (bca T n f).valid_exec e)
     {k : Nat} {p q : Fin n} {b : T}
