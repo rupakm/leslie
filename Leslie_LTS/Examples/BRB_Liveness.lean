@@ -434,8 +434,24 @@ theorem brb_fair_deadlock_implies_terminated (hn : n > 3 * f) :
       BRB_LTS.countEchoRecv n Value (s.local_ r) v ≥ BRB_LTS.echoThreshold n f := by
     intro r hr
     -- countEchoRecv ≥ n - |corrupted| ≥ n - f because echoRecv from all correct q.
-    -- |filter(echoRecv · v)| ≥ |filter(q ∉ corrupted)| = n - |filter(q ∈ corrupted)| ≥ n - f.
-    sorry
+    unfold BRB_LTS.countEchoRecv BRB_LTS.echoThreshold
+    -- filter(echoRecv · v) includes all q ∉ corrupted
+    have h1 : ((List.finRange n).filter (fun q => decide (q ∉ s.corrupted))).length ≤
+        ((List.finRange n).filter ((s.local_ r).echoRecv · v)).length :=
+      filter_length_mono _ _ _ (fun q hq => by
+        simp only [decide_eq_true_eq] at hq; exact h_echoRecv q r hq hr)
+    -- complement: |not-in-corrupted| + |in-corrupted| = n
+    have h2 : ((List.finRange n).filter (fun q => decide (q ∉ s.corrupted))).length +
+        ((List.finRange n).filter (fun q => decide (q ∈ s.corrupted))).length = n := by
+      have key := (List.finRange n).length_eq_length_filter_add (fun q => decide (q ∈ s.corrupted))
+      simp only [List.length_finRange] at key
+      have : (List.filter (fun x => !decide (x ∈ s.corrupted)) (List.finRange n)) =
+             (List.filter (fun x => decide (x ∉ s.corrupted)) (List.finRange n)) := by
+        apply List.filter_congr; intro x _; simp
+      rw [← this]; omega
+    have h3 := filter_mem_le s.corrupted
+    have h4 := BRB_Simulation.corrupted_budget hreach
+    omega
   -- Step 4: All correct r have sent vote(v) to all correct r', and voteRecv delivered.
   have h_voteRecv : ∀ q r, q ∉ s.corrupted → r ∉ s.corrupted →
       (s.local_ r).voteRecv q v = true := by
@@ -472,7 +488,23 @@ theorem brb_fair_deadlock_implies_terminated (hn : n > 3 * f) :
   -- Step 5: countVoteRecv p v ≥ returnThreshold.
   have h_voteCount :
       BRB_LTS.countVoteRecv n Value (s.local_ p) v ≥ BRB_LTS.returnThreshold n f := by
-    sorry -- counting: same as echoCount but for voteRecv
+    -- Same counting argument as echoCount.
+    unfold BRB_LTS.countVoteRecv BRB_LTS.returnThreshold
+    have h1 : ((List.finRange n).filter (fun q => decide (q ∉ s.corrupted))).length ≤
+        ((List.finRange n).filter ((s.local_ p).voteRecv · v)).length :=
+      filter_length_mono _ _ _ (fun q hq => by
+        simp only [decide_eq_true_eq] at hq; exact h_voteRecv q p hq hp_corr)
+    have h2 : ((List.finRange n).filter (fun q => decide (q ∉ s.corrupted))).length +
+        ((List.finRange n).filter (fun q => decide (q ∈ s.corrupted))).length = n := by
+      have key := (List.finRange n).length_eq_length_filter_add (fun q => decide (q ∈ s.corrupted))
+      simp only [List.length_finRange] at key
+      have : (List.filter (fun x => !decide (x ∈ s.corrupted)) (List.finRange n)) =
+             (List.filter (fun x => decide (x ∉ s.corrupted)) (List.finRange n)) := by
+        apply List.filter_congr; intro x _; simp
+      rw [← this]; omega
+    have h3 := filter_mem_le s.corrupted
+    have h4 := BRB_Simulation.corrupted_budget hreach
+    omega
   -- Step 6: output(p, v) enabled + fair → contradiction.
   have h_output_enabled : ∃ s', (BRB_LTS.brb n f Value sender).step s (.output p v) s' := by
     refine ⟨{ s with local_ := fun q => if q = p then
