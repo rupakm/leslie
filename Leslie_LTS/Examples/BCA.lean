@@ -1809,6 +1809,17 @@ theorem decided_binary_implies_voteRecv {s : State T n}
       | .recv _ _ .vote _ => rw [recv_vote_decided hstep] at hdec; exact absurd hdec hdec_prev
       | .input _ _ => rw [input_decided hstep] at hdec; exact absurd hdec hdec_prev
 
+/-- Corrupted list length is non-decreasing across steps. -/
+theorem step_corrupted_length_mono {s s' : State T n} {l : Label T n}
+    (h : (bca T n f).step s l s') :
+    s.corrupted.length ≤ s'.corrupted.length := by
+  match l with
+  | .corrupt _ => rw [corrupt_eq h]; simp
+  | .send .. => rw [send_corrupted h]
+  | .recv .. => rw [recv_corrupted h]
+  | .output .. => rw [output_corrupted h]
+  | .input .. => rw [input_corrupted h]
+
 theorem echoed_persist_along {e : Execution (State T n) (Label T n)}
     (hv : (bca T n f).valid_exec e)
     {k : Nat} {p : Fin n} {b : T}
