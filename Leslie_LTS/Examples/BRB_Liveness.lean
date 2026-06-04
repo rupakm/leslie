@@ -21,7 +21,7 @@ import Leslie_LTS.Examples.BRB_Simulation
   - `brb_rank_wf` (trivially for placeholder measure)
   - `rank_decreases_on_unfair_abstract` (vacuous — all InternalStars AllFair)
   - `ideal_brb_internal_label_fair`, `ideal_brb_internalStar_allFair`
-  - `brb_fair_deadlock_implies_terminated` proof STRUCTURE complete
+  - `brb_fair_deadlock_implies_terminated` FULLY proven
     (6-step chain: init→echo→vote→output, by contradiction)
 
   **Remaining sorries (6 in BRB_Liveness, 0 in BrachaBRB):**
