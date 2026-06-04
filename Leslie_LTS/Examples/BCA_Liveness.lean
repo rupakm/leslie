@@ -610,11 +610,32 @@ theorem bca_fair_deadlock_implies_terminated (hn : n > 3 * f) :
   -- Step 4: Each correct proc echoed some value
   have hall_echoed : ∀ q, q ∉ s.corrupted → (s.local_ q).echoed ≠ none :=
     fun q hq => fair_deadlock_echoed_ne_none T n f s hreach hfd hq (hall_approved q hq) (by omega)
-  -- Case split: does every correct proc have echoed = some b?
-  by_cases hall_echo_b : ∀ q, q ∉ s.corrupted → (s.local_ q).echoed = some b
-  · -- Case 1: All correct echoed b → echo quorum for b
-    -- All correct sent echo(some b) to all correct → received
-    -- countEchoRecv(p, b) ≥ n - f = echoThreshold
+  -- Unified case analysis: does any correct proc have a second approved value?
+  by_cases hextra : ∃ b', b' ≠ b ∧ ∃ q₁, q₁ ∉ s.corrupted ∧ (s.local_ q₁).approved b' = true
+  · -- Path A: Second approved value exists → ALL correct have two approved → output(none)
+    obtain ⟨b', hne, q₁, hq₁, happr'⟩ := hextra
+    -- By approved_spreads: ALL correct have approved(b')
+    have hall_approved' : ∀ q, q ∉ s.corrupted → (s.local_ q).approved b' = true :=
+      fun q hq => fair_deadlock_approved_spreads T n f s hn hreach hfd hq₁ happr' hq
+    -- p has two approved values → output(none) with countAnyVoteRecv ≥ n-f
+    -- At the fair deadlock, every correct proc voted something (if it hadn't,
+    -- vote send would be enabled → contradiction). All votes delivered.
+    -- countAnyVoteRecv(p, list_of_voted_values) ≥ n-f.
+    -- This sorry requires: showing every correct proc voted + all votes delivered
+    -- + constructing the appropriate vote-values list for countAnyVoteRecv.
+    sorry
+  · -- Path B: No second approved value → all echoed b → echo quorum → vote(some b) → output(some b)
+    push_neg at hextra
+    -- Since no correct proc has approved b' for b' ≠ b, and echoed(q) implies
+    -- approved(echoed_val) by echoed_implies_approved, all correct must have echoed = some b.
+    have hall_echo_b : ∀ q, q ∉ s.corrupted → (s.local_ q).echoed = some b := by
+      intro q hq
+      obtain ⟨bq, hbq⟩ := Option.ne_none_iff_exists'.mp (hall_echoed q hq)
+      by_contra hne
+      have hbq_ne : bq ≠ b := fun h => hne (h ▸ hbq)
+      have := BCA_LTS.echoed_implies_approved hreach q bq hq hbq
+      exact hextra bq hbq_ne q hq this
+    -- Echo quorum for b: countEchoRecv(p, b) ≥ n-f
     have hecho_count : BCA_LTS.countEchoRecv T n (s.local_ p) b ≥ BCA_LTS.echoThreshold n f := by
       have hge := fair_deadlock_countEchoRecv_ge_echo_support T n f s hn hreach hfd hsupp_b hp b
       simp only [BCA_LTS.echoThreshold]
@@ -622,24 +643,15 @@ theorem bca_fair_deadlock_implies_terminated (hn : n > 3 * f) :
       exact count_correct_ge s.corrupted hbudget
         (fun r => decide (r ∉ s.corrupted) && decide ((s.local_ r).echoed = some b))
         (fun r hr => by simp [hr, hall_echo_b r hr])
-    -- vote(some b) sent by each correct to all correct (echo quorum met)
-    -- Need voted consistency: if correct q voted, it voted some b.
-    -- At this point, we need the full vote chain argument.
-    -- voted consistency + echo quorum → vote sent → received → countVoteRecv ≥ n-f
-    sorry
-  · -- Case 2: Some correct proc echoed ≠ b → two approved values
-    push_neg at hall_echo_b
-    obtain ⟨q₁, hq₁, hecho_ne⟩ := hall_echo_b
-    obtain ⟨b', hb'⟩ := Option.ne_none_iff_exists'.mp (hall_echoed q₁ hq₁)
-    have hne : b' ≠ b := fun h => hecho_ne (h ▸ hb')
-    -- q₁ has approved(b') (from echoed_implies_approved) AND approved(b) (from chain)
-    have happr_b' := BCA_LTS.echoed_implies_approved hreach q₁ b' hq₁ hb'
-    -- By fair_deadlock_approved_spreads: ALL correct procs have approved(b')
-    have hall_approved' : ∀ q, q ∉ s.corrupted → (s.local_ q).approved b' = true :=
-      fun q hq => fair_deadlock_approved_spreads T n f s hn hreach hfd hq₁ happr_b' hq
-    -- All correct procs have two approved values (b and b')
-    -- So all correct can vote(none) → sent → received → countAnyVoteRecv ≥ n-f
-    -- → output(none) enabled → contradiction
+    -- No second approved → all correct voted(some b) (the only option).
+    -- Echo quorum met → vote(some b) send enabled if not already voted.
+    -- Can't vote(none) (requires two approved, but only one exists).
+    -- Can't vote(some b') for b' ≠ b (requires echo quorum for b', impossible
+    --   since countEchoRecv(b') < echoThreshold when all echoed b).
+    -- So voted(some b) or not yet voted. At fair deadlock, if not voted,
+    -- vote(some b) is enabled → contradiction. So voted(some b).
+    -- All correct sent vote(some b) → received → countVoteRecv(p, some b) ≥ n-f
+    -- → output(some b) enabled → contradiction
     sorry
 
 /-! ## The headline witness -/
