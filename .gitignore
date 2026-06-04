@@ -4,3 +4,8 @@ CLAUDE.md
 .claude/*
 .sageox/*
 plans/
+scripts/runs/
+scripts/*.log
+scripts/*.pid
+scripts/*-state.md
+scripts/
