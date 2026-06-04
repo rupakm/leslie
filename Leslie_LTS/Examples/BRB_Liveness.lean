@@ -1552,11 +1552,274 @@ theorem brb_totality_correct_sender (hn : n > 3 * f) :
             (s.local_ sender).broadcastVal ≠ none))
           (state_prop (fun s : BRB_LTS.State n Value =>
             ∀ p, p ∉ s.corrupted → (s.local_ p).returned ≠ none))) e 0 := by
-  -- NOTE: transfers_leads_to can't be used here because its h_ante_transfer is
-  -- universally quantified over all executions, not just sender-correct ones.
-  -- This theorem requires a DIRECT concrete-level proof using the concrete
-  -- fair-WF to drive the delivery chain (init → echo → vote → output).
-  -- See issues.md §5 for the recommended proof strategy.
-  sorry
+  intro e hv hcorr h_ante k hA
+  simp only [state_prop] at hA
+  obtain ⟨v, hbv⟩ := Option.ne_none_iff_exists'.mp hA
+  have hbv' : ((e.states k).local_ sender).broadcastVal = some v := by
+    have h0k : 0 + k = k := by omega
+    rw [h0k] at hbv; exact hbv
+  simp only [eventually, state_prop]
+  -- Convert h_ante to the raw form expected by the delivery lemmas.
+  have h_ante' : ∀ (l : BRB_LTS.Label n Value) (k₀ : Nat),
+      (∀ j, (BRB_LTS.brb n f Value sender).enabled l (e.states (k₀ + j)) ∧
+        brb_fair_labels n Value (e.states (k₀ + j)) l) →
+      ∃ j, l = e.labels (k₀ + j) ∧
+        (BRB_LTS.brb n f Value sender).step
+          (e.states (k₀ + j)) (e.labels (k₀ + j)) (e.states (k₀ + j + 1)) := by
+    intro l k₀ hinner
+    have h := h_ante l k₀ (fun j => by
+      simp only [state_prop]; rw [show 0 + k₀ + j = k₀ + j from by omega]; exact hinner j)
+    simp only [eventually, Nat.zero_add] at h; exact h
+
+  -- Per-proc claim: if p stays correct forever, returned(p) ≠ none eventually.
+  have h_per_proc : ∀ p : Fin n,
+      (∀ k', k ≤ k' → p ∉ (e.states k').corrupted) →
+      ∃ k', k ≤ k' ∧ ((e.states k').local_ p).returned ≠ none := by
+    intro p hp_corr
+    -- === Stage 1: Init delivery for ALL processes ===
+    have h_init : ∀ q : Fin n, ∃ kq, k ≤ kq ∧
+        (((e.states kq).local_ q).sendRecv = some v ∨
+         q ∈ (e.states kq).corrupted) := by
+      intro q
+      by_cases hq : q ∈ (e.states k).corrupted
+      · exact ⟨k, le_refl k, Or.inr hq⟩
+      · exact concrete_init_delivery n f Value sender hv h_ante' k q hbv'
+          (fun k' _ => hcorr k') hq
+    classical
+    -- Take max KA over all init delivery positions.
+    haveI : Nonempty (Fin n) := ⟨p⟩
+    let kA_fn : Fin n → Nat := fun q => (h_init q).choose
+    have hkA_spec : ∀ q, k ≤ kA_fn q ∧
+        (((e.states (kA_fn q)).local_ q).sendRecv = some v ∨
+         q ∈ (e.states (kA_fn q)).corrupted) :=
+      fun q => (h_init q).choose_spec
+    let KA := Finset.univ.sup kA_fn
+    have hKA_ge : ∀ q, kA_fn q ≤ KA := fun q => Finset.le_sup (Finset.mem_univ q)
+    have hKA_ge_k : k ≤ KA := Nat.le_trans (hkA_spec p).1 (hKA_ge p)
+    -- At KA: correct-at-KA → sendRecv = some v (by persistence).
+    have h_sr_KA : ∀ q, q ∉ (e.states KA).corrupted →
+        ((e.states KA).local_ q).sendRecv = some v := by
+      intro q hq
+      rcases (hkA_spec q).2 with hsr | hc
+      · exact BRB_LTS.sendRecv_persist_along hv hsr KA (hKA_ge q)
+      · exact absurd (BRB_LTS.corrupted_mem_persist_along hv hc KA (hKA_ge q)) hq
+    -- === Stage 2: Global echo delivery ===
+    -- For each pair (q, r) where q stays correct forever from k:
+    -- echo delivery from q to r. For non-forever-correct q: skip (set position to KA).
+    let h_echo_pair : ∀ q r : Fin n,
+        (∀ k', k ≤ k' → q ∉ (e.states k').corrupted) →
+        ∃ kr, KA ≤ kr ∧ (((e.states kr).local_ r).echoRecv q v = true ∨
+          r ∈ (e.states kr).corrupted) := by
+      intro q r hq_corr
+      by_cases hr : r ∈ (e.states KA).corrupted
+      · exact ⟨KA, le_refl KA, Or.inr hr⟩
+      · exact concrete_echo_delivery n f Value sender hv h_ante' KA q r
+          (h_sr_KA q (hq_corr KA hKA_ge_k))
+          (fun k' _ => hcorr k')
+          (BRB_LTS.broadcastVal_persist_along hv hbv' KA hKA_ge_k)
+          (fun k' hk' => hq_corr k' (Nat.le_trans hKA_ge_k hk')) hr
+    -- Build echo position function for all pairs, defaulting to KA for non-forever-correct src.
+    let kB_fn : Fin n × Fin n → Nat := fun ⟨q, r⟩ =>
+      if hq : ∀ k', k ≤ k' → q ∉ (e.states k').corrupted
+      then (h_echo_pair q r hq).choose
+      else KA
+    let KB := Finset.univ.sup kB_fn
+    have hKB_ge_KA : KA ≤ KB := by
+      suffices KA ≤ kB_fn (p, p) from
+        Nat.le_trans this (Finset.le_sup (Finset.mem_univ (p, p)))
+      by_cases hpc : ∀ k', k ≤ k' → p ∉ (e.states k').corrupted
+      · have : kB_fn (p, p) = (h_echo_pair p p hpc).choose := dif_pos hpc
+        rw [this]; exact (h_echo_pair p p hpc).choose_spec.1
+      · have : kB_fn (p, p) = KA := dif_neg hpc
+        rw [this]
+    have hKB_ge_k : k ≤ KB := Nat.le_trans hKA_ge_k hKB_ge_KA
+    -- At KB: for each forever-correct q and any r:
+    -- echoRecv(r, q, v) = true ∨ r ∈ corrupted (by persistence from delivery position).
+    have h_echo_KB : ∀ q r : Fin n,
+        (∀ k', k ≤ k' → q ∉ (e.states k').corrupted) →
+        ((e.states KB).local_ r).echoRecv q v = true ∨ r ∈ (e.states KB).corrupted := by
+      intro q r hq
+      have hqr_le : kB_fn (q, r) ≤ KB := Finset.le_sup (Finset.mem_univ (q, r))
+      have hspec : KA ≤ kB_fn (q, r) ∧ (((e.states (kB_fn (q, r))).local_ r).echoRecv q v = true ∨
+          r ∈ (e.states (kB_fn (q, r))).corrupted) := by
+        simp only [kB_fn, dif_pos hq]
+        exact (h_echo_pair q r hq).choose_spec
+      rcases hspec.2 with hecho | hcorr'
+      · exact Or.inl (BRB_LTS.echoRecv_persist_along hv hecho KB hqr_le)
+      · exact Or.inr (BRB_LTS.corrupted_mem_persist_along hv hcorr' KB hqr_le)
+    -- === Stage 3: Echo counting ===
+    -- At KB: for all forever-correct r: countEchoRecv(r, v) ≥ echoThreshold.
+    -- The count includes echoRecv from all forever-correct q. Need |forever-correct| ≥ n-f.
+    -- We use: {forever-correct} ⊆ {correct at KB}. And echoRecv from forever-correct q = true.
+    -- Filter includes at least {q ∉ corrupted(KB)} ∩ {forever-correct} = {forever-correct}.
+    -- And |{q ∉ corrupted(KB)}| ≥ n - f (standard counting), plus echoRecv = true for all
+    -- q ∉ corrupted(KB) that are forever-correct ⊇ all we need for the count.
+    --
+    -- Counting argument: |filter(echoRecv)| ≥ n - f.
+    -- echoRecv from all forever-correct q. |complement of echoRecv filter| ≤ f because
+    -- every q with echoRecv = false is not-forever-correct, and |ever-corrupted| ≤ f.
+    have h_echo_count : ∀ r : Fin n,
+        (∀ k', k ≤ k' → r ∉ (e.states k').corrupted) →
+        BRB_LTS.countEchoRecv n Value ((e.states KB).local_ r) v ≥
+          BRB_LTS.echoThreshold n f := by
+      intro r hr
+      unfold BRB_LTS.countEchoRecv BRB_LTS.echoThreshold
+      -- echoRecv(r, q, v) = true for all forever-correct q.
+      have h_fc_sub : ∀ q : Fin n, (∀ k', k ≤ k' → q ∉ (e.states k').corrupted) →
+          ((e.states KB).local_ r).echoRecv q v = true := by
+        intro q hq
+        exact (h_echo_KB q r hq).resolve_right (fun hc => absurd hc (hr KB hKB_ge_k))
+      -- Complement: echoRecv = false → not-forever-correct → ever-corrupted.
+      -- |complement| ≤ f by pigeonhole on corrupted budget.
+      have h_compl_le :
+          ((List.finRange n).filter (fun q => !((e.states KB).local_ r).echoRecv q v)).length ≤ f := by
+        by_contra hgt; push_neg at hgt
+        -- > f processes have echoRecv = false. Each is not-forever-correct → has corruption time.
+        let badQ := (List.finRange n).filter (fun q => !((e.states KB).local_ r).echoRecv q v)
+        have h_bad_not_fc : ∀ q, q ∈ badQ → ∃ k', k ≤ k' ∧ q ∈ (e.states k').corrupted := by
+          intro q hq
+          simp only [badQ, List.mem_filter, Bool.not_eq_true] at hq
+          by_contra h_fc; push_neg at h_fc
+          rw [h_fc_sub q h_fc] at hq; simp at hq
+        -- Take max corruption time. All bad q's in corrupted(K_max).
+        have h_nodup : badQ.Nodup := (List.nodup_finRange n).sublist List.filter_sublist
+        -- Pick corruption times and use Finset.sup for max.
+        let ct : Fin n → Nat := fun q =>
+          if hq : q ∈ badQ then (h_bad_not_fc q hq).choose else 0
+        let K_m := Finset.univ.sup ct
+        have hK_m_ge : ∀ q : Fin n, ct q ≤ K_m :=
+          fun q => Finset.le_sup (Finset.mem_univ q)
+        have h_all_in : ∀ q, q ∈ badQ → q ∈ (e.states K_m).corrupted := by
+          intro q hq
+          have hspec := (h_bad_not_fc q hq).choose_spec
+          have : ct q = (h_bad_not_fc q hq).choose := dif_pos hq
+          exact BRB_LTS.corrupted_mem_persist_along hv hspec.2 K_m (this ▸ hK_m_ge q)
+        have hsub : badQ.length ≤ (e.states K_m).corrupted.length :=
+          nodup_sub_length h_nodup h_all_in
+        have hbud := BRB_Simulation.corrupted_budget (System.valid_exec_reachable hv K_m)
+        exact absurd (Nat.lt_of_lt_of_le hgt (Nat.le_trans hsub hbud)) (Nat.lt_irrefl f)
+      -- filter(echoRecv = true) + filter(echoRecv = false) = n
+      have h_sum := (List.finRange n).length_eq_length_filter_add
+        (fun q => ((e.states KB).local_ r).echoRecv q v)
+      simp only [List.length_finRange] at h_sum
+      omega
+    -- === Stage 4: Global vote delivery ===
+    -- For each forever-correct pair (q, r): vote delivery from q to r.
+    -- q needs countEchoRecv ≥ echoThreshold at KB (proved in Stage 3 for forever-correct q).
+    let h_vote_pair : ∀ q r : Fin n,
+        (∀ k', k ≤ k' → q ∉ (e.states k').corrupted) →
+        ∃ kr, KB ≤ kr ∧ (((e.states kr).local_ r).voteRecv q v = true ∨
+          r ∈ (e.states kr).corrupted) := by
+      intro q r hq_corr
+      by_cases hr : r ∈ (e.states KB).corrupted
+      · exact ⟨KB, le_refl KB, Or.inr hr⟩
+      · exact concrete_vote_delivery n f Value sender hv h_ante' KB q r
+          (h_echo_count q hq_corr)
+          (fun k' hk' => hq_corr k' (Nat.le_trans hKB_ge_k hk')) hr
+    -- Build vote position function + max KC.
+    let kC_fn : Fin n × Fin n → Nat := fun ⟨q, r⟩ =>
+      if hq : ∀ k', k ≤ k' → q ∉ (e.states k').corrupted
+      then (h_vote_pair q r hq).choose
+      else KB
+    let KC := Finset.univ.sup kC_fn
+    have hKC_ge_KB : KB ≤ KC := by
+      suffices KB ≤ kC_fn (p, p) from
+        Nat.le_trans this (Finset.le_sup (Finset.mem_univ (p, p)))
+      by_cases hpc : ∀ k', k ≤ k' → p ∉ (e.states k').corrupted
+      · have : kC_fn (p, p) = (h_vote_pair p p hpc).choose := dif_pos hpc
+        rw [this]; exact (h_vote_pair p p hpc).choose_spec.1
+      · have : kC_fn (p, p) = KB := dif_neg hpc
+        rw [this]
+    have hKC_ge_k : k ≤ KC := Nat.le_trans hKB_ge_k hKC_ge_KB
+    -- At KC: voteRecv from all forever-correct q (by persistence).
+    have h_vote_KC : ∀ q r : Fin n,
+        (∀ k', k ≤ k' → q ∉ (e.states k').corrupted) →
+        ((e.states KC).local_ r).voteRecv q v = true ∨ r ∈ (e.states KC).corrupted := by
+      intro q r hq
+      have hqr_le : kC_fn (q, r) ≤ KC := Finset.le_sup (Finset.mem_univ (q, r))
+      have hspec : KB ≤ kC_fn (q, r) ∧ (((e.states (kC_fn (q, r))).local_ r).voteRecv q v = true ∨
+          r ∈ (e.states (kC_fn (q, r))).corrupted) := by
+        simp only [kC_fn, dif_pos hq]
+        exact (h_vote_pair q r hq).choose_spec
+      rcases hspec.2 with hvote | hcorr'
+      · exact Or.inl (BRB_LTS.voteRecv_persist_along hv hvote KC hqr_le)
+      · exact Or.inr (BRB_LTS.corrupted_mem_persist_along hv hcorr' KC hqr_le)
+    -- === Stage 5: Vote counting (same structure as echo counting) ===
+    have h_vote_count :
+        BRB_LTS.countVoteRecv n Value ((e.states KC).local_ p) v ≥
+          BRB_LTS.returnThreshold n f := by
+      unfold BRB_LTS.countVoteRecv BRB_LTS.returnThreshold
+      have h_fc_sub : ∀ q : Fin n, (∀ k', k ≤ k' → q ∉ (e.states k').corrupted) →
+          ((e.states KC).local_ p).voteRecv q v = true := by
+        intro q hq
+        exact (h_vote_KC q p hq).resolve_right (fun hc => absurd hc (hp_corr KC hKC_ge_k))
+      have h_compl_le :
+          ((List.finRange n).filter (fun q => !((e.states KC).local_ p).voteRecv q v)).length ≤ f := by
+        by_contra hgt; push_neg at hgt
+        let badQ := (List.finRange n).filter (fun q => !((e.states KC).local_ p).voteRecv q v)
+        have h_bad_not_fc : ∀ q, q ∈ badQ → ∃ k', k ≤ k' ∧ q ∈ (e.states k').corrupted := by
+          intro q hq
+          simp only [badQ, List.mem_filter, Bool.not_eq_true] at hq
+          by_contra h_fc; push_neg at h_fc
+          rw [h_fc_sub q h_fc] at hq; simp at hq
+        have h_nodup : badQ.Nodup := (List.nodup_finRange n).sublist List.filter_sublist
+        let ct : Fin n → Nat := fun q =>
+          if hq : q ∈ badQ then (h_bad_not_fc q hq).choose else 0
+        let K_m := Finset.univ.sup ct
+        have hK_m_ge : ∀ q : Fin n, ct q ≤ K_m :=
+          fun q => Finset.le_sup (Finset.mem_univ q)
+        have h_all_in : ∀ q, q ∈ badQ → q ∈ (e.states K_m).corrupted := by
+          intro q hq
+          have hspec := (h_bad_not_fc q hq).choose_spec
+          have : ct q = (h_bad_not_fc q hq).choose := dif_pos hq
+          exact BRB_LTS.corrupted_mem_persist_along hv hspec.2 K_m (this ▸ hK_m_ge q)
+        have hsub : badQ.length ≤ (e.states K_m).corrupted.length :=
+          nodup_sub_length h_nodup h_all_in
+        have hbud := BRB_Simulation.corrupted_budget (System.valid_exec_reachable hv K_m)
+        exact absurd (Nat.lt_of_lt_of_le hgt (Nat.le_trans hsub hbud)) (Nat.lt_irrefl f)
+      have h_sum := (List.finRange n).length_eq_length_filter_add
+        (fun q => ((e.states KC).local_ p).voteRecv q v)
+      simp only [List.length_finRange] at h_sum
+      omega
+    -- === Stage 6: Output delivery ===
+    obtain ⟨k', hk', hret⟩ := concrete_output_delivery n f Value sender hv h_ante' KC p
+      h_vote_count (fun k' hk' => hp_corr k' (Nat.le_trans hKC_ge_k hk'))
+    exact ⟨k', Nat.le_trans hKC_ge_k hk', hret⟩
+  -- === Combine per-proc results (same pattern as ideal_brb_totality Step B) ===
+  have h_per_proc_persist : ∀ p : Fin n, ∃ k'_p, k ≤ k'_p ∧
+      ∀ k', k'_p ≤ k' →
+        (p ∉ (e.states k').corrupted → ((e.states k').local_ p).returned ≠ none) := by
+    intro p
+    by_cases h_correct : ∀ k', k ≤ k' → p ∉ (e.states k').corrupted
+    · obtain ⟨k'_p, hk'_p, hret⟩ := h_per_proc p h_correct
+      obtain ⟨w, hw⟩ := Option.ne_none_iff_exists'.mp hret
+      refine ⟨k'_p, hk'_p, fun k' hk' _ => ?_⟩
+      have := BRB_LTS.returned_persist_along hv hw k' hk'
+      simp [this]
+    · push_neg at h_correct
+      obtain ⟨k₂, hk₂, hc⟩ := h_correct
+      refine ⟨k₂, by omega, fun k' hk' hcorr => ?_⟩
+      exact absurd (BRB_LTS.corrupted_mem_persist_along hv hc k' hk') hcorr
+  classical
+  let k'_fn : Fin n → Nat := fun p => (h_per_proc_persist p).choose
+  have hk'_spec : ∀ p, k ≤ k'_fn p ∧
+      ∀ k', k'_fn p ≤ k' →
+        (p ∉ (e.states k').corrupted → ((e.states k').local_ p).returned ≠ none) :=
+    fun p => (h_per_proc_persist p).choose_spec
+  by_cases hn0 : n = 0
+  · subst hn0; exact ⟨0, fun p => Fin.elim0 p⟩
+  · haveI : Nonempty (Fin n) := ⟨⟨0, by omega⟩⟩
+    let k_max := Finset.univ.sup k'_fn
+    have hk_max_ge : ∀ p, k'_fn p ≤ k_max :=
+      fun p => Finset.le_sup (Finset.mem_univ p)
+    have hk_max_ge_k : k ≤ k_max := by
+      have := (hk'_spec ⟨0, by omega⟩).1
+      have := hk_max_ge ⟨0, by omega⟩
+      omega
+    refine ⟨k_max - k, ?_⟩
+    have hkmax_eq : 0 + k + (k_max - k) = k_max := by omega
+    rw [hkmax_eq]
+    intro p hp
+    exact (hk'_spec p).2 k_max (hk_max_ge p) hp
 
 end BRB_Liveness
