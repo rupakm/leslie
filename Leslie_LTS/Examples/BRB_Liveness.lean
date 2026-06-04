@@ -23,6 +23,12 @@ import Leslie_LTS.Examples.BRB_Simulation
   - `ideal_brb_internal_label_fair`, `ideal_brb_internalStar_allFair`
   - `brb_fair_deadlock_implies_terminated` FULLY proven
     (6-step chain: init→echo→vote→output, by contradiction)
+  - `concrete_init_delivery`, `concrete_echo_delivery`,
+    `concrete_vote_delivery`, `concrete_output_delivery`
+    (temporal delivery chain building blocks)
+  - `brb_totality_correct_sender` — the main concrete-level totality
+    theorem, bypassing transfers_leads_to. Under fair scheduling with
+    a correct sender, every correct process eventually returns.
 
   **Remaining sorries (6 in BRB_Liveness, 0 in BrachaBRB):**
 
