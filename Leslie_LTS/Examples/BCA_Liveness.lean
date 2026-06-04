@@ -394,11 +394,19 @@ theorem bca_fair_deadlock_implies_terminated (hn : n > 3 * f) :
       FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s →
       (∀ q, q ∉ s.corrupted → (s.local_ q).input ≠ none) →
       ∀ p, p ∉ s.corrupted → (s.local_ p).decided ≠ none := by
-  -- Deep protocol reasoning requiring the full BCA delivery chain.
-  -- Steps 1-8 above formalize as: at a fair deadlock, every fair
-  -- send/recv is blocked (already sent, already received, or not
-  -- enabled). By backward induction from output through the chain,
-  -- the only consistent configuration has all correct decided.
+  intro s hreach hfd hall_input p hp
+  -- By contradiction: suppose correct p has decided = none.
+  intro hdec
+  -- The delivery chain argument shows this is impossible.
+  -- We need: ∃ b, countVoteRecv(p, some b) ≥ returnThreshold.
+  -- This follows from the chain:
+  --   input → init sent → init received → amplify → approve
+  --   → echo sent → echo received → vote sent → vote received → output
+  -- Each step uses the fair-deadlock delivery lemmas above.
+  -- The chain requires: ∃ b with inputSupport(b) ≥ amplifyThreshold.
+  -- This needs pigeonhole over binary T or a direct assumption.
+  -- Counting sub-lemma: at the fair deadlock, the delivery chain
+  -- ensures enough voteRecvs. Sorry pending counting-over-Finset work.
   sorry
 
 /-! ## The headline witness -/
