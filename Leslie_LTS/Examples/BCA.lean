@@ -1696,6 +1696,13 @@ theorem send_init_enabled {s : State T n} {src dst : Fin n} {b : T}
   refine ⟨_, Or.inr ⟨hcorr, hsent, ?_⟩, rfl⟩
   exact hgate
 
+/-- Recv is enabled when the message is in the buffer. -/
+theorem recv_enabled {s : State T n} {src dst : Fin n} {t : MsgType} {v : Val T}
+    (hbuf : s.buffer ⟨src, dst, t, v⟩ = true) :
+    (bca T n f).enabled (.recv src dst t v) s := by
+  simp only [System.enabled, bca]
+  exact ⟨_, hbuf, rfl⟩
+
 /-- A correct-to-correct echo(some b) send is enabled when src has
     approved b, echoed is compatible, and hasn't sent yet. -/
 theorem send_echo_enabled {s : State T n} {src dst : Fin n} {b : T}
