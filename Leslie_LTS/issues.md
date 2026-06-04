@@ -43,20 +43,31 @@ All callers use the unified definition:
 - `Leslie_LTS/Framework/Simulation.lean` — `transfers_satisfaction`
 - `Leslie_LTS/Examples/BRB_Liveness.lean` — `ideal_brb_totality`, `ideal_brb_totality_stutter`, `brb_totality`
 
-## 2. Remaining BRB_Liveness sorries (as of 2026-06-03)
+## 2. Remaining BRB_Liveness sorries (as of 2026-06-04)
 
-**6 sorries**, all protocol-specific (framework is sorry-free):
+**6 sorries** in BRB_Liveness.lean, **0 in BrachaBRB.lean** (all protocol-specific;
+framework is sorry-free):
 
 | Line | What | Category | Status |
 |------|------|----------|--------|
-| 164 | `brb_fair_deadlock_implies_terminated` | Protocol invariant | FALSE as stated — see §3 |
-| 233 | `rank_non_increasing` | Progress measure | Needs real measure |
-| 239 | `rank_decreases_on_fair_elision` | Progress measure | Needs real measure |
-| 254 | `rank_non_increasing_on_fair_progress` | Progress measure | Needs real measure |
-| 272 | `h_fair_reverse` in `fair_deadlock_diverges` | Fair deadlock | FALSE as stated — see §3 |
-| 785 | `h_ante_transfer` in `brb_totality` | Transfer | FALSE as stated — see §4 |
+| ~585 | `rank_non_increasing` | Progress measure | Needs real measure (not blocking) |
+| ~591 | `rank_decreases_on_fair_elision` | Progress measure | Needs real measure (not blocking) |
+| ~606 | `rank_non_increasing_on_fair_progress` | Progress measure | Needs real measure (not blocking) |
+| ~624 | `h_fair_reverse` in `fair_deadlock_diverges` | Fair deadlock | FALSE as stated — see §3 (not blocking) |
+| ~1168 | `h_ante_transfer` / commit | Transfer | BLOCKED — see §4-5 |
+| ~1177 | `h_ante_transfer` / output | Transfer | BLOCKED — see §4-5 |
 
-Lines 233/239/254 are tied to the placeholder `brb_progress_measure := 0`.
+**Note:** The 4 "not blocking" sorries are in the `WeakDivPreserving` witness,
+which is passed to `transfers_leads_to` as an unused parameter (`_wd`). Only
+the h_ante_transfer commit/output cases actually block `brb_totality`.
+
+**BrachaBRB.lean** is now sorry-free: `brb_fair_deadlock_implies_terminated` was
+proven (6-step delivery chain, ~240 lines). All reachability invariants
+(init/echo/vote delivery, buffer-init-broadcastVal, sendRecv-value,
+echoed-value) are proven, plus auxiliary invariants
+`sendRecv_none_of_broadcastVal_none` and `echoed_none_of_broadcastVal_none`.
+
+Lines ~585/~591/~606 are tied to the placeholder `brb_progress_measure := 0`.
 With the placeholder, `brb_rank = False` everywhere — so the rank clauses
 are vacuously satisfied and don't block any theorem. They only matter for
 producing meaningful abstract witnesses.
