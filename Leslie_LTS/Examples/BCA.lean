@@ -116,6 +116,16 @@ def echoThreshold : Nat := n - f
 /-- Threshold for decision: n − f. -/
 def returnThreshold : Nat := n - f
 
+/-- Count of correct processes with input `b`. Concrete analog of
+    `IdealBCA.inputSupport`. -/
+def inputSupport (s : State T n) (b : T) : Nat :=
+  ((List.finRange n).filter (fun p =>
+    decide (p ∉ s.corrupted) && decide ((s.local_ p).input = some b))).length
+
+/-- Count of correct processes (not corrupted). -/
+def correctCount (s : State T n) : Nat :=
+  ((List.finRange n).filter (fun p => decide (p ∉ s.corrupted))).length
+
 /-- Default initial local state: everything empty/none/false. -/
 def LocalState.init : LocalState T n where
   input := none

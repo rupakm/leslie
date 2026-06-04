@@ -260,7 +260,109 @@ theorem fair_deadlock_no_fair_buffer
   obtain ⟨s', hstep⟩ := henabled
   exact hfd (.recv src dst t v) s' hstep ⟨hsrc, hdst⟩
 
-/-! ## Reachable fair-deadlocks are terminated (mirrors BRB)
+/-! ## Fair-deadlock delivery: sent → received for correct-to-correct -/
+
+/-- At a reachable fair-deadlock, if correct src sent init(some b) to
+    correct dst, then dst has received it (initRecv = true). -/
+theorem fair_deadlock_init_delivered
+    (s : BCA_LTS.State T n)
+    (hreach : Reachable (BCA_LTS.bca T n f) s)
+    (hfd : FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s)
+    {src dst : Fin n} (hsrc : src ∉ s.corrupted) (hdst : dst ∉ s.corrupted)
+    {b : T} (hsent : (s.local_ src).sent dst .init (some b) = true) :
+    (s.local_ dst).initRecv src b = true := by
+  rcases BCA_LTS.init_delivery_inv hreach src dst b hsent with hbuf | hrecv
+  · exact absurd hbuf (by rw [fair_deadlock_no_fair_buffer T n f s hfd hsrc hdst]; simp)
+  · exact hrecv
+
+/-- At a reachable fair-deadlock, if correct src sent echo(some b) to
+    correct dst, then dst has received it (echoRecv = true). -/
+theorem fair_deadlock_echo_delivered
+    (s : BCA_LTS.State T n)
+    (hreach : Reachable (BCA_LTS.bca T n f) s)
+    (hfd : FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s)
+    {src dst : Fin n} (hsrc : src ∉ s.corrupted) (hdst : dst ∉ s.corrupted)
+    {b : T} (hsent : (s.local_ src).sent dst .echo (some b) = true) :
+    (s.local_ dst).echoRecv src b = true := by
+  rcases BCA_LTS.echo_delivery_inv hreach src dst b hsent with hbuf | hrecv
+  · exact absurd hbuf (by rw [fair_deadlock_no_fair_buffer T n f s hfd hsrc hdst]; simp)
+  · exact hrecv
+
+/-- At a reachable fair-deadlock, if correct src sent vote(v) to
+    correct dst, then dst has received it (voteRecv = true). -/
+theorem fair_deadlock_vote_delivered
+    (s : BCA_LTS.State T n)
+    (hreach : Reachable (BCA_LTS.bca T n f) s)
+    (hfd : FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s)
+    {src dst : Fin n} (hsrc : src ∉ s.corrupted) (hdst : dst ∉ s.corrupted)
+    {v : BCA_LTS.Val T} (hsent : (s.local_ src).sent dst .vote v = true) :
+    (s.local_ dst).voteRecv src v = true := by
+  rcases BCA_LTS.vote_delivery_inv hreach src dst v hsent with hbuf | hrecv
+  · exact absurd hbuf (by rw [fair_deadlock_no_fair_buffer T n f s hfd hsrc hdst]; simp)
+  · exact hrecv
+
+/-- At a reachable fair-deadlock, a correct-to-correct init send has
+    been done (otherwise the send step would be enabled). -/
+theorem fair_deadlock_init_sent
+    (s : BCA_LTS.State T n) (hn : n > 3 * f)
+    (hreach : Reachable (BCA_LTS.bca T n f) s)
+    (hfd : FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s)
+    {src dst : Fin n} (hsrc : src ∉ s.corrupted) (hdst : dst ∉ s.corrupted)
+    {b : T} (hgate : (s.local_ src).input = some b ∨
+                      BCA_LTS.countInitRecv T n (s.local_ src) b ≥ BCA_LTS.amplifyThreshold f) :
+    (s.local_ src).sent dst .init (some b) = true := by
+  by_contra h
+  simp only [Bool.not_eq_true] at h
+  have henabled := BCA_LTS.send_init_enabled (f := f) hsrc h hgate
+  obtain ⟨s', hstep⟩ := henabled
+  exact hfd (.send src dst .init (some b)) s' hstep ⟨hsrc, hdst⟩
+
+/-- At a reachable fair-deadlock, a correct proc with approved(b) and
+    compatible echoed has sent echo(some b) to every correct proc. -/
+theorem fair_deadlock_echo_sent
+    (s : BCA_LTS.State T n)
+    (hreach : Reachable (BCA_LTS.bca T n f) s)
+    (hfd : FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s)
+    {src dst : Fin n} (hsrc : src ∉ s.corrupted) (hdst : dst ∉ s.corrupted)
+    {b : T} (happroved : (s.local_ src).approved b = true)
+    (hechoed : (s.local_ src).echoed = none ∨ (s.local_ src).echoed = some b) :
+    (s.local_ src).sent dst .echo (some b) = true := by
+  by_contra h
+  simp only [Bool.not_eq_true] at h
+  have henabled := BCA_LTS.send_echo_enabled (f := f) hsrc h happroved hechoed
+  obtain ⟨s', hstep⟩ := henabled
+  exact hfd (.send src dst .echo (some b)) s' hstep ⟨hsrc, hdst⟩
+
+/-- At a reachable fair-deadlock, a correct proc with enough echo quorum
+    and consistent voting has sent vote(some b) to every correct proc. -/
+theorem fair_deadlock_vote_sent
+    (s : BCA_LTS.State T n)
+    (hreach : Reachable (BCA_LTS.bca T n f) s)
+    (hfd : FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s)
+    {src dst : Fin n} (hsrc : src ∉ s.corrupted) (hdst : dst ∉ s.corrupted)
+    {b : T} (huniq : ∀ w, (s.local_ src).voted w = true → w = some b)
+    (hquorum : BCA_LTS.countEchoRecv T n (s.local_ src) b ≥ BCA_LTS.echoThreshold n f) :
+    (s.local_ src).sent dst .vote (some b) = true := by
+  by_contra h
+  simp only [Bool.not_eq_true] at h
+  have henabled := BCA_LTS.send_vote_binary_enabled (f := f) hsrc h huniq hquorum
+  obtain ⟨s', hstep⟩ := henabled
+  exact hfd (.send src dst .vote (some b)) s' hstep ⟨hsrc, hdst⟩
+
+/-- At a reachable fair-deadlock, a correct proc that is undecided
+    with enough binary votes has decided (contradiction). -/
+theorem fair_deadlock_output_contradiction
+    (s : BCA_LTS.State T n)
+    (hfd : FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s)
+    {p : Fin n} (hp : p ∉ s.corrupted)
+    {b : T} (hdec : (s.local_ p).decided = none)
+    (hvotes : BCA_LTS.countVoteRecv T n (s.local_ p) (some b) ≥ BCA_LTS.returnThreshold n f) :
+    False := by
+  have henabled := BCA_LTS.output_binary_enabled hp hdec hvotes
+  obtain ⟨s', hstep⟩ := henabled
+  exact hfd (.output p (some b)) s' hstep hp
+
+/-! ## Reachable fair-deadlocks are terminated
 
     The original `bca_no_fair_deadlock_reachable` was false at
     terminated reachable states (vacuously fair-deadlocks); replaced
