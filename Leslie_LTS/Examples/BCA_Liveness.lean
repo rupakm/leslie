@@ -534,6 +534,33 @@ theorem fair_deadlock_vote_none_sent
   obtain ⟨s', hstep⟩ := henabled
   exact hfd (.send src dst .vote none) s' hstep ⟨hsrc, hdst⟩
 
+/-- At a fair deadlock, if any correct proc has approved(b'), then ALL
+    correct procs have approved(b').
+    Key insight: approved(b') requires countInitRecv(b') ≥ n-f. At least
+    n-2f of those senders are correct. At the fair deadlock, those correct
+    senders sent init(b') to ALL correct procs. Since n-2f ≥ f+1 = amplifyThreshold
+    (from n > 3f), the amplification chain gives all correct approved(b'). -/
+theorem fair_deadlock_approved_spreads
+    (s : BCA_LTS.State T n) (hn : n > 3 * f)
+    (hreach : Reachable (BCA_LTS.bca T n f) s)
+    (hfd : FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s)
+    {b' : T} {q₀ : Fin n} (hq₀ : q₀ ∉ s.corrupted)
+    (happroved₀ : (s.local_ q₀).approved b' = true)
+    {q : Fin n} (hq : q ∉ s.corrupted) :
+    (s.local_ q).approved b' = true := by
+  -- q₀ has approved(b'), so at the time of approval, countInitRecv(q₀, b') ≥ approveThreshold.
+  -- At the fair deadlock (reachable, approved persists), countInitRecv(q₀, b') ≥ approveThreshold.
+  -- At least n-2f correct procs sent init(b') to q₀ (at most f corrupt senders).
+  -- At the fair deadlock, those correct procs sent init(b') to ALL correct procs.
+  -- So inputSupport(b') ≥ ... Actually, we need a different argument.
+  -- The key: correct senders of init(b') to q₀ also sent to all other correct procs.
+  -- So all correct procs have initRecv from those correct senders.
+  -- countInitRecv(q, b') ≥ (number of correct senders that sent init(b') to q₀)
+  -- ≥ n - f - f = n - 2f (at most f corrupt among n-f total senders needed for threshold)
+  -- Since n > 3f: n - 2f > f ≥ f + 1 - 1, so n - 2f ≥ f + 1 = amplifyThreshold
+  -- Then the amplification chain gives countInitRecv(q, b') ≥ approveThreshold → approved(b')
+  sorry
+
 /-- At a fair deadlock, output(none) contradicts if p is correct, undecided,
     has two approved values, and enough total votes. -/
 theorem fair_deadlock_output_none_contradiction
@@ -576,18 +603,40 @@ theorem bca_fair_deadlock_implies_terminated (hn : n > 3 * f) :
   -- Steps 1-3 (proved by helpers): all correct approved(b)
   have hall_approved : ∀ q, q ∉ s.corrupted → (s.local_ q).approved b = true :=
     fun q hq => fair_deadlock_all_approved T n f s hn hreach hfd hsupp_b hq
-  -- Step 4: Each correct proc echoed some value b_q ∈ {b, ...}
-  -- At the fair deadlock, echoed ≠ none (from approved + echoed_ne_none)
+  -- Step 4: Each correct proc echoed some value
   have hall_echoed : ∀ q, q ∉ s.corrupted → (s.local_ q).echoed ≠ none :=
     fun q hq => fair_deadlock_echoed_ne_none T n f s hreach hfd hq (hall_approved q hq) (by omega)
-  -- Step 5-6: Each correct proc sent echo → received → echo counts.
-  -- By fair_deadlock_echo_sent_echoed and echoRecv_from_echoed.
-  -- Step 7: Vote chain.
-  -- Each correct proc either has echo quorum or two approved values → voted → sent → received.
-  -- Step 8: Output enabled for p → contradiction with fair deadlock.
-  -- The vote chain (steps 5-8) requires detailed case analysis.
-  -- Sorry pending vote chain.
-  sorry
+  -- Case split: does every correct proc have echoed = some b?
+  by_cases hall_echo_b : ∀ q, q ∉ s.corrupted → (s.local_ q).echoed = some b
+  · -- Case 1: All correct echoed b → echo quorum for b
+    -- All correct sent echo(some b) to all correct → received
+    -- countEchoRecv(p, b) ≥ n - f = echoThreshold
+    have hecho_count : BCA_LTS.countEchoRecv T n (s.local_ p) b ≥ BCA_LTS.echoThreshold n f := by
+      have hge := fair_deadlock_countEchoRecv_ge_echo_support T n f s hn hreach hfd hsupp_b hp b
+      simp only [BCA_LTS.echoThreshold]
+      apply Nat.le_trans _ hge
+      exact count_correct_ge s.corrupted hbudget
+        (fun r => decide (r ∉ s.corrupted) && decide ((s.local_ r).echoed = some b))
+        (fun r hr => by simp [hr, hall_echo_b r hr])
+    -- vote(some b) sent by each correct to all correct (echo quorum met)
+    -- Need voted consistency: if correct q voted, it voted some b.
+    -- At this point, we need the full vote chain argument.
+    -- voted consistency + echo quorum → vote sent → received → countVoteRecv ≥ n-f
+    sorry
+  · -- Case 2: Some correct proc echoed ≠ b → two approved values
+    push_neg at hall_echo_b
+    obtain ⟨q₁, hq₁, hecho_ne⟩ := hall_echo_b
+    obtain ⟨b', hb'⟩ := Option.ne_none_iff_exists'.mp (hall_echoed q₁ hq₁)
+    have hne : b' ≠ b := fun h => hecho_ne (h ▸ hb')
+    -- q₁ has approved(b') (from echoed_implies_approved) AND approved(b) (from chain)
+    have happr_b' := BCA_LTS.echoed_implies_approved hreach q₁ b' hq₁ hb'
+    -- By fair_deadlock_approved_spreads: ALL correct procs have approved(b')
+    have hall_approved' : ∀ q, q ∉ s.corrupted → (s.local_ q).approved b' = true :=
+      fun q hq => fair_deadlock_approved_spreads T n f s hn hreach hfd hq₁ happr_b' hq
+    -- All correct procs have two approved values (b and b')
+    -- So all correct can vote(none) → sent → received → countAnyVoteRecv ≥ n-f
+    -- → output(none) enabled → contradiction
+    sorry
 
 /-! ## The headline witness -/
 
