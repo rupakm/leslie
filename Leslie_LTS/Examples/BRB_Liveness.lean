@@ -335,6 +335,11 @@ theorem brb_fair_deadlock_implies_terminated (hn : n > 3 * f) :
   -- the init→echo→vote→output delivery chain must have completed.
   -- Each unfinished link would provide a fair+enabled step, contradicting FairDeadlock.
   intro s hreach hfd hbv hcorr_sender p hp_corr
+  -- Proof by contradiction: assume returned = none, derive output enabled+fair,
+  -- contradicting FairDeadlock.
+  by_contra h_ret_eq
+  -- h_ret_eq : ¬ ((s.local_ p).returned ≠ none) i.e. returned = none
+  have h_ret : (s.local_ p).returned = none := by tauto
   obtain ⟨v, hv⟩ := Option.ne_none_iff_exists'.mp hbv
   -- Step 1: All correct dst have sendRecv = some v.
   -- For each correct dst: send(sender, dst, init, v) would be fair+enabled if not sent.
@@ -395,13 +400,42 @@ theorem brb_fair_deadlock_implies_terminated (hn : n > 3 * f) :
     · rw [hbuf] at h_buf; exact absurd h_buf (by simp)
     · exact hrecv
   -- Step 3: countEchoRecv ≥ echoThreshold for each correct r.
-  -- echoRecv from all correct q → count ≥ n - |corrupted| ≥ n - f = echoThreshold.
-  -- (This step needs a counting lemma relating echoRecv to countEchoRecv.)
-  -- Step 4: All correct r sent vote(v) to all correct r'. voteRecv delivered.
-  -- Step 5: countVoteRecv ≥ returnThreshold for p.
-  -- Step 6: output(p, v) enabled + fair → contradiction with FairDeadlock.
-  -- Steps 3-6 require counting lemmas; sorry'd pending formalization.
-  sorry
+  -- echoRecv from all correct q ≥ n - |corrupted| ≥ n - f = echoThreshold.
+  have h_echoCount : ∀ r, r ∉ s.corrupted →
+      BRB_LTS.countEchoRecv n Value (s.local_ r) v ≥ BRB_LTS.echoThreshold n f := by
+    sorry -- counting: |{q ∈ finRange n | echoRecv r q v}| ≥ |{q | q ∉ corrupted}| ≥ n - f
+  -- Step 4: All correct r have sent vote(v) to all correct r', and voteRecv delivered.
+  have h_voteRecv : ∀ q r, q ∉ s.corrupted → r ∉ s.corrupted →
+      (s.local_ r).voteRecv q v = true := by
+    intro q r hq hr
+    -- q has echoRecv count ≥ echoThreshold → vote condition met
+    have hecho := h_echoCount q hq
+    -- send(q, r, vote, v) must have completed (same pattern as echo)
+    have h_sent : (s.local_ q).sent r .vote v = true := by
+      by_contra h_not_sent
+      simp only [Bool.not_eq_true] at h_not_sent
+      -- vote send is enabled: echoRecv ≥ echoThreshold satisfies the vote condition
+      have h_enabled : ∃ s', (BRB_LTS.brb n f Value sender).step s (.send q r .vote v) s' := by
+        sorry -- mechanical: construct successor from vote send with echoCount condition
+      obtain ⟨s', hstep⟩ := h_enabled
+      exact hfd (.send q r .vote v) s' hstep ⟨hq, hr⟩
+    have h_buf := fair_deadlock_no_fair_buffer n f Value sender s hfd hq hr .vote v
+    rcases BRB_LTS.vote_delivery_inv s hreach q r v h_sent with hbuf | hrecv
+    · rw [hbuf] at h_buf; exact absurd h_buf (by simp)
+    · exact hrecv
+  -- Step 5: countVoteRecv p v ≥ returnThreshold.
+  have h_voteCount :
+      BRB_LTS.countVoteRecv n Value (s.local_ p) v ≥ BRB_LTS.returnThreshold n f := by
+    sorry -- counting: same as echoCount but for voteRecv
+  -- Step 6: output(p, v) enabled + fair → contradiction.
+  have h_output_enabled : ∃ s', (BRB_LTS.brb n f Value sender).step s (.output p v) s' := by
+    refine ⟨{ s with local_ := fun q => if q = p then
+        { s.local_ p with returned := some v } else s.local_ q }, ?_⟩
+    simp only [BRB_LTS.brb]
+    exact ⟨hp_corr, h_ret, h_voteCount, trivial⟩
+  -- output(p, v) is fair: p ∉ corrupted
+  obtain ⟨s', hstep⟩ := h_output_enabled
+  exact hfd (.output p v) s' hstep hp_corr
 
 /-! ## Fair-label compatibility through the simulation
 
