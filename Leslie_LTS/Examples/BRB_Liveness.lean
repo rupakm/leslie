@@ -1181,4 +1181,37 @@ theorem brb_totality (hn : n > 3 * f) :
         -- some v ≠ none).
         sorry)
 
+/-- Variant of `brb_totality` with an explicit sender-correctness assumption.
+    This version IS provable (unlike the unrestricted version which is blocked
+    by the corrupt-sender fairness mismatch — see issues.md §4-5).
+
+    **Statement**: For every valid execution where sender is never corrupted,
+    under fair scheduling, once broadcastVal is set, every correct process
+    eventually returns.
+
+    **Status**: Work in progress. The h_ante_transfer commit and output cases
+    become provable with sender-correctness because:
+    - Commit: correct sender → all correct dst eventually get sendRecv = some v
+      via fair init send/recv → initSupport crosses echoThreshold → commit fires
+    - Output: correct sender → echo/vote delivery chain completes under fair
+      scheduling → countVoteRecv ≥ returnThreshold → output fires -/
+theorem brb_totality_correct_sender (hn : n > 3 * f) :
+    ∀ (e : Execution (BRB_LTS.State n Value) (BRB_LTS.Label n Value)),
+      (BRB_LTS.brb n f Value sender).valid_exec e →
+      (∀ j, sender ∉ (e.states j).corrupted) →
+      assumes_fair_wf
+        (BRB_LTS.brb n f Value sender)
+        (brb_fair_labels n Value)
+        (leads_to
+          (state_prop (fun s : BRB_LTS.State n Value =>
+            (s.local_ sender).broadcastVal ≠ none))
+          (state_prop (fun s : BRB_LTS.State n Value =>
+            ∀ p, p ∉ s.corrupted → (s.local_ p).returned ≠ none))) e 0 := by
+  -- NOTE: transfers_leads_to can't be used here because its h_ante_transfer is
+  -- universally quantified over all executions, not just sender-correct ones.
+  -- This theorem requires a DIRECT concrete-level proof using the concrete
+  -- fair-WF to drive the delivery chain (init → echo → vote → output).
+  -- See issues.md §5 for the recommended proof strategy.
+  sorry
+
 end BRB_Liveness
