@@ -548,17 +548,21 @@ theorem fair_deadlock_approved_spreads
     (happroved₀ : (s.local_ q₀).approved b' = true)
     {q : Fin n} (hq : q ∉ s.corrupted) :
     (s.local_ q).approved b' = true := by
-  -- q₀ has approved(b'), so at the time of approval, countInitRecv(q₀, b') ≥ approveThreshold.
-  -- At the fair deadlock (reachable, approved persists), countInitRecv(q₀, b') ≥ approveThreshold.
-  -- At least n-2f correct procs sent init(b') to q₀ (at most f corrupt senders).
-  -- At the fair deadlock, those correct procs sent init(b') to ALL correct procs.
-  -- So inputSupport(b') ≥ ... Actually, we need a different argument.
-  -- The key: correct senders of init(b') to q₀ also sent to all other correct procs.
-  -- So all correct procs have initRecv from those correct senders.
-  -- countInitRecv(q, b') ≥ (number of correct senders that sent init(b') to q₀)
-  -- ≥ n - f - f = n - 2f (at most f corrupt among n-f total senders needed for threshold)
-  -- Since n > 3f: n - 2f > f ≥ f + 1 - 1, so n - 2f ≥ f + 1 = amplifyThreshold
-  -- Then the amplification chain gives countInitRecv(q, b') ≥ approveThreshold → approved(b')
+  have hbudget := BCA_LTS.corrupted_budget_reachable hreach
+  have hpos : BCA_LTS.approveThreshold n f > 0 := by
+    simp only [BCA_LTS.approveThreshold]; omega
+  -- Step 1: q₀ has countInitRecv(q₀, b') ≥ approveThreshold = n-f
+  have hcount₀ := BCA_LTS.approved_implies_countInitRecv_ge hreach q₀ b' happroved₀
+  -- Step 2: At least n-2f correct procs have initRecv(q₀, src, b') = true
+  -- (intersect_correct_ge on countInitRecv ≥ n-f gives n-f-f = n-2f correct senders)
+  -- These correct senders sent init(b') to q₀ and hence to all correct procs.
+  -- Step 3: Each of those correct senders has gate open for b' → sent init(b') to ALL correct
+  -- Step 4: countInitRecv(q, b') ≥ n-2f ≥ f+1 = amplifyThreshold
+  -- Step 5: Amplification → countInitRecv(q, b') ≥ n-f → approved(q, b')
+  -- The key missing link: initRecv(q₀, src, b') = true → src sent init(b') to q₀
+  -- → src's gate open → src sent to all correct → initRecv(q, src, b') = true.
+  -- This chain uses: delivery invariant (initRecv ← sent), sent_init_implies_gate,
+  -- and fair_deadlock_init_sent + fair_deadlock_init_delivered.
   sorry
 
 /-- At a fair deadlock, output(none) contradicts if p is correct, undecided,
