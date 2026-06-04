@@ -266,37 +266,37 @@ theorem fair_deadlock_no_fair_buffer
     terminated reachable states (vacuously fair-deadlocks); replaced
     after Phase C.2 by the honest claim that any reachable
     fair-deadlock is terminated. -/
-/-- At a reachable fair-deadlock where some correct process has input,
+/-- At a reachable fair-deadlock where ALL correct processes have input,
     every correct process has decided.
 
-    **Precondition:** `∃ q, q ∉ s.corrupted ∧ (s.local_ q).input ≠ none`.
-    Without this, the initial state (before any input) is a fair-deadlock
-    with all `decided = none`, making the unconditional version false.
-    With the precondition, the BCA delivery chain ensures enough progress
-    for every correct process to eventually decide. -/
+    **Precondition:** `∀ q, q ∉ s.corrupted → (s.local_ q).input ≠ none`.
+    The weaker precondition `∃ q correct with input` is FALSE: with n=7,
+    f=2, 2 corrupt procs, and only 1 correct input, the delivery chain
+    stalls (countInitRecv = 1 < amplifyThreshold = 3) and all decided
+    remain none. The stronger "all correct have input" ensures pigeonhole
+    over binary values: some b has ≥ ⌈(n-f)/2⌉ > f correct inputs,
+    guaranteeing amplification and the full delivery chain.
+
+    **Proof outline** (under all-correct-input + n > 3f):
+    1. Pigeonhole: some value b has ≥ f+1 correct inputs.
+    2. Those procs send init(b) to all correct → received (fair deadlock).
+    3. countInitRecv(b) ≥ f+1 = amplifyThreshold → all correct amplify.
+    4. After amplification: countInitRecv(b) ≥ n-f = approveThreshold
+       → approved(b) = true for all correct.
+    5. All correct echo(some b) or already echoed → sent and received.
+    6. countEchoRecv(b) ≥ n-f = echoThreshold → all correct vote.
+    7. All correct vote → sent and received → countVoteRecv ≥ n-f.
+    8. output enabled for undecided correct → contradiction with deadlock. -/
 theorem bca_fair_deadlock_implies_terminated (hn : n > 3 * f) :
     ∀ s, Reachable (BCA_LTS.bca T n f) s →
       FairDeadlock (BCA_LTS.bca T n f) (bca_fair_labels T n) s →
-      (∃ q, q ∉ s.corrupted ∧ (s.local_ q).input ≠ none) →
+      (∀ q, q ∉ s.corrupted → (s.local_ q).input ≠ none) →
       ∀ p, p ∉ s.corrupted → (s.local_ p).decided ≠ none := by
-  -- Protocol-specific: at a fair-deadlock with n > 3f and at least one
-  -- correct process with input, every correct process has decided.
-  --
-  -- At a fair-deadlock:
-  --   1. No correct-to-correct message is in the buffer
-  --      (fair_deadlock_no_fair_buffer).
-  --   2. No fair send/recv/output is enabled.
-  --
-  -- By contradiction, if correct p has decided = none:
-  --   * output(p, some b) would be enabled if countVoteRecv ≥ n-f.
-  --     Since output is fair (p correct), it can't be enabled → contradiction.
-  --   * So countVoteRecv(p, some b) < n-f for all b.
-  --   * The delivery chain argument (using fair_deadlock_no_fair_buffer,
-  --     fair_deadlock_no_fair_send, and BCA invariants from
-  --     BCA_Simulation.lean) shows this is impossible under n > 3f
-  --     when a correct input exists.
-  --
-  -- Deep protocol reasoning; sorried pending BCA delivery chain proof.
+  -- Deep protocol reasoning requiring the full BCA delivery chain.
+  -- Steps 1-8 above formalize as: at a fair deadlock, every fair
+  -- send/recv is blocked (already sent, already received, or not
+  -- enabled). By backward induction from output through the chain,
+  -- the only consistent configuration has all correct decided.
   sorry
 
 /-! ## The headline witness -/
@@ -334,13 +334,48 @@ noncomputable def bca_weak_div_witness (hn : n > 3 * f) :
     -- for plans/close-framework-gaps-and-brb.md).
     sorry
   fair_deadlock_diverges := by
-    -- Same shape as BRB: honest discharge via ForwardSim.fair_deadlock_
-    -- lifts + a protocol-specific reverse fair-step correspondence.
+    -- Directly construct a FairDeadlock on the ideal side (or FairDiverges).
+    -- Case analysis on ideal labels:
+    --   * corrupt/input: not fair → trivial.
+    --   * bind b: fair (= True). Need: bind not enabled.
+    --     bind requires: bound_value = none ∧ inputSupport ≥ f+1.
+    --     BLOCKED: sim_rel with bound_value = none gives echoSupport < echoThreshold
+    --     for all b, but does NOT constrain inputSupport. Counter-example:
+    --     n=7, f=2, 2 corrupt, 1 correct input b → corrupted.length + inputSupport
+    --     = 2+1 = 3 = f+1, so bind IS enabled. Yet the concrete IS a valid fair
+    --     deadlock (only 1 correct init source, amplifyThreshold = 3, no progress).
+    --     The ideal is NOT a fair deadlock in this case, and there's no infinite
+    --     internal divergence (bind fires once). So FairlyWeaklyDiverges genuinely
+    --     fails here. This is a design gap in the sim_rel — it doesn't track enough
+    --     structure about corrupt-to-correct init delivery. See issues.md §3.
+    --   * output p v: fair iff p correct. Need: output not enabled for correct p.
+    --     output requires: isCorrect, decided = none, bound_value conditions.
+    --     If bound_value = none: output impossible (guard needs bound_value = some _).
+    --     If bound_value ≠ none: need all correct decided ≠ none (delivery chain).
     intro s₁ s₂ hreach hR hfd
     apply FairDeadlock.fairlyWeaklyDiverges
-    apply (BCA_Simulation.bca_forward_sim T n f hn).fair_deadlock_lifts
-      (bca_fair_labels T n) (ideal_bca_fair_labels T n) ?_ hreach hR hfd
-    sorry
+    intro l₂ s₂' hstep hfair
+    match l₂ with
+    | .corrupt _ => exact absurd hfair (by simp [ideal_bca_fair_labels])
+    | .input _ _ => exact absurd hfair (by simp [ideal_bca_fair_labels])
+    | .bind b =>
+      -- bind step requires bound_value = none ∧ inputSupport ≥ f+1.
+      -- Blocked: inputSupport ≥ f+1 CAN hold at a concrete fair deadlock
+      -- when corrupted.length + correct_inputs ≥ f+1, even if echoSupport is
+      -- below threshold (init chain incomplete due to missing corrupt help).
+      simp only [IdealBCA.ideal_bca] at hstep
+      obtain ⟨_, _, _⟩ := hstep
+      sorry
+    | .output p v =>
+      -- output requires isCorrect p, decided = none, value guard.
+      -- Value guard requires bound_value ≠ none (both some/none branches).
+      simp only [IdealBCA.ideal_bca] at hstep
+      obtain ⟨_, hdec_none, hguard, _⟩ := hstep
+      -- If bound_value = none, neither output branch is satisfiable.
+      -- If bound_value ≠ none, need decided p ≠ none for all correct p
+      -- (the delivery chain argument: echoSupport ≥ threshold or
+      -- voteContention → vote/output chain completed at fair deadlock).
+      sorry
 
 /-! ## Liveness statements
 

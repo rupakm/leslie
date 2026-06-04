@@ -654,6 +654,30 @@ theorem send_buffer {s s' : State T n} {src dst t mv}
   · left; exact hmeq
   · right; simp only [hmeq] at hm; exact hm
 
+/-- Send: the sent field. For the sender, it's updated with the new message. -/
+theorem send_sent {s s' : State T n} {src dst t mv}
+    (h : (bca T n f).step s (.send src dst t mv) s')
+    (d : Fin n) (tt : MsgType) (ww : Val T) :
+    (s'.local_ src).sent d tt ww =
+      (if d = dst ∧ tt = t ∧ ww = mv then true
+       else (s.local_ src).sent d tt ww) := by
+  obtain ⟨_, rfl⟩ := h; simp
+
+/-- Send: sent field for a different sender is unchanged. -/
+theorem send_sent_other {s s' : State T n} {src dst t mv}
+    (h : (bca T n f).step s (.send src dst t mv) s')
+    (p : Fin n) (hp : p ≠ src) (d : Fin n) (tt : MsgType) (ww : Val T) :
+    (s'.local_ p).sent d tt ww = (s.local_ p).sent d tt ww := by
+  obtain ⟨_, rfl⟩ := h; simp [hp]
+
+/-- Send: buffer is monotone (existing entries preserved). -/
+theorem send_buffer_mono {s s' : State T n} {src dst t mv}
+    (h : (bca T n f).step s (.send src dst t mv) s')
+    (m : Message T n) (hm : s.buffer m = true) :
+    s'.buffer m = true := by
+  obtain ⟨_, rfl⟩ := h; simp only
+  by_cases hmeq : m = ⟨src, dst, t, mv⟩ <;> simp [hmeq, hm]
+
 /-- After send, the sent message is in the buffer. -/
 theorem send_buffer_new {s s' : State T n} {src dst t mv}
     (h : (bca T n f).step s (.send src dst t mv) s') :
@@ -680,6 +704,20 @@ theorem output_buffer {s s' : State T n} {i mv}
     (h : (bca T n f).step s (.output i mv) s') :
     s'.buffer = s.buffer := by
   obtain ⟨_, _, _, rfl⟩ := h; rfl
+
+/-- Input does not change the sent field. -/
+theorem input_sent {s s' : State T n} {i v}
+    (h : (bca T n f).step s (.input i v) s') (p : Fin n)
+    (d : Fin n) (t : MsgType) (w : Val T) :
+    (s'.local_ p).sent d t w = (s.local_ p).sent d t w := by
+  obtain ⟨_, rfl⟩ := h; by_cases hp : p = i <;> simp [hp]
+
+/-- Output does not change the sent field. -/
+theorem output_sent {s s' : State T n} {i mv}
+    (h : (bca T n f).step s (.output i mv) s') (p : Fin n)
+    (d : Fin n) (t : MsgType) (w : Val T) :
+    (s'.local_ p).sent d t w = (s.local_ p).sent d t w := by
+  obtain ⟨_, _, _, rfl⟩ := h; by_cases hp : p = i <;> simp [hp]
 
 /-- Input does not change the buffer. -/
 theorem input_buffer {s s' : State T n} {i v}
@@ -1883,5 +1921,289 @@ theorem voteRecv_mono_along {e : Execution (State T n) (Label T n)}
     · exact step_voteRecv_mono (hv.2 k') p q v (ih (by omega))
 
 end StepHelpers
+
+/-! ### Delivery Invariants
+
+    At any reachable state, if a message has been sent, it is either still in the
+    buffer or has been received by the destination.
+
+    Proof approach: step-level preservation + Reachable induction. -/
+
+section DeliveryInvariants
+
+variable {T : Type} [DecidableEq T] {n f : Nat}
+
+/-- Recv does not change the sent field (for any process). -/
+private theorem recv_sent {s s' : State T n} {src' dst' t' mv'}
+    (h : (bca T n f).step s (.recv src' dst' t' mv') s')
+    (p : Fin n) (d : Fin n) (t : MsgType) (v : Val T) :
+    (s'.local_ p).sent d t v = (s.local_ p).sent d t v := by
+  by_cases hp : p = dst'
+  · subst hp; obtain ⟨_, rfl⟩ := h; simp only
+    match t' with
+    | .init =>
+      match mv' with
+      | some b' => by_cases hdup : (s.local_ p).initRecv src' b' = false <;> simp [hdup]
+      | none => simp
+    | .echo =>
+      match mv' with
+      | some b' => by_cases hdup : (s.local_ p).echoRecv src' b' = false <;> simp [hdup]
+      | none => simp
+    | .vote =>
+      by_cases hdup : (s.local_ p).voteRecv src' mv' = false <;> simp [hdup]
+  · rw [recv_local_other h p hp]
+
+/-- After recv(src, dst, init, some b), initRecv(dst, src, b) = true. -/
+private theorem recv_init_initRecv_set {s s' : State T n} {src dst : Fin n} {b : T}
+    (h : (bca T n f).step s (.recv src dst .init (some b)) s') :
+    (s'.local_ dst).initRecv src b = true := by
+  obtain ⟨_, rfl⟩ := h; simp only
+  by_cases hdup : (s.local_ dst).initRecv src b = false
+  · simp [hdup]
+  · simp only [Bool.not_eq_false] at hdup; simp [hdup]
+
+/-- After recv(src, dst, echo, some b), echoRecv(dst, src, b) = true. -/
+private theorem recv_echo_echoRecv_set {s s' : State T n} {src dst : Fin n} {b : T}
+    (h : (bca T n f).step s (.recv src dst .echo (some b)) s') :
+    (s'.local_ dst).echoRecv src b = true := by
+  obtain ⟨_, rfl⟩ := h; simp only
+  by_cases hdup : (s.local_ dst).echoRecv src b = false
+  · simp [hdup]
+  · simp only [Bool.not_eq_false] at hdup; simp [hdup]
+
+/-- After recv(src, dst, vote, v), voteRecv(dst, src, v) = true. -/
+private theorem recv_vote_voteRecv_set {s s' : State T n} {src dst : Fin n} {v : Val T}
+    (h : (bca T n f).step s (.recv src dst .vote v) s') :
+    (s'.local_ dst).voteRecv src v = true := by
+  obtain ⟨_, rfl⟩ := h; simp only
+  by_cases hdup : (s.local_ dst).voteRecv src v = false
+  · simp [hdup]
+  · simp only [Bool.not_eq_false] at hdup; simp [hdup]
+
+/-- Recv clears only the consumed buffer entry; other entries are preserved. -/
+private theorem recv_buffer_other {s s' : State T n} {src' dst' t' mv'}
+    (h : (bca T n f).step s (.recv src' dst' t' mv') s')
+    {m : Message T n} (hne : m ≠ ⟨src', dst', t', mv'⟩)
+    (hm : s.buffer m = true) :
+    s'.buffer m = true := by
+  obtain ⟨_, rfl⟩ := h; simp [hne, hm]
+
+/-- Send preserves initRecv. -/
+private theorem send_initRecv {s s' : State T n} {src' dst' t' mv'}
+    (h : (bca T n f).step s (.send src' dst' t' mv') s')
+    (p : Fin n) (q : Fin n) (b : T) :
+    (s'.local_ p).initRecv q b = (s.local_ p).initRecv q b := by
+  by_cases hp : p = src'
+  · subst hp; obtain ⟨_, rfl⟩ := h; simp
+  · obtain ⟨_, rfl⟩ := h; simp [hp]
+
+/-- Send preserves echoRecv. -/
+private theorem send_echoRecv {s s' : State T n} {src' dst' t' mv'}
+    (h : (bca T n f).step s (.send src' dst' t' mv') s')
+    (p : Fin n) (q : Fin n) (b : T) :
+    (s'.local_ p).echoRecv q b = (s.local_ p).echoRecv q b := by
+  by_cases hp : p = src'
+  · subst hp; obtain ⟨_, rfl⟩ := h; simp
+  · obtain ⟨_, rfl⟩ := h; simp [hp]
+
+/-- Send preserves voteRecv. -/
+private theorem send_voteRecv {s s' : State T n} {src' dst' t' mv'}
+    (h : (bca T n f).step s (.send src' dst' t' mv') s')
+    (p : Fin n) (q : Fin n) (v : Val T) :
+    (s'.local_ p).voteRecv q v = (s.local_ p).voteRecv q v := by
+  by_cases hp : p = src'
+  · subst hp; obtain ⟨_, rfl⟩ := h; simp
+  · obtain ⟨_, rfl⟩ := h; simp [hp]
+
+/-- Step-level: init delivery invariant is preserved by every step. -/
+private theorem step_init_delivery_inv {s s' : State T n} {l : Label T n}
+    (h : (bca T n f).step s l s') (src dst : Fin n) (b : T)
+    (hsent' : (s'.local_ src).sent dst .init (some b) = true)
+    (ih : (s.local_ src).sent dst .init (some b) = true →
+          s.buffer ⟨src, dst, .init, some b⟩ = true ∨
+          (s.local_ dst).initRecv src b = true) :
+    s'.buffer ⟨src, dst, .init, some b⟩ = true ∨
+    (s'.local_ dst).initRecv src b = true := by
+  match l with
+  | .corrupt _ =>
+    rw [corrupt_local h] at hsent'
+    rcases ih hsent' with hbuf | hrecv
+    · left; rw [corrupt_buffer h]; exact hbuf
+    · right; rw [corrupt_local h]; exact hrecv
+  | .input _ _ =>
+    rw [input_sent h src dst .init (some b)] at hsent'
+    rcases ih hsent' with hbuf | hrecv
+    · left; rw [input_buffer h]; exact hbuf
+    · right; exact step_initRecv_mono h dst src b hrecv
+  | .output _ _ =>
+    rw [output_sent h src dst .init (some b)] at hsent'
+    rcases ih hsent' with hbuf | hrecv
+    · left; rw [output_buffer h]; exact hbuf
+    · right; exact step_initRecv_mono h dst src b hrecv
+  | .send src' dst' t' mv' =>
+    by_cases hsrc : src = src'
+    · subst hsrc
+      rw [send_sent h dst .init (some b)] at hsent'
+      split_ifs at hsent' with heq
+      · obtain ⟨rfl, rfl, rfl⟩ := heq; left; exact send_buffer_new h
+      · rcases ih hsent' with hbuf | hrecv
+        · left; exact send_buffer_mono h _ hbuf
+        · right; rw [send_initRecv h dst src b]; exact hrecv
+    · rw [send_sent_other h src (hsrc) dst .init (some b)] at hsent'
+      rcases ih hsent' with hbuf | hrecv
+      · left; exact send_buffer_mono h _ hbuf
+      · right; rw [send_initRecv h dst src b]; exact hrecv
+  | .recv src' dst' t' mv' =>
+    rw [recv_sent h src dst .init (some b)] at hsent'
+    rcases ih hsent' with hbuf | hrecv
+    · by_cases hmeq : (⟨src, dst, .init, some b⟩ : Message T n) = ⟨src', dst', t', mv'⟩
+      · have : src = src' ∧ dst = dst' ∧ t' = .init ∧ mv' = some b := by
+          simp [Message.mk.injEq] at hmeq; exact ⟨hmeq.1, hmeq.2.1, hmeq.2.2.1.symm, hmeq.2.2.2.symm⟩
+        obtain ⟨rfl, rfl, rfl, rfl⟩ := this
+        right; exact recv_init_initRecv_set h
+      · left; exact recv_buffer_other h hmeq hbuf
+    · right; exact step_initRecv_mono h dst src b hrecv
+
+/-- If init(some b) was sent from src to dst, it is either in the buffer or received. -/
+theorem init_delivery_inv {s : State T n}
+    (hreach : LTS.Reachable (bca T n f) s)
+    (src dst : Fin n) (b : T)
+    (hsent : (s.local_ src).sent dst .init (some b) = true) :
+    s.buffer ⟨src, dst, .init, some b⟩ = true ∨
+    (s.local_ dst).initRecv src b = true := by
+  induction hreach with
+  | init hinit =>
+    obtain ⟨hlocal, _, _⟩ := hinit
+    simp [hlocal src, LocalState.init] at hsent
+  | step hreach' hstep ih =>
+    exact step_init_delivery_inv hstep src dst b hsent ih
+
+/-- Step-level: echo delivery invariant is preserved by every step. -/
+private theorem step_echo_delivery_inv {s s' : State T n} {l : Label T n}
+    (h : (bca T n f).step s l s') (src dst : Fin n) (b : T)
+    (hsent' : (s'.local_ src).sent dst .echo (some b) = true)
+    (ih : (s.local_ src).sent dst .echo (some b) = true →
+          s.buffer ⟨src, dst, .echo, some b⟩ = true ∨
+          (s.local_ dst).echoRecv src b = true) :
+    s'.buffer ⟨src, dst, .echo, some b⟩ = true ∨
+    (s'.local_ dst).echoRecv src b = true := by
+  match l with
+  | .corrupt _ =>
+    rw [corrupt_local h] at hsent'
+    rcases ih hsent' with hbuf | hrecv
+    · left; rw [corrupt_buffer h]; exact hbuf
+    · right; rw [corrupt_local h]; exact hrecv
+  | .input _ _ =>
+    rw [input_sent h src dst .echo (some b)] at hsent'
+    rcases ih hsent' with hbuf | hrecv
+    · left; rw [input_buffer h]; exact hbuf
+    · right; exact step_echoRecv_mono h dst src b hrecv
+  | .output _ _ =>
+    rw [output_sent h src dst .echo (some b)] at hsent'
+    rcases ih hsent' with hbuf | hrecv
+    · left; rw [output_buffer h]; exact hbuf
+    · right; exact step_echoRecv_mono h dst src b hrecv
+  | .send src' dst' t' mv' =>
+    by_cases hsrc : src = src'
+    · subst hsrc
+      rw [send_sent h dst .echo (some b)] at hsent'
+      split_ifs at hsent' with heq
+      · obtain ⟨rfl, rfl, rfl⟩ := heq; left; exact send_buffer_new h
+      · rcases ih hsent' with hbuf | hrecv
+        · left; exact send_buffer_mono h _ hbuf
+        · right; rw [send_echoRecv h dst src b]; exact hrecv
+    · rw [send_sent_other h src (hsrc) dst .echo (some b)] at hsent'
+      rcases ih hsent' with hbuf | hrecv
+      · left; exact send_buffer_mono h _ hbuf
+      · right; rw [send_echoRecv h dst src b]; exact hrecv
+  | .recv src' dst' t' mv' =>
+    rw [recv_sent h src dst .echo (some b)] at hsent'
+    rcases ih hsent' with hbuf | hrecv
+    · by_cases hmeq : (⟨src, dst, .echo, some b⟩ : Message T n) = ⟨src', dst', t', mv'⟩
+      · have : src = src' ∧ dst = dst' ∧ t' = .echo ∧ mv' = some b := by
+          simp [Message.mk.injEq] at hmeq; exact ⟨hmeq.1, hmeq.2.1, hmeq.2.2.1.symm, hmeq.2.2.2.symm⟩
+        obtain ⟨rfl, rfl, rfl, rfl⟩ := this
+        right; exact recv_echo_echoRecv_set h
+      · left; exact recv_buffer_other h hmeq hbuf
+    · right; exact step_echoRecv_mono h dst src b hrecv
+
+/-- If echo(some b) was sent from src to dst, it is either in the buffer or received. -/
+theorem echo_delivery_inv {s : State T n}
+    (hreach : LTS.Reachable (bca T n f) s)
+    (src dst : Fin n) (b : T)
+    (hsent : (s.local_ src).sent dst .echo (some b) = true) :
+    s.buffer ⟨src, dst, .echo, some b⟩ = true ∨
+    (s.local_ dst).echoRecv src b = true := by
+  induction hreach with
+  | init hinit =>
+    obtain ⟨hlocal, _, _⟩ := hinit
+    simp [hlocal src, LocalState.init] at hsent
+  | step hreach' hstep ih =>
+    exact step_echo_delivery_inv hstep src dst b hsent ih
+
+/-- Step-level: vote delivery invariant is preserved by every step. -/
+private theorem step_vote_delivery_inv {s s' : State T n} {l : Label T n}
+    (h : (bca T n f).step s l s') (src dst : Fin n) (v : Val T)
+    (hsent' : (s'.local_ src).sent dst .vote v = true)
+    (ih : (s.local_ src).sent dst .vote v = true →
+          s.buffer ⟨src, dst, .vote, v⟩ = true ∨
+          (s.local_ dst).voteRecv src v = true) :
+    s'.buffer ⟨src, dst, .vote, v⟩ = true ∨
+    (s'.local_ dst).voteRecv src v = true := by
+  match l with
+  | .corrupt _ =>
+    rw [corrupt_local h] at hsent'
+    rcases ih hsent' with hbuf | hrecv
+    · left; rw [corrupt_buffer h]; exact hbuf
+    · right; rw [corrupt_local h]; exact hrecv
+  | .input _ _ =>
+    rw [input_sent h src dst .vote v] at hsent'
+    rcases ih hsent' with hbuf | hrecv
+    · left; rw [input_buffer h]; exact hbuf
+    · right; exact step_voteRecv_mono h dst src v hrecv
+  | .output _ _ =>
+    rw [output_sent h src dst .vote v] at hsent'
+    rcases ih hsent' with hbuf | hrecv
+    · left; rw [output_buffer h]; exact hbuf
+    · right; exact step_voteRecv_mono h dst src v hrecv
+  | .send src' dst' t' mv' =>
+    by_cases hsrc : src = src'
+    · subst hsrc
+      rw [send_sent h dst .vote v] at hsent'
+      split_ifs at hsent' with heq
+      · obtain ⟨rfl, rfl, rfl⟩ := heq; left; exact send_buffer_new h
+      · rcases ih hsent' with hbuf | hrecv
+        · left; exact send_buffer_mono h _ hbuf
+        · right; rw [send_voteRecv h dst src v]; exact hrecv
+    · rw [send_sent_other h src (hsrc) dst .vote v] at hsent'
+      rcases ih hsent' with hbuf | hrecv
+      · left; exact send_buffer_mono h _ hbuf
+      · right; rw [send_voteRecv h dst src v]; exact hrecv
+  | .recv src' dst' t' mv' =>
+    rw [recv_sent h src dst .vote v] at hsent'
+    rcases ih hsent' with hbuf | hrecv
+    · by_cases hmeq : (⟨src, dst, .vote, v⟩ : Message T n) = ⟨src', dst', t', mv'⟩
+      · have : src = src' ∧ dst = dst' ∧ t' = .vote ∧ mv' = v := by
+          simp [Message.mk.injEq] at hmeq; exact ⟨hmeq.1, hmeq.2.1, hmeq.2.2.1.symm, hmeq.2.2.2.symm⟩
+        obtain ⟨rfl, rfl, rfl, rfl⟩ := this
+        right; exact recv_vote_voteRecv_set h
+      · left; exact recv_buffer_other h hmeq hbuf
+    · right; exact step_voteRecv_mono h dst src v hrecv
+
+/-- If vote(v) was sent from src to dst, it is either in the buffer or received. -/
+theorem vote_delivery_inv {s : State T n}
+    (hreach : LTS.Reachable (bca T n f) s)
+    (src dst : Fin n) (v : Val T)
+    (hsent : (s.local_ src).sent dst .vote v = true) :
+    s.buffer ⟨src, dst, .vote, v⟩ = true ∨
+    (s.local_ dst).voteRecv src v = true := by
+  induction hreach with
+  | init hinit =>
+    obtain ⟨hlocal, _, _⟩ := hinit
+    simp [hlocal src, LocalState.init] at hsent
+  | step hreach' hstep ih =>
+    exact step_vote_delivery_inv hstep src dst v hsent ih
+
+end DeliveryInvariants
 
 end BCA_LTS
