@@ -21,8 +21,8 @@ Leaves of the recursion (no sub-protocol, or only the black-box $\mathsf{AVSS.Sp
     $\mathsf{ABA.Concrete}$ satisfies Validity, Agreement and Almost-Sure Termination.
 \end{theorem}
 \begin{proof}
-    \uses{thm:ABASim}
-    Transport the corresponding properties of $\mathsf{ABA.Spec}$ along the simulation \ref{thm:ABASim}.
+    \uses{thm:ABASim, thm:pfs-sound}
+    Soundness of probabilistic forward simulation (Theorem~\ref{thm:pfs-sound}) applied to \ref{thm:ABASim} yields $\mathsf{ABA.Concrete} \sqsubseteq_{\mathrm{TD}} \mathsf{ABA.Spec}$, which transports the safety properties (Validity and Agreement) of $\mathsf{ABA.Spec}$ to $\mathsf{ABA.Concrete}$. Almost-Sure Termination is a probabilistic liveness property and is handled separately via the liveness-preserving strengthening of $\preceq_{\mathrm{PFS}}$.
 \end{proof}
 
 \subsection{ABA}
@@ -34,8 +34,8 @@ Leaves of the recursion (no sub-protocol, or only the black-box $\mathsf{AVSS.Sp
     $\mathsf{ABA.Spec}$ simulates $\mathsf{ABA.Concrete}$.
 \end{theorem}
 \begin{proof}
-    \uses{lem:ABASubst, lem:ABACore}
-    Transitivity of simulation applied to \ref{lem:ABASubst} and \ref{lem:ABACore}.
+    \uses{lem:ABASubst, lem:ABACore, thm:pfs-largest-precongruence}
+    Probabilistic forward simulation is in particular a pre-order (Theorem~\ref{thm:pfs-largest-precongruence}); chain \ref{lem:ABACore} with \ref{lem:ABASubst} by transitivity.
 \end{proof}
 
 \begin{lemma}\label{lem:ABASubst}
@@ -45,8 +45,8 @@ Leaves of the recursion (no sub-protocol, or only the black-box $\mathsf{AVSS.Sp
     $\mathsf{ABA.Hybrid}$ is simulated by $\mathsf{ABA.Concrete}$.
 \end{lemma}
 \begin{proof}
-    \uses{thm:GBCASim, thm:WCCSim}
-    Compositionality of simulation applied to \ref{thm:GBCASim} and \ref{thm:WCCSim}.
+    \uses{thm:GBCASim, thm:WCCSim, thm:pfs-precongruence}
+    $\mathsf{ABA.Concrete}$ and $\mathsf{ABA.Hybrid}$ share the same skeleton $\mathsf{ABA.Impl}$ and differ only in their sub-protocol instances. Apply the pre-congruence of $\preceq_{\mathrm{PFS}}$ for parallel composition (Theorem~\ref{thm:pfs-precongruence}) to the child simulations \ref{thm:GBCASim} and \ref{thm:WCCSim}, lifted along the $\mathsf{ABA.Impl}$ context.
 \end{proof}
 
 \begin{lemma}\label{lem:ABACore}
@@ -65,8 +65,8 @@ Leaves of the recursion (no sub-protocol, or only the black-box $\mathsf{AVSS.Sp
     $\mathsf{WCC.Spec}$ simulates $\mathsf{WCC.Concrete}$.
 \end{theorem}
 \begin{proof}
-    \uses{lem:WCCSubst, lem:WCCCore}
-    Transitivity of simulation applied to \ref{lem:WCCSubst} and \ref{lem:WCCCore}.
+    \uses{lem:WCCSubst, lem:WCCCore, thm:pfs-largest-precongruence}
+    Probabilistic forward simulation is in particular a pre-order (Theorem~\ref{thm:pfs-largest-precongruence}); chain \ref{lem:WCCCore} with \ref{lem:WCCSubst} by transitivity.
 \end{proof}
 
 \begin{lemma}\label{lem:WCCSubst}
@@ -76,8 +76,8 @@ Leaves of the recursion (no sub-protocol, or only the black-box $\mathsf{AVSS.Sp
     $\mathsf{WCC.Hybrid}$ is simulated by $\mathsf{WCC.Concrete}$.
 \end{lemma}
 \begin{proof}
-    \uses{thm:GatherSim, thm:RSDSim}
-    Compositionality of simulation applied to \ref{thm:GatherSim} and \ref{thm:RSDSim}.
+    \uses{thm:GatherSim, thm:RSDSim, thm:pfs-precongruence}
+    $\mathsf{WCC.Concrete}$ and $\mathsf{WCC.Hybrid}$ share the same skeleton $\mathsf{WCC.Impl}$ and differ only in the instances of Gather and RSD. Apply the pre-congruence of $\preceq_{\mathrm{PFS}}$ for parallel composition (Theorem~\ref{thm:pfs-precongruence}) to the child simulations \ref{thm:GatherSim} and \ref{thm:RSDSim}, lifted along the $\mathsf{WCC.Impl}$ context.
 \end{proof}
 
 \begin{lemma}\label{lem:WCCCore}
@@ -105,8 +105,8 @@ Leaves of the recursion (no sub-protocol, or only the black-box $\mathsf{AVSS.Sp
     $\mathsf{Gather.Spec}$ simulates $\mathsf{Gather.Concrete}$.
 \end{theorem}
 \begin{proof}
-    \uses{lem:GatherSubst, lem:GatherCore}
-    Transitivity of simulation applied to \ref{lem:GatherSubst} and \ref{lem:GatherCore}.
+    \uses{lem:GatherSubst, lem:GatherCore, thm:pfs-largest-precongruence}
+    Probabilistic forward simulation is in particular a pre-order (Theorem~\ref{thm:pfs-largest-precongruence}); chain \ref{lem:GatherCore} with \ref{lem:GatherSubst} by transitivity.
 \end{proof}
 
 \begin{lemma}\label{lem:GatherSubst}
@@ -116,8 +116,8 @@ Leaves of the recursion (no sub-protocol, or only the black-box $\mathsf{AVSS.Sp
     $\mathsf{Gather.Hybrid}$ is simulated by $\mathsf{Gather.Concrete}$.
 \end{lemma}
 \begin{proof}
-    \uses{thm:BRBSim}
-    Compositionality of simulation applied to \ref{thm:BRBSim}.
+    \uses{thm:BRBSim, thm:pfs-precongruence}
+    $\mathsf{Gather.Concrete}$ and $\mathsf{Gather.Hybrid}$ share the same skeleton $\mathsf{Gather.Impl}$ and differ only in the BRB instances. Apply the pre-congruence of $\preceq_{\mathrm{PFS}}$ for parallel composition (Theorem~\ref{thm:pfs-precongruence}) to the child simulation \ref{thm:BRBSim}, lifted along the $\mathsf{Gather.Impl}$ context (one instance per leader).
 \end{proof}
 
 \begin{lemma}\label{lem:GatherCore}
@@ -136,8 +136,8 @@ Leaves of the recursion (no sub-protocol, or only the black-box $\mathsf{AVSS.Sp
     $\mathsf{RSD.Spec}$ simulates $\mathsf{RSD.Concrete}$.
 \end{theorem}
 \begin{proof}
-    \uses{lem:RSDSubst, lem:RSDCore}
-    Transitivity of simulation applied to \ref{lem:RSDSubst} and \ref{lem:RSDCore}.
+    \uses{lem:RSDSubst, lem:RSDCore, thm:pfs-largest-precongruence}
+    Probabilistic forward simulation is in particular a pre-order (Theorem~\ref{thm:pfs-largest-precongruence}); chain \ref{lem:RSDCore} with \ref{lem:RSDSubst} by transitivity.
 \end{proof}
 
 \begin{lemma}\label{lem:RSDSubst}
@@ -147,8 +147,8 @@ Leaves of the recursion (no sub-protocol, or only the black-box $\mathsf{AVSS.Sp
     $\mathsf{RSD.Hybrid}$ is simulated by $\mathsf{RSD.Concrete}$. Only BRB is substituted; $\mathsf{AVSS.Spec}$ stays fixed on both sides.
 \end{lemma}
 \begin{proof}
-    \uses{thm:BRBSim}
-    Compositionality of simulation applied to \ref{thm:BRBSim}.
+    \uses{thm:BRBSim, thm:pfs-precongruence}
+    $\mathsf{RSD.Concrete}$ and $\mathsf{RSD.Hybrid}$ share the same skeleton $\mathsf{RSD.Impl}$ and the same $\mathsf{AVSS.Spec}$ instances; only the BRB instances are substituted. Apply the pre-congruence of $\preceq_{\mathrm{PFS}}$ for parallel composition (Theorem~\ref{thm:pfs-precongruence}) to the child simulation \ref{thm:BRBSim}, lifted along the $\mathsf{RSD.Impl}$ context (one BRB instance per leader).
 \end{proof}
 
 \begin{lemma}\label{lem:RSDCore}

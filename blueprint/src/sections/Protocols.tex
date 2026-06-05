@@ -1,37 +1,49 @@
 \section{List of the Protocols}
 
+\paragraph{Common Notation.}
+Throughout this section, $Id$ denotes the set of process identifiers with $n := |Id|$, $F \subseteq Id$ denotes the (a priori unknown) set of faulty processes with $f \ge |F|$ a fixed upper bound, and $Id \setminus F$ is the set of correct processes.
+For each protocol we provide two implementations:
+\begin{itemize}
+    \item an \emph{ideal implementation} (\texttt{Spec}), designed for a no-delay system with crash failures and mediated by a trusted third party;
+    \item a \emph{concrete implementation} (\texttt{Impl}), designed for an asynchronous system with Byzantine failures.
+\end{itemize}
+Messages exchanged with the third party (resp.\ between processes) are written $\langle \textsc{tag}, \cdot \rangle$, state variables stay in plain math, and arrays indexed by process identifiers are written $v[id]$.
+
 \subsection{Main Protocol: Asynchronous Byzantine Agreement (ABA)} (taken from \cite{Abraham2022Efficient})
 Processes start with a bit $\{0,1\}$ and may return a bit.
-a program implements ABA if it satisfies three properties: Validity, Agreement, Almost-Sure Termination.
+A program implements ABA if it satisfies three properties: Validity, Agreement, Almost-Sure Termination.
 \begin{itemize}
     \item Validity: if a correct process returns $b$ then a correct process had $1-b$ as input.
-    \item Agreement: if two correct processes return, then their output are equal.
-    \item Termination: if $n-f$ correct processes take part to the protocol then, with probability 1, all correct processes will eventually return.
+    \item Agreement: if two correct processes return, then their outputs are equal.
+    \item Termination: if $n-f$ correct processes take part in the protocol then, with probability 1, all correct processes will eventually return.
 \end{itemize}
 
 \begin{protocol}\label{prot:SpecABA}
     \lean{ABA.Spec}
     %\leanok
+    \emph{Ideal implementation.}
+    The trusted third party collects each process's input bit and, once at least $n-f$ contributions support some bit $b$, fixes the bound value to $b$ and broadcasts $\langle \textsc{output}, b\rangle$ to all processes.
+    Late callers are coerced to the bound value or to a random draw from a non-Dirac distribution $\mu$, which preserves the bound while modelling the adversary's ability to skew honest participation.
     \begin{algorithm}
         \caption{Ideal Implementation of ABA}
         \begin{algorithmic}
             \State \textbf{Input:} $b \in \{0,1\}$
             \medskip
             \State \textbf{Code for every process:}
-            \State send $\langle input, b\rangle$ to the third party 
-            \State \textbf{upon} receiving $\langle output, b\rangle$ from third party 
+            \State send $\langle \textsc{input}, b\rangle$ to the third party
+            \State \textbf{upon} receiving $\langle \textsc{output}, b\rangle$ from the third party:
             \State \quad return $b$
             \medskip
-            \State \textbf{Code for third party:}
-            \State $bind,call \gets \bot,(\bot)^{Id}$
-            \State \textbf{upon} receiving $\langle input, b\rangle$ from a process $id$ and $bind = \bot$:
-            \State \quad $call(id) \gets b$
-            \State \textbf{upon} $|F| + \{id \in Id \setminus F \mid call(id) = b\} \ge n-f$:
-            \State \quad $bind,call \gets b,(\bot)^{Id}$
-            \State \quad \textbf{if} $\{id \in Id \setminus F \mid call(id) = 1-b\} = 0$:
-            \State \quad\quad send $\langle output, b\rangle$ to all
-            \State \textbf{upon} $call(id) = \bot$ and $bind \ne \bot$:
-            \State \quad $call \gets bind \textbf{ or } \mu$ \Comment{$\mu$ can be any non-Dirac probability distriution over $\{0,1\}$}
+            \State \textbf{Code for the third party:}
+            \State $bind, call \gets \bot, (\bot)^{Id}$
+            \State \textbf{upon} receiving $\langle \textsc{input}, b\rangle$ from a process $id$ and $bind = \bot$:
+            \State \quad $call[id] \gets b$
+            \State \textbf{upon} $|F \cup \{id \in Id \setminus F \mid call[id] = b\}| \ge n-f$:
+            \State \quad $bind, call \gets b, (\bot)^{Id}$
+            \State \quad \textbf{if} $\{id \in Id \setminus F \mid call[id] = 1-b\} = \emptyset$:
+            \State \quad\quad send $\langle \textsc{output}, b\rangle$ to all
+            \State \textbf{upon} $call[id] = \bot$ and $bind \ne \bot$:
+            \State \quad $call[id] \gets bind$ \textbf{or} $\mu$ \Comment{$\mu$ is any non-Dirac distribution over $\{0,1\}$}
         \end{algorithmic}
     \end{algorithm}
 \end{protocol}
@@ -39,6 +51,9 @@ a program implements ABA if it satisfies three properties: Validity, Agreement, 
 \begin{protocol}\label{prot:ImplABA}
     \lean{ABA.Impl}
     %\leanok
+    \emph{Concrete implementation.}
+    Round-based protocol combining Graded Binding Crusader Agreement (GBCA) with a Weak Common Coin (WCC).
+    Each round, the process refines its bit through GBCA and tosses a coin via WCC; it adopts the coin if GBCA was undecided ($b = \bot$) and otherwise decides on $b$ when GBCA returned the highest grade $A$, while continuing to run to help the others terminate.
     \begin{algorithm}
         \caption{Implementation of ABA taken from \cite{Abraham2022Efficient}}
         \begin{algorithmic}
@@ -48,11 +63,11 @@ a program implements ABA if it satisfies three properties: Validity, Agreement, 
             \State $decided \gets \bot$
             \Loop
                 \State $(b, g) \gets \textsc{GBCA}_r(b)$ \Comment{$b \in \{0,1,\bot\}$, $g \in \{A, B, C\}$}
-                \State $c \gets \textsc{WCC}_r$ \Comment{common coin for round $r$}
+                \State $c \gets \textsc{WCC}_r()$ \Comment{common coin for round $r$}
                 \If{$b = \bot$}
                     \State $b \gets c$
                 \ElsIf{$g = A$}
-                    \State $decided \gets b$ \Comment{ keep participating to help others}
+                    \State $decided \gets b$ \Comment{keep participating to help others}
                 \EndIf
                 \State $r \gets r + 1$
             \EndLoop
@@ -84,37 +99,39 @@ A program implements GBCA if it satisfies four properties: Validity, Graded Agre
     \item Validity: if a correct process does not return $(b,A)$ then a correct process had $1-b$ as input.
     \item Graded Agreement: if two correct processes return $(b,X)$ and $(b',X')$ then $b = 0 \implies b' \ne 1$ and $X = A \implies X' \ne \bot$.
     \item Binding: when a correct process returns then a bound value $b$ is defined and, in all extensions of the execution, correct processes do not return $(1-b,B)$ or $(1-b,A)$.
-    \item Termination: if $n-f$ correct processes take part to the protocol then all correct processes will eventually return.
+    \item Termination: if $n-f$ correct processes take part in the protocol then all correct processes will eventually return.
 \end{itemize}
 
 \begin{protocol}\label{prot:SpecGBCA}
     \lean{GBCA.Spec}
     %\leanok
-    Blablabla
+    \emph{Ideal implementation.}
+    The trusted third party tallies the contributions and, as soon as a quorum supports some bit $b$, fixes $bind$ to $b$ and sets the global grade: $A$ if no correct process input $1-b$, otherwise $C$.
+    Each process is then served either the highest grade pair $(bind, A)$ (resp.\ $(\bot, C)$) or the conservative $(bind, B)$ as chosen non-deterministically by the adversary.
     \begin{algorithm}
         \caption{Ideal Implementation of GBCA}
         \begin{algorithmic}
             \State \textbf{Input:} $b \in \{0,1\}$
             \medskip
             \State \textbf{Code for every process:}
-            \State send $\langle input, b\rangle$ to the third party 
-            \State \textbf{upon} receiving $\langle output, (b,g)\rangle$ from third party 
+            \State send $\langle \textsc{input}, b\rangle$ to the third party
+            \State \textbf{upon} receiving $\langle \textsc{output}, (b,g)\rangle$ from the third party:
             \State \quad return $(b,g)$
             \medskip
-            \State \textbf{Code for third party:}
-            \State $bind,grade,call \gets \bot,\bot,(\bot)^{Id}$
-            \State \textbf{upon} receiving $\langle input, b\rangle$ from a process $id$:
-            \State \quad $call(id) \gets b$
-            \State \textbf{upon} $|F| + \{id \in Id \setminus F \mid call(id) = b\} \ge n-f$:
+            \State \textbf{Code for the third party:}
+            \State $bind, grade, call \gets \bot, \bot, (\bot)^{Id}$
+            \State \textbf{upon} receiving $\langle \textsc{input}, b\rangle$ from a process $id$:
+            \State \quad $call[id] \gets b$
+            \State \textbf{upon} $|F \cup \{id \in Id \setminus F \mid call[id] = b\}| \ge n-f$:
             \State \quad $bind \gets b$
-            \State \quad \textbf{if} $\{id \in Id \setminus F \mid call(id) = 1-b\} = 0$:
+            \State \quad \textbf{if} $\{id \in Id \setminus F \mid call[id] = 1-b\} = \emptyset$:
             \State \quad\quad $grade \gets A$
             \State \quad \textbf{else}
             \State \quad\quad $grade \gets C$
-            \State \textbf{upon} $bind = \bot$ and $grade = A$ and not sent $\langle output, \cdot \rangle$ to process $id$:
-            \State \quad send $\langle bind, B\rangle$ or $\langle output, (bind, A)\rangle$ to process $id$
-            \State \textbf{upon} $bind = \bot$ and $grade = C$ and not sent $\langle output, \cdot \rangle$ to process $id$:
-            \State \quad send $\langle bind, B\rangle$ or $\langle output, (\bot, C)\rangle$ to process $id$
+            \State \textbf{upon} $bind \ne \bot$ and $grade = A$ and not sent $\langle \textsc{output}, \cdot \rangle$ to process $id$:
+            \State \quad send $\langle \textsc{output}, (bind, B)\rangle$ or $\langle \textsc{output}, (bind, A)\rangle$ to process $id$
+            \State \textbf{upon} $bind \ne \bot$ and $grade = C$ and not sent $\langle \textsc{output}, \cdot \rangle$ to process $id$:
+            \State \quad send $\langle \textsc{output}, (bind, B)\rangle$ or $\langle \textsc{output}, (\bot, C)\rangle$ to process $id$
         \end{algorithmic}
     \end{algorithm}
 \end{protocol}
@@ -122,13 +139,15 @@ A program implements GBCA if it satisfies four properties: Validity, Graded Agre
 \begin{protocol}\label{prot:ImplGBCA}
     \lean{GBCA.Impl}
     %\leanok
-    Parameters: $n$ processes with at most $f < n/3$ corrupted. Each process $p_i$ has input $b_i \in \{0,1\}$.
+    \emph{Concrete implementation.}
+    Requires no sub-protocol. Parameters: $n$ processes with at most $f < n/3$ corrupted, each holding an input bit $b \in \{0,1\}$.
+    After an input-amplification phase, the protocol runs three Bracha-style rounds of $\langle \textsc{echo}, \cdot \rangle$, $\langle \textsc{vote}, \cdot \rangle$, $\langle \textsc{bind}, \cdot \rangle$ messages to settle the bound value and assign the grade.
     \begin{algorithm}
         \caption{Implementation of GBCA taken from \cite{Abraham2022Efficient}}
         \begin{algorithmic}
             \State \textbf{Input:} $b \in \{0,1\}$
             \medskip
-            \State send $\langle \textsc{input}, b_i \rangle$ to all processes
+            \State send $\langle \textsc{input}, b \rangle$ to all processes
             \medskip
             \State \textbf{upon} receiving $\langle \textsc{input}, b \rangle$ from at least $f + 1$ processes and not sent $\langle \textsc{input}, b\rangle$ yet:
             \State \quad send $\langle \textsc{input}, b\rangle$ to all
@@ -137,20 +156,20 @@ A program implements GBCA if it satisfies four properties: Validity, Graded Agre
             \State \quad $Approved \gets Approved \cup \{b\}$
             \State \quad \textbf{if} not sent $\langle \textsc{echo}, \cdot \rangle$ yet \textbf{then} send $\langle \textsc{echo}, b\rangle$ to all
             \medskip
-            \State wait until 
+            \State wait until
             \State \quad (a) receiving $\langle \textsc{echo}, b \rangle$ from at least $n - f$ processes \textbf{or}
             \State \quad (b) receiving $\langle \textsc{echo}, \cdot \rangle$ from at least $n - f$ processes and $|Approved| > 1$
-            \State \quad \textbf{if} (a) \textbf{then} send $\langle vote, b\rangle$ to all \textbf{else} send $\langle vote, \bot\rangle$ to all
+            \State \quad \textbf{if} (a) \textbf{then} send $\langle \textsc{vote}, b\rangle$ to all \textbf{else} send $\langle \textsc{vote}, \bot\rangle$ to all
             \medskip
-            \State wait until 
+            \State wait until
             \State \quad (a) receiving $\langle \textsc{vote}, b \rangle$ from at least $n - f$ processes \textbf{or}
             \State \quad (b) receiving $\langle \textsc{vote}, \cdot \rangle$ from at least $n - f$ processes and $|Approved| > 1$
-            \State \quad \textbf{if} (a) \textbf{then} send $\langle bind, b\rangle$ to all \textbf{else} send $\langle bind, \bot\rangle$ to all
+            \State \quad \textbf{if} (a) \textbf{then} send $\langle \textsc{bind}, b\rangle$ to all \textbf{else} send $\langle \textsc{bind}, \bot\rangle$ to all
             \medskip
-            \State wait until 
-            \State \quad (a) receiving $\langle \textsc{vote}, b \rangle$ from at least $n - f$ processes \textbf{or}
-            \State \quad (b) receiving $\langle \textsc{vote}, \cdot \rangle$ from at least $n - f$ processes and there exists $b \in \{0,1\}$ such that $\langle bind, b\rangle$ has been received once and $\langle vote, b\rangle$ has been received from $t+1$ processes and $|Approved| > 1$ \textbf{or}
-            \State \quad (c) receiving $\langle \textsc{vote}, \bot \rangle$ from at least $n - f$ processes and $|Approved| > 1$
+            \State wait until
+            \State \quad (a) receiving $\langle \textsc{bind}, b \rangle$ from at least $n - f$ processes \textbf{or}
+            \State \quad (b) receiving $\langle \textsc{bind}, \cdot \rangle$ from at least $n - f$ processes and there exists $b \in \{0,1\}$ such that $\langle \textsc{bind}, b\rangle$ has been received once and $\langle \textsc{vote}, b\rangle$ has been received from $f+1$ processes and $|Approved| > 1$ \textbf{or}
+            \State \quad (c) receiving $\langle \textsc{bind}, \bot \rangle$ from at least $n - f$ processes and $|Approved| > 1$
             \State \quad \textbf{if} (a) \textbf{then} return $(b,A)$ \textbf{elif} (b) \textbf{then} return $(b,B)$ \textbf{else} return $(\bot, C)$
         \end{algorithmic}
     \end{algorithm}
@@ -160,31 +179,33 @@ A program implements GBCA if it satisfies four properties: Validity, Graded Agre
 Processes start with no input and may return a bit.
 A program implements WCC if it satisfies three properties: $\epsilon$-Goodness, Unpredictability, Termination.
 \begin{itemize}
-    \item $\epsilon$-Goodness: with probability $\epsilon$, all correct processes return 0 (resp. 1).
-    \item Unpredictability: Until $t+1$ processes have called WCC, all outcomes are still possible.
-    \item Termination: if $n-f$ correct processes take part to the protocol then all correct processes will eventually return.
+    \item $\epsilon$-Goodness: with probability $\epsilon$, all correct processes return 0 (resp.\ 1).
+    \item Unpredictability: until $f+1$ processes have called WCC, all outcomes are still possible.
+    \item Termination: if $n-f$ correct processes take part in the protocol then all correct processes will eventually return.
 \end{itemize}
 
 \begin{protocol}\label{prot:SpecWCC}
     \lean{WCC.Spec}
     %\leanok
-    Blablabla
+    \emph{Ideal implementation.}
+    The trusted third party samples a coin $r$ from a distribution $\mu$ such that $\mu(0) = \mu(1) = \epsilon$ and $\mu(\bot) = 1 - 2\epsilon$.
+    If $r \in \{0,1\}$ the same value is broadcast to every process; otherwise each process is delivered an adversarially-chosen bit, modelling the worst case where the coin does not coordinate the honest parties.
     \begin{algorithm}
         \caption{Ideal Implementation of WCC}
         \begin{algorithmic}
             \State \textbf{Input:} none
             \medskip
             \State \textbf{Code for every process:}
-            \State send $\langle input, b\rangle$ to the third party 
-            \State \textbf{upon} receiving $\langle output, b\rangle$ from third party 
+            \State send $\langle \textsc{input} \rangle$ to the third party
+            \State \textbf{upon} receiving $\langle \textsc{output}, b\rangle$ from the third party:
             \State \quad return $b$
             \medskip
-            \State \textbf{Code for third party:}
-            \State $r \gets \mu$ \Comment{$\mu: 1 \mapsto \epsilon; 0 \mapsto \epsilon; \bot \mapsto 1-2\epsilon$}
+            \State \textbf{Code for the third party:}
+            \State $r \gets \mu$ \Comment{$\mu$: $1 \mapsto \epsilon$, $0 \mapsto \epsilon$, $\bot \mapsto 1 - 2\epsilon$}
             \State \textbf{if} $r \ne \bot$:
-            \State \quad send $\langle output, r \rangle$ to all
-            \State \textbf{alse}
-            \State \quad for all $id \in Id$, send $\langle output, 0\rangle$ \textbf{or} $\langle output, 1\rangle$ to process $id$
+            \State \quad send $\langle \textsc{output}, r \rangle$ to all
+            \State \textbf{else}
+            \State \quad for all $id \in Id$, send $\langle \textsc{output}, 0\rangle$ \textbf{or} $\langle \textsc{output}, 1\rangle$ to process $id$
         \end{algorithmic}
     \end{algorithm}
 \end{protocol}
@@ -192,7 +213,8 @@ A program implements WCC if it satisfies three properties: $\epsilon$-Goodness, 
 \begin{protocol}\label{prot:ImplWCC}
     \lean{WCC.Impl}
     %\leanok
-    Requires Gather and RSD
+    \emph{Concrete implementation.}
+    Requires Gather and RSD. Details to be determined.
     \begin{algorithm}
         \caption{Implementation of WCC (yet to be determined)}
         \begin{algorithmic}
@@ -226,34 +248,35 @@ A program implements Gather if it satisfies four properties: Validity, Agreement
 \begin{itemize}
     \item Validity: if a correct process returns $f$ and $f(q)$ is defined and $q$ is correct then $f(q)$ is $q$'s input.
     \item Agreement: if two correct processes return $f$ and $g$ then $f(q)$ and $g(q)$ are equal or one of them is undefined.
-    \item Binding Common Core: Once a correct process has returned, there exists $S \subseteq Proc$ of size at least $n-f$ such that all $f$ returned by a correct process in the future is defined on $S$.
-    \item Termination: if $n-f$ correct processes take part to Gather then all correct processes will eventually return.
+    \item Binding Common Core: once a correct process has returned, there exists $S \subseteq Proc$ of size at least $n-f$ such that all $f$ returned by a correct process in the future is defined on $S$.
+    \item Termination: if $n-f$ correct processes take part in Gather then all correct processes will eventually return.
 \end{itemize}
 
 \begin{protocol}\label{prot:SpecGather}
     \lean{Gather.Spec}
     %\leanok
-    Blablabla
+    \emph{Ideal implementation.}
+    The trusted third party records each process's input, and once a quorum of correct contributions has been received, non-deterministically commits to a binding common core $bind \subseteq Id$.
+    Each process is then served a partial function whose domain $S$ is non-deterministically extended above $bind$, returning the recorded inputs of correct members of $S$ and arbitrary values for corrupted members.
     \begin{algorithm}
         \caption{Ideal Implementation of Gather}
         \begin{algorithmic}
             \State \textbf{Input:} $m$
             \medskip
             \State \textbf{Code for every process:}
-            \State send $\langle input, m\rangle$ to the third party 
-            \State \textbf{upon} receiving $\langle output, f\rangle$ from third party:
+            \State send $\langle \textsc{input}, m\rangle$ to the third party
+            \State \textbf{upon} receiving $\langle \textsc{output}, f\rangle$ from the third party:
             \State \quad return $f$
             \medskip
-            \State \textbf{Code for third party:}
-            \State $call, bind \gets \emptyset, \emptyset$
-            \State \textbf{upon} receiving $\langle input, m\rangle$ from process $id$: 
-            \State \quad $call \gets call \cup \{(id,m)\}$
-            \State \textbf{if} $|F \cup \{id \in Id \setminus F \mid call[id] \ne \bot\}| > n-f$ and $bind = \bot$:
-            \State \quad $bind \gets S \subseteq F \cup \{id \in Id \setminus F \mid (id,\cdot) \in call\}$ \Comment{Non-deterministic affectation}
-            \State \textbf{upon} $bind \ne \bot$:
-            \State \quad for all $id \in Id$, 
-                            select $bind \subseteq S \subseteq F \cup \{id \in Id \setminus F \mid (id,\cdot) \in call\}$ and \\
-                            send $\langle output, \{(id,m) \in call \mid id \in S \setminus F\} \cup \{(id, \cdot) \mid id \in S \cap F\}\rangle$ to process $id$
+            \State \textbf{Code for the third party:}
+            \State $call, bind \gets \emptyset, \bot$
+            \State \textbf{upon} receiving $\langle \textsc{input}, m\rangle$ from process $id$:
+            \State \quad $call \gets call \cup \{(id, m)\}$
+            \State \textbf{upon} $|F \cup \{id \in Id \setminus F \mid (id, \cdot) \in call\}| \ge n-f$ and $bind = \bot$:
+            \State \quad $bind \gets S$ for some $S \subseteq F \cup \{j \in Id \setminus F \mid (j, \cdot) \in call\}$ \Comment{Non-deterministic choice}
+            \State \textbf{upon} $bind \ne \bot$ and not sent $\langle \textsc{output}, \cdot \rangle$ to process $id$:
+            \State \quad select $bind \subseteq S \subseteq F \cup \{j \in Id \setminus F \mid (j, \cdot) \in call\}$ and
+            \State \quad send $\langle \textsc{output}, \{(j, m) \in call \mid j \in S \setminus F\} \cup \{(j, \cdot) \mid j \in S \cap F\}\rangle$ to process $id$
         \end{algorithmic}
     \end{algorithm}
 \end{protocol}
@@ -261,29 +284,26 @@ A program implements Gather if it satisfies four properties: Validity, Agreement
 \begin{protocol}\label{prot:ImplGather}
     \lean{Gather.Impl}
     %\leanok
-    Might require BRB 
+    \emph{Concrete implementation.}
+    Requires $|Id|$ instances of BRB (process $id$ is leader in $BRB_{id}$).
+    Each process first broadcasts its input via its own BRB instance, then amplifies the set of approved pairs $AP$ through three rounds of $\langle \textsc{echo}, \cdot \rangle$, $\langle \textsc{vote}, \cdot \rangle$, $\langle \textsc{bind}, \cdot \rangle$ messages before returning the union of the approved sets.
     \begin{algorithm}
         \caption{Implementation of Gather from \cite{Attiya2025Beyond}}
         \begin{algorithmic}
-            \State \textbf{Input:} $b \in \{0,1\}$
+            \State \textbf{Input:} $m$
             \State \textbf{Sub-Protocols:} $|Id|$ instances of BRB (process $id$ is leader in $BRB_{id}$)
             \medskip
             \State $BRB_{id}.call(m)$
-            \medskip
             \State \textbf{upon} $BRB_i.return(m')$:
-            \State \quad $AP \gets AP \cup \{(i,m')\}$
-            \medskip
-            \State \textbf{upon} $|AP| > n-f$ and not sent $\langle \textsc{echo}, \cdot\rangle$:
-            \State \quad send $\langle echo, AP\rangle$ to all
-            \medskip
+            \State \quad $AP \gets AP \cup \{(i, m')\}$
+            \State \textbf{upon} $|AP| \ge n-f$ and not sent $\langle \textsc{echo}, \cdot\rangle$:
+            \State \quad send $\langle \textsc{echo}, AP\rangle$ to all
             \State \textbf{upon} receiving approved $\langle \textsc{echo}, AP_{id} \rangle$ from at least $n - f$ processes and not sent $\langle \textsc{vote}, \cdot\rangle$:
-            \State \quad send $\langle \textsc{vote}, \bigcup AP_{id} \rangle$
-            \medskip
+            \State \quad send $\langle \textsc{vote}, \bigcup_{id} AP_{id} \rangle$ to all
             \State \textbf{upon} receiving approved $\langle \textsc{vote}, AP_{id} \rangle$ from at least $n - f$ processes and not sent $\langle \textsc{bind}, \cdot\rangle$:
-            \State \quad send $\langle \textsc{bind}, \bigcup AP_{id} \rangle$
-            \medskip
+            \State \quad send $\langle \textsc{bind}, \bigcup_{id} AP_{id} \rangle$ to all
             \State \textbf{upon} receiving approved $\langle \textsc{bind}, AP_{id} \rangle$ from at least $n - f$ processes:
-            \State \quad return $\bigcup AP_{id}$
+            \State \quad return $\bigcup_{id} AP_{id}$
         \end{algorithmic}
     \end{algorithm}
 \end{protocol}
@@ -303,28 +323,52 @@ A program implements Gather if it satisfies four properties: Validity, Agreement
 \end{definition}
 
 \paragraph{Random Secret Draw (RSD)}
-The RSD protocol is composed of two operations: Assignment and Retrieval. 
-Assignment affects a random and secret value to each process and Retrieval provides these values to processes.
-Moreover, the API of RSD provides a notification function for each process that records which processes have a value assigned.
+The RSD protocol is composed of two operations: Assignment and Retrieval.
+Assignment assigns a random, secret value to each process and Retrieval reveals these values to the processes.
+Moreover, the API of RSD provides a notification, for each process, recording which processes have a value assigned.
 \begin{itemize}
-    \item Assignment Validity: if all correct processes call Assignment, then all correct processes will eventually be receive a notification for each correct process.
+    \item Assignment Validity: if all correct processes call Assignment, then all correct processes will eventually receive a notification for every correct process.
     \item Assignment Totality: if a correct process receives a notification for process $id$ then all correct processes will get such a notification.
-    \item Randomness: If no correct process has called Assignment then the value returned by Retrieval for any process follows the uniform distribution.
-    \item Secrecy: If no correct process has called Retrieval then the adversary has no information about the return value of Retrieval.
-    \item Retrieval Termination: if all correct processes call Retrieval then the operation terminates for all correct processes 
+    \item Randomness: if no correct process has called Retrieval then the value returned by Retrieval for any process follows the uniform distribution.
+    \item Secrecy: if no correct process has called Retrieval then the adversary has no information about the return value of Retrieval.
+    \item Retrieval Termination: if all correct processes call Retrieval then the operation terminates for all correct processes.
 \end{itemize}
 
 \begin{protocol}\label{prot:SpecRSD}
     \lean{RSD.Spec}
     %\leanok
-    Blablabla
+    \emph{Ideal implementation.}
+    The trusted third party tracks which processes have called Assignment; once a quorum is reached, it issues an $\langle \textsc{assign}, id\rangle$ notification for every $id \in Id$.
+    On Retrieval, after enough processes have asked, it samples a fresh value $\mu$ uniformly over the output domain and delivers it to every process.
     \begin{algorithm}
         \caption{Ideal Implementation of RSD}
         \begin{algorithmic}
-            \State $x \gets 0$
-            \If{$y > 0$}
-                \State loop
-            \EndIf
+            \State \textbf{Operation:} $RSD.Asg()$
+            \State \textbf{Code for every process:}
+            \State send $\langle \textsc{input} \rangle$ to the third party.
+            \State \textbf{upon} receiving $\langle \textsc{assign}, id\rangle$ from the third party:
+            \State \quad \textbf{event} $ValueAssigned(id)$
+            \medskip
+            \State \textbf{Code for the third party:}
+            \State $call \gets (\bot)^{Id}$
+            \State \textbf{upon} receiving $\langle \textsc{input} \rangle$ from process $id$:
+            \State \quad $call[id] \gets \top$
+            \State \textbf{upon} $|F \cup \{id \in Id \setminus F \mid call[id] = \top\}| \ge n-f$:
+            \State \quad $\forall id \in Id$, send $\langle \textsc{assign}, id\rangle$ to all
+            \medskip
+            \State \textbf{Operation:} $RSD.Ret()$
+            \State \textbf{Code for every process:}
+            \State send $\langle \textsc{retrieve} \rangle$ to the third party.
+            \State \textbf{upon} receiving $\langle \textsc{output}, x\rangle$ from the third party:
+            \State \quad return $x$
+            \medskip
+            \State \textbf{Code for the third party:}
+            \State $call', out \gets (\bot)^{Id}, (\bot)^{Id}$
+            \State \textbf{upon} receiving $\langle \textsc{retrieve} \rangle$ from process $id$:
+            \State \quad $call'[id] \gets \top$
+            \State \textbf{upon} $|F \cup \{id \in Id \setminus F \mid call'[id] = \top\}| \ge n-f$ and $out[id] = \bot$:
+            \State \quad $out[id] \gets \mu$ \Comment{$\mu$ samples uniformly on the domain of outputs}
+            \State \quad send $\langle \textsc{output}, out[id] \rangle$ to all
         \end{algorithmic}
     \end{algorithm}
 \end{protocol}
@@ -332,33 +376,31 @@ Moreover, the API of RSD provides a notification function for each process that 
 \begin{protocol}\label{prot:ImplRSD}
     \lean{RSD.Impl}
     %\leanok
-    Require AVSS and BRB
+    \emph{Concrete implementation.}
+    Requires $|Id|$ instances of BRB and $|Id|^2$ instances of AVSS.
+    Each process $id$ draws a fresh secret $x_{id'}$ for every $id' \in Id$ and shares it through an AVSS instance, then uses its own BRB to publish the set $S$ of dealers it received shares from.
+    A process is assigned a value once it has collected, for each entry of the committed set $S'$, the corresponding AVSS sharing return; the retrieved value is the sum of the AVSS reconstructions.
     \begin{algorithm}
         \caption{Implementation of RSD from \cite{Freitas2022Distributed}}
         \begin{algorithmic}
-            \State \textbf{Input:} $b \in \{0,1\}$
-            \State \textbf{Sub-Protocols:} $|Id|$ instances of BRB (process $id$ is leader in $BRB_{id}$) and $|Id|^2$ instances of AVSS (process $id$ is dealer in $AVSS_{id}^{k}$)
+            \State \textbf{Sub-Protocols:} $|Id|$ instances of BRB (process $id$ is leader in $BRB_{id}$) and $|Id|^2$ instances of AVSS (process $id$ is dealer in $AVSS_{id}^{k}$ for each $k \in Id$)
             \medskip
-            \State \textbf{Operation:} $RSD.Sh()$
-            \State $retrieveEnabled, S \gets \bot, \emptyset$
-            \State for all $id' \in Id$, $x_{id'} \gets \mu$ \Comment{$\mu$: Uniform distribution over the domain of secerts}
-            \State $AVSS^{id'}_{id}.Sh.call(x_{id'})$
-            \State \textbf{upon} $AVSS_{id'}^{id}.Sh.return()$:
+            \State \textbf{Operation:} $RSD.Asg()$
+            \State $S \gets \emptyset$
+            \State for all $id' \in Id$:
+            \State \quad $x_{id'} \gets \mu$ \Comment{$\mu$: uniform distribution over the domain of secrets}
+            \State \quad $AVSS_{id}^{id'}.Sh.call(x_{id'})$
+            \State \textbf{upon} $AVSS_{id}^{id'}.Sh.return()$:
             \State \quad $S \gets S \cup \{id'\}$
-            \State \textbf{upon} $|AP| > n-f$ and not called $BRB_{id}$:
+            \State \textbf{upon} $|S| \ge n-f$ and not called $BRB_{id}$:
             \State \quad $BRB_{id}.call(S)$
-            \State \textbf{upon} $BRB_{id'}.return(S')$ and $\forall k \in S', AVSS^{id'}_k.Sh.return()$:
+            \State \textbf{upon} $BRB_{id'}.return(S')$ and $\forall k \in S', AVSS_k^{id'}.Sh.return()$:
             \State \quad $src[id'] \gets S'$
             \State \quad \textbf{event} $ValueAssigned(id')$
-            \State \quad %\textbf{if} $retrieveEnabled$ \textbf{then} 
-            $\forall k \in S', AVSS^{id'}_k.Rec.call()$
+            \State \quad $\forall k \in S', AVSS_k^{id'}.Rec.call()$
             \medskip
-            %\State \textbf{Operation:} $RSD.EnableRec()$
-            %\State $retrieveEnabled \gets \top$
-            %\State $\forall id' \in Id$ \textbf{if} $ValueAssigned(id')$ \textbf{then} $AVSS.Rec.call()$
-            %\medskip
             \State \textbf{Operation:} $RSD.Rec()$
-            \State return $id' \mapsto \sum_{k \in src[id']}AVSS_k^{id'}.Rec.return()$
+            \State return $id' \mapsto \sum_{k \in src[id']} AVSS_k^{id'}.Rec.return()$
         \end{algorithmic}
     \end{algorithm}
 \end{protocol}
@@ -391,25 +433,26 @@ A program implements BRB if it satisfies three properties: Validity, Totality an
 \begin{protocol}\label{prot:SpecBRB}
     \lean{BRB.Spec}
     %\leanok
-    Blablabla
+    \emph{Ideal implementation.}
+    The trusted third party receives the leader's input and broadcasts it to every process when the leader is correct; otherwise it broadcasts an arbitrary message $m'$ chosen non-deterministically.
     \begin{algorithm}
         \caption{Ideal Implementation of BRB}
         \begin{algorithmic}
             \State \textbf{Input:} $m \in \{0,1\}^*$ for the leader
             \medskip
             \State \textbf{Code for the leader:}
-            \State send $\langle input, m\rangle$ to the third party 
+            \State send $\langle \textsc{input}, m\rangle$ to the third party
             \medskip
             \State \textbf{Code for every process:}
-            \State \textbf{upon} receiving $\langle output, m\rangle$ from third party:
+            \State \textbf{upon} receiving $\langle \textsc{output}, m\rangle$ from the third party:
             \State \quad return $m$
             \medskip
-            \State \textbf{Code for third party:}
-            \State \textbf{upon} receiving $\langle input, m\rangle$ from leader:
+            \State \textbf{Code for the third party:}
+            \State \textbf{upon} receiving $\langle \textsc{input}, m\rangle$ from leader:
             \State \quad \textbf{if} leader is correct:
-            \State \quad\quad send $\langle output, m\rangle$ to all
+            \State \quad\quad send $\langle \textsc{output}, m\rangle$ to all
             \State \quad \textbf{else}
-            \State \quad\quad send $\langle output, m'\rangle$ to all \Comment{Arbitrary $m'$}
+            \State \quad\quad send $\langle \textsc{output}, m'\rangle$ to all \Comment{Arbitrary $m'$}
         \end{algorithmic}
     \end{algorithm}
 \end{protocol}
@@ -417,14 +460,16 @@ A program implements BRB if it satisfies three properties: Validity, Totality an
 \begin{protocol}\label{prot:ImplBRB}
     \lean{BRB.Impl}
     %\leanok
+    \emph{Concrete implementation.}
     Requires no sub-protocol. Parameters: $n$ processes with at most $f < n/3$ corrupted; leader $\ell$ with input $m$.
+    Standard Bracha broadcast: $\langle \textsc{init}, \cdot \rangle$ from the leader is echoed by all processes; an $n-f$ echo quorum or an $f+1$ ready quorum triggers $\langle \textsc{ready}, \cdot \rangle$; a $2f+1$ ready quorum triggers delivery.
     \begin{algorithm}
         \caption{Implementation of BRB taken from \cite{Bracha1987Asynchronous}}
         \begin{algorithmic}
             \State \textbf{Code for the leader $\ell$ with input $m$:}
             \State \quad send $\langle \textsc{init}, m \rangle$ to all processes
             \medskip
-            \State \textbf{Code for every process $p_i$:}
+            \State \textbf{Code for every process:}
             \State \textbf{upon} first reception of $\langle \textsc{init}, m \rangle$ from $\ell$ \textbf{do}
                 \State \quad send $\langle \textsc{echo}, m \rangle$ to all processes
             \State \textbf{upon} reception of $\langle \textsc{echo}, m \rangle$ from at least $n-f$ distinct processes \textbf{do}
@@ -434,48 +479,73 @@ A program implements BRB if it satisfies three properties: Validity, Totality an
                 \State \quad \textbf{if} $\langle \textsc{ready}, \cdot \rangle$ has not yet been sent \textbf{then}
                     \State \quad\quad send $\langle \textsc{ready}, m \rangle$ to all processes
             \State \textbf{upon} reception of $\langle \textsc{ready}, m \rangle$ from at least $2f+1$ distinct processes \textbf{do}
-                \State \quad deliver $m$
+                \State \quad return $m$
         \end{algorithmic}
     \end{algorithm}
 \end{protocol}
 
 
 \paragraph{Asynchronous Verifiable Secret Sharing (AVSS)}
-AVSS is actually a pair of protocol $(Sh, Ret)$ with a designated \emph{dealer} owning a secret $s$.
-A program implements a $(1-\epsilon)$-correct AVSS if it satisfies six properties: Valid Termination, Total Termination, $Rec$ Termination, Binding, Secrecy.
+AVSS is actually a pair of protocols $(Sh, Ret)$ with a designated \emph{dealer} owning a secret $s$.
+A program implements a $(1-\epsilon)$-correct AVSS if it satisfies six properties: Validity, Sharing Termination, Sharing Totality, Retrieval Termination, Commitment, Secrecy.
 \begin{itemize}
     \item Validity: if the dealer is correct and a correct process returns from $Ret$ then the return value is the dealer's secret.
-    \item Sharing Termination: if the dealer is correct and calls $Sh$ then all correct processes will enventually return from $Sh$.
+    \item Sharing Termination: if the dealer is correct and calls $Sh$ then all correct processes will eventually return from $Sh$.
     \item Sharing Totality: if a correct process returns from $Sh$ then all correct processes will eventually return from $Sh$.
     \item Retrieval Termination: if all correct processes call $Ret$ then all correct processes will eventually return from $Ret$.
-    \item Commitment: if a correct process returns from $Sh$ then there exists a secret $s$ such that correct process can only retrieve $s$ from that point.
-    \item Secrecy: if the dealer is correct and no correct process has called $Ret$ then the adversary has no information about the future retrived value.
+    \item Commitment: if a correct process returns from $Sh$ then there exists a secret $s$ such that correct processes can only retrieve $s$ from that point.
+    \item Secrecy: if the dealer is correct and no correct process has called $Ret$ then the adversary has no information about the future retrieved value.
 \end{itemize}
 
 \begin{protocol}\label{prot:SpecAVSS}
     \lean{AVSS.Spec}
     %\leanok
-    Blablabla
+    \emph{Ideal implementation.}
+    The trusted third party stores the dealer's secret (or an adversarially-chosen one if the dealer is corrupted) and immediately notifies every process that sharing has completed.
+    On Retrieval, as soon as more than $f$ processes have asked, the stored secret is broadcast to all processes.
     \begin{algorithm}
-        \caption{AVSS Specification}
+        \caption{Ideal Implementation of AVSS}
         \begin{algorithmic}
-            \State $x \gets 0$
-            \If{$y > 0$}
-                \State loop
-            \EndIf
+            \State \textbf{Input:} $s \in \{0,1\}^*$ for the dealer
+            \medskip
+            \State \textbf{Operation:} $AVSS.Sh()$
+            \State \textbf{Code for the dealer:}
+            \State send $\langle \textsc{Sh.input}, s\rangle$ to the third party
+            \medskip
+            \State \textbf{Code for every process:}
+            \State \textbf{upon} receiving $\langle \textsc{Sh.output}\rangle$ from the third party:
+            \State \quad return
+            \medskip
+            \State \textbf{Code for the third party:}
+            \State \textbf{upon} receiving $\langle \textsc{Sh.input}, s\rangle$ from dealer or dealer is corrupted:
+            \State \quad $secret \gets s$ \Comment{$s$ is chosen non-deterministically if no message received}
+            \State \quad send $\langle \textsc{Sh.output}\rangle$ to all
+            \medskip
+            \State \textbf{Operation:} $AVSS.Ret()$
+            \State \textbf{Code for every process:}
+            \State send $\langle \textsc{Ret.input} \rangle$ to the third party
+            \State \textbf{upon} receiving $\langle \textsc{Ret.output}, m\rangle$ from the third party:
+            \State \quad return $m$
+            \medskip
+            \State \textbf{Code for the third party:}
+            \State $call \gets (\bot)^{Id}$
+            \State \textbf{upon} receiving $\langle \textsc{Ret.input}\rangle$ from process $id$:
+            \State \quad $call[id] \gets \top$
+            \State \textbf{upon} $|F \cup \{id \in Id \setminus F \mid call[id] = \top\}| \ge f+1$:
+            \State \quad send $\langle \textsc{Ret.output}, secret\rangle$ to all
         \end{algorithmic}
     \end{algorithm}
 \end{protocol}
 
-AVSS is used as a blackbox so no implementation.
+AVSS is used as a black-box, so no concrete implementation is provided.
 
 \subsection{Summary of Properties}
 
-The linear safety properties are preserved by Segala's probabilistic forward simulation. 
-The branching safety properties can be transformed into linear ones by enhancing the 
+The linear safety properties are preserved by Segala's probabilistic forward simulation.
+The branching safety properties can be transformed into linear ones by enhancing the
 interface with an external binding label.
-Segala's simulation does not preserve liveness by default. 
-However, it can be strengthen following \cite{Dongol2022Weak} to preserve liveness 
+Segala's simulation does not preserve liveness by default.
+However, it can be strengthened following \cite{Dongol2022Weak} to preserve liveness
 in a complete manner.
 
 \begin{table}[ht]
@@ -496,17 +566,17 @@ in a complete manner.
     \caption{Table of CTL Properties}
 \end{table}
 
-Segala's simulation was designed to be sound and complete for trace distribution so
-it preserves probabilistic safety propreties.
+Segala's simulation was designed to be sound and complete for trace distributions so
+it preserves probabilistic safety properties.
 Note that Unpredictability is a probabilistic safety property.
-For probabilistic liveness, we will rely on the liveness preservation as it is sound 
-(but not complete). 
-The lack of completeness is not an isue because the limitations of the termination
-proof rule is probabilistic convergence which is never dealt with by our simulations.
-The probabilistic convergence argument will only be necessary to prove that the ideal 
-implementation of ABA almost-surely terminates and can be discharged to the 
+For probabilistic liveness, we will rely on the liveness preservation as it is sound
+(but not complete).
+The lack of completeness is not an issue because the limitation of the termination
+proof rule is probabilistic convergence, which is never dealt with by our simulations.
+The probabilistic convergence argument will only be necessary to prove that the ideal
+implementation of ABA almost-surely terminates and can be discharged to the
 super-Martingale proof rule of \cite{Enea2026Verifying}.
-For Secrecy, we use the same trick as for branching: enhancing the interface. 
+For Secrecy, we use the same trick as for branching: enhancing the interface.
 
 
 \begin{table}[ht]
@@ -526,6 +596,5 @@ For Secrecy, we use the same trick as for branching: enhancing the interface.
     \end{tabular}
     \caption{Table of non-CTL Properties}
 \end{table}
-
 
 
