@@ -119,7 +119,7 @@ The trace distribution pre-order is a semantic object that is hard to manipulate
     A \emph{probabilistic forward simulation} of $\mathcal{P}_1$ by $\mathcal{P}_2$ is a relation $S \subseteq Q_1 \times \mathcal{D}(Q_2)$ such that $(q_0^1, \delta_{q_0^2}) \in S$ and, for every $(q_1, \mu_2) \in S$ and every transition $q_1 \xrightarrow{l} \mu_1$ of $\mathcal{P}_1$:
     \begin{enumerate}
         \item if $l$ is internal, there exists $\mu_2'$ with $\mu_2 \Rightarrow \mu_2'$ and $(\mu_1, \mu_2') \in S^\sharp$;
-        \item if $l$ is external, there exist $\mu_2', \mu_2'', \mu_2'''$ with $\mu_2 \Rightarrow \mu_2' \xrightarrow{l} \mu_2'' \Rightarrow \mu_2'''$ and $(\mu_1, \mu_2''') \in S^\sharp$.
+        \item if $l$ is external, there exist $\mu_2'$ with $\mu_2 \xRightarrow{l} \mu_2'$ and $(\mu_1, \mu_2') \in S^\sharp$.
     \end{enumerate}
     We write $\mathcal{P}_1 \preceq_{\mathrm{PFS}} \mathcal{P}_2$ when such a simulation exists.
 \end{definition}
@@ -130,6 +130,19 @@ The trace distribution pre-order is a semantic object that is hard to manipulate
     %\leanok
     If $\mathcal{P}_1 \preceq_{\mathrm{PFS}} \mathcal{P}_2$ then $\mathcal{P}_1 \sqsubseteq_{\mathrm{TD}} \mathcal{P}_2$.
 \end{theorem}
+
+\begin{lemma}[Transitivity of probabilistic forward simulation]\label{lem:pfs-transitive}
+    \uses{def:pfs}
+    %\lean{PLTS.ProbForwardSim.trans}
+    %\leanok
+    Probabilistic forward simulation is transitive: if $\mathcal{P}_1 \preceq_{\mathrm{PFS}} \mathcal{P}_2$ and $\mathcal{P}_2 \preceq_{\mathrm{PFS}} \mathcal{P}_3$ then $\mathcal{P}_1 \preceq_{\mathrm{PFS}} \mathcal{P}_3$. Concretely, given witnesses $S_{12} \subseteq Q_1 \times \mathcal{D}(Q_2)$ and $S_{23} \subseteq Q_2 \times \mathcal{D}(Q_3)$, the composed relation
+    \[
+        S_{13} \;:=\; \{(q_1, \mu_3) \mid \exists \mu_2,\, (q_1, \mu_2) \in S_{12} \text{ and } (\mu_2, \mu_3) \in S_{23}^\sharp\}
+    \]
+    is a probabilistic forward simulation of $\mathcal{P}_1$ by $\mathcal{P}_3$.
+\end{lemma}
+
+Note that $\preceq_{\mathrm{PFS}}$ is also reflexive (the diagonal $\{(q, \delta_q)\}$ is a simulation), hence a pre-order; Lemma~\ref{lem:pfs-transitive} is the part actually used in the proof decomposition.
 
 \subsection{Equivalence in the Non-Probabilistic Setting}
 
@@ -156,7 +169,7 @@ When all transitions lead to a Dirac distribution, the PLTS framework collapses 
     A \emph{forward simulation} of an LTS $\mathcal{L}_1$ by an LTS $\mathcal{L}_2$ is a relation $R \subseteq Q_1 \times Q_2$ with $(q_0^1, q_0^2) \in R$ such that, for every $(q_1, q_2) \in R$ and every $q_1 \xrightarrow{l} q_1'$:
     \begin{enumerate}
         \item if $l$ is internal, there exists $q_2'$ with $q_2 \Rightarrow q_2'$ and $(q_1', q_2') \in R$;
-        \item if $l$ is external, there exist $q_2', q_2'', q_2'''$ with $q_2 \Rightarrow q_2' \xrightarrow{l} q_2'' \Rightarrow q_2'''$ and $(q_1', q_2''') \in R$.
+        \item if $l$ is external, there exist $q_2'$ with $q_2 \xRightarrow{l} q_2'$ and $(q_1', q_2') \in R$.
     \end{enumerate}
     We write $\mathcal{L}_1 \preceq_{\mathrm{FS}} \mathcal{L}_2$ when such a simulation exists.
 \end{definition}

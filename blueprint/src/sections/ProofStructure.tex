@@ -34,8 +34,8 @@ Leaves of the recursion (no sub-protocol, or only the black-box $\mathsf{AVSS.Sp
     $\mathsf{ABA.Spec}$ simulates $\mathsf{ABA.Concrete}$.
 \end{theorem}
 \begin{proof}
-    \uses{lem:ABASubst, lem:ABACore, thm:pfs-largest-precongruence}
-    Probabilistic forward simulation is in particular a pre-order (Theorem~\ref{thm:pfs-largest-precongruence}); chain \ref{lem:ABACore} with \ref{lem:ABASubst} by transitivity.
+    \uses{lem:ABASubst, lem:ABACore, lem:pfs-transitive}
+    By transitivity of probabilistic forward simulation (Lemma~\ref{lem:pfs-transitive}), chain \ref{lem:ABACore} with \ref{lem:ABASubst} by transitivity.
 \end{proof}
 
 \begin{lemma}\label{lem:ABASubst}
@@ -65,8 +65,8 @@ Leaves of the recursion (no sub-protocol, or only the black-box $\mathsf{AVSS.Sp
     $\mathsf{WCC.Spec}$ simulates $\mathsf{WCC.Concrete}$.
 \end{theorem}
 \begin{proof}
-    \uses{lem:WCCSubst, lem:WCCCore, thm:pfs-largest-precongruence}
-    Probabilistic forward simulation is in particular a pre-order (Theorem~\ref{thm:pfs-largest-precongruence}); chain \ref{lem:WCCCore} with \ref{lem:WCCSubst} by transitivity.
+    \uses{lem:WCCSubst, lem:WCCCore, lem:pfs-transitive}
+    By transitivity of probabilistic forward simulation (Lemma~\ref{lem:pfs-transitive}), chain \ref{lem:WCCCore} with \ref{lem:WCCSubst} by transitivity.
 \end{proof}
 
 \begin{lemma}\label{lem:WCCSubst}
@@ -105,8 +105,8 @@ Leaves of the recursion (no sub-protocol, or only the black-box $\mathsf{AVSS.Sp
     $\mathsf{Gather.Spec}$ simulates $\mathsf{Gather.Concrete}$.
 \end{theorem}
 \begin{proof}
-    \uses{lem:GatherSubst, lem:GatherCore, thm:pfs-largest-precongruence}
-    Probabilistic forward simulation is in particular a pre-order (Theorem~\ref{thm:pfs-largest-precongruence}); chain \ref{lem:GatherCore} with \ref{lem:GatherSubst} by transitivity.
+    \uses{lem:GatherSubst, lem:GatherCore, lem:pfs-transitive}
+    By transitivity of probabilistic forward simulation (Lemma~\ref{lem:pfs-transitive}), chain \ref{lem:GatherCore} with \ref{lem:GatherSubst} by transitivity.
 \end{proof}
 
 \begin{lemma}\label{lem:GatherSubst}
@@ -136,8 +136,8 @@ Leaves of the recursion (no sub-protocol, or only the black-box $\mathsf{AVSS.Sp
     $\mathsf{RSD.Spec}$ simulates $\mathsf{RSD.Concrete}$.
 \end{theorem}
 \begin{proof}
-    \uses{lem:RSDSubst, lem:RSDCore, thm:pfs-largest-precongruence}
-    Probabilistic forward simulation is in particular a pre-order (Theorem~\ref{thm:pfs-largest-precongruence}); chain \ref{lem:RSDCore} with \ref{lem:RSDSubst} by transitivity.
+    \uses{lem:RSDSubst, lem:RSDCore, lem:pfs-transitive}
+    By transitivity of probabilistic forward simulation (Lemma~\ref{lem:pfs-transitive}), chain \ref{lem:RSDCore} with \ref{lem:RSDSubst} by transitivity.
 \end{proof}
 
 \begin{lemma}\label{lem:RSDSubst}

@@ -1,13 +1,13 @@
 # Fdb version 4
-["bibtex print"] 1780655729.90404 "print.aux" "print.bbl" "print" 1780655758.17965 0
+["bibtex print"] 1780657847.7701 "print.aux" "print.bbl" "print" 1780657848.92229 0
   "./biblio.bib" 1780576937.80244 4526 694a1bfd0350bd3ccd12fc3256b6ead3 ""
   "/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/bibtex/bst/base/alpha.bst" 1 23907 a5f93555796fb564b924339521f10a7c ""
-  "print.aux" 1780655757.99171 20639 90247cbf7fc029dd4ad9bc8224f09fe2 "pdflatex"
+  "print.aux" 1780657848.71911 20943 89463a748e09c205322006a348bd99b3 "pdflatex"
   (generated)
   "print.bbl"
   "print.blg"
   (rewritten before read)
-["pdflatex"] 1780655757.01719 "/home/greghem/leslie/blueprint/src/print.tex" "print.pdf" "print" 1780655758.17983 0
+["pdflatex"] 1780657847.83733 "/home/greghem/leslie/blueprint/src/print.tex" "print.pdf" "print" 1780657848.92244 0
   "/home/greghem/leslie/blueprint/src/print.tex" 1780497203.66477 1483 f80e354e7ef480339ff09f81dbb4d293 ""
   "/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/fonts/map/fontname/texfonts.map" 1 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/fonts/tfm/adobe/zapfding/pzdr.tfm" 1 1528 f853c4d1b4e0550255e02831fdc8496f ""
@@ -104,12 +104,12 @@
   "content.tex" 1780314469.80075 1592 606c8ff0797ea37035a606a0805fb811 ""
   "macros/common.tex" 1780058743.53001 852 87631c6547741fccb9bfe2cf7be2e786 ""
   "macros/print.tex" 1780051330.62034 1101 87627b2ec24fef68edc71c13f43f7bab ""
-  "print.aux" 1780655757.99171 20639 90247cbf7fc029dd4ad9bc8224f09fe2 "pdflatex"
-  "print.bbl" 1780655729.97008 2457 a67ef9d9cb76b6e0d12d80f077fc5844 "bibtex print"
-  "print.out" 1780655757.99271 3144 e8b57e867d3dca7cc857d0433e236288 "pdflatex"
+  "print.aux" 1780657848.71911 20943 89463a748e09c205322006a348bd99b3 "pdflatex"
+  "print.bbl" 1780657847.83409 2457 a67ef9d9cb76b6e0d12d80f077fc5844 "bibtex print"
+  "print.out" 1780657848.72011 3144 e8b57e867d3dca7cc857d0433e236288 "pdflatex"
   "print.tex" 1780497203.66477 1483 f80e354e7ef480339ff09f81dbb4d293 ""
-  "sections/Preliminaries.tex" 1780655170.12614 16121 9bf86937db1fc40d8deef58d88596aed ""
-  "sections/ProofStructure.tex" 1780655756.82917 7519 b2978d784002fc0bf29f2a6f24abf6f5 ""
+  "sections/Preliminaries.tex" 1780657846.41307 16987 ad81575dccda9d175234ee9903a1576f ""
+  "sections/ProofStructure.tex" 1780657280.01822 7383 33c960ff1a7c773e95bc9b187d758244 ""
   "sections/Protocols.tex" 1780647668.62762 36149 3f31afbe6dddedcabab04ccc8653974a ""
   (generated)
   "print.aux"
