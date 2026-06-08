@@ -32,6 +32,7 @@ import «Leslie».Examples.Paxos.BoundedSingleProposer
 import «Leslie».Examples.Paxos.BoundedPaxos
 import «Leslie».Examples.KVStore
 import «Leslie».Examples.LeaseLock
+import «Leslie».Examples.FencingTokens
 import «Leslie».Simulate
 import «Leslie».Examples.LastVoting
 import «Leslie».Examples.LastVotingPhased
