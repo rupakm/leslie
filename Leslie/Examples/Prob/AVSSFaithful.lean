@@ -3164,4 +3164,255 @@ theorem termination_AS_fair_under_atomic_broadcast
     AlmostDiamond (spec (t := t) sec corr coeffs) A.toAdversary μ₀ terminated :=
   termination_AS_fair sec corr coeffs μ₀ h_init h_progress A h_drop_io
 
+/-! ## Step 4a — `fairActionEnabled_at_non_terminated`
+
+Discharges the `h_progress` hypothesis of the Step-3b termination
+theorems.  The proof is a structured case-analysis on which "stage" of
+the protocol the state is in, mirroring
+`AVSS.avssFairActionEnabled_at_non_terminated`'s C1-C7 cascade.
+
+**Hypotheses beyond `cert_Inv`.**  AVSSFaithful's value-bearing echo
+validation and candidate-scoped ready certificates require additional
+state-level facts that `cert_Inv` does not currently track.  These are
+bundled into a `LivenessHyps` structure (see below):
+
+* `flow_F2`-`flow_F4`: standard "delivery / echo / ready flow"
+  invariants — analogs of `AVSS.avssFlowInv` F2-F4.  They are true
+  protocol invariants of AVSSFaithful; preservation proofs are
+  deferred to a follow-up PR.
+* `inflightReady_fresh`: every queued ready message is fresh at its
+  receiver (`partyReceiveReady` simultaneously inserts and erases, so
+  this is preserved structurally).  True invariant; deferred.
+* `inflightEcho_valid`: every queued echo has a valid candidate at
+  the receiver.  Provable under honest dealer from
+  `honestDealerCommitInv` + bivariate consistency; **not provable
+  under corrupt dealer from `cert_Inv` alone** (this is the
+  bivariate-Shamir consistency claim).
+* `ready_supportable` / `output_supportable`: cert-construction
+  hypotheses — when an honest party has accumulated enough honest
+  evidence, an `(n-t)`-supported cert exists for `partyReady` /
+  `partyOutput`.  Same status as `inflightEcho_valid` (honest-dealer
+  property).
+
+A future Step (4b honest-dealer correctness, Step 5 commitment)
+discharges these extras.  The present lemma is conditional on them.
+-/
+
+/-! ### Honest-set helper -/
+
+/-- Set of honest parties (complement of `corrupted` in `Fin n`).
+Mirror of `AVSS.honestSet`. -/
+def honestSet (s : State n t F) : Finset (Fin n) :=
+  (Finset.univ : Finset (Fin n)).filter (fun p => p ∉ s.corrupted)
+
+omit [Field F] [Fintype F] [DecidableEq F] in
+@[simp] theorem honestSet_card_eq (s : State n t F) :
+    (honestSet s).card = n - s.corrupted.card := by
+  classical
+  unfold honestSet
+  rw [show (Finset.univ.filter (fun p : Fin n => p ∉ s.corrupted) : Finset (Fin n)) =
+        Finset.univ \ s.corrupted by
+    ext x; simp [Finset.mem_sdiff, Finset.mem_filter]]
+  rw [Finset.card_univ_diff]; simp
+
+/-! ### Bundled liveness hypotheses -/
+
+/-- Bundled state-level hypotheses needed for
+`fairActionEnabled_at_non_terminated` beyond what `cert_Inv` provides.
+See the section docstring for the rationale and discharge plan. -/
+structure LivenessHyps (s : State n t F) : Prop where
+  /-- F1: corruption is below the Byzantine threshold. -/
+  threshold : s.corrupted.card ≤ t
+  /-- F2 (delivery completeness): every honest, dealer-served party is
+  either delivered or still queued in `inflightDeliveries`.  Analog of
+  `AVSS.avssFlowInv` F2.  True protocol invariant; deferred. -/
+  flow_F2 : ∀ p, p ∉ s.corrupted → s.dealerSent p = true →
+            (s.local_ p).delivered.isSome ∨ p ∈ s.inflightDeliveries
+  /-- F3 (echo flow): every honest sender's echo to every honest
+  receiver has reached the receiver's `acceptedEchoes` or is still
+  inflight.  Analog of `AVSS.avssFlowInv` F3. -/
+  flow_F3 : ∀ q r, q ∉ s.corrupted → r ∉ s.corrupted →
+            r ∈ (s.local_ q).echoedTo →
+            (∃ msg ∈ (s.local_ r).acceptedEchoes, msg.sender = q) ∨
+            (∃ msg ∈ s.inflightEchoes, msg.sender = q ∧ msg.receiver = r)
+  /-- F4 (ready flow): every honest sender's ready certificate has
+  reached every honest receiver's `readyReceived` or is still inflight.
+  Analog of `AVSS.avssFlowInv` F4. -/
+  flow_F4 : ∀ q p, q ∉ s.corrupted → p ∉ s.corrupted →
+            ∀ cert ∈ (s.local_ q).readySent,
+            (∃ msg ∈ (s.local_ p).readyReceived,
+                  msg.sender = q ∧ msg.cert = cert) ∨
+            (∃ msg ∈ s.inflightReady,
+                  msg.sender = q ∧ msg.receiver = p ∧ msg.cert = cert)
+  /-- Inflight-ready freshness: every queued ready message is not
+  already in the receiver's `readyReceived`.  Preserved structurally
+  by `partyReceiveReady`'s simultaneous insert/erase.  True
+  invariant; deferred. -/
+  inflightReady_fresh : ∀ msg ∈ s.inflightReady,
+            msg ∉ (s.local_ msg.receiver).readyReceived
+  /-- Cryptographic enablement for `partyEchoReceive`: every queued
+  echo has a candidate at its receiver under which it validates and
+  is not already accepted.  Provable under honest dealer; future
+  PR. -/
+  inflightEcho_valid : ∀ msg ∈ s.inflightEchoes,
+            ∃ candidate, (s.local_ msg.receiver).delivered = some candidate ∧
+              validEchoFor s.partyPoint msg.receiver candidate msg ∧
+              msg ∉ (s.local_ msg.receiver).acceptedEchoes
+  /-- Cryptographic enablement for `partyReady`: when an honest party
+  with delivered payload has empty `readySent` and an accepted echo
+  from every honest sender, a supportable cert exists.  Honest-dealer
+  property. -/
+  ready_supportable : ∀ p, p ∉ s.corrupted → (s.local_ p).delivered.isSome →
+            (s.local_ p).readySent = ∅ →
+            (∀ q, q ∉ s.corrupted →
+                  ∃ msg ∈ (s.local_ p).acceptedEchoes, msg.sender = q) →
+            ∃ cert : ReadyCert n t F,
+              (s.local_ p).delivered = some cert.candidate ∧
+              cert.supporters.card ≥ n - t ∧
+              echoCertSupported s p cert
+  /-- Cryptographic enablement for `partyOutput`: when an honest party
+  with delivered payload has accumulated a ready message from every
+  honest sender, a supportable cert exists.  Honest-dealer property. -/
+  output_supportable : ∀ p, p ∉ s.corrupted → (s.local_ p).output = none →
+            (s.local_ p).delivered.isSome →
+            (∀ q, q ∉ s.corrupted →
+                  ∃ msg ∈ (s.local_ p).readyReceived, msg.sender = q) →
+            ∃ cert : ReadyCert n t F,
+              (s.local_ p).delivered = some cert.candidate ∧
+              cert.supporters.card ≥ n - t ∧
+              readyCertSupported s p cert
+
+/-! ### The lemma -/
+
+omit [Fintype F] in
+/-- **Fair action enabled at non-terminated state.**  Discharges
+`h_progress` for AVSSFaithful's termination theorems.  See section
+docstring for the role of `LivenessHyps`. -/
+theorem fairActionEnabled_at_non_terminated
+    (coeffs : Fin (t + 1) → Fin (t + 1) → F)
+    (s : State n t F)
+    (h_inv : cert_Inv coeffs s)
+    (h_live : LivenessHyps s)
+    (h_not_term : ¬ terminated s) :
+    ∃ a ∈ (fairActions : Set (Action n t F)), gate a s := by
+  classical
+  -- Cascade in priority order:
+  -- 1. inflightDeliveries → partyDeliver
+  -- 2. inflightEchoes → partyEchoReceive
+  -- 3. inflightReady → partyReceiveReady
+  -- 4. unserved honest party → dealerShareTo
+  -- 5. delivered honest p with un-echoed receiver → partyEchoSend
+  -- 6. honest q with empty readySent → partyReady (else)
+  --    honest p with output=none → partyOutput
+  -- ----- Case 1: partyDeliver -----
+  by_cases h_ifd : s.inflightDeliveries.Nonempty
+  · obtain ⟨p, hp_in⟩ := h_ifd
+    obtain ⟨hp_sent, hp_h, hp_del⟩ := h_inv.ifd_wf p hp_in
+    exact ⟨.partyDeliver p, by show True; trivial,
+           hp_sent, hp_h, hp_in, hp_del⟩
+  rw [Finset.not_nonempty_iff_eq_empty] at h_ifd
+  -- ----- Case 2: partyEchoReceive -----
+  by_cases h_ife : s.inflightEchoes.Nonempty
+  · obtain ⟨msg, hmsg_in⟩ := h_ife
+    obtain ⟨candidate, h_del, h_valid, h_notin⟩ :=
+      h_live.inflightEcho_valid msg hmsg_in
+    exact ⟨.partyEchoReceive msg, by show True; trivial,
+           hmsg_in, candidate, h_del, h_valid, h_notin⟩
+  rw [Finset.not_nonempty_iff_eq_empty] at h_ife
+  -- ----- Case 3: partyReceiveReady -----
+  by_cases h_ifr : s.inflightReady.Nonempty
+  · obtain ⟨msg, hmsg_in⟩ := h_ifr
+    have h_fresh := h_live.inflightReady_fresh msg hmsg_in
+    exact ⟨.partyReceiveReady msg, by show True; trivial, hmsg_in, h_fresh⟩
+  rw [Finset.not_nonempty_iff_eq_empty] at h_ifr
+  -- ----- Case 4: dealerShareTo -----
+  by_cases h_ds_all : ∀ p, p ∉ s.corrupted → s.dealerSent p = true
+  swap
+  · push_neg at h_ds_all
+    obtain ⟨p, hp_h, hp_ds⟩ := h_ds_all
+    have hp_ds_f : s.dealerSent p = false := by
+      cases hd : s.dealerSent p with
+      | true => exact absurd hd hp_ds
+      | false => rfl
+    exact ⟨.dealerShareTo p, by show True; trivial, hp_ds_f⟩
+  -- All honest are dealer-served.  By F2 + h_ifd, all honest delivered.
+  have h_all_del : ∀ p, p ∉ s.corrupted → (s.local_ p).delivered.isSome := by
+    intro p hp
+    rcases h_live.flow_F2 p hp (h_ds_all p hp) with hd | hd
+    · exact hd
+    · rw [h_ifd] at hd; exact absurd hd (Finset.notMem_empty _)
+  -- ----- Case 5: partyEchoSend -----
+  by_cases h_uep : (unsentEchoPairSet s).Nonempty
+  · obtain ⟨pr, hpr_in⟩ := h_uep
+    simp only [unsentEchoPairSet, Finset.mem_filter, Finset.mem_univ,
+      true_and] at hpr_in
+    obtain ⟨_hp1_h, hp1_del, hpr2_notin⟩ := hpr_in
+    refine ⟨.partyEchoSend pr.1 pr.2, by show True; trivial, ?_, hpr2_notin⟩
+    -- Convert (delivered.isSome = true) to delivered.isSome
+    cases hd : (s.local_ pr.1).delivered with
+    | none => rw [hd] at hp1_del; cases hp1_del
+    | some _ => simp
+  rw [Finset.not_nonempty_iff_eq_empty] at h_uep
+  -- All honest pairs have echoed.
+  have h_all_echoed : ∀ p, p ∉ s.corrupted → ∀ r : Fin n, r ∈ (s.local_ p).echoedTo := by
+    intro p hp r
+    by_contra h_notin
+    have h_del := h_all_del p hp
+    have hpr_in : (p, r) ∈ unsentEchoPairSet s := by
+      simp only [unsentEchoPairSet, Finset.mem_filter, Finset.mem_univ, true_and]
+      refine ⟨hp, ?_, h_notin⟩
+      cases hd : (s.local_ p).delivered with
+      | none => rw [hd] at h_del; cases h_del
+      | some _ => simp
+    rw [h_uep] at hpr_in; exact (Finset.notMem_empty _) hpr_in
+  -- ----- Case 6: cascade through readySent / output -----
+  -- ¬terminated ⇒ ∃ honest p, output = none.
+  have h_some_no_out : ∃ p, p ∉ s.corrupted ∧ (s.local_ p).output = none := by
+    by_contra h_all_out_pos
+    push_neg at h_all_out_pos
+    apply h_not_term
+    refine ⟨?_, h_all_echoed, h_ds_all, h_ifd, h_ife, h_ifr⟩
+    intro p hp
+    have h_o := h_all_out_pos p hp
+    cases h_op : (s.local_ p).output with
+    | none => exact absurd h_op h_o
+    | some _ => simp
+  -- Subcase 6a: ∃ honest q with readySent = ∅ → partyReady q cert
+  by_cases h_some_empty_rs :
+      ∃ q, q ∉ s.corrupted ∧ (s.local_ q).readySent = ∅
+  · obtain ⟨q, hq_h, hq_rs⟩ := h_some_empty_rs
+    have hq_del := h_all_del q hq_h
+    -- F3 premise: every honest q' has echoed to q
+    have h_q_acc : ∀ q', q' ∉ s.corrupted →
+        ∃ msg ∈ (s.local_ q).acceptedEchoes, msg.sender = q' := by
+      intro q' hq'
+      have h_qe : q ∈ (s.local_ q').echoedTo := h_all_echoed q' hq' q
+      rcases h_live.flow_F3 q' q hq' hq_h h_qe with h | h
+      · exact h
+      · obtain ⟨msg, hmsg_in, _⟩ := h
+        rw [h_ife] at hmsg_in; exact absurd hmsg_in (Finset.notMem_empty _)
+    obtain ⟨cert, h_cand, h_supp, h_echo_supp⟩ :=
+      h_live.ready_supportable q hq_h hq_del hq_rs h_q_acc
+    refine ⟨.partyReady q cert, by show True; trivial, h_cand, ?_, h_supp, h_echo_supp⟩
+    rw [hq_rs]; exact Finset.notMem_empty _
+  -- Subcase 6b: ∀ honest q, readySent ≠ ∅ → partyOutput on some output=none p
+  push_neg at h_some_empty_rs
+  obtain ⟨p, hp_h, hp_no_out⟩ := h_some_no_out
+  have hp_del := h_all_del p hp_h
+  -- F4 premise: every honest q has a ready msg in p's readyReceived
+  have h_p_ready : ∀ q, q ∉ s.corrupted →
+      ∃ msg ∈ (s.local_ p).readyReceived, msg.sender = q := by
+    intro q hq
+    have hq_rs_pos : (s.local_ q).readySent.Nonempty := h_some_empty_rs q hq
+    obtain ⟨cert_q, hcert_in⟩ := hq_rs_pos
+    rcases h_live.flow_F4 q p hq hp_h cert_q hcert_in with h | h
+    · obtain ⟨msg, hmsg_in, hmsg_send, _⟩ := h
+      exact ⟨msg, hmsg_in, hmsg_send⟩
+    · obtain ⟨msg, hmsg_in, _⟩ := h
+      rw [h_ifr] at hmsg_in; exact absurd hmsg_in (Finset.notMem_empty _)
+  obtain ⟨cert, h_cand, h_supp, h_ready_supp⟩ :=
+    h_live.output_supportable p hp_h hp_no_out hp_del h_p_ready
+  exact ⟨.partyOutput p cert, by show True; trivial,
+         hp_h, hp_no_out, h_cand, h_supp, h_ready_supp⟩
+
 end Leslie.Examples.Prob.AVSSFaithful
