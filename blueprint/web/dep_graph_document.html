@@ -63,6 +63,359 @@
 <div id="statements">
 
     
+    <div class="dep-modal-container" id="a0000000007_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="a0000000007" style="display: none">
+    <div class="thm_thmheading">
+      <span class="definition_thmcaption">
+      Definition
+      </span>
+      <span class="definition_thmlabel">1</span><span class="definition_thmtitle">Probabilistic Labelled Transition System</span></div>
+    <div class="thm_thmcontent">
+<p>A probabilistic labelled transition system (PLTS) is a tuple \(\mathcal{P}:= (Q,q_\star ,L,T)\) where \(Q\) is a (countable) set of states, \(q_\star \in Q\) is a set of initial states, \(L\) is a (countable) set of labels and \(T \subseteq Q \times (L \cup \{ \tau \} ) \times \mathcal{D}(Q)\) is a set of probabilitsic transitions. </p>
+</div>
+
+    <a class="latex_link" href="sect0001.html#a0000000007">LaTeX</a>
+    
+    
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/PLTS">Lean</a>
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="a0000000008_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="a0000000008" style="display: none">
+    <div class="thm_thmheading">
+      <span class="definition_thmcaption">
+      Definition
+      </span>
+      <span class="definition_thmlabel">2</span><span class="definition_thmtitle">Partial Probabilistic Execution</span></div>
+    <div class="thm_thmcontent">
+<p>Given \(\mu \in \mathcal{D}(Q)\) and \(s \in Sch\), one can define a partial probabilistic execution induced by \((\mu ,s)\) as the function \(\mathfrak {e}_{\mu ,s}\) from \(\mathcal{E}^*\) to \([0,1]\) such that if \(e \in Q\) then \(\mathfrak {e}_{\mu ,s} = \mu (e)\); else, \(e = e'.l.q\) and \(\mathfrak {e}_{\mu ,s}(e) = \mathfrak {e}_{\mu ,s}(e')\cdot \sum _{t \in T \mid lbl(t) = l}s(e')(t)\cdot out(t)(q)\). </p>
+</div>
+
+    <a class="latex_link" href="sect0001.html#a0000000008">LaTeX</a>
+    
+    
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/Partial Probabilistic Execution">Lean</a>
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="a0000000009_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="a0000000009" style="display: none">
+    <div class="thm_thmheading">
+      <span class="definition_thmcaption">
+      Definition
+      </span>
+      <span class="definition_thmlabel">3</span><span class="definition_thmtitle">Parallel Composition of PLTS</span></div>
+    <div class="thm_thmcontent">
+<p>Given \(\mathcal{P}\) and \(\mathcal{P}'\) two PLTSs and \(S \subseteq L \cup L'\), the composed PLTS \(\mathcal{P}\parallel _S \mathcal{P}'\) is defined as \((Q \times Q', (q_\star , q_\star '), L \cup L', T \parallel _S T')\) where \(((q,q'), l, \mu '') \in T \parallel _S T'\) if and only if </p>
+<ul class="itemize">
+  <li><p>\(l \in S\) and there exist \((q,l,\mu ) \in T\) and \((q',l,\mu ') \in T'\) such that \(\mu \otimes \mu ' = \mu ''\); or </p>
+</li>
+  <li><p>\(l \not\in S\) and there exists \((q,l,\mu ) \in T\) such that \(\mu \otimes \delta _{q'} = \mu ''\); or </p>
+</li>
+  <li><p>\(l \not\in S\) and there exists \((q',l,\mu ') \in T'\) such that \(\delta _q \otimes \mu ' = \mu ''\). </p>
+</li>
+</ul>
+</div>
+
+    <a class="latex_link" href="sect0001.html#a0000000009">LaTeX</a>
+    
+    
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/Parallel Composition">Lean</a>
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="a0000000010_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="a0000000010" style="display: none">
+    <div class="thm_thmheading">
+      <span class="definition_thmcaption">
+      Definition
+      </span>
+      <span class="definition_thmlabel">4</span><span class="definition_thmtitle">Probabilistic Forward Simulation</span></div>
+    <div class="thm_thmcontent">
+<p>Given \(\mathcal{P}\) and \(\mathcal{P}'\) two PLTSs, a probabilistic forward simulation of \(\mathcal{P}\) by \(\mathcal{P}'\) is a relation \(\mathcal{S}\subseteq Q \times \mathcal{D}(Q')\) such that \((q_\star ,\delta _{q_\star '}) \in \mathcal{S}\) and, for all \((q,\mu ') \in \mathcal{S}\) and \((q,l,\mu ) \in T\); there exists \(\mu ' \xRightarrow {l} \mu ''\) such that \((\mu ,\mu '') \in \mathcal{D}(\mathcal{S})\). </p>
+</div>
+
+    <a class="latex_link" href="sect0001.html#a0000000010">LaTeX</a>
+    
+    
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/Probabilistic Forward Simulation">Lean</a>
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="a0000000014_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="a0000000014" style="display: none">
+    <div class="thm_thmheading">
+      <span class="definition_thmcaption">
+      Definition
+      </span>
+      <span class="definition_thmlabel">5</span><span class="definition_thmtitle">Weak Simulation</span></div>
+    <div class="thm_thmcontent">
+<p>Given \(\mathcal{P}\) and \(\mathcal{P}'\) two LTSs, a weak simulation of \(\mathcal{P}\) by \(\mathcal{P}'\) is a relation \(\mathcal{S}\subseteq Q \times Q'\) such that \((q_\star ,q_\star ') \in \mathcal{S}\) and, for all \((q,q') \in \mathcal{S}\) and \((q,l,p) \in T\); there exists \(q' \xRightarrow {l} p'\) such that \((p,p') \in \mathcal{S}\). </p>
+</div>
+
+    <a class="latex_link" href="sect0001.html#a0000000014">LaTeX</a>
+    
+    
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/Weak Simulation">Lean</a>
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="a0000000015_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="a0000000015" style="display: none">
+    <div class="thm_thmheading">
+      <span class="theorem_thmcaption">
+      Theorem
+      </span>
+      <span class="theorem_thmlabel">2</span></div>
+    <div class="thm_thmcontent"><p>Given two LTSs \(\mathcal{P}\) and \(\mathcal{P}'\), \(\mathcal{P}\sqsubseteq ^t \mathcal{P}'\) if and only if there exists a weak simulation of \(\mathcal{P}\) by \(\mathcal{P}'\). </p>
+</div>
+
+    <a class="latex_link" href="sect0001.html#a0000000015">LaTeX</a>
+    
+    
+  
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="a0000000019_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="a0000000019" style="display: none">
+    <div class="thm_thmheading">
+      <span class="definition_thmcaption">
+      Definition
+      </span>
+      <span class="definition_thmlabel">6</span><span class="definition_thmtitle">Maximal Weak Simulation</span></div>
+    <div class="thm_thmcontent"><p> Given two PLTSs \(\mathcal{P}\) and \(\mathcal{P}'\), a weak simulation \(\mathcal{S}\) of \(\mathcal{P}\) by \(\mathcal{P}'\) is said to be maximal if, for all \((q,q') \in \mathcal{S}\), if \(q\) weakly diverges then \(q'\) weakly diverges. </p>
+</div>
+
+    <a class="latex_link" href="sect0001.html#a0000000019">LaTeX</a>
+    
+    
+  
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="a0000000020_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="a0000000020" style="display: none">
+    <div class="thm_thmheading">
+      <span class="theorem_thmcaption">
+      Theorem
+      </span>
+      <span class="theorem_thmlabel">4</span></div>
+    <div class="thm_thmcontent"><p>Given two PLTSs \(\mathcal{P}\) and \(\mathcal{P}'\), \(\mathcal{T}^{\max } \subseteq \mathcal{T}'^{\max }\) only if there exists a weak simulation of \(\mathcal{P}\) by \(\mathcal{P}'\). </p>
+</div>
+
+    <a class="latex_link" href="sect0001.html#a0000000020">LaTeX</a>
+    
+    
+  
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="a0000000022_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="a0000000022" style="display: none">
+    <div class="thm_thmheading">
+      <span class="definition_thmcaption">
+      Definition
+      </span>
+      <span class="definition_thmlabel">7</span><span class="definition_thmtitle">Progressive Weak Simulation</span></div>
+    <div class="thm_thmcontent"><p> Given two PLTSs \(\mathcal{P}\) and \(\mathcal{P}'\), a weak simulation \(\mathcal{S}\) of \(\mathcal{P}\) by \(\mathcal{P}'\) is said to be progressive if </p>
+<ul class="itemize">
+  <li><p>for all \((q,q') \in \mathcal{S}\), if \(q\) is a deadlock then \(q'\) weakly diverges. </p>
+</li>
+  <li><p>there exists \({\lt} \subseteq Q \times Q\) well-founded such that, for all \((q,q') \in \mathcal{S}\) and \((q,l,p) \in T\), if \((q,l,q')\) is elided by \(\mathcal{S}\) then \(q {\gt} p\) or \(q'\) weakly diverges. </p>
+</li>
+</ul>
+</div>
+
+    <a class="latex_link" href="sect0001.html#a0000000022">LaTeX</a>
+    
+    
+  
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="a0000000023_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="a0000000023" style="display: none">
+    <div class="thm_thmheading">
+      <span class="theorem_thmcaption">
+      Theorem
+      </span>
+      <span class="theorem_thmlabel">5</span></div>
+    <div class="thm_thmcontent"><p>A weak simulation \(\mathcal{S}\) is maximal if and only if it is progressive. </p>
+</div>
+
+    <a class="latex_link" href="sect0001.html#a0000000023">LaTeX</a>
+    
+    
+  
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="alg:simulation_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="alg:simulation" style="display: none">
+    <div class="thm_thmheading">
+      <span class="theorem_thmcaption">
+      Theorem
+      </span>
+      <span class="theorem_thmlabel">1</span><span class="theorem_thmtitle">from <span class="cite">
+	[
+	<a href="sect0004.html#Segala1995Compositional" >Seg95</a>
+	]
+</span></span></div>
+    <div class="thm_thmcontent"><p>  Given two PLTSs \(\mathcal{P}\) and \(\mathcal{P}'\), \(\mathcal{P}\sqsubseteq ^t \mathcal{P}'\) if and only if there exists a probabilistic forward simulation of \(\mathcal{P}\) by \(\mathcal{P}'\). </p>
+</div>
+
+    <a class="latex_link" href="sect0001.html#alg:simulation">LaTeX</a>
+    
+    
+  
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
     <div class="dep-modal-container" id="def:ABAConcrete_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
@@ -74,7 +427,7 @@
       <span class="definition_thmcaption">
       Definition
       </span>
-      <span class="definition_thmlabel">1</span></div>
+      <span class="definition_thmlabel">8</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{ABA.Concrete} := \mathsf{ABA.Impl}[\mathsf{GBCA.Impl}, \mathsf{WCC.Impl}]\), the instantiation of \(\mathsf{ABA.Impl}\) with concrete implementations of the sub-protocols. </p>
 </div>
 
@@ -104,7 +457,7 @@
       <span class="definition_thmcaption">
       Definition
       </span>
-      <span class="definition_thmlabel">2</span></div>
+      <span class="definition_thmlabel">9</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{ABA.Hybrid} := \mathsf{ABA.Impl}[\mathsf{GBCA.Spec}, \mathsf{WCC.Spec}]\), the instantiation of \(\mathsf{ABA.Impl}\) with ideal specifications of the sub-protocols. </p>
 </div>
 
@@ -134,7 +487,7 @@
       <span class="definition_thmcaption">
       Definition
       </span>
-      <span class="definition_thmlabel">5</span></div>
+      <span class="definition_thmlabel">12</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{Gather.Concrete} := \mathsf{Gather.Impl}[\mathsf{BRB.Impl}]\), the instantiation of \(\mathsf{Gather.Impl}\) with the concrete implementation of BRB. </p>
 </div>
 
@@ -164,7 +517,7 @@
       <span class="definition_thmcaption">
       Definition
       </span>
-      <span class="definition_thmlabel">6</span></div>
+      <span class="definition_thmlabel">13</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{Gather.Hybrid} := \mathsf{Gather.Impl}[\mathsf{BRB.Spec}]\), the instantiation of \(\mathsf{Gather.Impl}\) with the ideal specification of BRB. </p>
 </div>
 
@@ -194,7 +547,7 @@
       <span class="definition_thmcaption">
       Definition
       </span>
-      <span class="definition_thmlabel">7</span></div>
+      <span class="definition_thmlabel">14</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{RSD.Concrete} := \mathsf{RSD.Impl}[\mathsf{BRB.Impl}, \mathsf{AVSS.Spec}]\), the instantiation of \(\mathsf{RSD.Impl}\) with the concrete implementation of BRB. \(\mathsf{AVSS}\) is used as a black-box, so its specification is plugged in directly. </p>
 </div>
 
@@ -224,7 +577,7 @@
       <span class="definition_thmcaption">
       Definition
       </span>
-      <span class="definition_thmlabel">8</span></div>
+      <span class="definition_thmlabel">15</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{RSD.Hybrid} := \mathsf{RSD.Impl}[\mathsf{BRB.Spec}, \mathsf{AVSS.Spec}]\), the instantiation of \(\mathsf{RSD.Impl}\) with the ideal specifications of BRB and AVSS. </p>
 </div>
 
@@ -254,7 +607,7 @@
       <span class="definition_thmcaption">
       Definition
       </span>
-      <span class="definition_thmlabel">3</span></div>
+      <span class="definition_thmlabel">10</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{WCC.Concrete} := \mathsf{WCC.Impl}[\mathsf{Gather.Concrete}, \mathsf{RSD.Concrete}]\), the instantiation of \(\mathsf{WCC.Impl}\) with fully concrete sub-protocols. </p>
 </div>
 
@@ -284,7 +637,7 @@
       <span class="definition_thmcaption">
       Definition
       </span>
-      <span class="definition_thmlabel">4</span></div>
+      <span class="definition_thmlabel">11</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{WCC.Hybrid} := \mathsf{WCC.Impl}[\mathsf{Gather.Spec}, \mathsf{RSD.Spec}]\), the instantiation of \(\mathsf{WCC.Impl}\) with ideal specifications of the sub-protocols. </p>
 </div>
 
@@ -314,7 +667,7 @@
       <span class="lemma_thmcaption">
       Lemma
       </span>
-      <span class="lemma_thmlabel">12</span></div>
+      <span class="lemma_thmlabel">9</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{ABA.Spec}\) simulates \(\mathsf{ABA.Hybrid}\). </p>
 </div>
 
@@ -344,7 +697,7 @@
       <span class="lemma_thmcaption">
       Lemma
       </span>
-      <span class="lemma_thmlabel">11</span></div>
+      <span class="lemma_thmlabel">8</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{ABA.Hybrid}\) is simulated by \(\mathsf{ABA.Concrete}\). </p>
 </div>
 
@@ -374,7 +727,7 @@
       <span class="lemma_thmcaption">
       Lemma
       </span>
-      <span class="lemma_thmlabel">19</span></div>
+      <span class="lemma_thmlabel">16</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{Gather.Spec}\) simulates \(\mathsf{Gather.Hybrid}\). </p>
 </div>
 
@@ -404,7 +757,7 @@
       <span class="lemma_thmcaption">
       Lemma
       </span>
-      <span class="lemma_thmlabel">18</span></div>
+      <span class="lemma_thmlabel">15</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{Gather.Hybrid}\) is simulated by \(\mathsf{Gather.Concrete}\). </p>
 </div>
 
@@ -434,7 +787,7 @@
       <span class="lemma_thmcaption">
       Lemma
       </span>
-      <span class="lemma_thmlabel">22</span></div>
+      <span class="lemma_thmlabel">19</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{RSD.Spec}\) simulates \(\mathsf{RSD.Hybrid}\). </p>
 </div>
 
@@ -464,7 +817,7 @@
       <span class="lemma_thmcaption">
       Lemma
       </span>
-      <span class="lemma_thmlabel">21</span></div>
+      <span class="lemma_thmlabel">18</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{RSD.Hybrid}\) is simulated by \(\mathsf{RSD.Concrete}\). Only BRB is substituted; \(\mathsf{AVSS.Spec}\) stays fixed on both sides. </p>
 </div>
 
@@ -494,7 +847,7 @@
       <span class="lemma_thmcaption">
       Lemma
       </span>
-      <span class="lemma_thmlabel">15</span></div>
+      <span class="lemma_thmlabel">12</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{WCC.Spec}\) simulates \(\mathsf{WCC.Hybrid}\). </p>
 </div>
 
@@ -524,7 +877,7 @@
       <span class="lemma_thmcaption">
       Lemma
       </span>
-      <span class="lemma_thmlabel">14</span></div>
+      <span class="lemma_thmlabel">11</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{WCC.Hybrid}\) is simulated by \(\mathsf{WCC.Concrete}\). </p>
 </div>
 
@@ -555,7 +908,7 @@
       Protocol
       </span>
       <span class="protocol_thmlabel">2</span></div>
-    <div class="thm_thmcontent"><p>   <figcaption>
+    <div class="thm_thmcontent"><p>  <em>Concrete implementation.</em> Round-based protocol combining Graded Binding Crusader Agreement (GBCA) with a Weak Common Coin (WCC). Each round, the process refines its bit through GBCA and tosses a coin via WCC; it adopts the coin if GBCA was undecided (\(b = \bot \)) and otherwise decides on \(b\) when GBCA returned the highest grade \(A\), while continuing to run to help the others terminate.  <figcaption>
   <span class="caption_title"></span> 
   <span class="caption_ref">None</span> 
   <span class="caption_text"></span> 
@@ -563,7 +916,7 @@
 	[
 	<a href="sect0004.html#Abraham2022Efficient" >ABDY22</a>
 	]
-</span>  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) \(r \gets 1\) \(decided \gets \bot \) \((b, g) \gets \textsc{GBCA}_r(b)\) \(b \in \{ 0,1,\bot \} \), \(g \in \{ A, B, C\} \) \(c \gets \textsc{WCC}_r\) common coin for round \(r\) \(b = \bot \) \(b \gets c\) \(g = A\) \(decided \gets b\)  keep participating to help others \(r \gets r + 1\) TODO: verify termination rule   </p>
+</span>  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) \(r \gets 1\) \(decided \gets \bot \) \((b, g) \gets \textsc{GBCA}_r(b)\) \(b \in \{ 0,1,\bot \} \), \(g \in \{ A, B, C\} \) \(c \gets \textsc{WCC}_r()\) common coin for round \(r\) \(b = \bot \) \(b \gets c\) \(g = A\) \(decided \gets b\) keep participating to help others \(r \gets r + 1\) TODO: verify termination rule   </p>
 </div>
 
     <a class="latex_link" href="sect0002.html#prot:ImplABA">LaTeX</a>
@@ -593,7 +946,7 @@
       Protocol
       </span>
       <span class="protocol_thmlabel">12</span></div>
-    <div class="thm_thmcontent"><p>  Requires no sub-protocol. Parameters: \(n\) processes with at most \(f {\lt} n/3\) corrupted; leader \(\ell \) with input \(m\).  <figcaption>
+    <div class="thm_thmcontent"><p>  <em>Concrete implementation.</em> Requires no sub-protocol. Parameters: \(n\) processes with at most \(f {\lt} n/3\) corrupted; leader \(\ell \) with input \(m\). Standard Bracha broadcast: \(\langle \textsc{init}, \cdot \rangle \) from the leader is echoed by all processes; an \(n-f\) echo quorum or an \(f+1\) ready quorum triggers \(\langle \textsc{ready}, \cdot \rangle \); a \(2f+1\) ready quorum triggers delivery.  <figcaption>
   <span class="caption_title"></span> 
   <span class="caption_ref">None</span> 
   <span class="caption_text"></span> 
@@ -601,7 +954,7 @@
 	[
 	<a href="sect0004.html#Bracha1987Asynchronous" >Bra87</a>
 	]
-</span>  <b class="bfseries">Code for the leader \(\ell \) with input \(m\):</b> &#8195;send \(\langle \textsc{init}, m \rangle \) to all processes <b class="bfseries">Code for every process \(p_i\):</b> <b class="bfseries">upon</b> first reception of \(\langle \textsc{init}, m \rangle \) from \(\ell \) <b class="bfseries">do</b> &#8195;send \(\langle \textsc{echo}, m \rangle \) to all processes <b class="bfseries">upon</b> reception of \(\langle \textsc{echo}, m \rangle \) from at least \(n-f\) distinct processes <b class="bfseries">do</b> &#8195;<b class="bfseries">if</b> \(\langle \textsc{ready}, \cdot \rangle \) has not yet been sent <b class="bfseries">then</b> &#8195;&#8195;send \(\langle \textsc{ready}, m \rangle \) to all processes <b class="bfseries">upon</b> reception of \(\langle \textsc{ready}, m \rangle \) from at least \(f+1\) distinct processes <b class="bfseries">do</b> &#8195;<b class="bfseries">if</b> \(\langle \textsc{ready}, \cdot \rangle \) has not yet been sent <b class="bfseries">then</b> &#8195;&#8195;send \(\langle \textsc{ready}, m \rangle \) to all processes <b class="bfseries">upon</b> reception of \(\langle \textsc{ready}, m \rangle \) from at least \(2f+1\) distinct processes <b class="bfseries">do</b> &#8195;deliver \(m\)   </p>
+</span>  <b class="bfseries">Code for the leader \(\ell \) with input \(m\):</b> &#8195;send \(\langle \textsc{init}, m \rangle \) to all processes <b class="bfseries">Code for every process:</b> <b class="bfseries">upon</b> first reception of \(\langle \textsc{init}, m \rangle \) from \(\ell \) <b class="bfseries">do</b> &#8195;send \(\langle \textsc{echo}, m \rangle \) to all processes <b class="bfseries">upon</b> reception of \(\langle \textsc{echo}, m \rangle \) from at least \(n-f\) distinct processes <b class="bfseries">do</b> &#8195;<b class="bfseries">if</b> \(\langle \textsc{ready}, \cdot \rangle \) has not yet been sent <b class="bfseries">then</b> &#8195;&#8195;send \(\langle \textsc{ready}, m \rangle \) to all processes <b class="bfseries">upon</b> reception of \(\langle \textsc{ready}, m \rangle \) from at least \(f+1\) distinct processes <b class="bfseries">do</b> &#8195;<b class="bfseries">if</b> \(\langle \textsc{ready}, \cdot \rangle \) has not yet been sent <b class="bfseries">then</b> &#8195;&#8195;send \(\langle \textsc{ready}, m \rangle \) to all processes <b class="bfseries">upon</b> reception of \(\langle \textsc{ready}, m \rangle \) from at least \(2f+1\) distinct processes <b class="bfseries">do</b> &#8195;return \(m\)   </p>
 </div>
 
     <a class="latex_link" href="sect0002.html#prot:ImplBRB">LaTeX</a>
@@ -631,7 +984,7 @@
       Protocol
       </span>
       <span class="protocol_thmlabel">8</span></div>
-    <div class="thm_thmcontent"><p>  Might require BRB  <figcaption>
+    <div class="thm_thmcontent"><p>  <em>Concrete implementation.</em> Requires \(|Id|\) instances of BRB (process \(id\) is leader in \(BRB_{id}\)). Each process first broadcasts its input via its own BRB instance, then amplifies the set of approved pairs \(AP\) through three rounds of \(\langle \textsc{echo}, \cdot \rangle \), \(\langle \textsc{vote}, \cdot \rangle \), \(\langle \textsc{bind}, \cdot \rangle \) messages before returning the union of the approved sets.  <figcaption>
   <span class="caption_title"></span> 
   <span class="caption_ref">None</span> 
   <span class="caption_text"></span> 
@@ -639,7 +992,7 @@
 	[
 	<a href="sect0004.html#Attiya2025Beyond" >AFW25</a>
 	]
-</span>  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) <b class="bfseries">Sub-Protocols:</b> \(|Id|\) instances of BRB (process \(id\) is leader in \(BRB_{id}\)) \(BRB_{id}.call(m)\) <b class="bfseries">upon</b> \(BRB_i.return(m')\): &#8195;\(AP \gets AP \cup \{ (i,m')\} \) <b class="bfseries">upon</b> \(|AP| {\gt} n-f\) and not sent \(\langle \textsc{echo}, \cdot \rangle \): &#8195;send \(\langle echo, AP\rangle \) to all <b class="bfseries">upon</b> receiving approved \(\langle \textsc{echo}, AP_{id} \rangle \) from at least \(n - f\) processes and not sent \(\langle \textsc{vote}, \cdot \rangle \): &#8195;send \(\langle \textsc{vote}, \bigcup AP_{id} \rangle \) <b class="bfseries">upon</b> receiving approved \(\langle \textsc{vote}, AP_{id} \rangle \) from at least \(n - f\) processes and not sent \(\langle \textsc{bind}, \cdot \rangle \): &#8195;send \(\langle \textsc{bind}, \bigcup AP_{id} \rangle \) <b class="bfseries">upon</b> receiving approved \(\langle \textsc{bind}, AP_{id} \rangle \) from at least \(n - f\) processes: &#8195;return \(\bigcup AP_{id}\)   </p>
+</span>  <b class="bfseries">Input:</b> \(m\) <b class="bfseries">Sub-Protocols:</b> \(|Id|\) instances of BRB (process \(id\) is leader in \(BRB_{id}\)) \(BRB_{id}.call(m)\) <b class="bfseries">upon</b> \(BRB_i.return(m')\): &#8195;\(AP \gets AP \cup \{ (i, m')\} \) <b class="bfseries">upon</b> \(|AP| \ge n-f\) and not sent \(\langle \textsc{echo}, \cdot \rangle \): &#8195;send \(\langle \textsc{echo}, AP\rangle \) to all <b class="bfseries">upon</b> receiving approved \(\langle \textsc{echo}, AP_{id} \rangle \) from at least \(n - f\) processes and not sent \(\langle \textsc{vote}, \cdot \rangle \): &#8195;send \(\langle \textsc{vote}, \bigcup _{id} AP_{id} \rangle \) to all <b class="bfseries">upon</b> receiving approved \(\langle \textsc{vote}, AP_{id} \rangle \) from at least \(n - f\) processes and not sent \(\langle \textsc{bind}, \cdot \rangle \): &#8195;send \(\langle \textsc{bind}, \bigcup _{id} AP_{id} \rangle \) to all <b class="bfseries">upon</b> receiving approved \(\langle \textsc{bind}, AP_{id} \rangle \) from at least \(n - f\) processes: &#8195;return \(\bigcup _{id} AP_{id}\)   </p>
 </div>
 
     <a class="latex_link" href="sect0002.html#prot:ImplGather">LaTeX</a>
@@ -669,7 +1022,7 @@
       Protocol
       </span>
       <span class="protocol_thmlabel">4</span></div>
-    <div class="thm_thmcontent"><p>  Parameters: \(n\) processes with at most \(f {\lt} n/3\) corrupted. Each process \(p_i\) has input \(b_i \in \{ 0,1\} \).  <figcaption>
+    <div class="thm_thmcontent"><p>  <em>Concrete implementation.</em> Requires no sub-protocol. Parameters: \(n\) processes with at most \(f {\lt} n/3\) corrupted, each holding an input bit \(b \in \{ 0,1\} \). After an input-amplification phase, the protocol runs three Bracha-style rounds of \(\langle \textsc{echo}, \cdot \rangle \), \(\langle \textsc{vote}, \cdot \rangle \), \(\langle \textsc{bind}, \cdot \rangle \) messages to settle the bound value and assign the grade.  <figcaption>
   <span class="caption_title"></span> 
   <span class="caption_ref">None</span> 
   <span class="caption_text"></span> 
@@ -677,7 +1030,7 @@
 	[
 	<a href="sect0004.html#Abraham2022Efficient" >ABDY22</a>
 	]
-</span>  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) send \(\langle \textsc{input}, b_i \rangle \) to all processes <b class="bfseries">upon</b> receiving \(\langle \textsc{input}, b \rangle \) from at least \(f + 1\) processes and not sent \(\langle \textsc{input}, b\rangle \) yet: &#8195;send \(\langle \textsc{input}, b\rangle \) to all <b class="bfseries">upon</b> receiving \(\langle \textsc{input}, b \rangle \) from at least \(n - f\) processes: &#8195;\(Approved \gets Approved \cup \{ b\} \) &#8195;<b class="bfseries">if</b> not sent \(\langle \textsc{echo}, \cdot \rangle \) yet <b class="bfseries">then</b> send \(\langle \textsc{echo}, b\rangle \) to all wait until &#8195;(a) receiving \(\langle \textsc{echo}, b \rangle \) from at least \(n - f\) processes <b class="bfseries">or</b> &#8195;(b) receiving \(\langle \textsc{echo}, \cdot \rangle \) from at least \(n - f\) processes and \(|Approved| {\gt} 1\) &#8195;<b class="bfseries">if</b> (a) <b class="bfseries">then</b> send \(\langle vote, b\rangle \) to all <b class="bfseries">else</b> send \(\langle vote, \bot \rangle \) to all wait until &#8195;(a) receiving \(\langle \textsc{vote}, b \rangle \) from at least \(n - f\) processes <b class="bfseries">or</b> &#8195;(b) receiving \(\langle \textsc{vote}, \cdot \rangle \) from at least \(n - f\) processes and \(|Approved| {\gt} 1\) &#8195;<b class="bfseries">if</b> (a) <b class="bfseries">then</b> send \(\langle bind, b\rangle \) to all <b class="bfseries">else</b> send \(\langle bind, \bot \rangle \) to all wait until &#8195;(a) receiving \(\langle \textsc{vote}, b \rangle \) from at least \(n - f\) processes <b class="bfseries">or</b> &#8195;(b) receiving \(\langle \textsc{vote}, \cdot \rangle \) from at least \(n - f\) processes and there exists \(b \in \{ 0,1\} \) such that \(\langle bind, b\rangle \) has been received once and \(\langle vote, b\rangle \) has been received from \(t+1\) processes and \(|Approved| {\gt} 1\) <b class="bfseries">or</b> &#8195;(c) receiving \(\langle \textsc{vote}, \bot \rangle \) from at least \(n - f\) processes and \(|Approved| {\gt} 1\) &#8195;<b class="bfseries">if</b> (a) <b class="bfseries">then</b> return \((b,A)\) <b class="bfseries">elif</b> (b) <b class="bfseries">then</b> return \((b,B)\) <b class="bfseries">else</b> return \((\bot , C)\)   </p>
+</span>  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) send \(\langle \textsc{input}, b \rangle \) to all processes <b class="bfseries">upon</b> receiving \(\langle \textsc{input}, b \rangle \) from at least \(f + 1\) processes and not sent \(\langle \textsc{input}, b\rangle \) yet: &#8195;send \(\langle \textsc{input}, b\rangle \) to all <b class="bfseries">upon</b> receiving \(\langle \textsc{input}, b \rangle \) from at least \(n - f\) processes: &#8195;\(Approved \gets Approved \cup \{ b\} \) &#8195;<b class="bfseries">if</b> not sent \(\langle \textsc{echo}, \cdot \rangle \) yet <b class="bfseries">then</b> send \(\langle \textsc{echo}, b\rangle \) to all wait until &#8195;(a) receiving \(\langle \textsc{echo}, b \rangle \) from at least \(n - f\) processes <b class="bfseries">or</b> &#8195;(b) receiving \(\langle \textsc{echo}, \cdot \rangle \) from at least \(n - f\) processes and \(|Approved| {\gt} 1\) &#8195;<b class="bfseries">if</b> (a) <b class="bfseries">then</b> send \(\langle \textsc{vote}, b\rangle \) to all <b class="bfseries">else</b> send \(\langle \textsc{vote}, \bot \rangle \) to all wait until &#8195;(a) receiving \(\langle \textsc{vote}, b \rangle \) from at least \(n - f\) processes <b class="bfseries">or</b> &#8195;(b) receiving \(\langle \textsc{vote}, \cdot \rangle \) from at least \(n - f\) processes and \(|Approved| {\gt} 1\) &#8195;<b class="bfseries">if</b> (a) <b class="bfseries">then</b> send \(\langle \textsc{bind}, b\rangle \) to all <b class="bfseries">else</b> send \(\langle \textsc{bind}, \bot \rangle \) to all wait until &#8195;(a) receiving \(\langle \textsc{bind}, b \rangle \) from at least \(n - f\) processes <b class="bfseries">or</b> &#8195;(b) receiving \(\langle \textsc{bind}, \cdot \rangle \) from at least \(n - f\) processes and there exists \(b \in \{ 0,1\} \) such that \(\langle \textsc{bind}, b\rangle \) has been received once and \(\langle \textsc{vote}, b\rangle \) has been received from \(f+1\) processes and \(|Approved| {\gt} 1\) <b class="bfseries">or</b> &#8195;(c) receiving \(\langle \textsc{bind}, \bot \rangle \) from at least \(n - f\) processes and \(|Approved| {\gt} 1\) &#8195;<b class="bfseries">if</b> (a) <b class="bfseries">then</b> return \((b,A)\) <b class="bfseries">elif</b> (b) <b class="bfseries">then</b> return \((b,B)\) <b class="bfseries">else</b> return \((\bot , C)\)   </p>
 </div>
 
     <a class="latex_link" href="sect0002.html#prot:ImplGBCA">LaTeX</a>
@@ -707,13 +1060,15 @@
       Protocol
       </span>
       <span class="protocol_thmlabel">10</span></div>
-    <div class="thm_thmcontent"><p>  Require AVSS and BRB  <figcaption>
+    <div class="thm_thmcontent"><p>  <em>Concrete implementation.</em> Requires \(|Id|\) instances of BRB and \(|Id|^2\) instances of AVSS. Each process \(id\) draws a fresh secret \(x_{id'}\) for every \(id' \in Id\) and shares it through an AVSS instance, then uses its own BRB to publish the set \(S\) of dealers it received shares from. A process is assigned a value once it has collected, for each entry of the committed set \(S'\), the corresponding AVSS sharing return; the retrieved value is the sum of the AVSS reconstructions.  <figcaption>
   <span class="caption_title"></span> 
   <span class="caption_ref">None</span> 
   <span class="caption_text"></span> 
 </figcaption>Implementation of RSD from <span class="cite">
 	[
-</span>  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) <b class="bfseries">Sub-Protocols:</b> \(|Id|\) instances of BRB (process \(id\) is leader in \(BRB_{id}\)) and \(|Id|^2\) instances of AVSS (process \(id\) is dealer in \(AVSS_{id}^{k}\)) <b class="bfseries">Operation:</b> \(RSD.Sh()\) \(retrieveEnabled, S \gets \bot , \emptyset \) for all \(id' \in Id\), \(x_{id'} \gets \mu \) \(\mu \): Uniform distribution over the domain of secerts \(AVSS^{id'}_{id}.Sh.call(x_{id'})\) <b class="bfseries">upon</b> \(AVSS_{id'}^{id}.Sh.return()\): &#8195;\(S \gets S \cup \{ id'\} \) <b class="bfseries">upon</b> \(|AP| {\gt} n-f\) and not called \(BRB_{id}\): &#8195;\(BRB_{id}.call(S)\) <b class="bfseries">upon</b> \(BRB_{id'}.return(S')\) and \(\forall k \in S', AVSS^{id'}_k.Sh.return()\): &#8195;\(src[id'] \gets S'\) &#8195;<b class="bfseries">event</b> \(ValueAssigned(id')\) &#8195;\(\forall k \in S', AVSS^{id'}_k.Rec.call()\) <b class="bfseries">Operation:</b> \(RSD.Rec()\) return \(id' \mapsto \sum _{k \in src[id']}AVSS_k^{id'}.Rec.return()\)   </p>
+	<a href="sect0004.html#Freitas2022Distributed" >FKT22</a>
+	]
+</span>  <b class="bfseries">Sub-Protocols:</b> \(|Id|\) instances of BRB (process \(id\) is leader in \(BRB_{id}\)) and \(|Id|^2\) instances of AVSS (process \(id\) is dealer in \(AVSS_{id}^{k}\) for each \(k \in Id\)) <b class="bfseries">Operation:</b> \(RSD.Asg()\) \(S \gets \emptyset \) for all \(id' \in Id\): &#8195;\(x_{id'} \gets \mu \) \(\mu \): uniform distribution over the domain of secrets &#8195;\(AVSS_{id}^{id'}.Sh.call(x_{id'})\) <b class="bfseries">upon</b> \(AVSS_{id}^{id'}.Sh.return()\): &#8195;\(S \gets S \cup \{ id'\} \) <b class="bfseries">upon</b> \(|S| \ge n-f\) and not called \(BRB_{id}\): &#8195;\(BRB_{id}.call(S)\) <b class="bfseries">upon</b> \(BRB_{id'}.return(S')\) and \(\forall k \in S', AVSS_k^{id'}.Sh.return()\): &#8195;\(src[id'] \gets S'\) &#8195;<b class="bfseries">event</b> \(ValueAssigned(id')\) &#8195;\(\forall k \in S', AVSS_k^{id'}.Rec.call()\) <b class="bfseries">Operation:</b> \(RSD.Rec()\) return \(id' \mapsto \sum _{k \in src[id']} AVSS_k^{id'}.Rec.return()\)   </p>
 </div>
 
     <a class="latex_link" href="sect0002.html#prot:ImplRSD">LaTeX</a>
@@ -743,7 +1098,7 @@
       Protocol
       </span>
       <span class="protocol_thmlabel">6</span></div>
-    <div class="thm_thmcontent"><p>  Requires Gather and RSD  <figcaption>
+    <div class="thm_thmcontent"><p>  <em>Concrete implementation.</em> Requires Gather and RSD. Details to be determined.  <figcaption>
   <span class="caption_title"></span> 
   <span class="caption_ref">None</span> 
   <span class="caption_text"></span> 
@@ -777,11 +1132,11 @@
       Protocol
       </span>
       <span class="protocol_thmlabel">1</span></div>
-    <div class="thm_thmcontent"><p>   <figcaption>
+    <div class="thm_thmcontent"><p>  <em>Ideal implementation.</em> The trusted third party collects each process’s input bit and, once at least \(n-f\) contributions support some bit \(b\), fixes the bound value to \(b\) and broadcasts \(\langle \textsc{output}, b\rangle \) to all processes. Late callers are coerced to the bound value or to a random draw from a non-Dirac distribution \(\mu \), which preserves the bound while modelling the adversary’s ability to skew honest participation.  <figcaption>
   <span class="caption_title"></span> 
   <span class="caption_ref">None</span> 
   <span class="caption_text"></span> 
-</figcaption>Ideal Implementation of ABA  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) <b class="bfseries">Code for every process:</b> send \(\langle input, b\rangle \) to the third party <b class="bfseries">upon</b> receiving \(\langle output, b\rangle \) from third party &#8195;return \(b\) <b class="bfseries">Code for third party:</b> \(bind,call \gets \bot ,(\bot )^{Id}\) <b class="bfseries">upon</b> receiving \(\langle input, b\rangle \) from a process \(id\) and \(bind = \bot \): &#8195;\(call(id) \gets b\) <b class="bfseries">upon</b> \(|F| + \{ id \in Id \setminus F \mid call(id) = b\}  \ge n-f\): &#8195;\(bind,call \gets b,(\bot )^{Id}\) &#8195;<b class="bfseries">if</b> \(\{ id \in Id \setminus F \mid call(id) = 1-b\}  = 0\): &#8195;&#8195;send \(\langle output, b\rangle \) to all <b class="bfseries">upon</b> \(call(id) = \bot \) and \(bind \ne \bot \): &#8195;\(call \gets bind \textbf{ or } \mu \) \(\mu \) can be any non-Dirac probability distriution over \(\{ 0,1\} \)   </p>
+</figcaption>Ideal Implementation of ABA  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) <b class="bfseries">Code for every process:</b> send \(\langle \textsc{input}, b\rangle \) to the third party <b class="bfseries">upon</b> receiving \(\langle \textsc{output}, b\rangle \) from the third party: &#8195;return \(b\) <b class="bfseries">Code for the third party:</b> \(bind, call \gets \bot , (\bot )^{Id}\) <b class="bfseries">upon</b> receiving \(\langle \textsc{input}, b\rangle \) from a process \(id\) and \(bind = \bot \): &#8195;\(call[id] \gets b\) <b class="bfseries">upon</b> \(|F \cup \{ id \in Id \setminus F \mid call[id] = b\} | \ge n-f\): &#8195;\(bind, call \gets b, (\bot )^{Id}\) &#8195;<b class="bfseries">if</b> \(\{ id \in Id \setminus F \mid call[id] = 1-b\}  = \emptyset \): &#8195;&#8195;send \(\langle \textsc{output}, b\rangle \) to all <b class="bfseries">upon</b> \(call[id] = \bot \) and \(bind \ne \bot \): &#8195;\(call[id] \gets bind\) <b class="bfseries">or</b> \(\mu \) \(\mu \) is any non-Dirac distribution over \(\{ 0,1\} \)   </p>
 </div>
 
     <a class="latex_link" href="sect0002.html#prot:SpecABA">LaTeX</a>
@@ -811,11 +1166,11 @@
       Protocol
       </span>
       <span class="protocol_thmlabel">13</span></div>
-    <div class="thm_thmcontent"><p>  Blablabla  <figcaption>
+    <div class="thm_thmcontent"><p>  <em>Ideal implementation.</em> The trusted third party stores the dealer’s secret (or an adversarially-chosen one if the dealer is corrupted) and immediately notifies every process that sharing has completed. On Retrieval, as soon as more than \(f\) processes have asked, the stored secret is broadcast to all processes.  <figcaption>
   <span class="caption_title"></span> 
   <span class="caption_ref">None</span> 
   <span class="caption_text"></span> 
-</figcaption>AVSS Specification  \(x \gets 0\) \(y {\gt} 0\) loop   </p>
+</figcaption>Ideal Implementation of AVSS  <b class="bfseries">Input:</b> \(s \in \{ 0,1\} ^*\) for the dealer <b class="bfseries">Operation:</b> \(AVSS.Sh()\) <b class="bfseries">Code for the dealer:</b> send \(\langle \textsc{Sh.input}, s\rangle \) to the third party <b class="bfseries">Code for every process:</b> <b class="bfseries">upon</b> receiving \(\langle \textsc{Sh.output}\rangle \) from the third party: &#8195;return <b class="bfseries">Code for the third party:</b> <b class="bfseries">upon</b> receiving \(\langle \textsc{Sh.input}, s\rangle \) from dealer or dealer is corrupted: &#8195;\(secret \gets s\) \(s\) is chosen non-deterministically if no message received &#8195;send \(\langle \textsc{Sh.output}\rangle \) to all <b class="bfseries">Operation:</b> \(AVSS.Ret()\) <b class="bfseries">Code for every process:</b> send \(\langle \textsc{Ret.input} \rangle \) to the third party <b class="bfseries">upon</b> receiving \(\langle \textsc{Ret.output}, m\rangle \) from the third party: &#8195;return \(m\) <b class="bfseries">Code for the third party:</b> \(call \gets (\bot )^{Id}\) <b class="bfseries">upon</b> receiving \(\langle \textsc{Ret.input}\rangle \) from process \(id\): &#8195;\(call[id] \gets \top \) <b class="bfseries">upon</b> \(|F \cup \{ id \in Id \setminus F \mid call[id] = \top \} | \ge f+1\): &#8195;send \(\langle \textsc{Ret.output}, secret\rangle \) to all   </p>
 </div>
 
     <a class="latex_link" href="sect0002.html#prot:SpecAVSS">LaTeX</a>
@@ -845,11 +1200,11 @@
       Protocol
       </span>
       <span class="protocol_thmlabel">11</span></div>
-    <div class="thm_thmcontent"><p>  Blablabla  <figcaption>
+    <div class="thm_thmcontent"><p>  <em>Ideal implementation.</em> The trusted third party receives the leader’s input and broadcasts it to every process when the leader is correct; otherwise it broadcasts an arbitrary message \(m'\) chosen non-deterministically.  <figcaption>
   <span class="caption_title"></span> 
   <span class="caption_ref">None</span> 
   <span class="caption_text"></span> 
-</figcaption>Ideal Implementation of BRB  <b class="bfseries">Input:</b> \(m \in \{ 0,1\} ^*\) for the leader <b class="bfseries">Code for the leader:</b> send \(\langle input, m\rangle \) to the third party <b class="bfseries">Code for every process:</b> <b class="bfseries">upon</b> receiving \(\langle output, m\rangle \) from third party: &#8195;return \(m\) <b class="bfseries">Code for third party:</b> <b class="bfseries">upon</b> receiving \(\langle input, m\rangle \) from leader: &#8195;<b class="bfseries">if</b> leader is correct: &#8195;&#8195;send \(\langle output, m\rangle \) to all &#8195;<b class="bfseries">else</b> &#8195;&#8195;send \(\langle output, m'\rangle \) to all Arbitrary \(m'\)   </p>
+</figcaption>Ideal Implementation of BRB  <b class="bfseries">Input:</b> \(m \in \{ 0,1\} ^*\) for the leader <b class="bfseries">Code for the leader:</b> send \(\langle \textsc{input}, m\rangle \) to the third party <b class="bfseries">Code for every process:</b> <b class="bfseries">upon</b> receiving \(\langle \textsc{output}, m\rangle \) from the third party: &#8195;return \(m\) <b class="bfseries">Code for the third party:</b> <b class="bfseries">upon</b> receiving \(\langle \textsc{input}, m\rangle \) from leader: &#8195;<b class="bfseries">if</b> leader is correct: &#8195;&#8195;send \(\langle \textsc{output}, m\rangle \) to all &#8195;<b class="bfseries">else</b> &#8195;&#8195;send \(\langle \textsc{output}, m'\rangle \) to all Arbitrary \(m'\)   </p>
 </div>
 
     <a class="latex_link" href="sect0002.html#prot:SpecBRB">LaTeX</a>
@@ -879,11 +1234,11 @@
       Protocol
       </span>
       <span class="protocol_thmlabel">7</span></div>
-    <div class="thm_thmcontent"><p>  Blablabla  <figcaption>
+    <div class="thm_thmcontent"><p>  <em>Ideal implementation.</em> The trusted third party records each process’s input, and once a quorum of correct contributions has been received, non-deterministically commits to a binding common core \(bind \subseteq Id\). Each process is then served a partial function whose domain \(S\) is non-deterministically extended above \(bind\), returning the recorded inputs of correct members of \(S\) and arbitrary values for corrupted members.  <figcaption>
   <span class="caption_title"></span> 
   <span class="caption_ref">None</span> 
   <span class="caption_text"></span> 
-</figcaption>Ideal Implementation of Gather  <b class="bfseries">Input:</b> \(m\) <b class="bfseries">Code for every process:</b> send \(\langle input, m\rangle \) to the third party <b class="bfseries">upon</b> receiving \(\langle output, f\rangle \) from third party: &#8195;return \(f\) <b class="bfseries">Code for third party:</b> \(call, bind \gets \emptyset , \emptyset \) <b class="bfseries">upon</b> receiving \(\langle input, m\rangle \) from process \(id\): &#8195;\(call \gets call \cup \{ (id,m)\} \) <b class="bfseries">if</b> \(|F \cup \{ id \in Id \setminus F \mid call[id] \ne \bot \} | {\gt} n-f\) and \(bind = \bot \): &#8195;\(bind \gets S \subseteq F \cup \{ id \in Id \setminus F \mid (id,\cdot ) \in call\} \) Non-deterministic affectation <b class="bfseries">upon</b> \(bind \ne \bot \): &#8195;for all \(id \in Id\), select \(bind \subseteq S \subseteq F \cup \{ id \in Id \setminus F \mid (id,\cdot ) \in call\} \) and <br />send \(\langle output, \{ (id,m) \in call \mid id \in S \setminus F\}  \cup \{ (id, \cdot ) \mid id \in S \cap F\} \rangle \) to process \(id\)   </p>
+</figcaption>Ideal Implementation of Gather  <b class="bfseries">Input:</b> \(m\) <b class="bfseries">Code for every process:</b> send \(\langle \textsc{input}, m\rangle \) to the third party <b class="bfseries">upon</b> receiving \(\langle \textsc{output}, f\rangle \) from the third party: &#8195;return \(f\) <b class="bfseries">Code for the third party:</b> \(call, bind \gets \emptyset , \bot \) <b class="bfseries">upon</b> receiving \(\langle \textsc{input}, m\rangle \) from process \(id\): &#8195;\(call \gets call \cup \{ (id, m)\} \) <b class="bfseries">upon</b> \(|F \cup \{ id \in Id \setminus F \mid (id, \cdot ) \in call\} | \ge n-f\) and \(bind = \bot \): &#8195;\(bind \gets S\) for some \(S \subseteq F \cup \{ j \in Id \setminus F \mid (j, \cdot ) \in call\} \) Non-deterministic choice <b class="bfseries">upon</b> \(bind \ne \bot \) and not sent \(\langle \textsc{output}, \cdot \rangle \) to process \(id\): &#8195;select \(bind \subseteq S \subseteq F \cup \{ j \in Id \setminus F \mid (j, \cdot ) \in call\} \) and &#8195;send \(\langle \textsc{output}, \{ (j, m) \in call \mid j \in S \setminus F\}  \cup \{ (j, \cdot ) \mid j \in S \cap F\} \rangle \) to process \(id\)   </p>
 </div>
 
     <a class="latex_link" href="sect0002.html#prot:SpecGather">LaTeX</a>
@@ -913,11 +1268,11 @@
       Protocol
       </span>
       <span class="protocol_thmlabel">3</span></div>
-    <div class="thm_thmcontent"><p>  Blablabla  <figcaption>
+    <div class="thm_thmcontent"><p>  <em>Ideal implementation.</em> The trusted third party tallies the contributions and, as soon as a quorum supports some bit \(b\), fixes \(bind\) to \(b\) and sets the global grade: \(A\) if no correct process input \(1-b\), otherwise \(C\). Each process is then served either the highest grade pair \((bind, A)\) (resp. \((\bot , C)\)) or the conservative \((bind, B)\) as chosen non-deterministically by the adversary.  <figcaption>
   <span class="caption_title"></span> 
   <span class="caption_ref">None</span> 
   <span class="caption_text"></span> 
-</figcaption>Ideal Implementation of GBCA  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) <b class="bfseries">Code for every process:</b> send \(\langle input, b\rangle \) to the third party <b class="bfseries">upon</b> receiving \(\langle output, (b,g)\rangle \) from third party &#8195;return \((b,g)\) <b class="bfseries">Code for third party:</b> \(bind,grade,call \gets \bot ,\bot ,(\bot )^{Id}\) <b class="bfseries">upon</b> receiving \(\langle input, b\rangle \) from a process \(id\): &#8195;\(call(id) \gets b\) <b class="bfseries">upon</b> \(|F| + \{ id \in Id \setminus F \mid call(id) = b\}  \ge n-f\): &#8195;\(bind \gets b\) &#8195;<b class="bfseries">if</b> \(\{ id \in Id \setminus F \mid call(id) = 1-b\}  = 0\): &#8195;&#8195;\(grade \gets A\) &#8195;<b class="bfseries">else</b> &#8195;&#8195;\(grade \gets C\) <b class="bfseries">upon</b> \(bind = \bot \) and \(grade = A\) and not sent \(\langle output, \cdot \rangle \) to process \(id\): &#8195;send \(\langle bind, B\rangle \) or \(\langle output, (bind, A)\rangle \) to process \(id\) <b class="bfseries">upon</b> \(bind = \bot \) and \(grade = C\) and not sent \(\langle output, \cdot \rangle \) to process \(id\): &#8195;send \(\langle bind, B\rangle \) or \(\langle output, (\bot , C)\rangle \) to process \(id\)   </p>
+</figcaption>Ideal Implementation of GBCA  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) <b class="bfseries">Code for every process:</b> send \(\langle \textsc{input}, b\rangle \) to the third party <b class="bfseries">upon</b> receiving \(\langle \textsc{output}, (b,g)\rangle \) from the third party: &#8195;return \((b,g)\) <b class="bfseries">Code for the third party:</b> \(bind, grade, call \gets \bot , \bot , (\bot )^{Id}\) <b class="bfseries">upon</b> receiving \(\langle \textsc{input}, b\rangle \) from a process \(id\): &#8195;\(call[id] \gets b\) <b class="bfseries">upon</b> \(|F \cup \{ id \in Id \setminus F \mid call[id] = b\} | \ge n-f\): &#8195;\(bind \gets b\) &#8195;<b class="bfseries">if</b> \(\{ id \in Id \setminus F \mid call[id] = 1-b\}  = \emptyset \): &#8195;&#8195;\(grade \gets A\) &#8195;<b class="bfseries">else</b> &#8195;&#8195;\(grade \gets C\) <b class="bfseries">upon</b> \(bind \ne \bot \) and \(grade = A\) and not sent \(\langle \textsc{output}, \cdot \rangle \) to process \(id\): &#8195;send \(\langle \textsc{output}, (bind, B)\rangle \) or \(\langle \textsc{output}, (bind, A)\rangle \) to process \(id\) <b class="bfseries">upon</b> \(bind \ne \bot \) and \(grade = C\) and not sent \(\langle \textsc{output}, \cdot \rangle \) to process \(id\): &#8195;send \(\langle \textsc{output}, (bind, B)\rangle \) or \(\langle \textsc{output}, (\bot , C)\rangle \) to process \(id\)   </p>
 </div>
 
     <a class="latex_link" href="sect0002.html#prot:SpecGBCA">LaTeX</a>
@@ -947,11 +1302,11 @@
       Protocol
       </span>
       <span class="protocol_thmlabel">9</span></div>
-    <div class="thm_thmcontent"><p>  Blablabla  <figcaption>
+    <div class="thm_thmcontent"><p>  <em>Ideal implementation.</em> The trusted third party tracks which processes have called Assignment; once a quorum is reached, it issues an \(\langle \textsc{assign}, id\rangle \) notification for every \(id \in Id\). On Retrieval, after enough processes have asked, it samples a fresh value \(\mu \) uniformly over the output domain and delivers it to every process.  <figcaption>
   <span class="caption_title"></span> 
   <span class="caption_ref">None</span> 
   <span class="caption_text"></span> 
-</figcaption>Ideal Implementation of RSD  \(x \gets 0\) \(y {\gt} 0\) loop   </p>
+</figcaption>Ideal Implementation of RSD  <b class="bfseries">Operation:</b> \(RSD.Asg()\) <b class="bfseries">Code for every process:</b> send \(\langle \textsc{input} \rangle \) to the third party. <b class="bfseries">upon</b> receiving \(\langle \textsc{assign}, id\rangle \) from the third party: &#8195;<b class="bfseries">event</b> \(ValueAssigned(id)\) <b class="bfseries">Code for the third party:</b> \(call \gets (\bot )^{Id}\) <b class="bfseries">upon</b> receiving \(\langle \textsc{input} \rangle \) from process \(id\): &#8195;\(call[id] \gets \top \) <b class="bfseries">upon</b> \(|F \cup \{ id \in Id \setminus F \mid call[id] = \top \} | \ge n-f\): &#8195;\(\forall id \in Id\), send \(\langle \textsc{assign}, id\rangle \) to all <b class="bfseries">Operation:</b> \(RSD.Ret()\) <b class="bfseries">Code for every process:</b> send \(\langle \textsc{retrieve} \rangle \) to the third party. <b class="bfseries">upon</b> receiving \(\langle \textsc{output}, x\rangle \) from the third party: &#8195;return \(x\) <b class="bfseries">Code for the third party:</b> \(call', out \gets (\bot )^{Id}, (\bot )^{Id}\) <b class="bfseries">upon</b> receiving \(\langle \textsc{retrieve} \rangle \) from process \(id\): &#8195;\(call'[id] \gets \top \) <b class="bfseries">upon</b> \(|F \cup \{ id \in Id \setminus F \mid call'[id] = \top \} | \ge n-f\) and \(out[id] = \bot \): &#8195;\(out[id] \gets \mu \) \(\mu \) samples uniformly on the domain of outputs &#8195;send \(\langle \textsc{output}, out[id] \rangle \) to all   </p>
 </div>
 
     <a class="latex_link" href="sect0002.html#prot:SpecRSD">LaTeX</a>
@@ -981,11 +1336,11 @@
       Protocol
       </span>
       <span class="protocol_thmlabel">5</span></div>
-    <div class="thm_thmcontent"><p>  Blablabla  <figcaption>
+    <div class="thm_thmcontent"><p>  <em>Ideal implementation.</em> The trusted third party samples a coin \(r\) from a distribution \(\mu \) such that \(\mu (0) = \mu (1) = \epsilon \) and \(\mu (\bot ) = 1 - 2\epsilon \). If \(r \in \{ 0,1\} \) the same value is broadcast to every process; otherwise each process is delivered an adversarially-chosen bit, modelling the worst case where the coin does not coordinate the honest parties.  <figcaption>
   <span class="caption_title"></span> 
   <span class="caption_ref">None</span> 
   <span class="caption_text"></span> 
-</figcaption>Ideal Implementation of WCC  <b class="bfseries">Input:</b> none <b class="bfseries">Code for every process:</b> send \(\langle input, b\rangle \) to the third party <b class="bfseries">upon</b> receiving \(\langle output, b\rangle \) from third party &#8195;return \(b\) <b class="bfseries">Code for third party:</b> \(r \gets \mu \) \(\mu : 1 \mapsto \epsilon ; 0 \mapsto \epsilon ; \bot \mapsto 1-2\epsilon \) <b class="bfseries">if</b> \(r \ne \bot \): &#8195;send \(\langle output, r \rangle \) to all <b class="bfseries">alse</b> &#8195;for all \(id \in Id\), send \(\langle output, 0\rangle \) <b class="bfseries">or</b> \(\langle output, 1\rangle \) to process \(id\)   </p>
+</figcaption>Ideal Implementation of WCC  <b class="bfseries">Input:</b> none <b class="bfseries">Code for every process:</b> send \(\langle \textsc{input} \rangle \) to the third party <b class="bfseries">upon</b> receiving \(\langle \textsc{output}, b\rangle \) from the third party: &#8195;return \(b\) <b class="bfseries">Code for the third party:</b> \(r \gets \mu \) \(\mu \): \(1 \mapsto \epsilon \), \(0 \mapsto \epsilon \), \(\bot \mapsto 1 - 2\epsilon \) <b class="bfseries">if</b> \(r \ne \bot \): &#8195;send \(\langle \textsc{output}, r \rangle \) to all <b class="bfseries">else</b> &#8195;for all \(id \in Id\), send \(\langle \textsc{output}, 0\rangle \) <b class="bfseries">or</b> \(\langle \textsc{output}, 1\rangle \) to process \(id\)   </p>
 </div>
 
     <a class="latex_link" href="sect0002.html#prot:SpecWCC">LaTeX</a>
@@ -1014,7 +1369,7 @@
       <span class="theorem_thmcaption">
       Theorem
       </span>
-      <span class="theorem_thmlabel">9</span></div>
+      <span class="theorem_thmlabel">6</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{ABA.Concrete}\) satisfies Validity, Agreement and Almost-Sure Termination. </p>
 </div>
 
@@ -1044,7 +1399,7 @@
       <span class="theorem_thmcaption">
       Theorem
       </span>
-      <span class="theorem_thmlabel">10</span></div>
+      <span class="theorem_thmlabel">7</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{ABA.Spec}\) simulates \(\mathsf{ABA.Concrete}\). </p>
 </div>
 
@@ -1074,7 +1429,7 @@
       <span class="theorem_thmcaption">
       Theorem
       </span>
-      <span class="theorem_thmlabel">23</span></div>
+      <span class="theorem_thmlabel">20</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{BRB.Spec}\) simulates \(\mathsf{BRB.Impl}\). No sub-protocol: direct proof. </p>
 </div>
 
@@ -1104,7 +1459,7 @@
       <span class="theorem_thmcaption">
       Theorem
       </span>
-      <span class="theorem_thmlabel">17</span></div>
+      <span class="theorem_thmlabel">14</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{Gather.Spec}\) simulates \(\mathsf{Gather.Concrete}\). </p>
 </div>
 
@@ -1134,7 +1489,7 @@
       <span class="theorem_thmcaption">
       Theorem
       </span>
-      <span class="theorem_thmlabel">16</span></div>
+      <span class="theorem_thmlabel">13</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{GBCA.Spec}\) simulates \(\mathsf{GBCA.Impl}\). No sub-protocol: direct proof. </p>
 </div>
 
@@ -1164,7 +1519,7 @@
       <span class="theorem_thmcaption">
       Theorem
       </span>
-      <span class="theorem_thmlabel">20</span></div>
+      <span class="theorem_thmlabel">17</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{RSD.Spec}\) simulates \(\mathsf{RSD.Concrete}\). </p>
 </div>
 
@@ -1194,7 +1549,7 @@
       <span class="theorem_thmcaption">
       Theorem
       </span>
-      <span class="theorem_thmlabel">13</span></div>
+      <span class="theorem_thmlabel">10</span></div>
     <div class="thm_thmcontent"><p>   \(\mathsf{WCC.Spec}\) simulates \(\mathsf{WCC.Concrete}\). </p>
 </div>
 
@@ -1202,6 +1557,36 @@
     
     
   <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/WCC.Sim">Lean</a>
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="thm:weaksim_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="thm:weaksim" style="display: none">
+    <div class="thm_thmheading">
+      <span class="theorem_thmcaption">
+      Theorem
+      </span>
+      <span class="theorem_thmlabel">3</span></div>
+    <div class="thm_thmcontent"><p> Given two PLTSs \(\mathcal{P}\) and \(\mathcal{P}'\), \(\mathcal{T}\subseteq \mathcal{T}'\) only if there exists a weak simulation of \(\mathcal{P}\) by \(\mathcal{P}'\). </p>
+</div>
+
+    <a class="latex_link" href="sect0001.html#thm:weaksim">LaTeX</a>
+    
+    
+  
     
     
   
@@ -1229,7 +1614,7 @@ graphContainer.graphviz({useWorker: true})
     .width(width)
     .height(height)
     .fit(true)
-    .renderDot(`strict digraph "" {	graph [bgcolor=transparent];	node [label="\N",		penwidth=1.8	];	edge [arrowhead=vee];	"prot:ImplWCC"	[color=blue,		label=ImplWCC,		shape=ellipse];	"def:WCCHybrid"	[label=WCCHybrid,		shape=box];	"prot:ImplWCC" -> "def:WCCHybrid"	[style=dashed];	"def:WCCConcrete"	[label=WCCConcrete,		shape=box];	"prot:ImplWCC" -> "def:WCCConcrete"	[style=dashed];	"lem:WCCSubst"	[label=WCCSubst,		shape=ellipse];	"def:WCCHybrid" -> "lem:WCCSubst"	[style=dashed];	"lem:WCCCore"	[label=WCCCore,		shape=ellipse];	"def:WCCHybrid" -> "lem:WCCCore"	[style=dashed];	"def:WCCConcrete" -> "lem:WCCSubst"	[style=dashed];	"def:ABAConcrete"	[label=ABAConcrete,		shape=box];	"def:WCCConcrete" -> "def:ABAConcrete"	[style=dashed];	"thm:WCCSim"	[label=WCCSim,		shape=ellipse];	"lem:WCCSubst" -> "thm:WCCSim";	"lem:WCCCore" -> "thm:WCCSim";	"lem:ABASubst"	[label=ABASubst,		shape=ellipse];	"def:ABAConcrete" -> "lem:ABASubst"	[style=dashed];	"prot:SpecBRB"	[color=blue,		label=SpecBRB,		shape=ellipse];	"def:GatherHybrid"	[label=GatherHybrid,		shape=box];	"prot:SpecBRB" -> "def:GatherHybrid"	[style=dashed];	"def:RSDHybrid"	[label=RSDHybrid,		shape=box];	"prot:SpecBRB" -> "def:RSDHybrid"	[style=dashed];	"thm:BRBSim"	[label=BRBSim,		shape=ellipse];	"prot:SpecBRB" -> "thm:BRBSim"	[style=dashed];	"lem:GatherCore"	[label=GatherCore,		shape=ellipse];	"def:GatherHybrid" -> "lem:GatherCore"	[style=dashed];	"lem:GatherSubst"	[label=GatherSubst,		shape=ellipse];	"def:GatherHybrid" -> "lem:GatherSubst"	[style=dashed];	"lem:RSDCore"	[label=RSDCore,		shape=ellipse];	"def:RSDHybrid" -> "lem:RSDCore"	[style=dashed];	"lem:RSDSubst"	[label=RSDSubst,		shape=ellipse];	"def:RSDHybrid" -> "lem:RSDSubst"	[style=dashed];	"thm:BRBSim" -> "lem:GatherSubst";	"thm:BRBSim" -> "lem:RSDSubst";	"thm:GatherSim"	[label=GatherSim,		shape=ellipse];	"lem:GatherCore" -> "thm:GatherSim";	"lem:GatherSubst" -> "thm:GatherSim";	"thm:RSDSim"	[label=RSDSim,		shape=ellipse];	"lem:RSDCore" -> "thm:RSDSim";	"lem:RSDSubst" -> "thm:RSDSim";	"thm:WCCSim" -> "lem:ABASubst";	"thm:GatherSim" -> "lem:WCCSubst";	"thm:GBCASim"	[label=GBCASim,		shape=ellipse];	"thm:GBCASim" -> "lem:ABASubst";	"thm:ABASim"	[label=ABASim,		shape=ellipse];	"lem:ABASubst" -> "thm:ABASim";	"thm:ABACorrect"	[label=ABACorrect,		shape=ellipse];	"thm:ABASim" -> "thm:ABACorrect";	"prot:ImplGBCA"	[color=blue,		label=ImplGBCA,		shape=ellipse];	"prot:ImplGBCA" -> "def:ABAConcrete"	[style=dashed];	"prot:ImplGBCA" -> "thm:GBCASim"	[style=dashed];	"prot:ImplABA"	[color=blue,		label=ImplABA,		shape=ellipse];	"prot:ImplABA" -> "def:ABAConcrete"	[style=dashed];	"def:ABAHybrid"	[label=ABAHybrid,		shape=box];	"prot:ImplABA" -> "def:ABAHybrid"	[style=dashed];	"def:ABAHybrid" -> "lem:ABASubst"	[style=dashed];	"lem:ABACore"	[label=ABACore,		shape=ellipse];	"def:ABAHybrid" -> "lem:ABACore"	[style=dashed];	"lem:ABACore" -> "thm:ABASim";	"prot:SpecGBCA"	[color=blue,		label=SpecGBCA,		shape=ellipse];	"prot:SpecGBCA" -> "thm:GBCASim"	[style=dashed];	"prot:SpecGBCA" -> "def:ABAHybrid"	[style=dashed];	"prot:SpecRSD"	[color=blue,		label=SpecRSD,		shape=ellipse];	"prot:SpecRSD" -> "def:WCCHybrid"	[style=dashed];	"prot:SpecRSD" -> "lem:RSDCore"	[style=dashed];	"thm:RSDSim" -> "lem:WCCSubst";	"prot:ImplBRB"	[color=blue,		label=ImplBRB,		shape=ellipse];	"prot:ImplBRB" -> "thm:BRBSim"	[style=dashed];	"def:RSDConcrete"	[label=RSDConcrete,		shape=box];	"prot:ImplBRB" -> "def:RSDConcrete"	[style=dashed];	"def:GatherConcrete"	[label=GatherConcrete,		shape=box];	"prot:ImplBRB" -> "def:GatherConcrete"	[style=dashed];	"def:RSDConcrete" -> "def:WCCConcrete"	[style=dashed];	"def:RSDConcrete" -> "lem:RSDSubst"	[style=dashed];	"def:GatherConcrete" -> "def:WCCConcrete"	[style=dashed];	"def:GatherConcrete" -> "lem:GatherSubst"	[style=dashed];	"prot:ImplRSD"	[color=blue,		label=ImplRSD,		shape=ellipse];	"prot:ImplRSD" -> "def:RSDHybrid"	[style=dashed];	"prot:ImplRSD" -> "def:RSDConcrete"	[style=dashed];	"prot:SpecGather"	[color=blue,		label=SpecGather,		shape=ellipse];	"prot:SpecGather" -> "def:WCCHybrid"	[style=dashed];	"prot:SpecGather" -> "lem:GatherCore"	[style=dashed];	"prot:SpecABA"	[color=blue,		label=SpecABA,		shape=ellipse];	"prot:SpecABA" -> "lem:ABACore"	[style=dashed];	"prot:SpecWCC"	[color=blue,		label=SpecWCC,		shape=ellipse];	"prot:SpecWCC" -> "lem:WCCCore"	[style=dashed];	"prot:SpecWCC" -> "def:ABAHybrid"	[style=dashed];	"prot:ImplGather"	[color=blue,		label=ImplGather,		shape=ellipse];	"prot:ImplGather" -> "def:GatherHybrid"	[style=dashed];	"prot:ImplGather" -> "def:GatherConcrete"	[style=dashed];	"prot:SpecAVSS"	[color=blue,		label=SpecAVSS,		shape=ellipse];	"prot:SpecAVSS" -> "def:RSDHybrid"	[style=dashed];	"prot:SpecAVSS" -> "def:RSDConcrete"	[style=dashed];}`)
+    .renderDot(`strict digraph "" {	graph [bgcolor=transparent];	node [label="\N",		penwidth=1.8	];	edge [arrowhead=vee];	"prot:SpecGBCA"	[color=blue,		label=SpecGBCA,		shape=ellipse];	"thm:GBCASim"	[label=GBCASim,		shape=ellipse];	"prot:SpecGBCA" -> "thm:GBCASim"	[style=dashed];	"def:ABAHybrid"	[label=ABAHybrid,		shape=box];	"prot:SpecGBCA" -> "def:ABAHybrid"	[style=dashed];	"lem:ABASubst"	[label=ABASubst,		shape=ellipse];	"thm:GBCASim" -> "lem:ABASubst";	"def:ABAHybrid" -> "lem:ABASubst"	[style=dashed];	"lem:ABACore"	[label=ABACore,		shape=ellipse];	"def:ABAHybrid" -> "lem:ABACore"	[style=dashed];	"thm:ABASim"	[label=ABASim,		shape=ellipse];	"lem:ABASubst" -> "thm:ABASim";	"lem:ABACore" -> "thm:ABASim";	a0000000007	[color=blue,		fillcolor="#A3D6FF",		label=a0000000007,		shape=box,		style=filled];	"alg:simulation"	[color=blue,		fillcolor="#A3D6FF",		label=simulation,		shape=ellipse,		style=filled];	"thm:RSDSim"	[label=RSDSim,		shape=ellipse];	"lem:WCCSubst"	[label=WCCSubst,		shape=ellipse];	"thm:RSDSim" -> "lem:WCCSubst";	"thm:WCCSim"	[label=WCCSim,		shape=ellipse];	"lem:WCCSubst" -> "thm:WCCSim";	"thm:WCCSim" -> "lem:ABASubst";	"prot:SpecGather"	[color=blue,		label=SpecGather,		shape=ellipse];	"lem:GatherCore"	[label=GatherCore,		shape=ellipse];	"prot:SpecGather" -> "lem:GatherCore"	[style=dashed];	"def:WCCHybrid"	[label=WCCHybrid,		shape=box];	"prot:SpecGather" -> "def:WCCHybrid"	[style=dashed];	"thm:GatherSim"	[label=GatherSim,		shape=ellipse];	"lem:GatherCore" -> "thm:GatherSim";	"def:WCCHybrid" -> "lem:WCCSubst"	[style=dashed];	"lem:WCCCore"	[label=WCCCore,		shape=ellipse];	"def:WCCHybrid" -> "lem:WCCCore"	[style=dashed];	"thm:GatherSim" -> "lem:WCCSubst";	"lem:WCCCore" -> "thm:WCCSim";	"prot:SpecRSD"	[color=blue,		label=SpecRSD,		shape=ellipse];	"prot:SpecRSD" -> "def:WCCHybrid"	[style=dashed];	"lem:RSDCore"	[label=RSDCore,		shape=ellipse];	"prot:SpecRSD" -> "lem:RSDCore"	[style=dashed];	"lem:RSDCore" -> "thm:RSDSim";	"prot:ImplRSD"	[color=blue,		label=ImplRSD,		shape=ellipse];	"def:RSDConcrete"	[label=RSDConcrete,		shape=box];	"prot:ImplRSD" -> "def:RSDConcrete"	[style=dashed];	"def:RSDHybrid"	[label=RSDHybrid,		shape=box];	"prot:ImplRSD" -> "def:RSDHybrid"	[style=dashed];	"def:WCCConcrete"	[label=WCCConcrete,		shape=box];	"def:RSDConcrete" -> "def:WCCConcrete"	[style=dashed];	"lem:RSDSubst"	[label=RSDSubst,		shape=ellipse];	"def:RSDConcrete" -> "lem:RSDSubst"	[style=dashed];	"def:RSDHybrid" -> "lem:RSDCore"	[style=dashed];	"def:RSDHybrid" -> "lem:RSDSubst"	[style=dashed];	"def:WCCConcrete" -> "lem:WCCSubst"	[style=dashed];	"def:ABAConcrete"	[label=ABAConcrete,		shape=box];	"def:WCCConcrete" -> "def:ABAConcrete"	[style=dashed];	"lem:RSDSubst" -> "thm:RSDSim";	"prot:SpecAVSS"	[color=blue,		label=SpecAVSS,		shape=ellipse];	"prot:SpecAVSS" -> "def:RSDConcrete"	[style=dashed];	"prot:SpecAVSS" -> "def:RSDHybrid"	[style=dashed];	a0000000008	[color=blue,		fillcolor="#A3D6FF",		label=a0000000008,		shape=box,		style=filled];	"def:ABAConcrete" -> "lem:ABASubst"	[style=dashed];	"thm:ABACorrect"	[label=ABACorrect,		shape=ellipse];	"thm:ABASim" -> "thm:ABACorrect";	"def:GatherConcrete"	[label=GatherConcrete,		shape=box];	"def:GatherConcrete" -> "def:WCCConcrete"	[style=dashed];	"lem:GatherSubst"	[label=GatherSubst,		shape=ellipse];	"def:GatherConcrete" -> "lem:GatherSubst"	[style=dashed];	"lem:GatherSubst" -> "thm:GatherSim";	a0000000015	[color=blue,		fillcolor="#A3D6FF",		label=a0000000015,		shape=ellipse,		style=filled];	"thm:BRBSim"	[label=BRBSim,		shape=ellipse];	"thm:BRBSim" -> "lem:RSDSubst";	"thm:BRBSim" -> "lem:GatherSubst";	"def:GatherHybrid"	[label=GatherHybrid,		shape=box];	"def:GatherHybrid" -> "lem:GatherCore"	[style=dashed];	"def:GatherHybrid" -> "lem:GatherSubst"	[style=dashed];	a0000000019	[color=blue,		fillcolor="#A3D6FF",		label=a0000000019,		shape=box,		style=filled];	a0000000023	[color=blue,		fillcolor="#A3D6FF",		label=a0000000023,		shape=ellipse,		style=filled];	"prot:SpecABA"	[color=blue,		label=SpecABA,		shape=ellipse];	"prot:SpecABA" -> "lem:ABACore"	[style=dashed];	"prot:ImplWCC"	[color=blue,		label=ImplWCC,		shape=ellipse];	"prot:ImplWCC" -> "def:WCCHybrid"	[style=dashed];	"prot:ImplWCC" -> "def:WCCConcrete"	[style=dashed];	a0000000009	[color=blue,		fillcolor="#A3D6FF",		label=a0000000009,		shape=box,		style=filled];	a0000000010	[color=blue,		fillcolor="#A3D6FF",		label=a0000000010,		shape=box,		style=filled];	"prot:SpecWCC"	[color=blue,		label=SpecWCC,		shape=ellipse];	"prot:SpecWCC" -> "def:ABAHybrid"	[style=dashed];	"prot:SpecWCC" -> "lem:WCCCore"	[style=dashed];	"prot:ImplABA"	[color=blue,		label=ImplABA,		shape=ellipse];	"prot:ImplABA" -> "def:ABAHybrid"	[style=dashed];	"prot:ImplABA" -> "def:ABAConcrete"	[style=dashed];	a0000000014	[color=blue,		fillcolor="#A3D6FF",		label=a0000000014,		shape=box,		style=filled];	a0000000022	[color=blue,		fillcolor="#A3D6FF",		label=a0000000022,		shape=box,		style=filled];	"prot:ImplGBCA"	[color=blue,		label=ImplGBCA,		shape=ellipse];	"prot:ImplGBCA" -> "thm:GBCASim"	[style=dashed];	"prot:ImplGBCA" -> "def:ABAConcrete"	[style=dashed];	"prot:SpecBRB"	[color=blue,		label=SpecBRB,		shape=ellipse];	"prot:SpecBRB" -> "def:RSDHybrid"	[style=dashed];	"prot:SpecBRB" -> "thm:BRBSim"	[style=dashed];	"prot:SpecBRB" -> "def:GatherHybrid"	[style=dashed];	"thm:weaksim"	[color=blue,		fillcolor="#A3D6FF",		label=weaksim,		shape=ellipse,		style=filled];	a0000000020	[color=blue,		fillcolor="#A3D6FF",		label=a0000000020,		shape=ellipse,		style=filled];	"prot:ImplGather"	[color=blue,		label=ImplGather,		shape=ellipse];	"prot:ImplGather" -> "def:GatherConcrete"	[style=dashed];	"prot:ImplGather" -> "def:GatherHybrid"	[style=dashed];	"prot:ImplBRB"	[color=blue,		label=ImplBRB,		shape=ellipse];	"prot:ImplBRB" -> "def:RSDConcrete"	[style=dashed];	"prot:ImplBRB" -> "def:GatherConcrete"	[style=dashed];	"prot:ImplBRB" -> "thm:BRBSim"	[style=dashed];}`)
     .on("end", interactive);
 
 latexLabelEscaper = function(label) {

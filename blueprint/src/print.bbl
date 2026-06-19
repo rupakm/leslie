@@ -34,6 +34,17 @@ Constantin Enea, Rupak Majumdar, Harshit~Jitendra Motwani, and V.~R. Sathiyanara
 Luciano Freitas, Petr Kuznetsov, and Andrei Tonkikh.
 \newblock Distributed randomness from approximate agreement, 2022.
 
+\bibitem[LT26]{Lynch2026Introduction}
+Nancy~A Lynch and Mark~R Tuttle.
+\newblock An introduction to input/output automata.
+\newblock {\em Form. Asp. Comput.}, January 2026.
+\newblock Just Accepted.
+
+\bibitem[LV95]{Lynch1995Forward}
+N.~Lynch and F.~Vaandrager.
+\newblock Forward and backward simulations.
+\newblock {\em Information and Computation}, 121(2):214--233, 1995.
+
 \bibitem[SA21]{Stern2021Living}
 Gilad Stern and Ittai Abraham.
 \newblock Living with asynchrony: the gather protocol.
@@ -43,5 +54,10 @@ Gilad Stern and Ittai Abraham.
 Gilad Stern and Ittai Abraham.
 \newblock Gather with binding and verifiability.
 \newblock \url{https://decentralizedthoughts.github.io/2024-01-09-gather-with-binding-and-verifiability/}, 2024.
+
+\bibitem[Seg95]{Segala1995Compositional}
+Roberto Segala.
+\newblock A compositional trace-based semantics for probabilistic automata.
+\newblock In Insup Lee and Scott~A. Smolka, editors, {\em CONCUR '95: Concurrency Theory}, pages 234--248, Berlin, Heidelberg, 1995. Springer Berlin Heidelberg.
 
 \end{thebibliography}

@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999997 (TeX Live 2025/nixos.org) (preloaded format=xelatex 1980.1.1)  5 JUN 2026 13:10
+This is XeTeX, Version 3.141592653-2.6-0.999997 (TeX Live 2025/nixos.org) (preloaded format=xelatex 1980.1.1)  19 JUN 2026 13:04
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -7,9 +7,9 @@ entering extended mode
 (/home/greghem/leslie/blueprint/src/print.tex
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
-(/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/base/report.cls
+(/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/base/report.cls
 Document Class: report 2025/01/22 v1.4n Standard LaTeX document class
-(/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/base/size10.clo
+(/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/base/size10.clo
 File: size10.clo 2025/01/22 v1.4n Standard LaTeX file (size option)
 )
 \c@part=\count271
@@ -24,14 +24,14 @@ File: size10.clo 2025/01/22 v1.4n Standard LaTeX file (size option)
 \abovecaptionskip=\skip49
 \belowcaptionskip=\skip50
 \bibindent=\dimen148
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/geometry/geometry.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/geometry/geometry.sty
 Package: geometry 2020/01/02 v5.9 Page Geometry
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics/keyval.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics/keyval.sty
 Package: keyval 2022/05/29 v1.15 key=value parser (DPC)
 \KV@toks@=\toks17
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/iftex/ifvtex.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/iftex/ifvtex.sty
 Package: ifvtex 2019/10/25 v1.7 ifvtex legacy package. Use iftex instead.
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/iftex/iftex.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/iftex/iftex.sty
 Package: iftex 2024/12/12 v1.0g TeX engine tests
 ))
 \Gm@cnth=\count280
@@ -46,16 +46,16 @@ Package: iftex 2024/12/12 v1.0g TeX engine tests
 \Gm@layouthoffset=\dimen155
 \Gm@layoutvoffset=\dimen156
 \Gm@dimlist=\toks18
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/l3kernel/expl3.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/l3kernel/expl3.sty
 Package: expl3 2026-01-19 L3 programming layer (loader) 
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/l3backend/l3backend-xetex.def
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/l3backend/l3backend-xetex.def
 File: l3backend-xetex.def 2025-10-09 L3 backend support: XeTeX
 \g__graphics_track_int=\count283
 \g__pdfannot_backend_int=\count284
 \g__pdfannot_backend_link_int=\count285
-)) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsfonts/amssymb.sty
+)) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsfonts/amssymb.sty
 Package: amssymb 2013/01/14 v3.01 AMS font symbols
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsfonts/amsfonts.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsfonts/amsfonts.sty
 Package: amsfonts 2013/01/14 v3.01 Basic AMSFonts support
 \@emptytoks=\toks19
 \symAMSa=\mathgroup4
@@ -63,7 +63,7 @@ Package: amsfonts 2013/01/14 v3.01 Basic AMSFonts support
 LaTeX Font Info:    Redeclaring math symbol \hbar on input line 98.
 LaTeX Font Info:    Overwriting math alphabet `\mathfrak' in version `bold'
 (Font)                  U/euf/m/n --> U/euf/b/n on input line 106.
-)) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amscls/amsthm.sty
+)) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amscls/amsthm.sty
 Package: amsthm 2020/05/29 v2.20.6
 \thm@style=\toks20
 \thm@bodyfont=\toks21
@@ -74,9 +74,9 @@ Package: amsthm 2020/05/29 v2.20.6
 \thm@postskip=\skip52
 \thm@headsep=\skip53
 \dth@everypar=\toks25
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/mathtools/mathtools.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/mathtools/mathtools.sty
 Package: mathtools 2024/10/04 v1.31 mathematical typesetting tools
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/tools/calc.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/tools/calc.sty
 Package: calc 2025/03/01 v4.3b Infix arithmetic (KKT,FJ)
 \calc@Acount=\count286
 \calc@Bcount=\count287
@@ -88,23 +88,23 @@ LaTeX Info: Redefining \setlength on input line 86.
 LaTeX Info: Redefining \addtolength on input line 87.
 \calc@Ccount=\count288
 \calc@Cskip=\skip56
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/mathtools/mhsetup.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/mathtools/mhsetup.sty
 Package: mhsetup 2021/03/18 v1.4 programming setup (MH)
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amsmath.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amsmath.sty
 Package: amsmath 2025/07/09 v2.17z AMS math features
 \@mathmargin=\skip57
 
 For additional information on amsmath, use the `?' option.
-(/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amstext.sty
+(/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amstext.sty
 Package: amstext 2024/11/17 v2.01 AMS text
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amsgen.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amsgen.sty
 File: amsgen.sty 1999/11/30 v2.0 generic functions
 \@emptytoks=\toks26
 \ex@=\dimen159
-)) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amsbsy.sty
+)) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amsbsy.sty
 Package: amsbsy 1999/11/29 v1.2d Bold Symbols
 \pmbraise@=\dimen160
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amsopn.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amsopn.sty
 Package: amsopn 2022/04/08 v2.04 operator names
 )
 \inf@bad=\count289
@@ -166,77 +166,77 @@ LaTeX Info: Redefining \] on input line 2951.
 \l_MT_below_shortintertext_sep=\dimen174
 \xmathstrut@box=\box55
 \xmathstrut@dim=\dimen175
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/thmtools/thm-restate.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/thmtools/thm-restate.sty
 Package: thm-restate 2023/05/04 v0.76
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/thmtools/thmtools.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/thmtools/thmtools.sty
 Package: thmtools 2023/05/04 v0.76
 \thmt@toks=\toks31
 \c@thmt@dummyctr=\count302
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/thmtools/thm-patch.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/thmtools/thm-patch.sty
 Package: thm-patch 2023/05/04 v0.76
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/thmtools/parseargs.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/thmtools/parseargs.sty
 Package: parseargs 2023/05/04 v0.76
 \@parsespec=\toks32
-)) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/thmtools/thm-kv.sty
+)) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/thmtools/thm-kv.sty
 Package: thm-kv 2023/05/04 v0.76
 Package thm-kv Info: Theorem names will be uppercased on input line 42.
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/kvsetkeys/kvsetkeys.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/kvsetkeys/kvsetkeys.sty
 Package: kvsetkeys 2022-10-05 v1.19 Key value parser (HO)
 )
 Package thm-kv Info: kvsetkeys patch (v1.16 or later) on input line 158.
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/thmtools/thm-autoref.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/thmtools/thm-autoref.sty
 Package: thm-autoref 2023/05/04 v0.76
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/thmtools/aliasctr.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/thmtools/aliasctr.sty
 Package: aliasctr 2023/05/04 v0.76
-)) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/thmtools/thm-listof.sty
+)) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/thmtools/thm-listof.sty
 Package: thm-listof 2023/05/04 v0.76
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/thmtools/thm-amsthm.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/thmtools/thm-amsthm.sty
 Package: thm-amsthm 2023/05/04 v0.76
 \thmt@style@headstyle=\toks33
-))) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/hyperref.sty
+))) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/hyperref.sty
 Package: hyperref 2026-01-29 v7.01p Hypertext links for LaTeX
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/kvdefinekeys/kvdefinekeys.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/kvdefinekeys/kvdefinekeys.sty
 Package: kvdefinekeys 2019-12-19 v1.6 Define keys (HO)
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/pdfescape/pdfescape.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/pdfescape/pdfescape.sty
 Package: pdfescape 2019/12/09 v1.15 Implements pdfTeX's escape features (HO)
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/ltxcmds/ltxcmds.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/ltxcmds/ltxcmds.sty
 Package: ltxcmds 2023-12-04 v1.26 LaTeX kernel commands for general use (HO)
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/pdftexcmds/pdftexcmds.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/pdftexcmds/pdftexcmds.sty
 Package: pdftexcmds 2020-06-27 v0.33 Utility functions of pdfTeX for LuaTeX (HO)
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/infwarerr/infwarerr.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/infwarerr/infwarerr.sty
 Package: infwarerr 2019/12/03 v1.5 Providing info/warning/error messages (HO)
 )
 Package pdftexcmds Info: \pdf@primitive is available.
 Package pdftexcmds Info: \pdf@ifprimitive is available.
 Package pdftexcmds Info: \pdfdraftmode not found.
-)) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/hycolor/hycolor.sty
+)) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/hycolor/hycolor.sty
 Package: hycolor 2020-01-27 v1.10 Color options for hyperref/bookmark (HO)
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/nameref.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/nameref.sty
 Package: nameref 2026-01-29 v2.58 Cross-referencing by name of section
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/refcount/refcount.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/refcount/refcount.sty
 Package: refcount 2019/12/15 v3.6 Data extraction from label references (HO)
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/gettitlestring/gettitlestring.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/gettitlestring/gettitlestring.sty
 Package: gettitlestring 2019/12/15 v1.6 Cleanup title references (HO)
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/kvoptions/kvoptions.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/kvoptions/kvoptions.sty
 Package: kvoptions 2022-06-15 v3.15 Key value format for package options (HO)
 ))
 \c@section@level=\count303
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/etoolbox/etoolbox.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/etoolbox/etoolbox.sty
 Package: etoolbox 2025/10/02 v2.5m e-TeX tools for LaTeX (JAW)
 \etb@tempcnta=\count304
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/stringenc/stringenc.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/stringenc/stringenc.sty
 Package: stringenc 2019/11/29 v1.12 Convert strings between diff. encodings (HO)
 )
 \@linkdim=\dimen176
 \Hy@linkcounter=\count305
 \Hy@pagecounter=\count306
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/pd1enc.def
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/pd1enc.def
 File: pd1enc.def 2026-01-29 v7.01p Hyperref: PDFDocEncoding definition (HO)
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/intcalc/intcalc.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/intcalc/intcalc.sty
 Package: intcalc 2019/12/15 v1.3 Expandable calculations with integers (HO)
 )
 \Hy@SavedSpaceFactor=\count307
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/puenc.def
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/puenc.def
 File: puenc.def 2026-01-29 v7.01p Hyperref: PDF Unicode definition (HO)
 )
 Package hyperref Info: Option `unicode' set `true' on input line 4072.
@@ -249,15 +249,15 @@ Package hyperref Info: Backreferencing OFF on input line 4221.
 Package hyperref Info: Implicit mode ON; LaTeX internals redefined.
 Package hyperref Info: Bookmarks ON on input line 4468.
 \c@Hy@tempcnt=\count308
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/url/url.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/url/url.sty
 \Urlmuskip=\muskip18
 Package: url 2013/09/16  ver 3.4  Verb mode for urls, etc.
 )
 LaTeX Info: Redefining \url on input line 4807.
 \XeTeXLinkMargin=\dimen177
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/bitset/bitset.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/bitset/bitset.sty
 Package: bitset 2019/12/09 v1.3 Handle bit-vector datatype (HO)
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/bigintcalc/bigintcalc.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/bigintcalc/bigintcalc.sty
 Package: bigintcalc 2019/12/15 v1.5 Expandable calculations on big integers (HO)
 ))
 \Fld@menulength=\count309
@@ -275,24 +275,24 @@ Package hyperref Info: PDF/A mode OFF on input line 6114.
 \c@Hfootnote=\count312
 )
 Package hyperref Info: Driver (autodetected): hxetex.
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/hxetex.def
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/hxetex.def
 File: hxetex.def 2026-01-29 v7.01p Hyperref driver for XeTeX
 \pdfm@box=\box56
 \c@Hy@AnnotLevel=\count313
 \HyField@AnnotCount=\count314
 \Fld@listcount=\count315
 \c@bookmark@seq@number=\count316
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/rerunfilecheck/rerunfilecheck.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/rerunfilecheck/rerunfilecheck.sty
 Package: rerunfilecheck 2025-06-21 v1.11 Rerun checks for auxiliary files (HO)
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/uniquecounter/uniquecounter.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/uniquecounter/uniquecounter.sty
 Package: uniquecounter 2019/12/15 v1.4 Provide unlimited unique counter (HO)
 )
 Package uniquecounter Info: New unique counter `rerunfilecheck' on input line 284.
 )
 \Hy@SectionHShift=\skip61
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/makecell/makecell.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/makecell/makecell.sty
 Package: makecell 2009/08/03 V0.1e Managing of Tab Column Heads and Cells
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/tools/array.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/tools/array.sty
 Package: array 2025/09/25 v2.6n Tabular extension package (FMi)
 \col@sep=\dimen180
 \ar@mcellbox=\box57
@@ -305,17 +305,17 @@ Package: array 2025/09/25 v2.6n Tabular extension package (FMi)
 \rotheadsize=\dimen182
 \c@nlinenum=\count317
 \TeXr@lab=\toks35
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/unicode-math/unicode-math.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/unicode-math/unicode-math.sty
 Package: unicode-math 2023/08/13 v0.8r Unicode maths in XeLaTeX and LuaLaTeX
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/unicode-math/unicode-math-xetex.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/unicode-math/unicode-math-xetex.sty
 Package: unicode-math-xetex 2023/08/13 v0.8r Unicode maths in XeLaTeX and LuaLaTeX
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/l3packages/xparse/xparse.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/l3packages/xparse/xparse.sty
 Package: xparse 2025-10-09 L3 Experimental document command parser
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/l3packages/l3keys2e/l3keys2e.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/l3packages/l3keys2e/l3keys2e.sty
 Package: l3keys2e 2025-10-09 LaTeX2e option processing using LaTeX3 keys
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/fontspec/fontspec.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/fontspec/fontspec.sty
 Package: fontspec 2025/09/29 v2.9g Font selection for XeLaTeX and LuaLaTeX
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/fontspec/fontspec-xetex.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/fontspec/fontspec-xetex.sty
 Package: fontspec-xetex 2025/09/29 v2.9g Font selection for XeLaTeX and LuaLaTeX
 \l__fontspec_script_int=\count318
 \l__fontspec_language_int=\count319
@@ -331,11 +331,11 @@ Package: fontspec-xetex 2025/09/29 v2.9g Font selection for XeLaTeX and LuaLaTeX
 \l__fontspec_tmpa_dim=\dimen183
 \l__fontspec_tmpb_dim=\dimen184
 \l__fontspec_tmpc_dim=\dimen185
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/base/fontenc.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/base/fontenc.sty
 Package: fontenc 2025/07/18 v2.1d Standard LaTeX package
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/fontspec/fontspec.cfg))) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/base/fix-cm.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/fontspec/fontspec.cfg))) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/base/fix-cm.sty
 Package: fix-cm 2020/11/24 v1.1t fixes to LaTeX
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/base/ts1enc.def
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/base/ts1enc.def
 File: ts1enc.def 2001/06/05 v3.0e (jk/car/fm) Standard LaTeX file
 LaTeX Font Info:    Redeclaring font encoding TS1 on input line 47.
 LaTeX Encoding Info:    Redeclaring text command \capitalcedilla (encoding TS1) on input line 49.
@@ -470,24 +470,24 @@ LaTeX Encoding Info:    Redeclaring text symbol \textdiv (encoding TS1) on input
 \g__um_fonts_used_int=\count330
 \l__um_primecount_int=\count331
 \g__um_primekern_muskip=\muskip19
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/unicode-math/unicode-math-table.tex))) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/algorithms/algorithm.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/unicode-math/unicode-math-table.tex))) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/algorithms/algorithm.sty
 Invalid UTF-8 byte or sequence at line 11 replaced by U+FFFD.
 Package: algorithm 2009/08/24 v0.1 Document Style `algorithm' - floating environment
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/float/float.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/float/float.sty
 Package: float 2001/11/08 v1.3d Float enhancements (AL)
 \c@float@type=\count332
 \float@exts=\toks36
 \float@box=\box59
 \@float@everytoks=\toks37
 \@floatcapt=\box60
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/base/ifthen.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/base/ifthen.sty
 Package: ifthen 2024/03/16 v1.1e Standard LaTeX ifthen package (DPC)
 )
 \@float@every@algorithm=\toks38
 \c@algorithm=\count333
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/algorithmicx/algpseudocode.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/algorithmicx/algpseudocode.sty
 Package: algpseudocode 
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/algorithmicx/algorithmicx.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/algorithmicx/algorithmicx.sty
 Package: algorithmicx 2005/04/27 v1.2 Algorithmicx
 
 Document Style algorithmicx 1.2 - a greatly improved `algorithmic' style
@@ -505,9 +505,10 @@ Document Style algorithmicx 1.2 - a greatly improved `algorithmic' style
 Document Style - pseudocode environments for use with the `algorithmicx' style
 ) (./macros/common.tex
 \c@theorem=\count341
-)
-\c@protocol=\count342
- (./macros/print.tex) (./print.aux)
+\c@definition=\count342
+\c@protocol=\count343
+\c@assumption=\count344
+) (./macros/print.tex) (./print.aux)
 \openout1 = `print.aux'.
 
 LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 38.
@@ -565,28 +566,28 @@ LaTeX Font Info:    ... okay on input line 38.
 * \@reversemarginfalse
 * (1in=72.27pt=25.4mm, 1cm=28.453pt)
 
-(/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics/graphicx.sty
+(/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics/graphicx.sty
 Package: graphicx 2024/12/31 v1.2e Enhanced LaTeX Graphics (DPC,SPQR)
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics/graphics.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics/graphics.sty
 Package: graphics 2024/08/06 v1.4g Standard LaTeX Graphics (DPC,SPQR)
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics/trig.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics/trig.sty
 Package: trig 2023/12/02 v1.11 sin cos tan (DPC)
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics-cfg/graphics.cfg
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics-cfg/graphics.cfg
 File: graphics.cfg 2016/06/04 v1.11 sample graphics configuration
 )
 Package graphics Info: Driver file: xetex.def on input line 106.
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics-def/xetex.def
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics-def/xetex.def
 File: xetex.def 2025/11/01 v5.0p Graphics/color driver for xetex
 ))
 \Gin@req@height=\dimen186
 \Gin@req@width=\dimen187
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics/color.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics/color.sty
 Package: color 2025/01/14 v1.3e Standard LaTeX Color (DPC)
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics-cfg/color.cfg
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics-cfg/color.cfg
 File: color.cfg 2016/01/02 v1.6 sample color configuration
 )
 Package color Info: Driver file: xetex.def on input line 149.
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics/mathcolor.ltx))
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics/mathcolor.ltx))
 Package hyperref Info: Link coloring ON on input line 38.
  (./print.out) (./print.out)
 \@outlinefile=\write3
@@ -753,83 +754,151 @@ LaTeX Font Info:    Font shape `TU/latinmodern-math.otf(3)/m/n' will be
 LaTeX Font Info:    Font shape `TU/latinmodern-math.otf(3)/m/n' will be
 (Font)              scaled to size 5.99936pt on input line 40.
 LaTeX Font Info:    Trying to load font information for U+msa on input line 40.
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsfonts/umsa.fd
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsfonts/umsa.fd
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
 )
 LaTeX Font Info:    Trying to load font information for U+msb on input line 40.
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsfonts/umsb.fd
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsfonts/umsb.fd
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 ) [1
 
 ] (./content.tex [1] (./sections/Preliminaries.tex
+Package hyperref Info: bookmark level for unknown definition defaults to 0 on input line 5.
 LaTeX Font Info:    Font shape `TU/latinmodern-math.otf(2)/m/n' will be
-(Font)              scaled to size 10.00107pt on input line 4.
+(Font)              scaled to size 10.00107pt on input line 9.
 LaTeX Font Info:    Font shape `TU/latinmodern-math.otf(2)/m/n' will be
-(Font)              scaled to size 7.00075pt on input line 4.
+(Font)              scaled to size 7.00075pt on input line 9.
 LaTeX Font Info:    Font shape `TU/latinmodern-math.otf(2)/m/n' will be
-(Font)              scaled to size 5.00053pt on input line 4.
+(Font)              scaled to size 5.00053pt on input line 9.
 LaTeX Font Info:    Font shape `TU/latinmodern-math.otf(3)/m/n' will be
-(Font)              scaled to size 9.99893pt on input line 4.
+(Font)              scaled to size 9.99893pt on input line 9.
 LaTeX Font Info:    Font shape `TU/latinmodern-math.otf(3)/m/n' will be
-(Font)              scaled to size 6.99925pt on input line 4.
+(Font)              scaled to size 6.99925pt on input line 9.
 LaTeX Font Info:    Font shape `TU/latinmodern-math.otf(3)/m/n' will be
-(Font)              scaled to size 4.99947pt on input line 4.
-Package hyperref Info: bookmark level for unknown definition defaults to 0 on input line 8.
+(Font)              scaled to size 4.99947pt on input line 9.
+Package hyperref Info: bookmark level for unknown theorem defaults to 0 on input line 75.
  [1]
-Package hyperref Info: bookmark level for unknown theorem defaults to 0 on input line 127.
-Package hyperref Info: bookmark level for unknown lemma defaults to 0 on input line 134.
- [2]
-Package hyperref Info: bookmark level for unknown proposition defaults to 0 on input line 177.
- [3]) (./sections/Protocols.tex [4]
+Package hyperref Info: bookmark level for unknown algorithm defaults to 0 on input line 95.
+ [2] [3] [4]
+Overfull \hbox (12.97583pt too wide) in paragraph at lines 320--327
+[]\TU/lmr/m/n/10 Let us denote by $[]$ the progressive weak simulation of $[]$ by $[][]$. Then $[][] [][] [][][][][] [][][][] [][][][] [][][][] []
+ []
+
+[5]
+Overfull \hbox (40.39339pt too wide) detected at line 428
+[] [] [][] [] [][]  []  [][][][][][] [] [][][] []
+ []
+
+) (./sections/Protocols.tex [6]
 Package hyperref Info: bookmark level for unknown protocol defaults to 0 on input line 21.
-Package hyperref Info: bookmark level for unknown algorithm defaults to 0 on input line 28.
-
+ [7]
 Overfull \hbox (0.79448pt too wide) in paragraph at lines 82--84
-[][]\TU/lmr/bx/n/10 Definition 27. [][][][]$[] [][] [][][][] [][]$\TU/lmr/m/n/10 , the instantiation of $[]$
+[][]\TU/lmr/bx/n/10 Definition 14. [][][][]$[] [][] [][][][] [][]$\TU/lmr/m/n/10 , the instantiation of $[]$
  []
 
-[5] [6] [7] [8] [9] [10] [11] [12] [13]) (./sections/ProofStructure.tex [14]
-Overfull \hbox (37.94637pt too wide) in paragraph at lines 24--26
-[][][]\TU/lmr/m/n/10 Soundness of probabilistic forward simulation (Theorem [][]12[][]) applied to [][]36[][] yields $[] [][]
+[8] [9] [10] [11] [12] [13] [14]) (./sections/ProofStructure.tex [15] [16]
+
+LaTeX Warning: Reference `thm:pfs-sound' on page 17 undefined on input line 24.
+
+
+LaTeX Warning: Reference `thm:pfs-sound' on page 17 undefined on input line 25.
+
+
+Overfull \hbox (38.80637pt too wide) in paragraph at lines 24--26
+[][][]\TU/lmr/m/n/10 Soundness of probabilistic forward simulation (Theorem []) applied to [][]13[][] yields $[] [][]
  []
 
-[15]) (./print.bbl [16]
-Underfull \hbox (badness 10000) in paragraph at lines 38--41
+[17]
+
+LaTeX Warning: Reference `lem:pfs-transitive' on page 18 undefined on input line 37.
+
+
+LaTeX Warning: Reference `lem:pfs-transitive' on page 18 undefined on input line 38.
+
+Package hyperref Info: bookmark level for unknown lemma defaults to 0 on input line 41.
+
+LaTeX Warning: Reference `thm:pfs-precongruence' on page 18 undefined on input line 48.
+
+
+LaTeX Warning: Reference `thm:pfs-precongruence' on page 18 undefined on input line 49.
+
+
+LaTeX Warning: Reference `lem:pfs-transitive' on page 18 undefined on input line 68.
+
+
+LaTeX Warning: Reference `lem:pfs-transitive' on page 18 undefined on input line 69.
+
+
+LaTeX Warning: Reference `thm:pfs-precongruence' on page 18 undefined on input line 79.
+
+
+LaTeX Warning: Reference `thm:pfs-precongruence' on page 18 undefined on input line 80.
+
+
+LaTeX Warning: Reference `lem:pfs-transitive' on page 18 undefined on input line 108.
+
+
+LaTeX Warning: Reference `lem:pfs-transitive' on page 18 undefined on input line 109.
+
+
+LaTeX Warning: Reference `thm:pfs-precongruence' on page 18 undefined on input line 119.
+
+
+LaTeX Warning: Reference `thm:pfs-precongruence' on page 18 undefined on input line 120.
+
+
+LaTeX Warning: Reference `lem:pfs-transitive' on page 18 undefined on input line 139.
+
+
+LaTeX Warning: Reference `lem:pfs-transitive' on page 18 undefined on input line 140.
+
+
+LaTeX Warning: Reference `thm:pfs-precongruence' on page 18 undefined on input line 150.
+
+
+LaTeX Warning: Reference `thm:pfs-precongruence' on page 18 undefined on input line 151.
+
+[18]) (./print.bbl [19]
+Underfull \hbox (badness 10000) in paragraph at lines 49--52
 []\TU/lmr/m/n/10 Gilad Stern and Ittai Abraham.  Living with asynchrony: the
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 38--41
+Underfull \hbox (badness 10000) in paragraph at lines 49--52
 \TU/lmr/m/n/10 gather protocol.  [][]$[][][][][] [] [] [] [][][][][][][][][][][][][][][][][][][][][] [] [][][][][][] [] [][] []
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 43--46
+Underfull \hbox (badness 10000) in paragraph at lines 54--57
 []\TU/lmr/m/n/10 Gilad Stern and Ittai Abraham.  Gather with binding and
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 43--46
+Underfull \hbox (badness 10000) in paragraph at lines 54--57
 \TU/lmr/m/n/10 verifiability.  [][]$[][][][][] [] [] [] [][][][][][][][][][][][][][][][][][][][][] [] [][][][][][] [] [][] []
  []
 
-)) [17
+[20
 
-] (./print.aux)
+])) [21] (./print.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
  ***********
+
+
+LaTeX Warning: There were undefined references.
+
 Package rerunfilecheck Info: File `print.out' has not changed.
-(rerunfilecheck)             Checksum: E8B57E867D3DCA7CC857D0433E236288;3144.
+(rerunfilecheck)             Checksum: 263D70C20A594CF63E67BA33132991B0;2641.
  ) 
 Here is how much of TeX's memory you used:
- 18343 strings out of 468176
- 346575 string characters out of 5407950
- 950880 words of memory out of 5000000
- 46788 multiletter control sequences out of 15000+600000
- 633164 words of font info for 98 fonts, out of 8000000 for 9000
+ 18345 strings out of 468176
+ 346169 string characters out of 5407950
+ 952880 words of memory out of 5000000
+ 46793 multiletter control sequences out of 15000+600000
+ 633148 words of font info for 96 fonts, out of 8000000 for 9000
  1348 hyphenation exceptions out of 8191
- 90i,15n,107p,585b,597s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 90i,15n,107p,587b,582s stack positions out of 10000i,1000n,20000p,200000b,200000s
 
-Output written on print.pdf (19 pages).
+Output written on print.pdf (23 pages).

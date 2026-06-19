@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999997 (TeX Live 2025/nixos.org) (preloaded format=xelatex 1980.1.1)  3 JUN 2026 16:33
+This is XeTeX, Version 3.141592653-2.6-0.999997 (TeX Live 2025/nixos.org) (preloaded format=xelatex 1980.1.1)  18 JUN 2026 09:33
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -7,9 +7,9 @@ entering extended mode
 (/home/greghem/leslie/blueprint/src/web.tex
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
-(/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/base/report.cls
+(/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/base/report.cls
 Document Class: report 2025/01/22 v1.4n Standard LaTeX document class
-(/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/base/size10.clo
+(/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/base/size10.clo
 File: size10.clo 2025/01/22 v1.4n Standard LaTeX file (size option)
 )
 \c@part=\count271
@@ -24,9 +24,9 @@ File: size10.clo 2025/01/22 v1.4n Standard LaTeX file (size option)
 \abovecaptionskip=\skip49
 \belowcaptionskip=\skip50
 \bibindent=\dimen148
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsfonts/amssymb.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsfonts/amssymb.sty
 Package: amssymb 2013/01/14 v3.01 AMS font symbols
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsfonts/amsfonts.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsfonts/amsfonts.sty
 Package: amsfonts 2013/01/14 v3.01 Basic AMSFonts support
 \@emptytoks=\toks17
 \symAMSa=\mathgroup4
@@ -34,7 +34,7 @@ Package: amsfonts 2013/01/14 v3.01 Basic AMSFonts support
 LaTeX Font Info:    Redeclaring math symbol \hbar on input line 98.
 LaTeX Font Info:    Overwriting math alphabet `\mathfrak' in version `bold'
 (Font)                  U/euf/m/n --> U/euf/b/n on input line 106.
-)) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amscls/amsthm.sty
+)) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amscls/amsthm.sty
 Package: amsthm 2020/05/29 v2.20.6
 \thm@style=\toks18
 \thm@bodyfont=\toks19
@@ -45,21 +45,21 @@ Package: amsthm 2020/05/29 v2.20.6
 \thm@postskip=\skip52
 \thm@headsep=\skip53
 \dth@everypar=\toks23
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amsmath.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amsmath.sty
 Package: amsmath 2025/07/09 v2.17z AMS math features
 \@mathmargin=\skip54
 
 For additional information on amsmath, use the `?' option.
-(/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amstext.sty
+(/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amstext.sty
 Package: amstext 2024/11/17 v2.01 AMS text
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amsgen.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amsgen.sty
 File: amsgen.sty 1999/11/30 v2.0 generic functions
 \@emptytoks=\toks24
 \ex@=\dimen149
-)) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amsbsy.sty
+)) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amsbsy.sty
 Package: amsbsy 1999/11/29 v1.2d Bold Symbols
 \pmbraise@=\dimen150
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amsopn.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsmath/amsopn.sty
 Package: amsopn 2022/04/08 v2.04 operator names
 )
 \inf@bad=\count280
@@ -109,57 +109,57 @@ LaTeX Info: Redefining \Relbar on input line 970.
 \mathdisplay@stack=\toks28
 LaTeX Info: Redefining \[ on input line 2950.
 LaTeX Info: Redefining \] on input line 2951.
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/hyperref.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/hyperref.sty
 Package: hyperref 2026-01-29 v7.01p Hypertext links for LaTeX
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/iftex/iftex.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/iftex/iftex.sty
 Package: iftex 2024/12/12 v1.0g TeX engine tests
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics/keyval.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/graphics/keyval.sty
 Package: keyval 2022/05/29 v1.15 key=value parser (DPC)
 \KV@toks@=\toks29
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/kvsetkeys/kvsetkeys.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/kvsetkeys/kvsetkeys.sty
 Package: kvsetkeys 2022-10-05 v1.19 Key value parser (HO)
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/kvdefinekeys/kvdefinekeys.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/kvdefinekeys/kvdefinekeys.sty
 Package: kvdefinekeys 2019-12-19 v1.6 Define keys (HO)
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/pdfescape/pdfescape.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/pdfescape/pdfescape.sty
 Package: pdfescape 2019/12/09 v1.15 Implements pdfTeX's escape features (HO)
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/ltxcmds/ltxcmds.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/ltxcmds/ltxcmds.sty
 Package: ltxcmds 2023-12-04 v1.26 LaTeX kernel commands for general use (HO)
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/pdftexcmds/pdftexcmds.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/pdftexcmds/pdftexcmds.sty
 Package: pdftexcmds 2020-06-27 v0.33 Utility functions of pdfTeX for LuaTeX (HO)
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/infwarerr/infwarerr.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/infwarerr/infwarerr.sty
 Package: infwarerr 2019/12/03 v1.5 Providing info/warning/error messages (HO)
 )
 Package pdftexcmds Info: \pdf@primitive is available.
 Package pdftexcmds Info: \pdf@ifprimitive is available.
 Package pdftexcmds Info: \pdfdraftmode not found.
-)) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/hycolor/hycolor.sty
+)) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/hycolor/hycolor.sty
 Package: hycolor 2020-01-27 v1.10 Color options for hyperref/bookmark (HO)
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/nameref.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/nameref.sty
 Package: nameref 2026-01-29 v2.58 Cross-referencing by name of section
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/refcount/refcount.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/refcount/refcount.sty
 Package: refcount 2019/12/15 v3.6 Data extraction from label references (HO)
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/gettitlestring/gettitlestring.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/gettitlestring/gettitlestring.sty
 Package: gettitlestring 2019/12/15 v1.6 Cleanup title references (HO)
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/kvoptions/kvoptions.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/kvoptions/kvoptions.sty
 Package: kvoptions 2022-06-15 v3.15 Key value format for package options (HO)
 ))
 \c@section@level=\count292
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/etoolbox/etoolbox.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/etoolbox/etoolbox.sty
 Package: etoolbox 2025/10/02 v2.5m e-TeX tools for LaTeX (JAW)
 \etb@tempcnta=\count293
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/stringenc/stringenc.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/stringenc/stringenc.sty
 Package: stringenc 2019/11/29 v1.12 Convert strings between diff. encodings (HO)
 )
 \@linkdim=\dimen158
 \Hy@linkcounter=\count294
 \Hy@pagecounter=\count295
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/pd1enc.def
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/pd1enc.def
 File: pd1enc.def 2026-01-29 v7.01p Hyperref: PDFDocEncoding definition (HO)
-) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/intcalc/intcalc.sty
+) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/intcalc/intcalc.sty
 Package: intcalc 2019/12/15 v1.3 Expandable calculations with integers (HO)
 )
 \Hy@SavedSpaceFactor=\count296
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/puenc.def
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/puenc.def
 File: puenc.def 2026-01-29 v7.01p Hyperref: PDF Unicode definition (HO)
 )
 Package hyperref Info: Hyper figures OFF on input line 4201.
@@ -170,15 +170,15 @@ Package hyperref Info: Backreferencing OFF on input line 4221.
 Package hyperref Info: Implicit mode ON; LaTeX internals redefined.
 Package hyperref Info: Bookmarks ON on input line 4468.
 \c@Hy@tempcnt=\count297
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/url/url.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/url/url.sty
 \Urlmuskip=\muskip18
 Package: url 2013/09/16  ver 3.4  Verb mode for urls, etc.
 )
 LaTeX Info: Redefining \url on input line 4807.
 \XeTeXLinkMargin=\dimen159
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/bitset/bitset.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/bitset/bitset.sty
 Package: bitset 2019/12/09 v1.3 Handle bit-vector datatype (HO)
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/bigintcalc/bigintcalc.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/bigintcalc/bigintcalc.sty
 Package: bigintcalc 2019/12/15 v1.5 Expandable calculations on big integers (HO)
 ))
 \Fld@menulength=\count298
@@ -196,28 +196,29 @@ Package hyperref Info: PDF/A mode OFF on input line 6114.
 \c@Hfootnote=\count301
 )
 Package hyperref Info: Driver (autodetected): hxetex.
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/hxetex.def
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/hyperref/hxetex.def
 File: hxetex.def 2026-01-29 v7.01p Hyperref driver for XeTeX
 \pdfm@box=\box55
 \c@Hy@AnnotLevel=\count302
 \HyField@AnnotCount=\count303
 \Fld@listcount=\count304
 \c@bookmark@seq@number=\count305
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/rerunfilecheck/rerunfilecheck.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/rerunfilecheck/rerunfilecheck.sty
 Package: rerunfilecheck 2025-06-21 v1.11 Rerun checks for auxiliary files (HO)
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/generic/uniquecounter/uniquecounter.sty
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/generic/uniquecounter/uniquecounter.sty
 Package: uniquecounter 2019/12/15 v1.4 Provide unlimited unique counter (HO)
 )
 Package uniquecounter Info: New unique counter `rerunfilecheck' on input line 284.
 )
 \Hy@SectionHShift=\skip57
-) (./blueprint.sty) (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/comment/comment.sty
+) (./blueprint.sty) (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/comment/comment.sty
 \CommentStream=\write3
  Excluding comment 'comment') Excluding comment 'algorithm' Excluding comment 'algorithmic' (./macros/common.tex
 \c@theorem=\count306
-)
-\c@protocol=\count307
- (./macros/web.tex)
+\c@definition=\count307
+\c@protocol=\count308
+\c@assumption=\count309
+) (./macros/web.tex)
 /home/greghem/leslie/blueprint/src/web.tex:23: Undefined control sequence.
 l.23 \home
           {https://rupakm.github.io/leslie}
@@ -262,11 +263,11 @@ Overfull \hbox (120.55pt too wide) in paragraph at lines 23--26
 []\TU/lmr/m/n/10 https://rupakm.github.io/leslie https://github.com/rupakm/leslie https://rupakm.github.io/leslie/docs 
  []
 
-(/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/l3backend/l3backend-xetex.def
+(/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/l3backend/l3backend-xetex.def
 File: l3backend-xetex.def 2025-10-09 L3 backend support: XeTeX
-\g__graphics_track_int=\count308
-\g__pdfannot_backend_int=\count309
-\g__pdfannot_backend_link_int=\count310
+\g__graphics_track_int=\count310
+\g__pdfannot_backend_int=\count311
+\g__pdfannot_backend_link_int=\count312
 ) (./web.aux)
 \openout1 = `web.aux'.
 
@@ -302,22 +303,173 @@ Package hyperref Warning: Rerun to get /PageLabels entry.
 
 ]
 LaTeX Font Info:    Trying to load font information for U+msa on input line 32.
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsfonts/umsa.fd
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsfonts/umsa.fd
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
 )
 LaTeX Font Info:    Trying to load font information for U+msb on input line 32.
- (/nix/store/03hw17xkx2j3s008s0a2v0qdx5kvan1l-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsfonts/umsb.fd
+ (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsfonts/umsb.fd
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
-) [1] (./content.tex [1] (./sections/Preliminaries.tex) (./sections/Protocols.tex
-Overfull \hbox (0.126pt too wide) in paragraph at lines 3--3
+) [1] (./content.tex [1] (./sections/Preliminaries.tex
+./sections/Preliminaries.tex:6: Undefined control sequence.
+l.6     \lean
+             {PLTS}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Preliminaries.tex:25: Undefined control sequence.
+l.25     \lean
+              {Partial Probabilistic Execution}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+LaTeX Font Info:    Trying to load font information for U+euf on input line 29.
+(/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsfonts/ueuf.fd
+File: ueuf.fd 2013/01/14 v3.01 Euler Fraktur
+)
+./sections/Preliminaries.tex:42: Undefined control sequence.
+l.42     \lean
+              {Parallel Composition}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Citation `Segala1995Compositional' on page 1 undefined on input line 56.
+
+./sections/Preliminaries.tex:64: Undefined control sequence.
+l.64 ...n over states. We denote $\mu \xRightarrow
+                                                  {l} \mu'$ if and only if
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+[1]
+./sections/Preliminaries.tex:68: Undefined control sequence.
+l.68     \lean
+              {Probabilistic Forward Simulation}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Preliminaries.tex:73: Undefined control sequence.
+l.73     there exists $\mu' \xRightarrow
+                                        {l} \mu''$ such that $(\mu,\mu'') \i...
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Citation `Segala1995Compositional' on page 2 undefined on input line 76.
+
+
+LaTeX Warning: Reference `thm:Segala' on page 2 undefined on input line 84.
+
+
+LaTeX Warning: Citation `Segala1995Compositional' on page 2 undefined on input line 88.
+
+./sections/Preliminaries.tex:92: Undefined control sequence.
+l.92 ... scheduler that induces $\mu' \xRightarrow
+                                                  {l} \mu''$
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+Excluding 'algorithm' comment.
+
+LaTeX Warning: Reference `alg:simulation' on page 2 undefined on input line 119.
+
+
+LaTeX Warning: Reference `alg:simulation' on page 2 undefined on input line 124.
+
+./sections/Preliminaries.tex:150: Undefined control sequence.
+l.150 ...lation. On LTS, we denote $q \xRightarrow
+                                                  {l} q'$ if their exists a ...
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+[2]
+./sections/Preliminaries.tex:154: Undefined control sequence.
+l.154     \lean
+               {Weak Simulation}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Preliminaries.tex:159: Undefined control sequence.
+l.159     there exists $q' \xRightarrow
+                                       {l} p'$ such that $(p,p') \in \scal$.
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `thm:Segala' on page 3 undefined on input line 166.
+
+[3]
+
+LaTeX Warning: Reference `thm:weaksim' on page 4 undefined on input line 224.
+
+[4]
+./sections/Preliminaries.tex:264: Undefined control sequence.
+l.264     If $q \xRightarrow
+                            {\tau} p$ and $p$ is a deadlock then $q' \xRight...
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Preliminaries.tex:264: Undefined control sequence.
+l.264 ...d $p$ is a deadlock then $q' \xRightarrow
+                                                  {\tau} p'$
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Preliminaries.tex:266: Undefined control sequence.
+l.266 ...diverges or there exists $q' \xRightarrow
+                                                  {\tau} p'$
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+) (./sections/Protocols.tex
+Overfull \hbox (0.126pt too wide) in paragraph at lines 12--12
 []\TU/lmr/bx/n/12 Main Protocol: Asynchronous Byzantine Agreement
  []
 
 
-LaTeX Warning: Citation `Abraham2022Efficient' on page 1 undefined on input line 3.
+LaTeX Warning: Citation `Abraham2022Efficient' on page 5 undefined on input line 12.
 
-./sections/Protocols.tex:13: Undefined control sequence.
-l.13     \lean
+./sections/Protocols.tex:22: Undefined control sequence.
+l.22     \lean
               {ABA.Spec}
 The control sequence at the end of the top line
 of your error message was never \def'ed. If you have
@@ -351,11 +503,11 @@ Missing character: There is no ^^M (U+000D) in font [lmroman10-regular]:mapping=
 
  
 Here is how much of TeX's memory you used:
- 9063 strings out of 468176
- 142976 string characters out of 5407950
- 540109 words of memory out of 5000000
- 37684 multiletter control sequences out of 15000+600000
- 634481 words of font info for 74 fonts, out of 8000000 for 9000
+ 9138 strings out of 468176
+ 144497 string characters out of 5407950
+ 553270 words of memory out of 5000000
+ 37741 multiletter control sequences out of 15000+600000
+ 635245 words of font info for 84 fonts, out of 8000000 for 9000
  1348 hyphenation exceptions out of 8191
- 72i,6n,79p,575b,356s stack positions out of 10000i,1000n,20000p,200000b,200000s
-Output written on web.pdf (3 pages).
+ 72i,12n,79p,575b,397s stack positions out of 10000i,1000n,20000p,200000b,200000s
+Output written on web.pdf (7 pages).

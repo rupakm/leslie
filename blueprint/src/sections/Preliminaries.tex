@@ -1,271 +1,434 @@
 \section{Preliminaries}
 
-This section gathers the standard material used in the rest of the document: probabilistic labelled transition systems, Segala-style relation lifting, weak transitions and probabilistic forward simulation, the specialisation to the non-probabilistic setting, partial-observation adversaries together with the belief construction, and CSP-style parallel composition together with its compositionality results.
-Throughout, $\mathcal{D}(X)$ denotes the set of (discrete) probability distributions over a set $X$, and $\bar\mu \subseteq X$ denotes the support of $\mu \in \mathcal{D}(X)$.
+\subsection{Traditional Framework}
 
-\subsection{Probabilistic Labelled Transition Systems}
-
-\begin{definition}[Probabilistic Labelled Transition System]\label{def:PLTS}
-    %\lean{PLTS}
+\begin{definition}[Probabilistic Labelled Transition System]
+    \lean{PLTS}
     %\leanok
-    A \emph{probabilistic labelled transition system} (PLTS) is a tuple $\mathcal{P} = (Q, L, T, q_0)$ where
+
+    A probabilistic labelled transition system (PLTS) is a tuple $\pcal := (Q,q_\star,L,T)$
+    where $Q$ is a (countable) set of states,
+    $q_\star \in Q$ is the initial state,
+    $L$ is a (countable) set of labels and
+    $T \subseteq Q \times (L \cup \{\tau\}) \times \dcal(Q)$ is a set of probabilistic transitions.
+\end{definition}
+
+A partial execution of $\pcal$ is a sequence $q_0.l_0.q_1.l_1\cdots \in (Q.L)^*.Q \cup (Q.L)^\omega$
+such that, for every $n \in \nat$, there exists $\mu_n \in \dcal(Q)$ with $(q_n,l_n,\mu_n) \in T$ and
+$q_{n+1} \in \bar{\mu_n}$. The set of finite executions is denoted $\ecal^*$. A partial execution is called an execution if $q_0 = q_\star$.
+The trace of a partial execution is its projection onto $L$. The set of traces of $\pcal$ is denoted $\tcal$.
+A scheduler $s$ is a function from $\ecal^*$ to $\dcal(T \cup \{\bot\})$ such that,
+for all $e \in \ecal^*$ and $t \in \bar{s(e)}$, $t = \bot$ or $src(t) = last(e)$. The set of schedulers is denoted $Sch$.
+
+\begin{definition}[Partial Probabilistic Execution]
+    \lean{Partial Probabilistic Execution}
+    %\leanok
+
+    Given $\mu \in \dcal(Q)$ and $s \in Sch$, one can define the partial probabilistic execution induced by $(\mu,s)$
+    as the function $\efrak_{\mu,s}$ from $\ecal^*$ to $[0,1]$ such that if $e \in Q$ then $\efrak_{\mu,s}(e) = \mu(e)$;
+    otherwise, $e = e'.l.q$ and $\efrak_{\mu,s}(e) = \efrak_{\mu,s}(e')\cdot\sum_{t \in T \mid lbl(t) = l}s(e')(t)\cdot out(t)(q)$.
+\end{definition}
+
+A partial probabilistic execution is called a probabilistic execution if it is induced by a pair $(\mu,s)$
+such that $\mu = \delta_{q_\star}$. Partial probabilistic executions induce a measure on the $\sigma$-field induced
+by cones of partial executions, and the trace function is measurable from the $\sigma$-field induced by cones of
+partial executions to the one induced by cones of traces. Thus, $\tfrak_{\mu,s} = tr^{-1}\circ\efrak_{\mu,s}$ is
+well-defined and called a trace distribution. The set of trace distributions achievable by $\pcal$ is defined
+as those induced by a probabilistic execution of $\pcal$ and denoted $tdist(\pcal)$. The trace distribution pre-order $\pcal \subseteq^t \pcal'$
+is defined by $tdist(\pcal) \subseteq tdist(\pcal')$.
+
+\begin{definition}[Parallel Composition of PLTS]
+    \lean{Parallel Composition}
+    %\leanok
+
+    Given two PLTSs $\pcal$ and $\pcal'$ and $S \subseteq L \cup L'$, the composed PLTS $\pcal \parallel_S \pcal'$ is defined as
+    $(Q \times Q', (q_\star, q_\star'), L \cup L', T \parallel_S T')$ where $((q,q'), l, \mu'') \in T \parallel_S T'$
+    if and only if
     \begin{itemize}
-        \item $Q$ is a (countable) set of \emph{states};
-        \item $L$ is a set of \emph{labels};
-        \item $T \subseteq Q \times L \times \mathcal{D}(Q)$ is a set of \emph{probabilistic transitions};
-        \item $q_0 \in Q$ is the \emph{initial state}.
-    \end{itemize}
-    A transition $(q, l, \mu) \in T$ is written $q \xrightarrow{l} \mu$ and is said to be \emph{enabled in $q$}.
-    The label set is partitioned as $L = L_{\mathrm{int}} \sqcup L_{\mathrm{ext}}$ into \emph{internal} and \emph{external} labels.
-\end{definition}
-
-\begin{definition}[Execution and trace]\label{def:execution}
-    \uses{def:PLTS}
-    %\lean{PLTS.Execution}
-    %\leanok
-    An \emph{execution} of $\mathcal{P} = (Q, L, T, q_0)$ is a finite or infinite alternating sequence
-    \[
-        e \in (Q \cdot L)^* \cdot Q \;\cup\; (Q \cdot L)^\omega
-    \]
-    such that $e_0 = q_0$ and, whenever $2i+2 < |e|$, there exists $\mu \in \mathcal{D}(Q)$ with $(e_{2i}, e_{2i+1}, \mu) \in T$ and $e_{2i+2} \in \bar\mu$.
-    The \emph{trace} of an execution $e$, written $\mathit{tr}(e)$, is the projection of $e$ onto $L_{\mathrm{ext}}$.
-\end{definition}
-
-\begin{definition}[Scheduler]\label{def:scheduler}
-    \uses{def:PLTS, def:execution}
-    %\lean{PLTS.Scheduler}
-    %\leanok
-    A \emph{scheduler} for $\mathcal{P}$ is a map $\sigma$ sending every finite execution $e$ to a sub-distribution over transitions whose support consists of transitions enabled in the last state of $e$.
-\end{definition}
-
-\begin{definition}[Probabilistic execution]\label{def:prob-execution}
-    \uses{def:scheduler}
-    %\lean{PLTS.ProbExecution}
-    %\leanok
-    Given a scheduler $\sigma$ and a starting state $q$, the \emph{probabilistic execution} $\mathbb{P}_{\sigma, q}$ is the unique measure on the $\sigma$-algebra generated by cones of executions characterised by
-    \begin{itemize}
-        \item $\mathbb{P}_{\sigma, q}(C_{q}) = 1$ and $\mathbb{P}_{\sigma, q}(C_{q'}) = 0$ for any $q' \ne q$;
-        \item for $e' \cdot l \cdot q'$ a finite execution,
-        \[
-            \mathbb{P}_{\sigma, q}\!\left(C_{e' \cdot l \cdot q'}\right) \;=\; \mathbb{P}_{\sigma, q}(C_{e'}) \cdot \sigma(e')(t) \cdot \mu(q'),
-        \]
-        where $t = (\mathit{last}(e'), l, \mu)$ is the (necessarily unique) transition picked by $\sigma$ with label $l$.
+        \item $l \in S$ and there exist $(q,l,\mu) \in T$ and $(q',l,\mu') \in T'$ such that $\mu \otimes \mu' = \mu''$; or
+        \item $l \not\in S$ and there exists $(q,l,\mu) \in T$ such that $\mu \otimes \delta_{q'} = \mu''$; or
+        \item $l \not\in S$ and there exists $(q',l,\mu') \in T'$ such that $\delta_q \otimes \mu' = \mu''$.
     \end{itemize}
 \end{definition}
 
-\begin{definition}[Trace distribution]\label{def:trace-distribution}
-    \uses{def:prob-execution, def:execution}
-    %\lean{PLTS.TraceDistribution}
+The trace distribution pre-order is not stable under $\parallel_S$: $\pcal \subseteq^t \pcal'$ does not
+imply $\pcal \parallel_S \pcal'' \subseteq^t \pcal' \parallel_S \pcal''$ \cite{Segala1995Compositional}.
+Thus, the largest pre-order included in $\subseteq^t$ that is stable under $\parallel_S$ is called the trace
+distribution pre-congruence and is denoted $\sqsubseteq^t$.
+
+Given $R \subseteq A \times \dcal(B)$, the probabilistic lifting of $R$, denoted $\dcal(R)$, is defined by
+$(\mu_A,\mu_B) \in \dcal(R)$ if and only if there exists $w : R \rightarrow [0,1]$ such that $\mu_A = a \mapsto \sum_{\mu \in \dcal(B)}w(a,\mu)$
+and $\mu_B = \sum_{(a, \mu) \in R}w(a,\mu)\cdot\mu$. If $s \in Sch$ terminates almost surely from $\mu$
+(i.e. $\sum_{e \in \ecal^*} \efrak_{\mu,s}(e)\cdot s(e)(\bot) = 1$) then $\qfrak_{\mu,s} = last^{-1}\circ\efrak_{\mu,s}$
+is a well-defined probability distribution over states. We denote $\mu \xRightarrow{l} \mu'$ if and only if
+there exists $s \in Sch$ such that $\delta_l = \tfrak_{\mu,s}$ and $\mu' = \qfrak_{\mu,s}$.
+
+\begin{definition}[Probabilistic Forward Simulation]
+    \lean{Probabilistic Forward Simulation}
     %\leanok
-    The trace function $\mathit{tr}$ is measurable from the $\sigma$-algebra of cones of executions to the $\sigma$-algebra of cones of traces. The \emph{trace distribution} induced by $\sigma$ from $q$ is the pushforward $\mathit{tr}_{*}\mathbb{P}_{\sigma, q}$.
+
+    Given two PLTSs $\pcal$ and $\pcal'$, a probabilistic forward simulation of $\pcal$ by $\pcal'$ is a
+    relation $\scal \subseteq Q \times \dcal(Q')$ such that $(q_\star,\delta_{q_\star'}) \in \scal$ and, for all $(q,\mu') \in \scal$ and $(q,l,\mu) \in T$,
+    there exists $\mu' \xRightarrow{l} \mu''$ such that $(\mu,\mu'') \in \dcal(\scal)$.
 \end{definition}
 
-\begin{definition}[Trace distribution pre-order]\label{def:td-preorder}
-    \uses{def:trace-distribution}
-    %\lean{PLTS.TDPreorder}
-    %\leanok
-    Let $\mathcal{P}_1$ and $\mathcal{P}_2$ be two PLTS sharing the same set of external labels. We write $\mathcal{P}_1 \sqsubseteq_{\mathrm{TD}} \mathcal{P}_2$ when every trace distribution achievable by $\mathcal{P}_1$ from its initial state is also achievable by $\mathcal{P}_2$ from its initial state. This defines the \emph{trace distribution pre-order}.
-\end{definition}
-
-\subsection{Probabilistic Forward Simulation}
-
-The trace distribution pre-order is a semantic object that is hard to manipulate directly. The standard tool to establish it is Segala's \emph{probabilistic forward simulation}, which lifts a state-to-distribution relation through the transition structure. We first need to lift relations between sets to relations between distributions.
-
-\begin{definition}[Lifting of a relation between sets]\label{def:lifting-rel}
-    %\lean{Relation.Lift}
-    %\leanok
-    Let $R \subseteq A \times B$. The \emph{lifting} of $R$ is the relation $R^\sharp \subseteq \mathcal{D}(A) \times \mathcal{D}(B)$ defined by $(\mu_A, \mu_B) \in R^\sharp$ iff there exists a weight function $w : A \times B \to [0,1]$ such that
-    \begin{enumerate}
-        \item $w(a, b) > 0 \Longrightarrow (a, b) \in R$;
-        \item $\mu_A(a) = \sum_{b \in B} w(a, b)$ for every $a \in A$;
-        \item $\mu_B(b) = \sum_{a \in A} w(a, b)$ for every $b \in B$.
-    \end{enumerate}
-\end{definition}
-
-\begin{definition}[Lifting of a measure-valued relation]\label{def:lifting-dist}
-    \uses{def:lifting-rel}
-    %\lean{Relation.LiftDist}
-    %\leanok
-    Let $R \subseteq A \times \mathcal{D}(B)$. The \emph{lifting} $R^\sharp \subseteq \mathcal{D}(A) \times \mathcal{D}(B)$ is defined by $(\mu_A, \mu_B) \in R^\sharp$ iff there exists a family $(\mu_B^a)_{a \in \bar\mu_A}$ such that
-    \begin{enumerate}
-        \item $(a, \mu_B^a) \in R$ for every $a \in \bar\mu_A$;
-        \item $\mu_B \;=\; \sum_{a \in A} \mu_A(a) \cdot \mu_B^a$.
-    \end{enumerate}
-\end{definition}
-
-\begin{definition}[Hyper-transition]\label{def:hyper}
-    \uses{def:lifting-rel, def:PLTS}
-    %\lean{PLTS.Hyper}
-    %\leanok
-    For every label $l \in L$, the relation $\{(q, \mu) \mid (q, l, \mu) \in T\} \subseteq Q \times \mathcal{D}(Q)$ lifts (via Definition~\ref{def:lifting-dist}) to a relation $\xrightarrow{l} \subseteq \mathcal{D}(Q) \times \mathcal{D}(Q)$, called the \emph{hyper-transition} relation.
-\end{definition}
-
-\begin{definition}[Weak transitions]\label{def:weak-trans}
-    \uses{def:scheduler, def:hyper}
-    %\lean{PLTS.Weak}
-    %\leanok
-    A scheduler that schedules only transitions with internal labels and stops almost-surely defines a \emph{weak internal transition} $q \Rightarrow \mu$, where $\mu$ is the distribution on stopping states induced by the scheduler started in $q$.
-    By Definition~\ref{def:lifting-dist} the relation $\Rightarrow$ extends to $\mathcal{D}(Q) \times \mathcal{D}(Q)$.
-    For an external label $l \in L_{\mathrm{ext}}$, the \emph{weak external transition} $q \xRightarrow{l} \mu$ holds whenever there exist $\mu_1, \mu_2 \in \mathcal{D}(Q)$ with
-    \[
-        q \Rightarrow \mu_1 \xrightarrow{l} \mu_2 \Rightarrow \mu.
-    \]
-\end{definition}
-
-\begin{definition}[Probabilistic forward simulation]\label{def:pfs}
-    \uses{def:weak-trans, def:lifting-dist}
-    %\lean{PLTS.ProbForwardSim}
-    %\leanok
-    A \emph{probabilistic forward simulation} of $\mathcal{P}_1$ by $\mathcal{P}_2$ is a relation $S \subseteq Q_1 \times \mathcal{D}(Q_2)$ such that $(q_0^1, \delta_{q_0^2}) \in S$ and, for every $(q_1, \mu_2) \in S$ and every transition $q_1 \xrightarrow{l} \mu_1$ of $\mathcal{P}_1$:
-    \begin{enumerate}
-        \item if $l$ is internal, there exists $\mu_2'$ with $\mu_2 \Rightarrow \mu_2'$ and $(\mu_1, \mu_2') \in S^\sharp$;
-        \item if $l$ is external, there exist $\mu_2'$ with $\mu_2 \xRightarrow{l} \mu_2'$ and $(\mu_1, \mu_2') \in S^\sharp$.
-    \end{enumerate}
-    We write $\mathcal{P}_1 \preceq_{\mathrm{PFS}} \mathcal{P}_2$ when such a simulation exists.
-\end{definition}
-
-\begin{theorem}[Soundness of probabilistic forward simulation]\label{thm:pfs-sound}
-    \uses{def:pfs, def:td-preorder}
-    %\lean{PLTS.ProbForwardSim.sound}
-    %\leanok
-    If $\mathcal{P}_1 \preceq_{\mathrm{PFS}} \mathcal{P}_2$ then $\mathcal{P}_1 \sqsubseteq_{\mathrm{TD}} \mathcal{P}_2$.
+\begin{theorem}[from \cite{Segala1995Compositional}]
+    \label{thm:Segala}
+    Given two PLTSs $\pcal$ and $\pcal'$, $\pcal \sqsubseteq^t \pcal'$ if and only if there exists a probabilistic forward simulation of $\pcal$ by $\pcal'$.
 \end{theorem}
+\begin{proof}
+    The proof is non-trivial and is detailed in Segala's PhD thesis.
+\end{proof}
 
-\begin{lemma}[Transitivity of probabilistic forward simulation]\label{lem:pfs-transitive}
-    \uses{def:pfs}
-    %\lean{PLTS.ProbForwardSim.trans}
+In our setting, the most interesting implication of Theorem \ref{thm:Segala} is soundness.
+We will see that the definition of $\sqsubseteq^t$ has some limitations, notably with respect to liveness.
+To address this, we introduce a stronger notion of trace distribution and strengthen
+probabilistic forward simulation accordingly. However, the soundness proof of Segala
+\cite{Segala1995Compositional} works at the level of $\efrak_{\mu,s}$, not $s$. This is
+problematic because our strengthening consists in constraining schedulers; thus, we need to
+adapt the proof. If $\scal$ is a probabilistic forward
+simulation then it induces a choice function $\ccal : \scal \times T \rightarrow Sch \times (\scal \rightarrow [0,1])$
+which maps any $(q,\mu') \in \scal$ and $(q,l,\mu) \in T$ to the scheduler that induces $\mu' \xRightarrow{l} \mu''$
+and the witness $w$ of $(\mu,\mu'') \in \dcal(\scal)$.
+
+\begin{algorithm}
+    \caption{Simulation Algorithm for Schedulers}
+    \label{alg:simulation}
+    \begin{algorithmic}
+        \State \textbf{Input:} $\pcal, \pcal'$ two PLTSs, $\scal$ a probabilistic forward simulation of $\pcal$ by $\pcal'$ and $s \in Sch$
+        \medskip
+        \State $e, e', \mu' \gets q_\star, q'_\star, \delta_{q_\star'}$
+        \State $acc \gets e'$
+        \State $t \gets s(e)$
+        \While{$t \ne \bot$}
+            \State $s_t, w_t \gets \ccal(last(e),\mu',t)$
+            \State $t' \gets s_t(e')$
+            \While{$t' \ne \bot$}
+                \State $e' \gets e'.lbl(t').out(t')$
+                \State $acc \gets acc.lbl(t').out(t')$
+                \State $t' \gets s_t(e')$
+            \EndWhile
+            \State $e', \mu' \gets last(e'), \qfrak_{\mu',s_t}$
+            \State $e \gets e.lbl(t).q$ with probability $\frac{\sum_{\mu \in \dcal(Q')}w(q,\mu)\cdot\mu(e')}{\mu'(e')}$
+            \State $t \gets s(e)$
+        \EndWhile
+    \end{algorithmic}
+\end{algorithm}
+
+Once the choice function $\ccal$ is fixed, Algorithm \ref{alg:simulation} is a sequential
+probabilistic program; thus, it can be modelled as a deterministic PLTS. Of course, the
+validity of the algorithm's individual instructions should be established rigorously, but
+this is not our concern here. The variable $e$ encodes an execution of $\pcal$ and $acc$ an
+execution of $\pcal'$ that simulates it. In order to extract a scheduler of $\pcal'$ from
+Algorithm \ref{alg:simulation}, we need to identify the instructions deciding which transitions
+to execute in $\pcal'$. The most obvious one is $t' \gets s_t(e')$ when $t' \ne \bot$; then
+there is $t \gets s(e)$ when $t = \bot$. The case where $t' = \bot$ has to be discarded
+because another $t'$ will then be picked without updating $acc$. When $t = \bot$, the
+algorithm stops, so the scheduler on $\pcal'$ also returns $\bot$. After each update
+of $acc$, one of the three following events occurs: (i) $t$ is set to $\bot$;
+(ii) $t'$ is set to a non-$\bot$ value; or (iii) $t'$ is set to $\bot$ indefinitely.
+Cases (i) and (iii) correspond to scheduling $\bot$ and case (ii) corresponds to scheduling $t'$.
+Thus, the key values to compute are $reach(e')$, the probability of reaching a configuration
+where $acc = e'$, and $sch(e',t)$, the probability of reaching a configuration where $acc = e$
+and $t' = t$. Knowing these, one can define a scheduler on $\pcal'$ as
+\[
+    s' : e' \mapsto
+        \begin{cases}
+            t' \mapsto \frac{sch(e',t')}{reach(e')} \\
+            \bot \mapsto 1 - \frac{\sum_{t' \in T'}sch(e',t')}{reach(e')}
+        \end{cases}
+\]
+We conjecture that $\tfrak_{q_\star,s} = \tfrak_{q_\star',s'}$.
+
+\subsection{Non-probabilistic Systems}
+
+Non-probabilistic systems can be considered as special instances of PLTSs in which all transitions
+lead to a Dirac distribution. By identifying each Dirac distribution with the unique state in its
+support, we may assume that non-probabilistic systems are modelled by LTSs, which leads to several
+simplifications. In particular, probabilistic forward simulation is equivalent to a simpler
+simulation relation. On an LTS, we write $q \xRightarrow{l} q'$ if there exists a partial execution
+from $q$ to $q'$ whose trace is $l$.
+
+\begin{definition}[Weak Simulation]
+    \lean{Weak Simulation}
     %\leanok
-    Probabilistic forward simulation is transitive: if $\mathcal{P}_1 \preceq_{\mathrm{PFS}} \mathcal{P}_2$ and $\mathcal{P}_2 \preceq_{\mathrm{PFS}} \mathcal{P}_3$ then $\mathcal{P}_1 \preceq_{\mathrm{PFS}} \mathcal{P}_3$. Concretely, given witnesses $S_{12} \subseteq Q_1 \times \mathcal{D}(Q_2)$ and $S_{23} \subseteq Q_2 \times \mathcal{D}(Q_3)$, the composed relation
-    \[
-        S_{13} \;:=\; \{(q_1, \mu_3) \mid \exists \mu_2,\, (q_1, \mu_2) \in S_{12} \text{ and } (\mu_2, \mu_3) \in S_{23}^\sharp\}
-    \]
-    is a probabilistic forward simulation of $\mathcal{P}_1$ by $\mathcal{P}_3$.
-\end{lemma}
 
-Note that $\preceq_{\mathrm{PFS}}$ is also reflexive (the diagonal $\{(q, \delta_q)\}$ is a simulation), hence a pre-order; Lemma~\ref{lem:pfs-transitive} is the part actually used in the proof decomposition.
-
-\subsection{Equivalence in the Non-Probabilistic Setting}
-
-When all transitions lead to a Dirac distribution, the PLTS framework collapses to the classical (non-probabilistic) labelled transition system, and the lifted notions admit a more elementary description.
-
-\begin{definition}[Labelled transition system]\label{def:LTS}
-    \uses{def:PLTS}
-    %\lean{LTS}
-    %\leanok
-    A PLTS is a \emph{labelled transition system} (LTS) if every transition's target is a Dirac distribution. Equivalently, its transition relation can be viewed as a subset $T \subseteq Q \times L \times Q$.
+    Given two LTSs $\pcal$ and $\pcal'$, a weak simulation of $\pcal$ by $\pcal'$ is a
+    relation $\scal \subseteq Q \times Q'$ such that $(q_\star,q_\star') \in \scal$ and, for all $(q,q') \in \scal$ and $(q,l,p) \in T$,
+    there exists $q' \xRightarrow{l} p'$ such that $(p,p') \in \scal$.
 \end{definition}
 
-\begin{definition}[Weak transitions on an LTS]\label{def:weak-LTS}
-    \uses{def:LTS, def:weak-trans}
-    %\lean{LTS.Weak}
+\begin{theorem}
+    Given two LTSs $\pcal$ and $\pcal'$, $\pcal \sqsubseteq^t \pcal'$ if and only if there exists a weak simulation of $\pcal$ by $\pcal'$.
+\end{theorem}
+\begin{proof}
+    According to Theorem \ref{thm:Segala}, it suffices to prove that
+    there exists a weak simulation of $\pcal$ by $\pcal'$ if and only if
+    there exists a probabilistic forward simulation of $\pcal$ by $\pcal'$. For one direction,
+    it suffices to note that any weak simulation is a probabilistic forward simulation.
+    For the other direction, if $\scal$ is a probabilistic forward simulation of $\pcal$ by $\pcal'$
+    then $\{(q,q') \mid \exists (q,\mu) \in \scal, q' \in \bar\mu\}$ is a weak simulation of $\pcal$ by $\pcal'$.
+\end{proof}
+
+There is a natural injection of LTSs into PLTSs, but also a natural projection of PLTSs onto LTSs.
+It consists in transforming all probabilistic non-determinism into classical non-determinism.
+The projection of a PLTS $\pcal$, denoted $\rho(\pcal)$, is the LTS whose transitions are defined
+by $\{(q,l,q') \mid \exists \mu \in \dcal(Q), (q,l,\mu) \in T \wedge q' \in \bar\mu\}$.
+$\rho$ is trivially the identity on LTSs, and $\rho$ preserves the set of executions and hence the set of traces.
+As a result, the notion of weak simulation can be lifted to PLTSs: $\scal$ is a weak simulation
+of $\pcal$ by $\pcal'$ if and only if it is a weak simulation of $\rho(\pcal)$ by $\rho(\pcal')$.
+Since $\rho$ is a projection onto LTSs, this is consistent with the previous definition.
+
+\begin{theorem}
+    \label{thm:weaksim}
+    Given two PLTSs $\pcal$ and $\pcal'$, $\tcal \subseteq \tcal'$ only if there exists a weak simulation of $\pcal$ by $\pcal'$.
+\end{theorem}
+\begin{proof}
+    The proof is folklore. For each execution of $\pcal$, an execution of $\pcal'$ can be built inductively
+    so that they share the same trace.
+\end{proof}
+
+Probabilistic forward simulation also preserves the set of traces because it induces a
+forward-backward simulation \cite{Lynch1995Forward}. Forward-backward simulation coincides with trace inclusion.
+
+\begin{definition}[Forward-Backward Simulation]
+    \lean{Forward-Backward Simulation}
     %\leanok
-    On an LTS, the weak internal transition $\Rightarrow$ coincides with the reflexive transitive closure of internal transitions. The weak external transition is $q \xRightarrow{l} q'$ iff there exist $q_1, q_2$ with $q \Rightarrow q_1 \xrightarrow{l} q_2 \Rightarrow q'$.
+
+    Given two LTSs $\pcal$ and $\pcal'$, a forward-backward simulation of $\pcal$ by $\pcal'$ is a
+    relation $\scal \subseteq Q \times 2^{Q'}$ such that $(q_\star,\{q_\star'\}) \in \scal$ and, for all $(q,P) \in \scal$ and $(q,l,q') \in T$,
+    there exists $P' \subseteq Q'$ such that $(q',P') \in \scal$ and, for all $p' \in P'$, there exists $p \in P$ such that $p \xRightarrow{l} p'$.
 \end{definition}
 
-\begin{definition}[Forward simulation]\label{def:fwd-sim}
-    \uses{def:weak-LTS}
-    %\lean{LTS.ForwardSim}
-    %\leanok
-    A \emph{forward simulation} of an LTS $\mathcal{L}_1$ by an LTS $\mathcal{L}_2$ is a relation $R \subseteq Q_1 \times Q_2$ with $(q_0^1, q_0^2) \in R$ such that, for every $(q_1, q_2) \in R$ and every $q_1 \xrightarrow{l} q_1'$:
-    \begin{enumerate}
-        \item if $l$ is internal, there exists $q_2'$ with $q_2 \Rightarrow q_2'$ and $(q_1', q_2') \in R$;
-        \item if $l$ is external, there exist $q_2'$ with $q_2 \xRightarrow{l} q_2'$ and $(q_1', q_2') \in R$.
-    \end{enumerate}
-    We write $\mathcal{L}_1 \preceq_{\mathrm{FS}} \mathcal{L}_2$ when such a simulation exists.
+\begin{theorem}
+    \label{thm:forwardbackwardsim}
+    Given two PLTSs $\pcal$ and $\pcal'$, $\tcal \subseteq \tcal'$ if and only if there exists a forward-backward simulation of $\pcal$ by $\pcal'$.
+\end{theorem}
+\begin{proof}
+    See \cite{Lynch1995Forward}.
+\end{proof}
+
+\begin{theorem}
+    \label{thm:probforsimtrace}
+    Given two PLTSs $\pcal$ and $\pcal'$, $\tcal \subseteq \tcal'$ only if there exists a probabilistic forward simulation of $\pcal$ by $\pcal'$.
+\end{theorem}
+\begin{proof}
+    Let $\scal$ be a probabilistic forward simulation of $\pcal$ by $\pcal'$.
+    Define $\scal' := \{(q,P) \in Q \times 2^{Q'} \mid \exists \mu \in \dcal(Q'), (q,\mu) \in \scal \wedge \bar\mu = P\}$.
+    Then $\scal'$ is a forward-backward simulation, so $\tcal \subseteq \tcal'$.
+\end{proof}
+
+\subsection{Preserving Liveness}
+
+Our current definitions are not suited to reasoning about liveness. Indeed, $\ecal$ always contains
+the empty execution $q_\star$; thus, $\tcal$ always contains the empty trace $\tau$. As a result,
+no liveness property can be satisfied against such a set of executions. However, intuition tells
+us that such executions should be discarded when evaluating properties, because we implicitly
+make a progress assumption: ``if a transition is enabled then a transition should be performed''.
+
+To take this observation into account, we say that an execution is maximal if it is infinite
+or its last state is a deadlock. Similarly, we say that a trace is maximal if it is the trace
+of a maximal execution. According to the progress assumption, properties should be evaluated
+against the set of maximal traces. Therefore, we must develop simulation relations that
+preserve the set of maximal traces. The set of maximal traces is denoted $\tcal^{\max}$.
+
+However, weak simulation does not preserve the set of maximal traces. First, there exists
+a trivial weak simulation of a deadlock by any LTS. Second, since $\tau$-transitions can be
+elided, an infinite execution whose trace is $\tau$, called a divergence, can be simulated
+by stuttering. We call a weak divergence any execution whose trace is $\tau$ and which is
+infinite or ends in a deadlock. We also say that a state weakly diverges if a weak divergence
+starts from it.
+
+\begin{definition}[Maximal Weak Simulation]
+    Given two LTSs $\pcal$ and $\pcal'$, a weak simulation $\scal$ of $\pcal$ by $\pcal'$
+    is said to be maximal if, for all $(q,q') \in \scal$, whenever $q$ weakly diverges, so
+    does $q'$.
 \end{definition}
 
-\begin{proposition}[Equivalence on LTS]\label{prop:lts-equiv}
-    \uses{def:pfs, def:fwd-sim}
-    %\lean{LTS.ForwardSim.equiv_ProbForwardSim}
-    %\leanok
-    On LTS, forward simulation and probabilistic forward simulation coincide: $\mathcal{L}_1 \preceq_{\mathrm{FS}} \mathcal{L}_2$ iff $\mathcal{L}_1 \preceq_{\mathrm{PFS}} \mathcal{L}_2$.
-\end{proposition}
+\begin{theorem}
+    Given two PLTSs $\pcal$ and $\pcal'$, $\tcal^{\max} \subseteq \tcal'^{\max}$ only if
+    there exists a weak simulation of $\pcal$ by $\pcal'$.
+\end{theorem}
+\begin{proof}
+    It suffices to adapt the proof of Theorem \ref{thm:weaksim}. When building an execution $e'$
+    of $\pcal'$ that simulates a maximal execution $e$ of $\pcal$, it suffices to check that the
+    additional requirement on the simulation ensures that $e'$ is maximal. If $e$ contains
+    infinitely many non-$\tau$ labels then the construction naturally yields an infinite execution.
+    Otherwise, after simulating the smallest finite prefix that contains all non-$\tau$ labels, it suffices
+    to trigger the preservation of weak divergence.
+\end{proof}
 
-\subsection{Partial-Observation Adversaries}
+However, this solution is not satisfactory, because the additional requirement asks us to test
+for the existence of weak divergences in $\pcal$. In practice, $\pcal$ will be a PLTS encoding
+a real implementation whose size and complexity make this search difficult. To circumvent
+this issue, simulations should rely on tests that can be performed locally (e.g. checking whether
+a transition is enabled), not globally (e.g. checking whether a divergence exists). We allow
+global tests on $\pcal'$ because it will encode a minimal PLTS satisfying a set of properties.
+We say that a transition is elided by a weak simulation if it is simulated by a stutter.
 
-The scheduler of Definition~\ref{def:scheduler} models an \emph{omniscient} adversary that can inspect the entire execution. To model weaker adversaries one restricts schedulers to depend only on a partial view of the system, defined via \emph{signals}.
-
-\begin{definition}[Partial observation]\label{def:partial-obs}
-    \uses{def:PLTS}
-    %\lean{PLTS.PartialObservation}
-    %\leanok
-    A \emph{partial observation} on a PLTS $\mathcal{P}$ is a pair of mappings
-    \[
-        \mathit{obs}_Q \colon Q \longrightarrow \Sigma_Q, \qquad \mathit{obs}_L \colon T \longrightarrow \Sigma_L,
-    \]
-    sending states and transitions to their \emph{state signal} and \emph{label signal} in two abstract signal sets $\Sigma_Q, \Sigma_L$.
-\end{definition}
-
-\begin{definition}[Consistent scheduler]\label{def:consistent-sched}
-    \uses{def:scheduler, def:partial-obs}
-    %\lean{PLTS.Scheduler.Consistent}
-    %\leanok
-    A scheduler $\sigma$ is \emph{consistent} with the partial observation $(\mathit{obs}_Q, \mathit{obs}_L)$ if its output depends on its input only through signals: two finite executions with the same image under the observation produce schedulers that coincide on the corresponding label signals.
-\end{definition}
-
-To prevent pathological signal choices that would conflate genuinely distinct non-deterministic alternatives, we restrict to admissible observations.
-
-\begin{definition}[Admissible observation]\label{def:admissible-obs}
-    \uses{def:partial-obs}
-    %\lean{PLTS.PartialObservation.Admissible}
-    %\leanok
-    A partial observation is \emph{admissible} when
-    \begin{enumerate}
-        \item the state signal $\mathit{obs}_Q(q)$ determines the set $\{\mathit{obs}_L(t) \mid t \text{ enabled in } q\}$ of label signals of enabled transitions;
-        \item in any state $q$, no two distinct enabled transitions share the same label signal.
-    \end{enumerate}
-\end{definition}
-
-Under these conditions the adversary always knows which non-deterministic choices are available; partial information arises solely from the probabilistic outcomes of transitions.
-
-\begin{definition}[Belief PLTS]\label{def:belief-PLTS}
-    \uses{def:PLTS, def:admissible-obs}
-    %\lean{PLTS.Belief}
-    %\leanok
-    Let $\mathcal{P} = (Q, L, T, q_0)$ be a PLTS equipped with an admissible partial observation. Its \emph{belief PLTS} $\mathcal{B}(\mathcal{P})$ is the PLTS whose
+\begin{definition}[Progressive Weak Simulation (inspired by \cite{Dongol2022Weak})]
+    Given two LTSs $\pcal$ and $\pcal'$, a weak simulation $\scal$ of $\pcal$ by $\pcal'$
+    is said to be progressive if
     \begin{itemize}
-        \item states are distributions over sets of states sharing a common state signal;
-        \item labels are the label signals $\Sigma_L$;
-        \item transitions describe the update of the current belief when an underlying transition fires;
-        \item initial state is the Dirac on $q_0$.
+        \item for all $(q,q') \in \scal$, if $q$ is a deadlock then $q'$ weakly diverges;
+        \item there exists $< \subseteq Q \times Q$ well-founded such that,
+        for all $(q,q') \in \scal$ and $(q,l,p) \in T$, if $(q,l,p)$ is elided by $\scal$
+        then $q > p$ or $q'$ weakly diverges.
     \end{itemize}
 \end{definition}
 
-\begin{theorem}[Belief reduction]\label{thm:belief-reduction}
-    \uses{def:belief-PLTS, def:consistent-sched, def:trace-distribution}
-    %\lean{PLTS.Belief.equiv}
-    %\leanok
-    The trace distributions reachable on $\mathcal{P}$ by schedulers consistent with the partial observation coincide with the trace distributions reachable on $\mathcal{B}(\mathcal{P})$ by arbitrary (omniscient) schedulers.
+\begin{theorem}
+    \label{thm:maxeqprog}
+    A weak simulation $\scal$ is maximal if and only if it is progressive.
 \end{theorem}
+\begin{proof}
+    Suppose that $\scal$ is maximal. Let $(q,q') \in \scal$ such that $q$ is a deadlock; then
+    $q$ weakly diverges, so, by maximality, $q'$ weakly diverges.
+    Define $q > p$ if there exists $q' \in Q'$ such that
+    $(q,q') \in \scal$, $q \xrightarrow{\tau} p$, $\scal$ elides this transition, and $q'$ does not
+    weakly diverge. It remains to check that $>$ is well-founded. If there exists
+    $q_0 > q_1 > \cdots$ then $q_0$ diverges and there exists $q' \in Q'$ such that $(q_0,q') \in \scal$
+    and $q'$ does not weakly diverge, which contradicts the maximality of $\scal$.
 
-Theorem~\ref{thm:belief-reduction} is the practical lever behind our use of partial information: the soundness of probabilistic forward simulation (Theorem~\ref{thm:pfs-sound}) is stated for omniscient schedulers, and the belief construction lets us reuse it in the partial-information setting.
+    Suppose that $\scal$ is progressive. Let $(q,q') \in \scal$ such that $q$ weakly diverges.
+    If $q \xRightarrow{\tau} p$ and $p$ is a deadlock then $q' \xRightarrow{\tau} p'$
+    with $(p,p') \in \scal$; thus, $p'$ weakly diverges and so does $q'$.
+    If $q$ diverges then either $q'$ weakly diverges, or there exists $q' \xRightarrow{\tau} p'$
+    such that $p'$ simulates a suffix of $q$'s divergence by stuttering, contradicting the
+    well-foundedness of $>$.
+\end{proof}
 
-\subsection{Parallel Composition}
+Unfortunately, progressive weak simulations are not preserved by composition:
+if there is a progressive weak simulation of $\pcal$ by $\pcal'$, there might not
+be a progressive weak simulation of $\pcal \parallel_S \pcal''$ by $\pcal' \parallel_S \pcal''$.
+Parallel composition might create new deadlocks because of synchronisation.
+To avoid these issues, we use the IO-automata framework of \cite{Lynch2026Introduction}.
 
-\begin{definition}[CSP-style parallel composition]\label{def:par-composition}
-    \uses{def:PLTS}
-    %\lean{PLTS.Par}
-    %\leanok
-    The \emph{parallel composition} $\mathcal{P}_1 \parallel \mathcal{P}_2$ is the CSP-style synchronous product of $\mathcal{P}_1$ and $\mathcal{P}_2$: the two components synchronise on the external labels they share and interleave on all other transitions.
+\begin{definition}[Input/Output Automaton]
+    An Input/Output automaton is a PLTS whose set of labels is partitioned into two
+    subsets: input labels $In$ and output labels $Out$, such that, for all states
+    $q \in Q$ and $in \in In$, there is $\mu \in \dcal(Q)$ such that $(q,in,\mu) \in T$.
 \end{definition}
 
-\begin{theorem}[Pre-congruence]\label{thm:pfs-precongruence}
-    \uses{def:pfs, def:par-composition}
-    %\lean{PLTS.ProbForwardSim.par_congr}
-    %\leanok
-    Probabilistic forward simulation is a pre-congruence for parallel composition: if $\mathcal{P}_1 \preceq_{\mathrm{PFS}} \mathcal{P}_1'$ then $\mathcal{P}_1 \parallel \mathcal{P}_2 \preceq_{\mathrm{PFS}} \mathcal{P}_1' \parallel \mathcal{P}_2$ for every $\mathcal{P}_2$. Moreover, partial observations on the components extend canonically to the composition.
+\begin{theorem}
+    Let $\pcal$, $\pcal'$ and $\pcal''$ be IO-automata such that
+    $Out \cap Out'' = \emptyset$. If there exists a progressive weak simulation of $\pcal$ by $\pcal'$ then
+    there exists a progressive weak simulation of $\pcal \parallel_S \pcal''$ by
+    $\pcal' \parallel_S \pcal''$.
 \end{theorem}
+\begin{proof}
+    Let us denote by $\scal$ the progressive weak simulation of $\pcal$ by $\pcal'$. Then
+    $\scal' := \{((q,q''),(q',q'')) \mid (q,q') \in \scal\}$ is a weak simulation
+    of $\pcal \parallel_S \pcal''$ by $\pcal' \parallel_S \pcal''$. To prove that
+    $\scal'$ is progressive, it suffices to note that if there is a weak divergence
+    in $\pcal \parallel_S \pcal''$ from $(q,q'')$ then $q$ or $q''$ weakly diverges.
+    This holds because of input-enabledness and the compatibility of IO-automata.
+    It then suffices to apply the maximality of $\scal$.
+\end{proof}
 
-\begin{proposition}[Failure of compositionality of $\sqsubseteq_{\mathrm{TD}}$]\label{prop:td-not-precongruence}
-    \uses{def:td-preorder, def:par-composition}
-    %\lean{PLTS.TDPreorder.not_par_congr}
-    %\leanok
-    The trace distribution pre-order is \emph{not} a pre-congruence for parallel composition: there exist PLTS $\mathcal{P}_1, \mathcal{P}_1', \mathcal{P}_2$ with $\mathcal{P}_1 \sqsubseteq_{\mathrm{TD}} \mathcal{P}_1'$ such that $\mathcal{P}_1 \parallel \mathcal{P}_2 \not\sqsubseteq_{\mathrm{TD}} \mathcal{P}_1' \parallel \mathcal{P}_2$.
-\end{proposition}
+Since our main simulation relation is probabilistic forward simulation, we need to
+adapt progressiveness to it. We have seen that probabilistic forward simulation
+preserves the set of traces because it induces a forward-backward simulation. Thus,
+we can start by adapting progressiveness to forward-backward simulations. A
+forward-backward simulation is said to be maximal if, for all $(q,P) \in \scal$, whenever
+$q$ weakly diverges, there exists $p \in P$ that weakly diverges.
 
-\begin{theorem}[Largest pre-congruence inside $\sqsubseteq_{\mathrm{TD}}$]\label{thm:pfs-largest-precongruence}
-    \uses{thm:pfs-sound, thm:pfs-precongruence, prop:td-not-precongruence}
-    %\lean{PLTS.ProbForwardSim.largest_precongr}
+\begin{theorem}
+    Given two PLTSs $\pcal$ and $\pcal'$, $\tcal^{\max} \subseteq \tcal'^{\max}$ if and only if there exists a maximal forward-backward simulation of $\pcal$ by $\pcal'$.
+\end{theorem}
+\begin{proof}
+    Based on the construction in the proof of Theorem \ref{thm:forwardbackwardsim}.
+\end{proof}
+
+For the same reason as for weak simulation, testing for weak divergences in $\pcal$
+should be avoided.
+
+\begin{definition}[Progressive Forward-Backward Simulation]
+    Given two LTSs $\pcal$ and $\pcal'$, a forward-backward simulation $\scal$ of $\pcal$ by $\pcal'$
+    is said to be progressive if
+    \begin{itemize}
+        \item for all $(q,P) \in \scal$, if $q$ is a deadlock then there exists $p \in P$ that weakly diverges;
+        \item there exists $< \subseteq Q \times Q$ well-founded such that,
+        for all $(q,P) \in \scal$ and $(q,l,q') \in T$, 
+        $q > q'$ or
+        there exists $p \in P$ that weakly diverges or
+        there exists $P' \subseteq Q'$ such that 
+        $(q',P') \in \scal$ and, for all $p' \in P'$, there exists $p \in P$ 
+        such that $p \xRightarrow{\tau} p'$ which is not an elision.
+    \end{itemize}
+\end{definition}
+
+\begin{theorem}
+    A forward-backward simulation $\scal$ is maximal if and only if it is progressive.
+\end{theorem}
+\begin{proof}
+    Same proof as for Theorem \ref{thm:maxeqprog}.
+\end{proof}
+
+Now, it suffices to modify the definition of probabilistic forward simulation so that
+the construction of Theorem \ref{thm:probforsimtrace} produces a progressive
+forward-backward simulation.
+
+\begin{definition}[Progressive Probabilistic Forward Simulation]
+    \lean{Progressive Probabilistic Forward Simulation}
     %\leanok
-    Probabilistic forward simulation characterises the largest pre-congruence (for CSP-style parallel composition) contained in the trace distribution pre-order. In particular, the simulation pre-order $\preceq_{\mathrm{PFS}}$ is contained in $\sqsubseteq_{\mathrm{TD}}$, and every pre-congruence contained in $\sqsubseteq_{\mathrm{TD}}$ is contained in $\preceq_{\mathrm{PFS}}$.
+
+    Given two PLTSs $\pcal$ and $\pcal'$, a progressive probabilistic forward simulation of $\pcal$ by $\pcal'$ is a
+    relation $\scal \subseteq Q \times \dcal(Q')$ such that $(q_\star,\delta_{q_\star'}) \in \scal$ and,
+    for all $(q,\mu') \in \scal$ and $(q,l,\mu) \in T$,
+    there exists $\mu' \xRightarrow{l} \mu''$ such that $(\mu,\mu'') \in \dcal(\scal)$.
+    Moreover, if $q$ is a deadlock then there exists $q' \in \bar{\mu'}$ that weakly diverges.
+    Furthermore, there exists $> \subseteq Q \times Q$ well-founded such that
+    $q > p$ if and only if there exist $q \xrightarrow{\tau} \mu$ and $(q,\mu') \in \scal$
+    such that $p \in \bar\mu$ and, for all $q' \in \bar\mu$, $q'$ does not weakly diverges, 
+    an $\scal$ simulates $q \xrightarrow{\tau} \mu$ with $\mu' \xRightarrow{\tau} \mu''$
+    which is induced by a scheduler $s$ such that $\sum_{q\in \bar\mu}s(q)(\bot) >0 $. 
+\end{definition}
+
+\subsection{Partial Information}
+
+We encode partial information by restrictions on the set of schedulers. 
+Intuitively, if the scheduler has not access to all information then it might
+not be able to distinguish some states or some labels, thus, some distinct 
+executions might look the same to it and it should schedule the same
+probability distribution of transitions. 
+
+\begin{definition}[Adversary]
+    An adversary is a couple of observation function $(\ocal_Q, \ocal_L)$ which
+    respectively map states and labels to state observation and label observation
+    such that, for all $t,t' \in T$, if $src(t) = src(t')$ and
+    $\ocal_L(lbl(t)) = \ocal_L(lbl(t'))$ then $t = t'$.
+\end{definition}
+
+The injectivity of $\ocal_L$ on the set of transitions enabled in a given 
+state ensures that the partial-information does not prevent the adversary from resolving
+non-determinism. An adversary $(\ocal_Q,\ocal_L)$ induces an observation $\ocal_{\ecal}$ 
+on executions defined by 
+$\ocal_{\ecal}(q_0.l_0\cdots) = \ocal_Q(q_0).\ocal_L(l_0)\cdots$.
+An scheduler $s$ is consistent with an adversary if, for all $e,e' \in \ecal^*$, 
+$\ocal_{\ecal}(e) = \ocal_{\ecal}(e') \implies s(e) = s(e')$. The omniscient adversary 
+is encoded by setting observation functions to identity. 
+
+Our simulations are sound for partial-information adversaries because they were 
+designed to be sound for omniscient adversaries. However, there is a completeness
+gap as partial-information makes more reduction sound. Our chosen solution is to 
+build a PLTS on which omniscient adversary is equivalent to partial-information 
+adversary on the original PLTS. This is the belief construction.
+
+\begin{definition}[Belief PLTS]
+    Given a PLTS $\pcal$ and an adversary $\acal :=(\ocal_Q,\ocal_L)$, 
+    the belief PLTS $\pcal_{\acal}$ is defined as the tuple 
+    $(\{\mu \in \dcal(Q) \mid \ocal_Q(\bar\mu) = \{\cdot\} \}, \delta_{q_\star}, \ocal_L(L), T_{\acal})$ where
+    \[
+        \mu \xrightarrow{l} \mu' \in T_ {\acal} \iff \exists (t_q)_{q\in\bar\mu} \in T^{\bar\mu}, 
+        \begin{cases}
+            \forall q \in \bar\mu, src(t_q) = q \wedge \ocal_L(lbl(t_q)) = l \\
+            \mu' = (\mu_o := q' \mapsto \frac{\mathbb{1}_{\ocal_Q(q') = o} \cdot \sum_{q \in \bar\mu}\mu_q(q')}{\sum_{q,q' \in Q}\mathbb{1}_{\ocal_Q(q') = o} \cdot\mu_q(q')}) \mapsto \sum_{q,q' \in Q}\mathbb{1}_{\ocal_Q(q') = o} \cdot\mu_q(q')
+        \end{cases}
+    \]
+\end{definition}
+
+\begin{theorem}
+    Given a PLTS $\pcal$ and an adversary $\acal$, the set of trace distribution
+    of $\pcal$ induced by a scheduler consistent with $\acal$ is equal to $tdist(\pcal)$.  
 \end{theorem}
