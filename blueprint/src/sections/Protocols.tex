@@ -216,12 +216,22 @@ A program implements WCC if it satisfies three properties: $\epsilon$-Goodness, 
     \emph{Concrete implementation.}
     Requires Gather and RSD. Details to be determined.
     \begin{algorithm}
-        \caption{Implementation of WCC (yet to be determined)}
+        \caption{Implementation of WCC (simplified from \cite{Freitas2022Distributed})}
         \begin{algorithmic}
-            \State $x \gets 0$
-            \If{$y > 0$}
-                \State loop
-            \EndIf
+            \State \textbf{Input:} 
+            \State \textbf{Sub-Protocols:} $n$ instances of $SRSD$ (process $id$ is the subject of instance $SRSD_{id}$), 
+            1 instance of Gather
+            \medskip
+            \State $\forall id \in Id, SRSD_{id}.Asg()$
+            \State \textbf{wait until} $ValueAssigned_{id}$
+            \State Gather.call($id$)
+            \State \textbf{upon} Gather.return($S$)
+            \State \quad $\forall id \in S$, $SRSD_{id}.Ret.call()$
+            \State \quad $T \gets \emptyset$
+            \State \textbf{upon} $SRSD_{id}.Ret.return(x)$ and $id \in S$
+            \State \quad $T \gets T \cup \{x\}$
+            \State \textbf{upon} $|T| = |S|$
+            \State \quad return 0 if $0 \in T$ else 1
         \end{algorithmic}
     \end{algorithm}
 \end{protocol}

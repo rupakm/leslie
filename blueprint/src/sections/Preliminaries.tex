@@ -272,7 +272,7 @@ We say that a transition is elided by a weak simulation if it is simulated by a 
     \begin{itemize}
         \item for all $(q,q') \in \scal$, if $q$ is a deadlock then $q'$ weakly diverges;
         \item there exists $< \subseteq Q \times Q$ well-founded such that,
-        for all $(q,q') \in \scal$ and $(q,l,p) \in T$, if $(q,l,p)$ is elided by $\scal$
+        for all $(q,q') \in \scal$ and $(q,\tau,p) \in T$, if $(q,\tau,p)$ is elided by $\scal$
         then $q > p$ or $q'$ weakly diverges.
     \end{itemize}
 \end{definition}
@@ -349,7 +349,7 @@ should be avoided.
     \begin{itemize}
         \item for all $(q,P) \in \scal$, if $q$ is a deadlock then there exists $p \in P$ that weakly diverges;
         \item there exists $< \subseteq Q \times Q$ well-founded such that,
-        for all $(q,P) \in \scal$ and $(q,l,q') \in T$, 
+        for all $(q,P) \in \scal$ and $(q,\tau,q') \in T$, 
         $q > q'$ or
         there exists $p \in P$ that weakly diverges or
         there exists $P' \subseteq Q'$ such that 
@@ -367,7 +367,7 @@ should be avoided.
 
 Now, it suffices to modify the definition of probabilistic forward simulation so that
 the construction of Theorem \ref{thm:probforsimtrace} produces a progressive
-forward-backward simulation.
+forward-backward simulation. 
 
 \begin{definition}[Progressive Probabilistic Forward Simulation]
     \lean{Progressive Probabilistic Forward Simulation}
@@ -378,12 +378,20 @@ forward-backward simulation.
     for all $(q,\mu') \in \scal$ and $(q,l,\mu) \in T$,
     there exists $\mu' \xRightarrow{l} \mu''$ such that $(\mu,\mu'') \in \dcal(\scal)$.
     Moreover, if $q$ is a deadlock then there exists $q' \in \bar{\mu'}$ that weakly diverges.
-    Furthermore, there exists $> \subseteq Q \times Q$ well-founded such that
-    $q > p$ if and only if there exist $q \xrightarrow{\tau} \mu$ and $(q,\mu') \in \scal$
-    such that $p \in \bar\mu$ and, for all $q' \in \bar\mu$, $q'$ does not weakly diverges, 
-    an $\scal$ simulates $q \xrightarrow{\tau} \mu$ with $\mu' \xRightarrow{\tau} \mu''$
-    which is induced by a scheduler $s$ such that $\sum_{q\in \bar\mu}s(q)(\bot) >0 $. 
+    Furthermore, there exists $> \subseteq Q \times Q$ well-founded such that, for all 
+    $(q,\mu') \in \scal$ and $(q,\tau,\mu) \in T$ and $p \in \bar\mu$, $q > p$ or 
+    there exists $q' \in \bar\mu'$ that weakly diverges or
+    there exists $\mu_p \in \dcal(Q)$ such that $w(p,\mu_p) > 0$ 
+    where $w$ is the witness of $(\mu,\mu'') \in \scal$
+    and, for all $q' \in \bar\mu' \cap \bar\mu_p$, $s(q')(\bot) = 0$ 
+    where $s$ is the scheduler $s$ that induces $\mu' \xRightarrow{\tau} \mu''$.
 \end{definition}
+
+Unfortunately, this is not enough to preserve liveness at the level of schedulers.
+Indeed, the current definition does not preserve maximality of schedulers because
+it is enough that one state is the probability distribution weakly diverges. 
+To solve that issue, it suffices to replace "there exists $q' \in \bar\mu'$ that weakly diverges" by
+"for all $q' \in \bar\mu'$, $q'$ weakly diverges".
 
 \subsection{Partial Information}
 
