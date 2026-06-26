@@ -224,6 +224,15 @@ INPUT sections/ProofStructure.tex
 INPUT ./print.bbl
 INPUT ./print.bbl
 INPUT print.bbl
+INPUT ./sections/Algorithm.tex
+INPUT ./sections/Algorithm.tex
+INPUT sections/Algorithm.tex
+INPUT ./sections/Specification.tex
+INPUT ./sections/Specification.tex
+INPUT sections/Specification.tex
+INPUT ./sections/SegalaProof.tex
+INPUT ./sections/SegalaProof.tex
+INPUT sections/SegalaProof.tex
 INPUT print.aux
 INPUT ./print.out
 INPUT ./print.out

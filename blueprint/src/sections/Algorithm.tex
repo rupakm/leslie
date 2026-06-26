@@ -1,0 +1,178 @@
+\clearpage
+\section{Implementation's Pseudo-code}
+
+\begin{algorithm}
+    \label{alg:ABA}
+    \caption{Implementation of \textsf{ABA} from \cite{Abraham2022Efficient}}
+    \begin{algorithmic}
+        \State \textbf{Input:} $\texttt{b} \in \{0,1\}$
+        \State \textbf{Sub-Protocols:} Countably many instances of \textsf{GBCA} and \textsf{WCC}
+        \medskip
+        \State $\texttt{r} \gets 1$
+        \State \textbf{loop}
+        \State \quad $(\texttt{b}, \texttt{g}) \gets \textsf{GBCA}_{\texttt{r}}(\texttt{b})$
+        \Comment{$\texttt{b} \in \{0,1,\bot\}$, $\texttt{g} \in \{A, B, C\}$}
+        \State \quad  $\texttt{c} \gets \textsf{WCC}_{\texttt{r}}()$
+        \State \quad \textbf{if} $\texttt{b} = \bot$:
+        \State \quad\quad $\texttt{b} \gets \texttt{c}$
+        \State \quad \textbf{elif} $\texttt{g} = A$:
+        \State \quad\quad send $\langle\textsc{decided}, \texttt{b}\rangle$ to all
+        \State \quad $\texttt{r} \gets \texttt{r} + 1$
+        \medskip
+        \State \textbf{upon} receiving $\langle\textsc{decided}, \texttt{b}\rangle$ from $f+1$
+        processes and having not sent it:
+        \State \quad send $\langle\textsc{decided}, \texttt{b}\rangle$ to all
+        \State \textbf{upon} receiving $\langle\textsc{decided}, \texttt{b}\rangle$ from $n-f$
+        processes and having sent it:
+        \State \quad return $\texttt{b}$
+    \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+    \label{alg:GBCA}
+    \caption{Implementation of \textsf{GBCA} from \cite{Abraham2022Efficient}}
+    \begin{algorithmic}
+        \State \textbf{Input:} $\texttt{b} \in \{0,1\}$
+        \medskip
+        \State send $\langle \textsc{input}, \texttt{b} \rangle$ to all processes
+        \State \textbf{upon} receiving $\langle \textsc{input}, \texttt{b} \rangle$ from at least
+        $f + 1$ processes and not sent $\langle \textsc{input}, \texttt{b}\rangle$ yet:
+        \State \quad send $\langle \textsc{input}, \texttt{b}\rangle$ to all
+        \State \textbf{upon} receiving $\langle \textsc{input}, \texttt{b} \rangle$ from at least
+        $n - f$ processes:
+        \State \quad $\texttt{Valid} \gets \texttt{Valid} \cup \{\texttt{b}\}$
+        \State \quad \textbf{if} not sent $\langle \textsc{echo}, \cdot \rangle$ yet \textbf{then}
+        send $\langle \textsc{echo}, \texttt{b}\rangle$ to all
+        \State \textbf{wait until}
+        \State \quad (a) receiving $\langle \textsc{echo}, \texttt{b} \rangle$ from at least
+        $n - f$ processes \textbf{or}
+        \State \quad (b) receiving $\langle \textsc{echo}, \cdot \rangle$ from at least $n - f$
+        processes and $|\texttt{Valid}| > 1$
+        \State \quad \textbf{if} (a) \textbf{then} send $\langle \textsc{vote}, \texttt{b}\rangle$
+        to all \textbf{else} send $\langle \textsc{vote}, \bot\rangle$ to all
+        \State \textbf{wait until}
+        \State \quad (a) receiving $\langle \textsc{vote}, \texttt{b} \rangle$ from at least
+        $n - f$ processes \textbf{or}
+        \State \quad (b) receiving $\langle \textsc{vote}, \cdot \rangle$ from at least $n - f$
+        processes and $|\texttt{Valid}| > 1$
+        \State \quad \textbf{if} (a) \textbf{then} send $\langle \textsc{bind}, \texttt{b}\rangle$
+        to all \textbf{else} send $\langle \textsc{bind}, \bot\rangle$ to all
+        \State \textbf{wait until}
+        \State \quad (a) receiving $\langle \textsc{bind}, \texttt{b} \rangle$ from at least
+        $n - f$ processes \textbf{or}
+        \State \quad (b) receiving $\langle \textsc{bind}, \cdot \rangle$ from at least $n - f$
+        processes and \\
+        \quad  there exists $\texttt{b} \in \{0,1\}$ such that
+        $\langle \textsc{bind}, \texttt{b}\rangle$ has been received once and \\
+        \quad $\langle \textsc{vote}, \texttt{b}\rangle$ has been received from $f+1$ processes
+        and $|\texttt{Valid}| > 1$ \textbf{or}
+        \State \quad (c) receiving $\langle \textsc{bind}, \bot \rangle$ from at least $n - f$
+        processes and $|\texttt{Valid}| > 1$
+        \State \quad \textbf{if} (a) \textbf{then} return $(\texttt{b},A)$ \textbf{elif} (b)
+        \textbf{then} return $(\texttt{b},B)$ \textbf{else} return $(\bot, C)$
+    \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+    \label{alg:WCC}
+    \caption{Implementation of \textsf{WCC} for process $p_{id}$ adapted from
+    \cite{Freitas2022Distributed}}
+    \begin{algorithmic}
+        \State \textbf{Input:}
+        \State \textbf{Sub-Protocols:} 1 instance of \textsf{Gather}, $n$ instances of
+        \textsf{SRSD} (process $p_k$ is the owner of $\textsf{SRSD}_k$)
+        \medskip
+        \State $\forall k \in [n], \textsf{SRSD}_{k}.\textsf{Asg}.call()$
+        \State \textbf{wait until} $\textsf{SRSD}_{id}.\textsf{Asg}.return()$
+        \State \quad $\textsf{Gather}.call(id)$
+        \State \textbf{upon} $\textsf{Gather}.return(S)$
+        \State \quad $\forall k \in S$, $\textsf{SRSD}_k.\textsf{Rec}.call()$
+        \State \quad $\texttt{T} \gets \emptyset$
+        \State \textbf{upon} $\textsf{SRSD}_k.\textsf{Rec}.return(x)$ and $k \in S$
+        \State \quad $\texttt{T} \gets \texttt{T} \cup \{x\}$
+        \State \textbf{upon} $|\texttt{T}| = |S|$
+        \State \quad return 0 if $0 \in \texttt{T}$ else 1
+    \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+    \label{alg:Gather}
+    \caption{Implementation of \textsf{Gather} from \cite{Attiya2025Beyond}}
+    \begin{algorithmic}
+        \State \textbf{Input:} $\texttt{m}$
+        \State \textbf{Sub-Protocols:} $n$ instances of \textsf{BRB}
+        ($p_k$ is leader in $\textsf{BRB}_k$)
+        \medskip
+        \State $\textsf{BRB}_{id}.call(\texttt{m})$
+        \State \textbf{upon} $\textsf{BRB}_k.return(\texttt{m'})$:
+        \State \quad $\texttt{AP} \gets \texttt{AP} \cup \{(k, \texttt{m'})\}$
+        \State \textbf{upon} $|\texttt{AP}| \ge n-f$ and not sent
+        $\langle \textsc{echo}, \cdot\rangle$:
+        \State \quad send $\langle \textsc{echo}, \texttt{AP}\rangle$ to all
+        \State \textbf{upon} receiving approved $\langle \textsc{echo}, \texttt{AP}_{id} \rangle$
+        from at least $n - f$ processes and not sent $\langle \textsc{vote}, \cdot\rangle$:
+        \State \quad send $\langle \textsc{vote}, \bigcup_{id} \texttt{AP}_{id} \rangle$ to all
+        \State \textbf{upon} receiving approved $\langle \textsc{vote}, \texttt{AP}_{id} \rangle$
+        from at least $n - f$ processes and not sent $\langle \textsc{bind}, \cdot\rangle$:
+        \State \quad send $\langle \textsc{bind}, \bigcup_{id} \texttt{AP}_{id} \rangle$ to all
+        \State \textbf{upon} receiving approved $\langle \textsc{bind}, \texttt{AP}_{id} \rangle$
+        from at least $n - f$ processes:
+        \State \quad return $\bigcup_{id} \texttt{AP}_{id}$
+    \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+    \label{alg:SRSD}
+    \caption{Implementation of \textsf{SRSD} for process $p_{id}$ adapted from
+    \cite{Freitas2022Distributed}}
+    \begin{algorithmic}
+        \State \textbf{Input:}
+        \State \textbf{Sub-Protocols:} 1 instance of \textsf{BRB} where $p_o$ is leader and $n$
+        instances of \textsf{AVSS} (process $p_k$ is dealer in $\textsf{AVSS}_k$)
+        \medskip
+        \State \textbf{Protocol:} $\textsf{SRSD}.\textsf{Asg}()$
+        \State $\texttt{S}, \texttt{x} \gets \emptyset, \mu$
+        \Comment{$\mu$: uniform distribution over the domain of secrets}
+        \State $\textsf{AVSS}_{id}.\textsf{Sh}.call(\texttt{x})$
+        \State \textbf{upon} $\textsf{AVSS}_k.\textsf{Sh}.return()$ and $p_{id}$ is the owner:
+        \State \quad $\texttt{S} \gets \texttt{S} \cup \{k\}$
+        \State \textbf{upon} $|\texttt{S}| \ge n-f$ and $p_{id}$ is the owner:
+        \State \quad $\textsf{BRB}.call(S)$
+        \State \textbf{upon} $\textsf{BRB}.return(S')$ and
+        $\forall k \in S', \textsf{AVSS}_k.\textsf{Sh}.return()$:
+        \State \quad $\textsf{src} \gets S'$
+        \State \quad return
+        \medskip
+        \State \textbf{Protocol:} $\textsf{SRSD}.\textsf{Rec}()$
+        \State $\texttt{sum} \gets 0$
+        \State $\forall k \in \texttt{src}, \textsf{AVSS}_k.\textsf{Rec}.call()$
+        \State \textbf{upon} $\textsf{AVSS}_k.\textsf{Rec}.return(x)$ and $k \in \texttt{src}$:
+        \State \quad $\texttt{sum} \gets \texttt{sum} + x$
+        \State \textbf{wait until} all $\textsf{AVSS}_k.\textsf{Rec}$ have returned for
+        $k \in \texttt{src}$:
+        \State \quad return $\texttt{sum}$
+    \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+    \label{alg:BRB}
+    \caption{Implementation of \textsf{BRB} for process $p_{id}$ from \cite{Bracha1987Asynchronous}}
+    \begin{algorithmic}
+        \State \textbf{Input:} $\texttt{m}$
+        \medskip
+        \State \textbf{if} $p_{id}$ is leader:
+        \State \quad send $\langle \textsc{init}, \texttt{m} \rangle$ to all
+        \State \textbf{upon} receiving $\langle \textsc{init}, \texttt{m} \rangle$ from leader and
+        having not sent $\textsc{echo}$ message:
+        \State \quad send $\langle \textsc{echo}, \texttt{m} \rangle$ to all
+        \State \textbf{upon} receiving $\langle \textsc{echo}, \texttt{m} \rangle$ from $n-f$
+        processes and having not sent $\textsc{vote}$ message:
+        \State \quad send $\langle \textsc{vote}, \texttt{m} \rangle$ to all
+        \State \textbf{upon} receiving $\langle \textsc{vote}, \texttt{m} \rangle$ from $f+1$
+        processes and having not sent $\textsc{vote}$ message:
+        \State \quad send $\langle \textsc{vote}, \texttt{m} \rangle$ to all
+        \State \textbf{upon} receiving $\langle \textsc{vote}, \texttt{m} \rangle$ from $n-f$
+        processes:
+        \State \quad return $\texttt{m}$
+    \end{algorithmic}
+\end{algorithm}

@@ -1,0 +1,385 @@
+\clearpage
+\section{Specification}
+
+\begin{transys}
+    \label{PLTS:ABA}
+    \caption{Encoding of \textsf{ABA}}
+    \begin{algorithmic}
+        \State \textbf{State:} $call \in \{0,1,\bot\}^{[n]}; ret \in \bool^{[n]};
+        bind, val \in \{0,1,\bot\}; coin \in \{0,1,\bot,\top\}; F \subseteq [n]$
+        \State \textbf{Label:} $\{\text{call}(id,b), \text{return}(id,b), \text{fail}(id) \mid
+        id \in [n], b \in \bool\}$
+        \State \textbf{Input:} $\{\text{call}(id,b), \text{fail}(id) \mid id \in [n], b \in \bool\}$
+        \State \textbf{Fairness:} all transitions are fair except those labelled by fail and the
+        call loops
+        \State \textbf{Initial:} $call = \bot^{[n]}; ret = \bot^{[n]}; bind = \bot; out = \bot;
+        val = \bot; F = \emptyset$
+        \medskip
+        \State
+        $call[id] = \bot \wedge bind = \bot
+        \xrightarrow{\text{call}(id,b)}
+        call[id] = b$
+        \State
+        $\top
+        \xrightarrow{\text{call}(id,b)}
+        \top$ \Comment{loop for input-enabledness}
+        \State
+        $|\{id \in [n] \setminus F \mid call[id] \ne \bot\} \cup F| \ge n-f
+        \wedge \forall id \in [n] \setminus F, call[id] \ne b
+        \xrightarrow{\tau}
+        call = \bot^{[n]} \wedge bind = 1-b \wedge val = 1-b \wedge coin = \bot$
+        \State
+        $|\{id \in [n] \setminus F \mid call[id] \ne \bot\} \cup F| \ge n-f
+        \wedge \exists id, id' \in [n] \setminus F, call[id] = 1 \wedge call[id'] = 0
+        \xrightarrow{\tau}
+        call = \bot^{[n]} \wedge bind = 1-b \wedge coin = \bot$
+        \State
+        $call = \bot^{[n]} \wedge bind \ne \bot
+        \xrightarrow{\tau}
+        coin = 1 \text{ with probability } \epsilon; 0 \text{ with probability } \epsilon;
+        \top \text{ otherwise}$
+        \State
+        $call[id] = \bot \wedge bind = coin
+        \xrightarrow{\tau}
+        call[id] = bind$
+        \State
+        $call[id] = \bot \wedge bind \ne coin
+        \xrightarrow{\tau}
+        call[id] = b$ \Comment{$b \in \bool$}
+        \State
+        $val = b \wedge ret[id] = \bot
+        \xrightarrow{\text{return}(id,b)}
+        ret[id] = \top$
+        \State
+        $id \not\in F \wedge |F| < f
+        \xrightarrow{\text{fail}(id)}
+        F = F \cup \{id\}$
+        \State
+        $\top
+        \xrightarrow{\text{fail}(id)}
+        \top$ \Comment{loop for input-enabledness}
+    \end{algorithmic}
+\end{transys}
+
+\begin{transys}
+    \label{PLTS:GBCA}
+    \caption{Encoding of \textsf{GBCA}}
+    \begin{algorithmic}
+        \State \textbf{State:} $call \in \{0,1,\bot\}^{[n]}; ret \in \bool^{[n]};
+        bind, grade \in \{0,1,\bot\}; F \subseteq [n]$
+        \State \textbf{Label:} $\{\text{call}(id,b), \text{return}(id,x,b), \text{fail}(id) \mid
+        id \in [n], x \in (\bool \times \{A,B\})\cup\{(\bot,C)\}, b \in \bool\}$
+        \State \textbf{Input:} $\{\text{call}(id,b), \text{fail}(id) \mid id \in [n], b \in \bool\}$
+        \State \textbf{Fairness:} all transitions are fair except those labelled by fail and the
+        call loops
+        \State \textbf{Initial:} $call = \bot^{[n]}; ret = \bot^{[n]}; bind = \bot; grade = \bot;
+        F = \emptyset$
+        \medskip
+        \State
+        $call[id] = \bot
+        \xrightarrow{\text{call}(id,b)}
+        call[id] = b$
+        \State
+        $\top
+        \xrightarrow{\text{call}(id,b)}
+        \top$ \Comment{loop for input-enabledness}
+        \State
+        $|\{id \in [n] \setminus F \mid call[id] \ne \bot\} \cup F| \ge n-f
+        \wedge \exists id \in [n] \setminus F, call[id] = b
+        \wedge bind = \bot
+        \xrightarrow{\tau}
+        bind = b$
+        \State
+        $bind \ne \bot
+        \wedge \exists id \in [n] \setminus F, call[id] = 1-bind
+        \wedge ret[id] = \bot
+        \xrightarrow{\text{return}(id,(bind,B),bind)}
+        ret[id] = \top$
+        \State
+        $bind \ne \bot \wedge grade \in \{\bot,1\} \wedge ret[id] = \bot
+        \xrightarrow{\text{return(id,(bind,A),bind)}}
+        grade = 1 \wedge ret[id] = \top$
+        \State
+        $bind \ne \bot
+        \wedge \exists id \in [n] \setminus F, call[id] = 1-bind
+        \wedge grade \in \{\bot,0\} \wedge ret[id] = \bot
+        \xrightarrow{\text{return}(id,(\bot,C),bind)}
+        grade = 0 \wedge ret[id] = \top$
+        \State
+        $id \not\in F \wedge |F| < f
+        \xrightarrow{\text{fail}(id)}
+        F = F \cup \{id\}$
+        \State
+        $\top
+        \xrightarrow{\text{fail}(id)}
+        \top$ \Comment{loop for input-enabledness}
+    \end{algorithmic}
+\end{transys}
+
+\begin{transys}
+    \label{PLTS:WCC}
+    \caption{Encoding of \textsf{WCC}}
+    \begin{algorithmic}
+        \State \textbf{State:} $call, ret \in \bool^{[n]}; val \in \{0,1,\bot,\top\};
+        guess \in \{0,1,\bot\}, F \subseteq [n]$
+        \State \textbf{Label:} $\{\text{call}(id), \text{return}(id,b), \text{fail}(id),
+        \text{guess}(b) \mid id \in [n], b \in \bool\}$
+        \State \textbf{Input:} $\{\text{call}(id), \text{fail}(id) \mid id \in [n]\}$
+        \State \textbf{Fairness:} all transitions are fair except those labelled by fail and the
+        call loops
+        \State \textbf{Initial:} $call = \bot^{[n]}; ret = \bot^{[n]}; val = \bot; F = \emptyset$
+        \medskip
+        \State
+        $call[id] = \bot
+        \xrightarrow{\text{call}(id)}
+        call[id] = \top$
+        \State
+        $\top
+        \xrightarrow{\text{call}(id)}
+        \top$ \Comment{loop for input-enabledness}
+        \State
+        $|\{id \in [n] \setminus F \mid call[id] \ne \bot\} \cup F| > f
+        \wedge val = \bot
+        \xrightarrow{\tau}
+        val = 0$ with probability $\epsilon$; 1 with probability $\epsilon$; $\top$ otherwise
+        \State
+        $val \in \{b,\top\}
+        \wedge ret[id] = \bot
+        \xrightarrow{\text{return}(id,b)}
+        ret[id] = \top$ \Comment{$b \in \bool$}
+        \State
+        $id \not\in F \wedge |F| < f
+        \xrightarrow{\text{fail}(id)}
+        F = F \cup \{id\}$
+        \State
+        $\top
+        \xrightarrow{\text{fail}(id)}
+        \top$ \Comment{loop for input-enabledness}
+        \State
+        $val = \bot \wedge guess = \bot
+        \xrightarrow{\text{guess}(b)}
+        guess = b$
+    \end{algorithmic}
+\end{transys}
+
+\begin{transys}
+    \label{PLTS:Gather}
+    \caption{Encoding of \textsf{Gather}}
+    \begin{algorithmic}
+        \State \textbf{State:} $call \in (X\cup\{\bot\})^{[n]}; ret \in \bool^{[n]};
+        bind, F \subseteq [n]$
+        \State \textbf{Label:} $\{\text{call}(id,x), \text{return}(id,g,bind), \text{fail}(id) \mid
+        id \in [n], x \in X, g \in [n] \rightharpoonup X, bind \subseteq [n]\}$
+        \State \textbf{Input:} $\{\text{call}(id,x), \text{fail}(id) \mid id \in [n], x \in X\}$
+        \State \textbf{Fairness:} all transitions are fair except those labelled by fail and the
+        call loops
+        \State \textbf{Initial:} $call = \bot^{[n]}; ret = \bot^{[n]}; bind = \emptyset;
+        F = \emptyset$
+        \medskip
+        \State
+        $call[id] = \bot
+        \xrightarrow{\text{call}(id,x)}
+        call[id] = x$
+        \State
+        $\top
+        \xrightarrow{\text{call}(id,x)}
+        \top$ \Comment{loop for input-enabledness}
+        \State
+        $call[id] = \bot \wedge id \in F
+        \xrightarrow{\tau}
+        call[id] = x$
+        \State
+        $|\{id \in [n] \mid call[id] \ne \bot\}| > n-f
+        \wedge bind = \emptyset
+        \wedge S \subseteq \{id \in [n] \mid call[id] \ne \bot\}
+        \xrightarrow{\tau}
+        bind = S$
+        \State
+        $bind \ne \bot
+        \wedge ret[id] = \bot
+        \wedge g \text{ is defined on } bind
+        \wedge g \text{ agrees with } call
+        \xrightarrow{\text{return}(id,g,bind)}
+        ret[id] = \top$
+        \State
+        $id \not\in F \wedge |F| < f
+        \xrightarrow{\text{fail}(id)}
+        F = F \cup \{id\}$
+        \State
+        $\top
+        \xrightarrow{\text{fail}(id)}
+        \top$ \Comment{loop for input-enabledness}
+    \end{algorithmic}
+\end{transys}
+
+\begin{transys}
+    \label{PLTS:SRSD}
+    \caption{Encoding of \textsf{SRSD}}
+    \begin{algorithmic}
+        \State \textbf{State:} $Asg.call, Asg.ret, Rec.call, Rec.ret \in \bool^{[n]};
+        val, guess \in X \cup \{\bot\}; F \subseteq [n]$
+        \State \textbf{Label:} $\{\text{Asg.call}(id), \text{Asg.return}(id), \text{Rec.call}(id),
+        \text{Rec.return}(id,x), \text{fail}(id), guess(x) \mid id \in [n], x \in X\}$
+        \State \textbf{Input:} $\{\text{Asg.call}(id), \text{Rec.call}(id), \text{fail}(id) \mid
+        id \in [n]\}$
+        \State \textbf{Fairness:} all transitions are fair except those labelled by fail and the
+        call loops
+        \State \textbf{Initial:} $Asg.call, Asg.ret, Rec.call, Rec.ret = \bot^{[n]};
+        val, guess = \bot; F = \emptyset$
+        \medskip
+        \State
+        $Asg.call[id] = \bot
+        \xrightarrow{\text{Asg.call}(id)}
+        Asg.call[id] = \top$
+        \State
+        $\top
+        \xrightarrow{\text{Asg.call}(id)}
+        \top$ \Comment{loop for input-enabledness}
+        \State
+        $|\{id \in [n] \setminus F \mid call[id] \ne \bot\} \cup F| \ge n-f
+        \wedge Asg.ret[id] = \bot
+        \xrightarrow{\text{Asg.return}(id)}
+        Asg.ret[id] = \top$
+        \State
+        $Rec.call[id] = \bot
+        \xrightarrow{\text{Rec.call}(id)}
+        Rec.call[id] = \top$
+        \State
+        $\top
+        \xrightarrow{\text{Rec.call}(id)}
+        \top$ \Comment{loop for input-enabledness}
+        \State
+        $|\{id \in [n] \setminus F \mid call[id] \ne \bot\} \cup F| \ge n-f
+        \wedge val = \bot
+        \xrightarrow{\tau}
+        val = x \text{ with probability } |X|^{-1}$
+        \State
+        $val \ne \bot \wedge Rec.ret[id] = \bot
+        \xrightarrow{Rec.return(id,val)}
+        Rec.ret[id] = \top$
+        \State
+        $id \not\in F \wedge |F| < f
+        \xrightarrow{\text{fail}(id)}
+        F = F \cup \{id\}$
+        \State
+        $\top
+        \xrightarrow{\text{fail}(id)}
+        \top$ \Comment{loop for input-enabledness}
+        \State
+        $\forall id \in [n] \setminus F, Rec.call[id] = \bot \wedge guess = \bot
+        \xrightarrow{\text{guess}(x)}
+        guess = x$
+    \end{algorithmic}
+\end{transys}
+
+\begin{transys}
+    \label{PLTS:BRB}
+    \caption{Encoding of \textsf{BRB}}
+    \begin{algorithmic}
+        \State \textbf{State:} $call \in M\cup\bool; ret \in \bool^{[n]}; F \subseteq [n]$
+        \State \textbf{Label:} $\{\text{call}(m), \text{return}(id,x), \text{fail}(id) \mid
+        id \in [n], m \in M\}$
+        \State \textbf{Input:} $\{\text{call}(m), \text{fail}(id) \mid id \in [n], m \in M\}$
+        \State \textbf{Fairness:} all transitions are fair except those labelled by fail and the
+        call loops
+        \State \textbf{Initial:} $call = \bot; ret = \bot^{[n]}; F = \emptyset$
+        \medskip
+        \State
+        $call = \bot
+        \xrightarrow{\text{call}(m)}
+        call = m$
+        \State
+        $\top
+        \xrightarrow{\text{call}(id,b)}
+        \top$ \Comment{loop for input-enabledness}
+        \State
+        $\text{leader is in } F
+        \wedge ret = \bot^{[n]}
+        \xrightarrow{\tau}
+        call = \top$
+        \State
+        $call \in M \wedge ret[id] = \bot
+        \xrightarrow{\text{return}(id,call)}
+        ret[id] = \top$
+        \State
+        $id \not\in F \wedge |F| < f
+        \xrightarrow{\text{fail}(id)}
+        F = F \cup \{id\}$
+        \State
+        $\top
+        \xrightarrow{\text{fail}(id)}
+        \top$ \Comment{loop for input-enabledness}
+    \end{algorithmic}
+\end{transys}
+
+\begin{transys}
+    \label{PLTS:AVSS}
+    \caption{Encoding of \textsf{AVSS}}
+    \begin{algorithmic}
+        \State \textbf{State:} $Sh.call, Rec.ret \in X \cup \bool; Sh.ret, Rec.call \in \bool^{[n]};
+        guess \in X \cup \{\bot\}; F \subseteq [n]$
+        \State \textbf{Label:} $\{\text{Sh.call}(x), \text{Sh.return}(id,x), \text{Rec.call}(id),
+        \text{Rec.return}(id,x), \text{fail}(id), guess(x) \mid id \in [n], x \in X\}$
+        \State \textbf{Input:} $\{\text{Sh.call}(id), \text{Rec.call}(id), \text{fail}(id) \mid
+        id \in [n]\}$
+        \State \textbf{Fairness:} all transitions are fair except those labelled by fail and the
+        call loops
+        \State \textbf{Initial:} $Sh.call = \bot; Sh.ret, Rec.call, Rec.ret = \bot^{[n]};
+        val, guess = \bot; F = \emptyset$
+        \State \textbf{Partial Information:} $\ocal_Q$ erases the valuation of $Sh.call$ if it is
+        in $X$ and $\ocal_L$ removes $x$ in $Sh.call(x)$
+        \medskip
+        \State
+        $Sh.call = \bot
+        \xrightarrow{\text{Sh.call}(x)}
+        Sh.call = x$
+        \State
+        $\top
+        \xrightarrow{\text{Sh.call}(x)}
+        \top$ \Comment{loop for input-enabledness}
+        \State
+        $\text{dealer is in } F
+        \wedge Sh.ret = \bot^{[n]}
+        \xrightarrow{\tau}
+        Sh.call = \top$ \Comment{Bad dealer prevents termination of \textsf{Sh}}
+        \State
+        $\text{dealer is in } F
+        \wedge Sh.ret = \bot^{[n]}
+        \xrightarrow{\tau}
+        Sh.call = x$ \Comment{Bad dealer commits an arbitrary value}
+        \State
+        $Sh.call \in X \wedge ret[id] = \bot
+        \xrightarrow{Sh.return(id,Sh.call)}
+        ret[id] = \top$
+        \State
+        $Rec.call[id] = \bot
+        \xrightarrow{\text{Rec.call}(id)}
+        Rec.call[id] = \top$
+        \State
+        $\top
+        \xrightarrow{\text{Rec.call}(id)}
+        \top$ \Comment{loop for input-enabledness}
+        \State
+        $|\{id \in [n] \setminus F \mid Rec.call[id] \ne \bot\} \cup F| \ge n-f
+        \wedge Rec.ret[id] = \bot
+        \xrightarrow{\tau}
+        Rec.ret[id] = \top \text{ with probability }\epsilon; x \in X
+        \text{ with probability } (1-\epsilon)*\epsilon; Sh.call \text{ otherwise}$
+        \State
+        $Rec.ret[id] \in X
+        \xrightarrow{Rec.return(id,Rec.ret[id])}
+        Rec.ret[id] = \top$
+        \State
+        $id \not\in F \wedge |F| < f
+        \xrightarrow{\text{fail}(id)}
+        F = F \cup \{id\}$
+        \State
+        $\top
+        \xrightarrow{\text{fail}(id)}
+        \top$ \Comment{loop for input-enabledness}
+        \State
+        $\forall id \in [n] \setminus F, Rec.call[id] = \bot \wedge guess = \bot
+        \xrightarrow{\text{guess}(x)}
+        guess = x$
+    \end{algorithmic}
+\end{transys}

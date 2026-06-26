@@ -1,4 +1,4 @@
-\begin{thebibliography}{EMMS26}
+\begin{thebibliography}{ABDY22}
 
 \bibitem[ABDY22]{Abraham2022Efficient}
 Ittai Abraham, Naama Ben-David, and Sravya Yandamuri.
@@ -25,6 +25,13 @@ Gabriel Bracha.
 \newblock Asynchronous byzantine agreement protocols.
 \newblock {\em Information and Computation}, 75(2):130--143, 1987.
 
+\bibitem[CR93]{Canetti1993Fast}
+Ran Canetti and Tal Rabin.
+\newblock Fast asynchronous byzantine agreement with optimal resilience.
+\newblock In {\em Proceedings of the Twenty-Fifth Annual ACM Symposium on
+  Theory of Computing}, STOC '93, page 42–51, New York, NY, USA, 1993.
+  Association for Computing Machinery.
+
 \bibitem[DSW22]{Dongol2022Weak}
 Brijesh Dongol, Gerhard Schellhorn, and Heike Wehrheim.
 \newblock {Weak Progressive Forward Simulation Is Necessary and Sufficient for
@@ -35,16 +42,15 @@ Brijesh Dongol, Gerhard Schellhorn, and Heike Wehrheim.
   31:1--31:23, Dagstuhl, Germany, 2022. Schloss Dagstuhl -- Leibniz-Zentrum
   f{\"u}r Informatik.
 
-\bibitem[EMMS26]{Enea2026Verifying}
-Constantin Enea, Rupak Majumdar, Harshit~Jitendra Motwani, and V.~R.
-  Sathiyanarayana.
-\newblock Verifying almost-sure termination for randomized distributed
-  algorithms.
-\newblock {\em Proc. {ACM} Program. Lang.}, 10({POPL}):1412--1441, 2026.
-
 \bibitem[FKT22]{Freitas2022Distributed}
 Luciano Freitas, Petr Kuznetsov, and Andrei Tonkikh.
 \newblock Distributed randomness from approximate agreement, 2022.
+
+\bibitem[LT26]{Lynch2026Introduction}
+Nancy~A Lynch and Mark~R Tuttle.
+\newblock An introduction to input/output automata.
+\newblock {\em Form. Asp. Comput.}, January 2026.
+\newblock Just Accepted.
 
 \bibitem[SA21]{Stern2021Living}
 Gilad Stern and Ittai Abraham.

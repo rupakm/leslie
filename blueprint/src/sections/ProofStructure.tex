@@ -1,28 +1,37 @@
 \section{Proof Decomposition}
 
-The end goal is the correctness of $\mathsf{ABA.Impl}$.
-We establish it via a simulation by $\mathsf{ABA.Spec}$ and transport the spec's correctness.
+The end goal is the correctness of \textsf{ABA.Impl}.
+We establish it via a simulation by \textsf{ABA.Spec} and transport the spec's correctness.
 The simulation itself is decomposed recursively along the sub-protocol structure.
 
-For a protocol $P$ with concrete sub-protocols $Q_1,\dots,Q_k$, the step ``$\mathsf{P.Spec}$ simulates $\mathsf{P.Impl}$'' is split into:
+For a protocol $P$ with concrete sub-protocols $Q_1,\dots,Q_k$, the step ``\textsf{P.Spec}
+simulates \textsf{P.Impl}'' is split into:
 \begin{enumerate}
-    \item (Substitution) $\mathsf{P.Impl}[\mathsf{Q_1.Spec},\dots,\mathsf{Q_k.Spec}]$ is simulated by $\mathsf{P.Impl}$, using the child simulations $\mathsf{Q_i.Spec}$ simulates $\mathsf{Q_i.Impl}$ and compositionality.
-    \item (Core) $\mathsf{P.Spec}$ simulates the hybrid $\mathsf{P.Impl}[\mathsf{Q_1.Spec},\dots,\mathsf{Q_k.Spec}]$.
+    \item (Substitution) $\mathsf{P.Impl}[\mathsf{Q_1.Spec},\dots,\mathsf{Q_k.Spec}]$ is simulated
+    by \textsf{P.Impl}, using the child simulations \textsf{$Q_i$.Spec} simulates
+    \textsf{$Q_i$.Impl} and compositionality.
+    \item (Core) \textsf{P.Spec} simulates the hybrid
+    $\mathsf{P.Impl}[\mathsf{Q_1.Spec},\dots,\mathsf{Q_k.Spec}]$.
     \item (Transitivity) Compose (1) and (2).
 \end{enumerate}
-Leaves of the recursion (no sub-protocol, or only the black-box $\mathsf{AVSS.Spec}$) skip the substitution step.
+Leaves of the recursion (no sub-protocol, or only the black-box \textsf{AVSS.Spec}) skip the
+substitution step.
 
 \subsection{Top-level}
 
 \begin{theorem}\label{thm:ABACorrect}
     \lean{ABA.Correct}
     %\leanok
-    \uses{def:ABAConcrete, prot:SpecABA}
-    $\mathsf{ABA.Concrete}$ satisfies Validity, Agreement and Almost-Sure Termination.
+    \uses{ABA:Impl, ABA:Spec}
+    \textsf{ABA.Impl} satisfies Validity, Agreement and Almost-Sure Termination.
 \end{theorem}
 \begin{proof}
-    \uses{thm:ABASim, thm:pfs-sound}
-    Soundness of probabilistic forward simulation (Theorem~\ref{thm:pfs-sound}) applied to \ref{thm:ABASim} yields $\mathsf{ABA.Concrete} \sqsubseteq_{\mathrm{TD}} \mathsf{ABA.Spec}$, which transports the safety properties (Validity and Agreement) of $\mathsf{ABA.Spec}$ to $\mathsf{ABA.Concrete}$. Almost-Sure Termination is a probabilistic liveness property and is handled separately via the liveness-preserving strengthening of $\preceq_{\mathrm{PFS}}$.
+    \uses{thm:ABASim,thm:Segala}
+    According to Theorem \ref{thm:ABASim}, \textsf{ABA.Impl} $\sqsubseteq^f$
+    \textsf{ABA.Spec}. Moreover, one can prove that \textsf{ABA.Spec} satisfies
+    all three properties which can all be expressed as trace properties or fair trace
+    distribution properties. Thus, by Theorem \ref{thm:Segala}, \textsf{ABA.Impl} satisfies all
+    three properties.
 \end{proof}
 
 \subsection{ABA}
@@ -30,139 +39,210 @@ Leaves of the recursion (no sub-protocol, or only the black-box $\mathsf{AVSS.Sp
 \begin{theorem}\label{thm:ABASim}
     \lean{ABA.Sim}
     %\leanok
-    \uses{def:ABAConcrete, prot:SpecABA}
-    $\mathsf{ABA.Spec}$ simulates $\mathsf{ABA.Concrete}$.
+    \uses{ABA:Impl, ABA:Spec}
+    \textsf{ABA.Impl} $\sqsubseteq^f$ \textsf{ABA.Spec}.
 \end{theorem}
 \begin{proof}
-    \uses{lem:ABASubst, lem:ABACore, lem:pfs-transitive}
-    By transitivity of probabilistic forward simulation (Lemma~\ref{lem:pfs-transitive}), chain \ref{lem:ABACore} with \ref{lem:ABASubst} by transitivity.
+    \uses{lem:ABASubst, lem:ABACore}
+    Trivial by transitivity of $\sqsubseteq^f$ and Lemma \ref{lem:ABACore} and \ref{lem:ABASubst}.
 \end{proof}
 
 \begin{lemma}\label{lem:ABASubst}
     \lean{ABA.SubstSim}
     %\leanok
-    \uses{def:ABAConcrete, def:ABAHybrid}
-    $\mathsf{ABA.Hybrid}$ is simulated by $\mathsf{ABA.Concrete}$.
+    \uses{ABA:Impl, ABA:Hybrid}
+    \textsf{ABA.Impl} $\sqsubseteq^f$ \textsf{ABA.Hybrid}.
 \end{lemma}
 \begin{proof}
-    \uses{thm:GBCASim, thm:WCCSim, thm:pfs-precongruence}
-    $\mathsf{ABA.Concrete}$ and $\mathsf{ABA.Hybrid}$ share the same skeleton $\mathsf{ABA.Impl}$ and differ only in their sub-protocol instances. Apply the pre-congruence of $\preceq_{\mathrm{PFS}}$ for parallel composition (Theorem~\ref{thm:pfs-precongruence}) to the child simulations \ref{thm:GBCASim} and \ref{thm:WCCSim}, lifted along the $\mathsf{ABA.Impl}$ context.
+    \uses{thm:GBCASim, thm:WCCSim, lem:precong}
+    Before abstraction, both systems only differ by replacing \textsf{GBCA.Impl} (resp.
+    \textsf{WCC.Impl}) by \textsf{GBCA.Spec} (resp. \textsf{WCC.Spec}). However,
+    \textsf{ABA.Impl} is partial-information so we need to relate its belief PLTS.
+    According to Theorem \ref{thm:partialinfocompo}, the belief PLTS of the composition
+    is isomorphic to the composition of the belief PLTS.
+    Therefore, according to Theorem \ref{thm:GBCASim} and \ref{thm:WCCSim},
+    Lemma \ref{lem:precong} followed by Lemma \ref{lem:abstract} imply \textsf{ABA.Impl}
+    $\sqsubseteq^f$ \textsf{ABA.Hybrid}.
 \end{proof}
 
 \begin{lemma}\label{lem:ABACore}
     \lean{ABA.CoreSim}
     %\leanok
-    \uses{def:ABAHybrid, prot:SpecABA}
-    $\mathsf{ABA.Spec}$ simulates $\mathsf{ABA.Hybrid}$.
+    \uses{ABA:Hybrid, ABA:Spec}
+    \textsf{ABA.Hybrid} $\sqsubseteq^f$ \textsf{ABA.Spec}.
 \end{lemma}
+\begin{proof}
+    \uses{thm:Segala}
+    Both systems are full-information and probabilistic, thus, according to
+    Theorem \ref{thm:Segala}, it suffices to build a progressive probabilistic
+    forward simulation of \textsf{ABA.Hybrid} by \textsf{ABA.Spec}.
+    [TODO details about the construction]
+\end{proof}
 
 \subsection{WCC}
 
 \begin{theorem}\label{thm:WCCSim}
     \lean{WCC.Sim}
     %\leanok
-    \uses{def:WCCConcrete, prot:SpecWCC}
-    $\mathsf{WCC.Spec}$ simulates $\mathsf{WCC.Concrete}$.
+    \uses{WCC:Impl, WCC:Spec}
+    \textsf{WCC.Impl} $\sqsubseteq^f$ \textsf{WCC.Spec}.
 \end{theorem}
 \begin{proof}
-    \uses{lem:WCCSubst, lem:WCCCore, lem:pfs-transitive}
-    By transitivity of probabilistic forward simulation (Lemma~\ref{lem:pfs-transitive}), chain \ref{lem:WCCCore} with \ref{lem:WCCSubst} by transitivity.
+    \uses{lem:WCCSubst, lem:WCCCore}
+    Trivial by transitivity of $\sqsubseteq^f$ and Lemma \ref{lem:WCCCore} and \ref{lem:WCCSubst}.
 \end{proof}
 
 \begin{lemma}\label{lem:WCCSubst}
     \lean{WCC.SubstSim}
     %\leanok
-    \uses{def:WCCConcrete, def:WCCHybrid}
-    $\mathsf{WCC.Hybrid}$ is simulated by $\mathsf{WCC.Concrete}$.
+    \uses{WCC:Impl, WCC:Hybrid}
+    \textsf{WCC.Impl} $\sqsubseteq^f$ \textsf{WCC.Hybrid}.
 \end{lemma}
 \begin{proof}
-    \uses{thm:GatherSim, thm:RSDSim, thm:pfs-precongruence}
-    $\mathsf{WCC.Concrete}$ and $\mathsf{WCC.Hybrid}$ share the same skeleton $\mathsf{WCC.Impl}$ and differ only in the instances of Gather and RSD. Apply the pre-congruence of $\preceq_{\mathrm{PFS}}$ for parallel composition (Theorem~\ref{thm:pfs-precongruence}) to the child simulations \ref{thm:GatherSim} and \ref{thm:RSDSim}, lifted along the $\mathsf{WCC.Impl}$ context.
+    \uses{thm:SRSDSim, thm:GBCASim, lem:precong}
+    Before abstraction, both systems only differ by replacing \textsf{SRSD.Impl} (resp.
+    \textsf{Gather.Impl}) by \textsf{SRSD.Spec} (resp. \textsf{Gather.Spec}).
+    However, \textsf{WCC.Impl} is partial-information because of \textsf{SRSD.Impl},
+    thus, we need to relate the belief PLTS of \textsf{WCC.Impl} to \textsf{WCC.Hybrid}.
+    According to Theorem \ref{thm:partialinfocompo}, the belief PLTS of \textsf{WCC.Impl}
+    is isomorphic to the composition of the belief PLTS of its components.
+    Therefore, according to Theorem \ref{thm:SRSDSim} and \ref{thm:GatherSim},
+    Lemma \ref{lem:precong} followed by Lemma \ref{lem:abstract} imply \textsf{WCC.Impl}
+    $\sqsubseteq^f$ \textsf{WCC.Hybrid}.
 \end{proof}
 
 \begin{lemma}\label{lem:WCCCore}
     \lean{WCC.CoreSim}
     %\leanok
-    \uses{def:WCCHybrid, prot:SpecWCC}
-    $\mathsf{WCC.Spec}$ simulates $\mathsf{WCC.Hybrid}$.
+    \uses{WCC:Hybrid, WCC:Spec}
+    \textsf{WCC.Hybrid} $\sqsubseteq^f$ \textsf{WCC.Spec}.
 \end{lemma}
+\begin{proof}
+    \uses{thm:Segala}
+    Both systems are full-information and probabilistic, thus, according to
+    Theorem \ref{thm:Segala}, it suffices to build a progressive probabilistic
+    forward simulation of \textsf{WCC.Hybrid} by \textsf{WCC.Spec}.
+    [TODO details about the construction]
+\end{proof}
 
 \subsection{GBCA}
 
 \begin{theorem}\label{thm:GBCASim}
     \lean{GBCA.Sim}
     %\leanok
-    \uses{prot:ImplGBCA, prot:SpecGBCA}
-    $\mathsf{GBCA.Spec}$ simulates $\mathsf{GBCA.Impl}$. No sub-protocol: direct proof.
+    \uses{impl:GBCA, GBCA:Spec}
+    \textsf{GBCA.Impl} $\sqsubseteq^f$ \textsf{GBCA.Spec}.
 \end{theorem}
+\begin{proof}
+    \uses{lem:weaksim}
+    Since \textsf{GBCA} is a full-information non-probabilistic protocol, according to Lemma
+    \ref{lem:weaksim}, it suffices to build a progressive weak simulation
+    of \textsf{GBCA.Impl} by \textsf{GBCA.Spec}.
+    [TODO details about the construction]
+\end{proof}
 
 \subsection{Gather}
 
 \begin{theorem}\label{thm:GatherSim}
     \lean{Gather.Sim}
     %\leanok
-    \uses{def:GatherConcrete, prot:SpecGather}
-    $\mathsf{Gather.Spec}$ simulates $\mathsf{Gather.Concrete}$.
+    \uses{Gather:Impl, Gather:Spec}
+    \textsf{Gather.Impl} $\sqsubseteq^f$ \textsf{Gather.Spec}.
 \end{theorem}
 \begin{proof}
-    \uses{lem:GatherSubst, lem:GatherCore, lem:pfs-transitive}
-    By transitivity of probabilistic forward simulation (Lemma~\ref{lem:pfs-transitive}), chain \ref{lem:GatherCore} with \ref{lem:GatherSubst} by transitivity.
+    \uses{lem:GatherSubst, lem:GatherCore}
+    Trivial by transitivity of $\sqsubseteq^f$ and Lemma \ref{lem:GatherCore} and
+    \ref{lem:GatherSubst}.
 \end{proof}
 
 \begin{lemma}\label{lem:GatherSubst}
     \lean{Gather.SubstSim}
     %\leanok
-    \uses{def:GatherConcrete, def:GatherHybrid}
-    $\mathsf{Gather.Hybrid}$ is simulated by $\mathsf{Gather.Concrete}$.
+    \uses{Gather:Impl, Gather:Hybrid}
+    \textsf{Gather.Impl} $\sqsubseteq^f$ \textsf{Gather.Hybrid}.
 \end{lemma}
 \begin{proof}
-    \uses{thm:BRBSim, thm:pfs-precongruence}
-    $\mathsf{Gather.Concrete}$ and $\mathsf{Gather.Hybrid}$ share the same skeleton $\mathsf{Gather.Impl}$ and differ only in the BRB instances. Apply the pre-congruence of $\preceq_{\mathrm{PFS}}$ for parallel composition (Theorem~\ref{thm:pfs-precongruence}) to the child simulation \ref{thm:BRBSim}, lifted along the $\mathsf{Gather.Impl}$ context (one instance per leader).
+    \uses{thm:BRBSim, lem:precong}
+    Before abstraction, both systems are full-information and differ by replacing \textsf{BRB.Impl}
+    by \textsf{BRB.Spec}. According to Theorem \ref{thm:BRBSim},
+    Lemma \ref{lem:precong} followed by Lemma \ref{lem:abstract} imply \textsf{Gather.Impl}
+    $\sqsubseteq^f$ \textsf{Gather.Hybrid}.
 \end{proof}
 
 \begin{lemma}\label{lem:GatherCore}
     \lean{Gather.CoreSim}
     %\leanok
-    \uses{def:GatherHybrid, prot:SpecGather}
-    $\mathsf{Gather.Spec}$ simulates $\mathsf{Gather.Hybrid}$.
+    \uses{Gather:Hybrid, Gather:Spec}
+    \textsf{Gather.Hybrid} $\sqsubseteq^f$ \textsf{Gather.Spec}.
 \end{lemma}
+\begin{proof}
+    \uses{lem:weaksim}
+    Since \textsf{Gather} is a full-information non-probabilistic protocol,
+    according to Lemma \ref{lem:weaksim}, it suffices to build a progressive
+    weak simulation of \textsf{Gather.Hybrid} by \textsf{Gather.Spec}.
+    [TODO details about the construction]
+\end{proof}
 
-\subsection{RSD}
+\subsection{SRSD}
 
-\begin{theorem}\label{thm:RSDSim}
-    \lean{RSD.Sim}
+\begin{theorem}\label{thm:SRSDSim}
+    \lean{SRSD.Sim}
     %\leanok
-    \uses{def:RSDConcrete, prot:SpecRSD}
-    $\mathsf{RSD.Spec}$ simulates $\mathsf{RSD.Concrete}$.
+    \uses{SRSD:Impl, SRSD:Spec}
+    \textsf{SRSD.Impl} $\sqsubseteq^f$ \textsf{SRSD.Spec}.
 \end{theorem}
 \begin{proof}
-    \uses{lem:RSDSubst, lem:RSDCore, lem:pfs-transitive}
-    By transitivity of probabilistic forward simulation (Lemma~\ref{lem:pfs-transitive}), chain \ref{lem:RSDCore} with \ref{lem:RSDSubst} by transitivity.
+    \uses{lem:SRSDSubst, lem:SRSDCore}
+    Trivial by transitivity of $\sqsubseteq^f$ and Lemma \ref{lem:SRSDCore} and \ref{lem:SRSDSubst}.
 \end{proof}
 
-\begin{lemma}\label{lem:RSDSubst}
-    \lean{RSD.SubstSim}
+\begin{lemma}
+    \label{lem:SRSDSubst}
+    \lean{SRSD.SubstSim}
     %\leanok
-    \uses{def:RSDConcrete, def:RSDHybrid}
-    $\mathsf{RSD.Hybrid}$ is simulated by $\mathsf{RSD.Concrete}$. Only BRB is substituted; $\mathsf{AVSS.Spec}$ stays fixed on both sides.
+    \uses{SRSD:Impl, SRSD:Hybrid}
+    \textsf{SRSD.Impl} $\sqsubseteq^f$ \textsf{SRSD.Hybrid}.
 \end{lemma}
 \begin{proof}
-    \uses{thm:BRBSim, thm:pfs-precongruence}
-    $\mathsf{RSD.Concrete}$ and $\mathsf{RSD.Hybrid}$ share the same skeleton $\mathsf{RSD.Impl}$ and the same $\mathsf{AVSS.Spec}$ instances; only the BRB instances are substituted. Apply the pre-congruence of $\preceq_{\mathrm{PFS}}$ for parallel composition (Theorem~\ref{thm:pfs-precongruence}) to the child simulation \ref{thm:BRBSim}, lifted along the $\mathsf{RSD.Impl}$ context (one BRB instance per leader).
+    \uses{thm:BRBSim,thm:partialinfocompo}
+    Before abstraction, both systems only differ by replacing \textsf{BRB.Impl} by
+    \textsf{BRB.Spec}. However, they are partial-information, thus, we need
+    to relate their belief PLTSs. According to Theorem \ref{thm:partialinfocompo},
+    the belief PLTS of the composition is isomorphic to the composition of the
+    belief PLTSs. Therefore, according to Theorem \ref{thm:BRBSim},
+    Lemma \ref{lem:precong} followed by Lemma \ref{lem:abstract} imply \textsf{SRSD.Impl}
+    $\sqsubseteq^f$ \textsf{SRSD.Hybrid}.
 \end{proof}
 
-\begin{lemma}\label{lem:RSDCore}
-    \lean{RSD.CoreSim}
+\begin{lemma}\label{lem:SRSDCore}
+    \lean{SRSD.CoreSim}
     %\leanok
-    \uses{def:RSDHybrid, prot:SpecRSD}
-    $\mathsf{RSD.Spec}$ simulates $\mathsf{RSD.Hybrid}$.
+    \uses{SRSD:Hybrid, SRSD:Spec}
+    \textsf{SRSD.Hybrid} $\sqsubseteq^f$ \textsf{SRSD.Spec}.
 \end{lemma}
+\begin{proof}
+    \uses{thm:partialinfosound, thm:Segala}
+    \textsf{SRSD.Hybrid} is partial-information because \textsf{SRSD.Impl} and
+    \textsf{AVSS.Spec} also are. However, \textsf{SRSD.Spec} is
+    full-information. Thus, according to Theorem \ref{thm:partialinfosound} and
+    \ref{thm:Segala}, it suffices to build a progressive probabilistic forward
+    simulation of the belief PLTS of \textsf{SRSD.Hybrid} by \textsf{SRSD.Spec}.
+    [TODO details about the construction]
+\end{proof}
 
 \subsection{BRB}
 
-\begin{theorem}\label{thm:BRBSim}
+\begin{theorem}
+    \label{thm:BRBSim}
     \lean{BRB.Sim}
     %\leanok
-    \uses{prot:ImplBRB, prot:SpecBRB}
-    $\mathsf{BRB.Spec}$ simulates $\mathsf{BRB.Impl}$. No sub-protocol: direct proof.
+    \uses{impl:BRB, BRB:Spec}
+    \textsf{BRB.Impl} $\sqsubseteq^f$ \textsf{BRB.Spec}.
 \end{theorem}
+\begin{proof}
+    \uses{lem:weaksim}
+    Since \textsf{BRB} is a full-information non-probabilistic protocol,
+    according to Lemma \ref{lem:weaksim}, it suffices to build a progressive
+    weak simulation of \textsf{BRB.Impl} by \textsf{BRB.Spec}.
+    [TODO details about the construction]
+\end{proof}

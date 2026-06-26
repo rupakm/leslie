@@ -29,6 +29,11 @@
 \usepackage{algorithm}        % the float wrapper, gives "Algorithm N: ..." captions
 \usepackage{algpseudocode}    % the algorithmic environment + \State, \If, \For, etc.
 
+\floatstyle{ruled}                       % the default style algorithm uses
+\newfloat{transys}{htbp}{lots}           % new float: own counter, own list file
+\floatname{transys}{Transition System}   % caption label
+\providecommand{\listoftransys}{\listof{transys}{List of Transition Systems}}
+
 \input{macros/common}
 \input{macros/print}
 

@@ -1,14 +1,14 @@
 # Fdb version 4
-["bibtex print"] 1782116307.22778 "print.aux" "print.bbl" "print" 1782116308.32875 0
+["bibtex print"] 1782484985.63894 "print.aux" "print.bbl" "print" 1782484986.98803 0
   "./biblio.bib" 1781772290.51041 8221 3e4fd995504d5a26d3872e20883e09db ""
   "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/bibtex/bst/base/alpha.bst" 1 23907 a5f93555796fb564b924339521f10a7c ""
-  "print.aux" 1782116308.14983 18624 16f2038cd75e82bc3c7ba2aeb10f384d "pdflatex"
+  "print.aux" 1782484986.77151 20325 e277e5c2e027d2a2b6b57a799095262e "pdflatex"
   (generated)
   "print.bbl"
   "print.blg"
   (rewritten before read)
-["pdflatex"] 1782116307.27791 "/home/greghem/leslie/blueprint/src/print.tex" "print.pdf" "print" 1782116308.32891 0
-  "/home/greghem/leslie/blueprint/src/print.tex" 1781595909.36606 1483 f80e354e7ef480339ff09f81dbb4d293 ""
+["pdflatex"] 1782484985.71359 "/home/greghem/leslie/blueprint/src/print.tex" "print.pdf" "print" 1782484986.98823 0
+  "/home/greghem/leslie/blueprint/src/print.tex" 1782201617.58454 1776 1b0e689b333e70bd8cf013f45281823a ""
   "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/fonts/map/fontname/texfonts.map" 1 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/fonts/tfm/adobe/zapfding/pzdr.tfm" 1 1528 f853c4d1b4e0550255e02831fdc8496f ""
   "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/fonts/tfm/public/amsfonts/symbols/msam10.tfm" 1 916 f87d7c45f9c908e672703b83b72241a3 ""
@@ -101,16 +101,19 @@
   "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/url/url.sty" 1 12796 8edb7d69a20b857904dd0ea757c14ec9 ""
   "/nix/store/4mq3aq4gi5qwdhgw3x45akw8fjac8g7p-texlive-2025-r78234-final-env/share/texmf-var/web2c/texmf.cnf" 1 44263 f2130afbe3eaaaf8d5d682eee635b1d1 ""
   "/nix/store/4mq3aq4gi5qwdhgw3x45akw8fjac8g7p-texlive-2025-r78234-final-env/share/texmf-var/web2c/xetex/xelatex.fmt" 1 5949304 5e7c4eb703f27ab70b2fcbc92898e4d2 ""
-  "content.tex" 1780314469.80075 1592 606c8ff0797ea37035a606a0805fb811 ""
-  "macros/common.tex" 1781859376.61229 1270 6fef48aad81d85ebd26c18136a323bfb ""
+  "content.tex" 1782471610.30708 1714 467d3e684ee17eb15a84bcb7677e8599 ""
+  "macros/common.tex" 1782200339.38757 1387 f588d8ec00359735c039337c86a92d79 ""
   "macros/print.tex" 1780051330.62034 1101 87627b2ec24fef68edc71c13f43f7bab ""
-  "print.aux" 1782116308.14983 18624 16f2038cd75e82bc3c7ba2aeb10f384d "pdflatex"
-  "print.bbl" 1782116307.27554 3125 82785280ab0e359c55b94f20d6485758 "bibtex print"
-  "print.out" 1782116308.14983 2641 263d70c20a594cf63e67ba33132991b0 "pdflatex"
-  "print.tex" 1781595909.36606 1483 f80e354e7ef480339ff09f81dbb4d293 ""
-  "sections/Preliminaries.tex" 1782115664.66602 25740 b3cbed74a2fe576683868e50b8b734e7 ""
-  "sections/ProofStructure.tex" 1780940887.68081 7383 33c960ff1a7c773e95bc9b187d758244 ""
-  "sections/Protocols.tex" 1782116306.00331 36823 e187bdbb23d7d5490ae2f0a2087ef37b ""
+  "print.aux" 1782484986.77151 20325 e277e5c2e027d2a2b6b57a799095262e "pdflatex"
+  "print.bbl" 1782484985.71082 2252 401b7612367d4fe128a30d9a7df6b0a5 "bibtex print"
+  "print.out" 1782484986.77251 3755 51374c169b7bbbb4238cde858a1d92cf "pdflatex"
+  "print.tex" 1782201617.58454 1776 1b0e689b333e70bd8cf013f45281823a ""
+  "sections/Algorithm.tex" 1782472512.63641 9743 a8d4190786c4980e29299eac8b4ef31f ""
+  "sections/Preliminaries.tex" 1782484984.17202 21423 cfe9f1341362a4d771cdfff5b4191ddc ""
+  "sections/ProofStructure.tex" 1782472055.96151 9311 e5db62b615bb1d4b9ae2129bb933b3d5 ""
+  "sections/Protocols.tex" 1782474865.1463 20121 2996626c379f206364cf1c9ec20ae963 ""
+  "sections/SegalaProof.tex" 1782472141.45569 4243 f0deb9d79edc9e88b1b5acca3e1a3146 ""
+  "sections/Specification.tex" 1782472626.42165 14409 760ed61f02c7f232936620107cbfcdc1 ""
   (generated)
   "print.aux"
   "print.log"
