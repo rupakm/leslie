@@ -1,5 +1,13 @@
 # Fdb version 4
-["pdflatex"] 1781768026.23743 "/home/greghem/leslie/blueprint/src/web.tex" "web.pdf" "web" 1781768026.74253 2
+["bibtex web"] 0 "web.aux" "web.bbl" "web" 0 -1
+  "./biblio.bib" 1781772290.51041 8221 3e4fd995504d5a26d3872e20883e09db ""
+  "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/bibtex/bst/base/alpha.bst" 1 23907 a5f93555796fb564b924339521f10a7c ""
+  "web.aux" 1782722491.90605 6752 d89a344513ca99456ead3197c8fd446a "pdflatex"
+  (generated)
+  "web.bbl"
+  "web.blg"
+  (rewritten before read)
+["pdflatex"] 1782722491.31103 "/home/greghem/leslie/blueprint/src/web.tex" "web.pdf" "web" 1782722492.11667 2
   "/home/greghem/leslie/blueprint/src/web.tex" 1780497200.85434 880 893693e4ceb77d3db8931dec2727f809 ""
   "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/fonts/map/fontname/texfonts.map" 1 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/fonts/tfm/adobe/zapfding/pzdr.tfm" 1 1528 f853c4d1b4e0550255e02831fdc8496f ""
@@ -21,6 +29,8 @@
   "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/fonts/tfm/public/cm/cmr12.tfm" 1 1288 655e228510b4c2a1abe905c368440826 ""
   "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/fonts/tfm/public/cm/cmr6.tfm" 1 1300 b62933e007d01cfd073f79b963c01526 ""
   "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/fonts/tfm/public/cm/cmr8.tfm" 1 1292 21c1c5bfeaebccffdb478fd231a0997d ""
+  "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/fonts/tfm/public/cm/cmss10.tfm" 1 1316 b636689f1933f24d1294acdf6041daaa ""
+  "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/fonts/tfm/public/cm/cmss8.tfm" 1 1296 d77f431d10d47c8ea2cc18cf45346274 ""
   "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/fonts/tfm/public/cm/cmsy10.tfm" 1 1124 6c73e740cf17375f03eec0ee63599741 ""
   "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/fonts/tfm/public/cm/cmsy6.tfm" 1 1116 933a60c408fc0a863a92debe84b2d294 ""
   "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/fonts/tfm/public/cm/cmsy8.tfm" 1 1120 8b7d695260f3cff42e636090a8002094 ""
@@ -67,12 +77,16 @@
   "/nix/store/4mq3aq4gi5qwdhgw3x45akw8fjac8g7p-texlive-2025-r78234-final-env/share/texmf-var/web2c/texmf.cnf" 1 44263 f2130afbe3eaaaf8d5d682eee635b1d1 ""
   "/nix/store/4mq3aq4gi5qwdhgw3x45akw8fjac8g7p-texlive-2025-r78234-final-env/share/texmf-var/web2c/xetex/xelatex.fmt" 1 5949304 5e7c4eb703f27ab70b2fcbc92898e4d2 ""
   "blueprint.sty" 1780051330.61852 64 041de65dd253d01ad50ada0ef6772cd2 ""
-  "content.tex" 1780314469.80075 1592 606c8ff0797ea37035a606a0805fb811 ""
-  "macros/common.tex" 1781684295.35751 1206 d02a4666191f424e99b6fa558528d36b ""
+  "content.tex" 1782471610.30708 1714 467d3e684ee17eb15a84bcb7677e8599 ""
+  "macros/common.tex" 1782200339.38757 1387 f588d8ec00359735c039337c86a92d79 ""
   "macros/web.tex" 1780051330.62063 260 cdb7c9ac756cf5815dc98c2bb10a4f5b ""
-  "sections/Preliminaries.tex" 1781703975.63843 16321 fdbe99b288eebf3b70c35cc091f5fb84 ""
-  "sections/Protocols.tex" 1780940887.67909 36149 3f31afbe6dddedcabab04ccc8653974a ""
-  "web.aux" 1781768026.66323 950 c2be1aa90ce46f1d69863ea87d54380d "pdflatex"
+  "sections/Algorithm.tex" 1782472512.63641 9743 a8d4190786c4980e29299eac8b4ef31f ""
+  "sections/Preliminaries.tex" 1782485006.1932 21423 cfe9f1341362a4d771cdfff5b4191ddc ""
+  "sections/ProofStructure.tex" 1782472055.96151 9311 e5db62b615bb1d4b9ae2129bb933b3d5 ""
+  "sections/Protocols.tex" 1782474865.1463 20121 2996626c379f206364cf1c9ec20ae963 ""
+  "sections/Specification.tex" 1782472626.42165 14409 760ed61f02c7f232936620107cbfcdc1 ""
+  "web.aux" 1782722491.90605 6752 d89a344513ca99456ead3197c8fd446a "pdflatex"
+  "web.bbl" 1782398555.16073 3023 ddd47f13d23b1546eec67c235ec7e300 "bibtex web"
   "web.tex" 1780497200.85434 880 893693e4ceb77d3db8931dec2727f809 ""
   (generated)
   "web.aux"

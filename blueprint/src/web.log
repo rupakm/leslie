@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999997 (TeX Live 2025/nixos.org) (preloaded format=xelatex 1980.1.1)  18 JUN 2026 09:33
+This is XeTeX, Version 3.141592653-2.6-0.999997 (TeX Live 2025/nixos.org) (preloaded format=xelatex 1980.1.1)  29 JUN 2026 10:41
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -217,7 +217,9 @@ Package uniquecounter Info: New unique counter `rerunfilecheck' on input line 28
 \c@theorem=\count306
 \c@definition=\count307
 \c@protocol=\count308
-\c@assumption=\count309
+\c@implementation=\count309
+\c@specification=\count310
+\c@assumption=\count311
 ) (./macros/web.tex)
 /home/greghem/leslie/blueprint/src/web.tex:23: Undefined control sequence.
 l.23 \home
@@ -265,9 +267,9 @@ Overfull \hbox (120.55pt too wide) in paragraph at lines 23--26
 
 (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/l3backend/l3backend-xetex.def
 File: l3backend-xetex.def 2025-10-09 L3 backend support: XeTeX
-\g__graphics_track_int=\count310
-\g__pdfannot_backend_int=\count311
-\g__pdfannot_backend_link_int=\count312
+\g__graphics_track_int=\count312
+\g__pdfannot_backend_int=\count313
+\g__pdfannot_backend_link_int=\count314
 ) (./web.aux)
 \openout1 = `web.aux'.
 
@@ -319,8 +321,8 @@ misspelled it (e.g., `\hobx'), type `I' and the correct
 spelling (e.g., `I\hbox'). Otherwise just continue,
 and I'll forget about whatever was undefined.
 
-./sections/Preliminaries.tex:25: Undefined control sequence.
-l.25     \lean
+./sections/Preliminaries.tex:26: Undefined control sequence.
+l.26     \lean
               {Partial Probabilistic Execution}
 The control sequence at the end of the top line
 of your error message was never \def'ed. If you have
@@ -328,12 +330,21 @@ misspelled it (e.g., `\hobx'), type `I' and the correct
 spelling (e.g., `I\hbox'). Otherwise just continue,
 and I'll forget about whatever was undefined.
 
-LaTeX Font Info:    Trying to load font information for U+euf on input line 29.
+LaTeX Font Info:    Trying to load font information for U+euf on input line 30.
 (/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/amsfonts/ueuf.fd
 File: ueuf.fd 2013/01/14 v3.01 Euler Fraktur
 )
-./sections/Preliminaries.tex:42: Undefined control sequence.
-l.42     \lean
+./sections/Preliminaries.tex:40: Undefined control sequence.
+l.40 states. We denote $\mu \xRightarrow
+                                        {l} \mu'$ if and only if there exist...
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Preliminaries.tex:54: Undefined control sequence.
+l.54     \lean
               {Parallel Composition}
 The control sequence at the end of the top line
 of your error message was never \def'ed. If you have
@@ -342,30 +353,21 @@ spelling (e.g., `I\hbox'). Otherwise just continue,
 and I'll forget about whatever was undefined.
 
 
-LaTeX Warning: Citation `Segala1995Compositional' on page 1 undefined on input line 56.
-
-./sections/Preliminaries.tex:64: Undefined control sequence.
-l.64 ...n over states. We denote $\mu \xRightarrow
-                                                  {l} \mu'$ if and only if
-The control sequence at the end of the top line
-of your error message was never \def'ed. If you have
-misspelled it (e.g., `\hobx'), type `I' and the correct
-spelling (e.g., `I\hbox'). Otherwise just continue,
-and I'll forget about whatever was undefined.
+LaTeX Warning: Citation `Segala1995Compositional' on page 1 undefined on input line 73.
 
 [1]
-./sections/Preliminaries.tex:68: Undefined control sequence.
-l.68     \lean
-              {Probabilistic Forward Simulation}
+./sections/Preliminaries.tex:106: Undefined control sequence.
+l.106     \lean
+               {Probabilistic Forward Simulation}
 The control sequence at the end of the top line
 of your error message was never \def'ed. If you have
 misspelled it (e.g., `\hobx'), type `I' and the correct
 spelling (e.g., `I\hbox'). Otherwise just continue,
 and I'll forget about whatever was undefined.
 
-./sections/Preliminaries.tex:73: Undefined control sequence.
-l.73     there exists $\mu' \xRightarrow
-                                        {l} \mu''$ such that $(\mu,\mu'') \i...
+./sections/Preliminaries.tex:112: Undefined control sequence.
+l.112     there exists $\mu' \xRightarrow
+                                         {l} \mu''$ such that $(\mu,\mu'') \...
 The control sequence at the end of the top line
 of your error message was never \def'ed. If you have
 misspelled it (e.g., `\hobx'), type `I' and the correct
@@ -373,42 +375,22 @@ spelling (e.g., `I\hbox'). Otherwise just continue,
 and I'll forget about whatever was undefined.
 
 
-LaTeX Warning: Citation `Segala1995Compositional' on page 2 undefined on input line 76.
+LaTeX Warning: Citation `Segala1995Compositional' on page 2 undefined on input line 115.
 
 
-LaTeX Warning: Reference `thm:Segala' on page 2 undefined on input line 84.
+LaTeX Warning: Reference `app:ProofSegala' on page 2 undefined on input line 122.
 
-
-LaTeX Warning: Citation `Segala1995Compositional' on page 2 undefined on input line 88.
-
-./sections/Preliminaries.tex:92: Undefined control sequence.
-l.92 ... scheduler that induces $\mu' \xRightarrow
-                                                  {l} \mu''$
+./sections/Preliminaries.tex:131: Undefined control sequence.
+l.131 ...tion. On an LTS, we write $q \xRightarrow
+                                                  {l} q'$ if there exists a ...
 The control sequence at the end of the top line
 of your error message was never \def'ed. If you have
 misspelled it (e.g., `\hobx'), type `I' and the correct
 spelling (e.g., `I\hbox'). Otherwise just continue,
 and I'll forget about whatever was undefined.
 
-Excluding 'algorithm' comment.
-
-LaTeX Warning: Reference `alg:simulation' on page 2 undefined on input line 119.
-
-
-LaTeX Warning: Reference `alg:simulation' on page 2 undefined on input line 124.
-
-./sections/Preliminaries.tex:150: Undefined control sequence.
-l.150 ...lation. On LTS, we denote $q \xRightarrow
-                                                  {l} q'$ if their exists a ...
-The control sequence at the end of the top line
-of your error message was never \def'ed. If you have
-misspelled it (e.g., `\hobx'), type `I' and the correct
-spelling (e.g., `I\hbox'). Otherwise just continue,
-and I'll forget about whatever was undefined.
-
-[2]
-./sections/Preliminaries.tex:154: Undefined control sequence.
-l.154     \lean
+./sections/Preliminaries.tex:135: Undefined control sequence.
+l.135     \lean
                {Weak Simulation}
 The control sequence at the end of the top line
 of your error message was never \def'ed. If you have
@@ -416,8 +398,8 @@ misspelled it (e.g., `\hobx'), type `I' and the correct
 spelling (e.g., `I\hbox'). Otherwise just continue,
 and I'll forget about whatever was undefined.
 
-./sections/Preliminaries.tex:159: Undefined control sequence.
-l.159     there exists $q' \xRightarrow
+./sections/Preliminaries.tex:141: Undefined control sequence.
+l.141     there exists $q' \xRightarrow
                                        {l} p'$ such that $(p,p') \in \scal$.
 The control sequence at the end of the top line
 of your error message was never \def'ed. If you have
@@ -426,50 +408,124 @@ spelling (e.g., `I\hbox'). Otherwise just continue,
 and I'll forget about whatever was undefined.
 
 
-LaTeX Warning: Reference `thm:Segala' on page 3 undefined on input line 166.
+LaTeX Warning: Reference `thm:Segala' on page 2 undefined on input line 150.
 
-[3]
+[2] [3]
 
-LaTeX Warning: Reference `thm:weaksim' on page 4 undefined on input line 224.
+LaTeX Warning: Citation `Lynch2026Introduction' on page 4 undefined on input line 206.
+
+
+LaTeX Warning: Reference `lem:weaksim' on page 4 undefined on input line 222.
+
+
+LaTeX Warning: Citation `Dongol2022Weak' on page 4 undefined on input line 231.
+
+./sections/Preliminaries.tex:235: Undefined control sequence.
+l.235     \lean
+               {FairWeakSimulation}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Preliminaries.tex:241: Undefined control sequence.
+l.241     exists $q' \xRightarrow
+                                 {l} p'$ such that $(p,p') \in \scal$. Furth...
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Preliminaries.tex:242: Undefined control sequence.
+l.242     $q' \xRightarrow
+                          {\tau} p'$ contain no fair transition then if $(q,...
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `app:ProofSegala' on page 4 undefined on input line 248.
 
 [4]
-./sections/Preliminaries.tex:264: Undefined control sequence.
-l.264     If $q \xRightarrow
-                            {\tau} p$ and $p$ is a deadlock then $q' \xRight...
+./sections/Preliminaries.tex:252: Undefined control sequence.
+l.252     \lean
+               {FairProbForwardSimulation}
 The control sequence at the end of the top line
 of your error message was never \def'ed. If you have
 misspelled it (e.g., `\hobx'), type `I' and the correct
 spelling (e.g., `I\hbox'). Otherwise just continue,
 and I'll forget about whatever was undefined.
 
-./sections/Preliminaries.tex:264: Undefined control sequence.
-l.264 ...d $p$ is a deadlock then $q' \xRightarrow
-                                                  {\tau} p'$
+./sections/Preliminaries.tex:258: Undefined control sequence.
+l.258 ...) \in T$, there exists $\mu' \xRightarrow
+                                                  {l} \mu''$ such that
 The control sequence at the end of the top line
 of your error message was never \def'ed. If you have
 misspelled it (e.g., `\hobx'), type `I' and the correct
 spelling (e.g., `I\hbox'). Otherwise just continue,
 and I'll forget about whatever was undefined.
 
-./sections/Preliminaries.tex:266: Undefined control sequence.
-l.266 ...diverges or there exists $q' \xRightarrow
-                                                  {\tau} p'$
+./sections/Preliminaries.tex:260: Undefined control sequence.
+l.260     \xRightarrow
+                      {\tau} \mu''$ and $w$ the witness of $(\mu',\mu'') \in...
 The control sequence at the end of the top line
 of your error message was never \def'ed. If you have
 misspelled it (e.g., `\hobx'), type `I' and the correct
 spelling (e.g., `I\hbox'). Otherwise just continue,
 and I'll forget about whatever was undefined.
 
-) (./sections/Protocols.tex
-Overfull \hbox (0.126pt too wide) in paragraph at lines 12--12
-[]\TU/lmr/bx/n/12 Main Protocol: Asynchronous Byzantine Agreement
+./sections/Preliminaries.tex:261: Undefined control sequence.
+l.261 ...there exist $q' \in \bar\mu' \xRightarrow
+                                                  {\tau} p'$ consistent with...
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `app:ProofSegala' on page 5 undefined on input line 274.
+
+[5]
+Overfull \hbox (3.74751pt too wide) in paragraph at lines 318--323
+[]\TU/lmr/bx/n/10 Definition 10 \TU/lmr/m/n/10 (Belief PLTS)\TU/lmr/bx/n/10 . \TU/lmr/m/n/10 Given a PLTS $\OMS/cmsy/m/n/10 P$ \TU/lmr/m/n/10 and an adversary $\OMS/cmsy/m/n/10 A \OT1/cmr/m/n/10 := (\OMS/cmsy/m/n/10 O[]\OML/cmm/m/it/10 ; \OMS/cmsy/m/n/10 O[]\OT1/cmr/m/n/10 )$\TU/lmr/m/n/10 ,
  []
 
 
-LaTeX Warning: Citation `Abraham2022Efficient' on page 5 undefined on input line 12.
+Overfull \hbox (24.12569pt too wide) in paragraph at lines 318--323
+\TU/lmr/m/n/10 the belief PLTS $\OMS/cmsy/m/n/10 P[]$ \TU/lmr/m/n/10 is defined as the tuple $\OT1/cmr/m/n/10 (\OMS/cmsy/m/n/10 f\OML/cmm/m/it/10 ^^V \OMS/cmsy/m/n/10 2 D\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 Q\OT1/cmr/m/n/10 ) \OMS/cmsy/m/n/10 j O[]\OT1/cmr/m/n/10 ([]) = \OMS/cmsy/m/n/10 f^^Agg\OML/cmm/m/it/10 ; ^^N[]; \OMS/cmsy/m/n/10 O[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 L\OT1/cmr/m/n/10 )\OML/cmm/m/it/10 ; T[]\OT1/cmr/m/n/10 )$
+ []
 
-./sections/Protocols.tex:22: Undefined control sequence.
-l.22     \lean
+
+Overfull \hbox (46.85178pt too wide) detected at line 329
+\OML/cmm/m/it/10 ^^V [] ^^V[] \OMS/cmsy/m/n/10 2 \OML/cmm/m/it/10 T[]  \OMS/cmsy/m/n/10 ([])  9\OML/cmm/m/it/10 ^^V [] ^^V[] \OMS/cmsy/m/n/10 2 \OML/cmm/m/it/10 H; ^^V[] \OT1/cmr/m/n/10 = (\OML/cmm/m/it/10 q \OMS/cmsy/m/n/10 7! []\OT1/cmr/m/n/10 ) \OMS/cmsy/m/n/10 7! \OML/cmm/m/it/10 ^^V[]\OT1/cmr/m/n/10 (\OMS/cmsy/m/n/10 f\OML/cmm/m/it/10 q \OMS/cmsy/m/n/10 j O[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 q\OT1/cmr/m/n/10 ) = \OML/cmm/m/it/10 o\OMS/cmsy/m/n/10 g\OT1/cmr/m/n/10 )
+ []
+
+) (./sections/Protocols.tex [6]
+
+LaTeX Warning: Citation `Abraham2022Efficient' on page 7 undefined on input line 30.
+
+
+LaTeX Warning: Reference `alg:ABA' on page 7 undefined on input line 37.
+
+./sections/Protocols.tex:42: Undefined control sequence.
+l.42     \lean
+              {ABA.Core}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `alg:ABA' on page 7 undefined on input line 45.
+
+./sections/Protocols.tex:51: Undefined control sequence.
+l.51     \lean
               {ABA.Spec}
 The control sequence at the end of the top line
 of your error message was never \def'ed. If you have
@@ -477,22 +533,988 @@ misspelled it (e.g., `\hobx'), type `I' and the correct
 spelling (e.g., `I\hbox'). Otherwise just continue,
 and I'll forget about whatever was undefined.
 
-Excluding 'algorithm' comment.)
+
+LaTeX Warning: Reference `PLTS:ABA' on page 7 undefined on input line 54.
+
+./sections/Protocols.tex:62: Undefined control sequence.
+l.62     \lean
+              {ABA.Impl}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Protocols.tex:65: Undefined control sequence.
+l.65     \uses
+              {ABA:Core, GBCA:Impl, WCC:Impl}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Protocols.tex:77: Undefined control sequence.
+l.77     \lean
+              {ABA.Hybrid}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Protocols.tex:80: Undefined control sequence.
+l.80     \uses
+              {ABA:Core, GBCA:Spec, WCC:Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+Overfull \hbox (102.05725pt too wide) in paragraph at lines 90--94
+\TU/lmr/m/n/10 Processes start with a binary input $\OMS/cmsy/m/n/10 f\OT1/cmr/m/n/10 0\OML/cmm/m/it/10 ; \OT1/cmr/m/n/10 1\OMS/cmsy/m/n/10 g$ \TU/lmr/m/n/10 and may return a value in $\OMS/cmsy/m/n/10 f\OT1/cmr/m/n/10 (0\OML/cmm/m/it/10 ; A\OT1/cmr/m/n/10 )\OML/cmm/m/it/10 ; \OT1/cmr/m/n/10 (0\OML/cmm/m/it/10 ; B\OT1/cmr/m/n/10 )\OML/cmm/m/it/10 ; \OT1/cmr/m/n/10 (\OMS/cmsy/m/n/10 ?\OML/cmm/m/it/10 ; C\OT1/cmr/m/n/10 )\OML/cmm/m/it/10 ; \OT1/cmr/m/n/10 (1\OML/cmm/m/it/10 ; B\OT1/cmr/m/n/10 )\OML/cmm/m/it/10 ; \OT1/cmr/m/n/10 (1\OML/cmm/m/it/10 ; A\OT1/cmr/m/n/10 )\OMS/cmsy/m/n/10 g$\TU/lmr/m/n/10 .
+ []
+
+[7]
+
+LaTeX Warning: Citation `Abraham2022Efficient' on page 8 undefined on input line 105.
+
+
+LaTeX Warning: Reference `alg:GBCA' on page 8 undefined on input line 111.
+
+./sections/Protocols.tex:116: Undefined control sequence.
+l.116     \lean
+               {GBCA.Impl}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `alg:GBCA' on page 8 undefined on input line 119.
+
+./sections/Protocols.tex:125: Undefined control sequence.
+l.125     \lean
+               {GBCA.Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `PLTS:GBCA' on page 8 undefined on input line 128.
+
+
+LaTeX Warning: Citation `Freitas2022Distributed' on page 8 undefined on input line 149.
+
+./sections/Protocols.tex:160: Undefined control sequence.
+l.160     \lean
+               {WCC.Core}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `alg:WCC' on page 8 undefined on input line 163.
+
+[8]
+./sections/Protocols.tex:169: Undefined control sequence.
+l.169     \lean
+               {WCC.Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `PLTS:WCC' on page 9 undefined on input line 172.
+
+./sections/Protocols.tex:182: Undefined control sequence.
+l.182     \lean
+               {WCC.Impl}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Protocols.tex:185: Undefined control sequence.
+l.185     \uses
+               {WCC:Core, Gather:Impl, SRSD:Impl}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Protocols.tex:197: Undefined control sequence.
+l.197     \lean
+               {WCC.Hybrid}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Protocols.tex:200: Undefined control sequence.
+l.200     \uses
+               {WCC:Core, Gather:Spec, SRSD:Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Citation `Attiya2025Beyond' on page 9 undefined on input line 226.
+
+./sections/Protocols.tex:237: Undefined control sequence.
+l.237     \lean
+               {Gather.Core}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+[9]
+
+LaTeX Warning: Reference `alg:Gather' on page 10 undefined on input line 240.
+
+./sections/Protocols.tex:246: Undefined control sequence.
+l.246     \lean
+               {Gather.Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `PLTS:Gather' on page 10 undefined on input line 249.
+
+./sections/Protocols.tex:257: Undefined control sequence.
+l.257     \lean
+               {Gather.Impl}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Protocols.tex:259: Undefined control sequence.
+l.259     \uses
+               {Gather:Core, BRB:Impl}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Protocols.tex:269: Undefined control sequence.
+l.269     \lean
+               {Gather.Hybrid}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Protocols.tex:271: Undefined control sequence.
+l.271     \uses
+               {Gather:Core, BRB:Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Protocols.tex:300: Undefined control sequence.
+l.300 \textcolor
+                {red}{\large No Agreement properties ???}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Citation `Freitas2022Distributed' on page 10 undefined on input line 302.
+
+./sections/Protocols.tex:313: Undefined control sequence.
+l.313     \lean
+               {SRSD.Core}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+[10]
+
+LaTeX Warning: Reference `alg:SRSD' on page 11 undefined on input line 316.
+
+./sections/Protocols.tex:324: Undefined control sequence.
+l.324     \lean
+               {SRSD.Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `PLTS:SRSD' on page 11 undefined on input line 327.
+
+./sections/Protocols.tex:336: Undefined control sequence.
+l.336     \lean
+               {SRSD.Impl}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Protocols.tex:339: Undefined control sequence.
+l.339     \uses
+               {SRSD:Core, BRB:Impl, AVSS:Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Protocols.tex:352: Undefined control sequence.
+l.352     \lean
+               {SRSD.Hybrid}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/Protocols.tex:355: Undefined control sequence.
+l.355     \uses
+               {SRSD:Core, BRB:Spec, AVSS:Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Citation `Bracha1987Asynchronous' on page 11 undefined on input line 379.
+
+
+LaTeX Warning: Reference `alg:BRB' on page 11 undefined on input line 384.
+
+[11]
+./sections/Protocols.tex:389: Undefined control sequence.
+l.389     \lean
+               {BRB.Impl}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `alg:BRB' on page 12 undefined on input line 392.
+
+./sections/Protocols.tex:398: Undefined control sequence.
+l.398     \lean
+               {BRB.Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `PLTS:BRB' on page 12 undefined on input line 402.
+
+
+LaTeX Warning: Citation `Canetti1993Fast' on page 12 undefined on input line 440.
+
+
+LaTeX Warning: Citation `Canetti1993Fast' on page 12 undefined on input line 451.
+
+[12]
+./sections/Protocols.tex:455: Undefined control sequence.
+l.455     \lean
+               {AVSS.Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `PLTS:AVSS' on page 13 undefined on input line 458.
+
+) (./sections/ProofStructure.tex
+./sections/ProofStructure.tex:23: Undefined control sequence.
+l.23     \lean
+              {ABA.Correct}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:25: Undefined control sequence.
+l.25     \uses
+              {ABA:Impl, ABA:Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+LaTeX Font Info:    Font shape `TU/lmss/m/it' in size <10> not available
+(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 26.
+./sections/ProofStructure.tex:29: Undefined control sequence.
+<recently read> \uses 
+                      
+l.29     \uses
+              {thm:ABASim,thm:Segala}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `thm:ABASim' on page 13 undefined on input line 30.
+
+
+LaTeX Warning: Reference `thm:Segala' on page 13 undefined on input line 33.
+
+
+Overfull \hbox (17.38391pt too wide) in paragraph at lines 29--35
+[]\TU/lmr/m/n/10 thm:ABASim,thm:Segala According to Theorem [], \TU/lmss/m/n/10 ABA.Impl $\OMS/cmsy/m/n/10 v[]$ \TU/lmss/m/n/10 ABA.Spec\TU/lmr/m/n/10 .
+ []
+
+./sections/ProofStructure.tex:40: Undefined control sequence.
+l.40     \lean
+              {ABA.Sim}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:42: Undefined control sequence.
+l.42     \uses
+              {ABA:Impl, ABA:Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:46: Undefined control sequence.
+<recently read> \uses 
+                      
+l.46     \uses
+              {lem:ABASubst, lem:ABACore}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `lem:ABACore' on page 13 undefined on input line 47.
+
+
+LaTeX Warning: Reference `lem:ABASubst' on page 13 undefined on input line 47.
+
+[13]
+./sections/ProofStructure.tex:51: Undefined control sequence.
+l.51     \lean
+              {ABA.SubstSim}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:53: Undefined control sequence.
+l.53     \uses
+              {ABA:Impl, ABA:Hybrid}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:57: Undefined control sequence.
+<recently read> \uses 
+                      
+l.57     \uses
+              {thm:GBCASim, thm:WCCSim, lem:precong}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `thm:partialinfocompo' on page 14 undefined on input line 61.
+
+
+LaTeX Warning: Reference `thm:GBCASim' on page 14 undefined on input line 63.
+
+
+LaTeX Warning: Reference `thm:WCCSim' on page 14 undefined on input line 63.
+
+
+LaTeX Warning: Reference `lem:precong' on page 14 undefined on input line 64.
+
+
+LaTeX Warning: Reference `lem:abstract' on page 14 undefined on input line 64.
+
+./sections/ProofStructure.tex:69: Undefined control sequence.
+l.69     \lean
+              {ABA.CoreSim}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:71: Undefined control sequence.
+l.71     \uses
+              {ABA:Hybrid, ABA:Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:75: Undefined control sequence.
+<recently read> \uses 
+                      
+l.75     \uses
+              {thm:Segala}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `thm:Segala' on page 14 undefined on input line 77.
+
+./sections/ProofStructure.tex:85: Undefined control sequence.
+l.85     \lean
+              {WCC.Sim}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:87: Undefined control sequence.
+l.87     \uses
+              {WCC:Impl, WCC:Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:91: Undefined control sequence.
+<recently read> \uses 
+                      
+l.91     \uses
+              {lem:WCCSubst, lem:WCCCore}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `lem:WCCCore' on page 14 undefined on input line 92.
+
+
+LaTeX Warning: Reference `lem:WCCSubst' on page 14 undefined on input line 92.
+
+./sections/ProofStructure.tex:96: Undefined control sequence.
+l.96     \lean
+              {WCC.SubstSim}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:98: Undefined control sequence.
+l.98     \uses
+              {WCC:Impl, WCC:Hybrid}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+Overfull \hbox (9.9673pt too wide) in paragraph at lines 96--100
+[]\TU/lmr/bx/n/10 Lemma 14. \TU/lmr/m/it/10 WCC.SubstSim WCC:Impl, WCC:Hybrid \TU/lmss/m/sl/10 WCC.Impl $\OMS/cmsy/m/n/10 v[]$ \TU/lmss/m/sl/10 WCC.Hybrid\TU/lmr/m/it/10 . 
+ []
+
+./sections/ProofStructure.tex:102: Undefined control sequence.
+<recently read> \uses 
+                      
+l.102     \uses
+               {thm:SRSDSim, thm:GBCASim, lem:precong}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `thm:partialinfocompo' on page 14 undefined on input line 107.
+
+
+LaTeX Warning: Reference `thm:SRSDSim' on page 14 undefined on input line 109.
+
+
+LaTeX Warning: Reference `thm:GatherSim' on page 14 undefined on input line 109.
+
+
+LaTeX Warning: Reference `lem:precong' on page 14 undefined on input line 110.
+
+
+LaTeX Warning: Reference `lem:abstract' on page 14 undefined on input line 110.
+
+./sections/ProofStructure.tex:115: Undefined control sequence.
+l.115     \lean
+               {WCC.CoreSim}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:117: Undefined control sequence.
+l.117     \uses
+               {WCC:Hybrid, WCC:Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+Overfull \hbox (8.35728pt too wide) in paragraph at lines 115--119
+[]\TU/lmr/bx/n/10 Lemma 15. \TU/lmr/m/it/10 WCC.CoreSim WCC:Hybrid, WCC:Spec \TU/lmss/m/sl/10 WCC.Hybrid $\OMS/cmsy/m/n/10 v[]$ \TU/lmss/m/sl/10 WCC.Spec\TU/lmr/m/it/10 . 
+ []
+
+./sections/ProofStructure.tex:121: Undefined control sequence.
+<recently read> \uses 
+                      
+l.121     \uses
+               {thm:Segala}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `thm:Segala' on page 14 undefined on input line 123.
+
+./sections/ProofStructure.tex:131: Undefined control sequence.
+l.131     \lean
+               {GBCA.Sim}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:133: Undefined control sequence.
+l.133     \uses
+               {impl:GBCA, GBCA:Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+Overfull \hbox (0.82863pt too wide) in paragraph at lines 131--135
+[]\TU/lmr/bx/n/10 Theorem 16. \TU/lmr/m/it/10 GBCA.Sim impl:GBCA, GBCA:Spec \TU/lmss/m/sl/10 GBCA.Impl $\OMS/cmsy/m/n/10 v[]$ \TU/lmss/m/sl/10 GBCA.Spec\TU/lmr/m/it/10 . 
+ []
+
+./sections/ProofStructure.tex:137: Undefined control sequence.
+<recently read> \uses 
+                      
+l.137     \uses
+               {lem:weaksim}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `lem:weaksim' on page 14 undefined on input line 139.
+
+[14]
+./sections/ProofStructure.tex:147: Undefined control sequence.
+l.147     \lean
+               {Gather.Sim}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:149: Undefined control sequence.
+l.149     \uses
+               {Gather:Impl, Gather:Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+Overfull \hbox (7.4873pt too wide) in paragraph at lines 147--151
+[]\TU/lmr/bx/n/10 Theorem 17. \TU/lmr/m/it/10 Gather.Sim Gather:Impl, Gather:Spec \TU/lmss/m/sl/10 Gather.Impl $\OMS/cmsy/m/n/10 v[]$ \TU/lmss/m/sl/10 Gather.Spec\TU/lmr/m/it/10 . 
+ []
+
+./sections/ProofStructure.tex:153: Undefined control sequence.
+<recently read> \uses 
+                      
+l.153     \uses
+               {lem:GatherSubst, lem:GatherCore}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `lem:GatherCore' on page 15 undefined on input line 154.
+
+
+LaTeX Warning: Reference `lem:GatherSubst' on page 15 undefined on input line 155.
+
+
+Overfull \hbox (7.8639pt too wide) in paragraph at lines 153--156
+[]\TU/lmr/m/n/10 lem:GatherSubst, lem:GatherCore Trivial by transitivity of $\OMS/cmsy/m/n/10 v[]$ \TU/lmr/m/n/10 and Lemma
+ []
+
+./sections/ProofStructure.tex:159: Undefined control sequence.
+l.159     \lean
+               {Gather.SubstSim}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:161: Undefined control sequence.
+l.161     \uses
+               {Gather:Impl, Gather:Hybrid}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+Overfull \hbox (40.47731pt too wide) in paragraph at lines 159--163
+[]\TU/lmr/bx/n/10 Lemma 18. \TU/lmr/m/it/10 Gather.SubstSim Gather:Impl, Gather:Hybrid \TU/lmss/m/sl/10 Gather.Impl $\OMS/cmsy/m/n/10 v[]$ \TU/lmss/m/sl/10 Gather.Hybrid\TU/lmr/m/it/10 . 
+ []
+
+./sections/ProofStructure.tex:165: Undefined control sequence.
+<recently read> \uses 
+                      
+l.165     \uses
+               {thm:BRBSim, lem:precong}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `thm:BRBSim' on page 15 undefined on input line 167.
+
+
+LaTeX Warning: Reference `lem:precong' on page 15 undefined on input line 168.
+
+
+LaTeX Warning: Reference `lem:abstract' on page 15 undefined on input line 168.
+
+./sections/ProofStructure.tex:173: Undefined control sequence.
+l.173     \lean
+               {Gather.CoreSim}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:175: Undefined control sequence.
+l.175     \uses
+               {Gather:Hybrid, Gather:Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:179: Undefined control sequence.
+<recently read> \uses 
+                      
+l.179     \uses
+               {lem:weaksim}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `lem:weaksim' on page 15 undefined on input line 181.
+
+./sections/ProofStructure.tex:189: Undefined control sequence.
+l.189     \lean
+               {SRSD.Sim}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:191: Undefined control sequence.
+l.191     \uses
+               {SRSD:Impl, SRSD:Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:195: Undefined control sequence.
+<recently read> \uses 
+                      
+l.195     \uses
+               {lem:SRSDSubst, lem:SRSDCore}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `lem:SRSDCore' on page 15 undefined on input line 196.
+
+
+LaTeX Warning: Reference `lem:SRSDSubst' on page 15 undefined on input line 196.
+
+./sections/ProofStructure.tex:201: Undefined control sequence.
+l.201     \lean
+               {SRSD.SubstSim}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:203: Undefined control sequence.
+l.203     \uses
+               {SRSD:Impl, SRSD:Hybrid}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+Overfull \hbox (21.7773pt too wide) in paragraph at lines 201--205
+[]\TU/lmr/bx/n/10 Lemma 21. \TU/lmr/m/it/10 SRSD.SubstSim SRSD:Impl, SRSD:Hybrid \TU/lmss/m/sl/10 SRSD.Impl $\OMS/cmsy/m/n/10 v[]$ \TU/lmss/m/sl/10 SRSD.Hybrid\TU/lmr/m/it/10 . 
+ []
+
+./sections/ProofStructure.tex:207: Undefined control sequence.
+<recently read> \uses 
+                      
+l.207     \uses
+               {thm:BRBSim,thm:partialinfocompo}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `thm:partialinfocompo' on page 15 undefined on input line 210.
+
+
+LaTeX Warning: Reference `thm:BRBSim' on page 15 undefined on input line 212.
+
+
+LaTeX Warning: Reference `lem:precong' on page 15 undefined on input line 213.
+
+
+LaTeX Warning: Reference `lem:abstract' on page 15 undefined on input line 213.
+
+
+Overfull \hbox (6.342pt too wide) in paragraph at lines 207--215
+[]\TU/lmr/m/n/10 thm:BRBSim,thm:partialinfocompo Before abstraction, both systems only
+ []
+
+
+Overfull \hbox (4.48201pt too wide) in paragraph at lines 207--215
+\TU/lmr/m/n/10 differ by replacing \TU/lmss/m/n/10 BRB.Impl \TU/lmr/m/n/10 by \TU/lmss/m/n/10 BRB.Spec\TU/lmr/m/n/10 . However, they are partial-information,
+ []
+
+./sections/ProofStructure.tex:218: Undefined control sequence.
+l.218     \lean
+               {SRSD.CoreSim}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:220: Undefined control sequence.
+l.220     \uses
+               {SRSD:Hybrid, SRSD:Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+Overfull \hbox (20.16728pt too wide) in paragraph at lines 218--222
+[]\TU/lmr/bx/n/10 Lemma 22. \TU/lmr/m/it/10 SRSD.CoreSim SRSD:Hybrid, SRSD:Spec \TU/lmss/m/sl/10 SRSD.Hybrid $\OMS/cmsy/m/n/10 v[]$ \TU/lmss/m/sl/10 SRSD.Spec\TU/lmr/m/it/10 . 
+ []
+
+./sections/ProofStructure.tex:224: Undefined control sequence.
+<recently read> \uses 
+                      
+l.224     \uses
+               {thm:partialinfosound, thm:Segala}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `thm:partialinfosound' on page 15 undefined on input line 227.
+
+
+LaTeX Warning: Reference `thm:Segala' on page 15 undefined on input line 228.
+
+
+Overfull \hbox (6.39203pt too wide) in paragraph at lines 224--231
+\TU/lmr/m/n/10 cause \TU/lmss/m/n/10 SRSD.Impl \TU/lmr/m/n/10 and \TU/lmss/m/n/10 AVSS.Spec \TU/lmr/m/n/10 also are. However, \TU/lmss/m/n/10 SRSD.Spec \TU/lmr/m/n/10 is full-information.
+ []
+
+./sections/ProofStructure.tex:237: Undefined control sequence.
+l.237     \lean
+               {BRB.Sim}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+./sections/ProofStructure.tex:239: Undefined control sequence.
+l.239     \uses
+               {impl:BRB, BRB:Spec}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+[15]
+./sections/ProofStructure.tex:243: Undefined control sequence.
+<recently read> \uses 
+                      
+l.243     \uses
+               {lem:weaksim}
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+
+
+LaTeX Warning: Reference `lem:weaksim' on page 16 undefined on input line 245.
+
+) (./web.bbl [16]
+Underfull \hbox (badness 10000) in paragraph at lines 56--61
+[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]$[]\TU/lmr/m/n/10 ,
+ []
+
+[17
+
+]
+Underfull \hbox (badness 6910) in paragraph at lines 63--68
+[]\TU/lmr/m/n/10 Gilad Stern and Ittai Abraham.  Gather with binding
+ []
+
+) (./sections/Algorithm.tex [18] Excluding 'algorithm' comment. Excluding 'algorithm' comment. Excluding 'algorithm' comment. Excluding 'algorithm' comment. Excluding 'algorithm' comment. Excluding 'algorithm' comment.) (./sections/Specification.tex [19
+
+]
+
+./sections/Specification.tex:4: LaTeX Error: Environment transys undefined.
+
+See the LaTeX manual or LaTeX Companion for explanation.
+Type  H <return>  for immediate help.
+ ...                                              
+                                                  
+l.4 \begin{transys}
+                   
+Your command was ignored.
+Type  I <command> <return>  to replace it with another command,
+or  <return>  to continue without it.
+
+
+./sections/Specification.tex:6: LaTeX Error: \caption outside float.
+
+See the LaTeX manual or LaTeX Companion for explanation.
+Type  H <return>  for immediate help.
+ ...                                              
+                                                  
+l.6     \caption
+                {Encoding of \textsf{ABA}}
+You're in trouble here.  Try typing  <return>  to proceed.
+If that doesn't work, type  X <return>  to quit.
+
+Excluding 'algorithmic' comment.)
 Runaway argument?
-./content.tex:23: File ended while scanning use of \next.
+./content.tex:35: File ended while scanning use of \next.
 <inserted text> 
                 \par 
-l.23 \input{sections/Protocols.tex}
-                                   
+l.35 \input{sections/Specification.tex}
+                                       
 I suspect you have forgotten a `}', causing me
 to read past where you wanted me to stop.
 I'll try to recover; but if the error is serious,
 you'd better type `E' or `X' now and fix your file.
 
 )
-Missing character: There is no ^^M (U+000D) in font [lmroman10-regular]:mapping=tex-text;!
-Missing character: There is no ^^M (U+000D) in font [lmroman10-regular]:mapping=tex-text;!
-Missing character: There is no ^^M (U+000D) in font [lmroman10-regular]:mapping=tex-text;!
 Missing character: There is no ^^M (U+000D) in font [lmroman10-regular]:mapping=tex-text;!
 Missing character: There is no ^^M (U+000D) in font [lmroman10-regular]:mapping=tex-text;!
 )
@@ -503,11 +1525,11 @@ Missing character: There is no ^^M (U+000D) in font [lmroman10-regular]:mapping=
 
  
 Here is how much of TeX's memory you used:
- 9138 strings out of 468176
- 144497 string characters out of 5407950
- 553270 words of memory out of 5000000
- 37741 multiletter control sequences out of 15000+600000
- 635245 words of font info for 84 fonts, out of 8000000 for 9000
+ 9238 strings out of 468176
+ 146387 string characters out of 5407950
+ 553448 words of memory out of 5000000
+ 37820 multiletter control sequences out of 15000+600000
+ 636182 words of font info for 91 fonts, out of 8000000 for 9000
  1348 hyphenation exceptions out of 8191
- 72i,12n,79p,575b,397s stack positions out of 10000i,1000n,20000p,200000b,200000s
-Output written on web.pdf (7 pages).
+ 72i,11n,79p,575b,475s stack positions out of 10000i,1000n,20000p,200000b,200000s
+Output written on web.pdf (22 pages).

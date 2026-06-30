@@ -2,72 +2,88 @@
 \section{Proof of Theorem \ref{thm:Segala}}
 \label{app:ProofSegala}
 
-In our setting, the most interesting implication of Theorem \ref{thm:Segala} is soundness.
-We will see that the definition of $\sqsubseteq^t$ has some limitations, notably with respect to
-liveness. To address this, we introduce a stronger notion of trace distribution and strengthen
-probabilistic forward simulation accordingly. However, the soundness proof of Segala
-\cite{Segala1995Compositional} works at the level of $\efrak_{\mu,s}$, not $s$. This is
-problematic because our strengthening consists in constraining schedulers; thus, we need to
-adapt the proof. If $\scal$ is a probabilistic forward
-simulation then it induces a choice function
-$\ccal : \scal \times T \rightarrow Sch \times (\scal \rightarrow [0,1])$
-which maps any $(q,\mu') \in \scal$ and $(q,l,\mu) \in T$ to the scheduler that induces
-$\mu' \xRightarrow{l} \mu''$
-and the witness $w$ of $(\mu,\mu'') \in \dcal(\scal)$.
+In order to extend Segala's result to liveness, we need to display how a scheduler of $\pcal$ can
+be translated into a scheduler of $\pcal'$. Unfortunately, Segala's proof does not follow that 
+route \cite{Segala1995PhD}. Indeed, this construction is not trivial at all. Thus, we are going to
+split it into multiple steps corresponding to the three main difficulties: weak transitions, 
+simulation by probability distribution and translating $\pcal$ to $\pcal'$.
 
-\begin{algorithm}
-    \caption{Simulation Algorithm for Schedulers}
-    \label{alg:simulation}
-    \begin{algorithmic}
-        \State \textbf{Input:} $\pcal, \pcal'$ two PLTSs, $\scal$ a probabilistic forward
-        simulation of $\pcal$ by $\pcal'$ and $s \in Sch$
-        \medskip
-        \State $\texttt{e}, \texttt{e'}, \texttt{mu'} \gets q_\star, q'_\star, \delta_{q_\star'}$
-        \State $\texttt{acc} \gets \texttt{e'}$
-        \State $\texttt{t} \gets s(\texttt{e})$
-        \While{$\texttt{t} \ne \bot$}
-            \State $\texttt{s'}, \texttt{w} \gets \ccal(last(e),\mu',t)$
-            \State $\texttt{t'} \gets \texttt{s'}(\texttt{e'})$
-            \While{$\texttt{t'} \ne \bot$}
-                \State $\texttt{e'} \gets \texttt{e'}.lbl(\texttt{t'}).out(\texttt{t'})$
-                \State $\texttt{acc} \gets \texttt{acc}.lbl(\texttt{t'}).out(\texttt{t'})$
-                \State $\texttt{t'} \gets \texttt{s'}(\texttt{e'})$
-            \EndWhile
-            \State $\texttt{e'}, \texttt{mu'} \gets last(\texttt{e'}),
-            \qfrak_{\texttt{mu'},\texttt{s'}}$
-            \State $\texttt{e} \gets \texttt{e}.lbl(\texttt{t}).q$ with probability
-            $\frac{\sum_{\mu \in \dcal(Q')}w(q,\mu)\cdot\mu(\texttt{e'})}
-            {\texttt{mu'}(\texttt{e'})}$
-            \State $\texttt{t} \gets \texttt{s}(\texttt{e})$
-        \EndWhile
-    \end{algorithmic}
-\end{algorithm}
+\subsection{Weak Transitions}
 
-Once the choice function $\ccal$ is fixed, Algorithm \ref{alg:simulation} is a sequential
-probabilistic program; thus, it can be modelled as a deterministic PLTS. Of course, the
-validity of the algorithm's individual instructions should be established rigorously, but
-this is not our concern here. The variable $\texttt{e}$ encodes an execution of $\pcal$ and
-$\texttt{acc}$ an execution of $\pcal'$ that simulates it. In order to extract a scheduler of
-$\pcal'$ from Algorithm \ref{alg:simulation}, we need to identify the instructions deciding which
-transitions to execute in $\pcal'$. The most obvious one is
-$\texttt{t'} \gets \texttt{s'}(\texttt{e'})$
-when $\texttt{t'} \ne \bot$; then there is $\texttt{t} \gets \texttt{s}(\texttt{e})$ when
-$\texttt{t} = \bot$. The case where $\texttt{t'} = \bot$ has to be discarded
-because another transition will be picked without updating $\texttt{acc}$. When $\texttt{t} = \bot$,
-the algorithm stops, so the scheduler on $\pcal'$ also returns $\bot$. After each update
-of $\texttt{acc}$, one of the three following events occurs: (i) $\texttt{t}$ is set to $\bot$;
-(ii) $\texttt{t'}$ is set to a non-$\bot$ value; or (iii) $\texttt{t'}$ is set to $\bot$
-indefinitely.
-Cases (i) and (iii) correspond to scheduling $\bot$ and case (ii) corresponds to scheduling
-$\texttt{t'}$. Thus, the key values to compute are $reach(e')$, the probability of reaching a
-configuration where $\texttt{acc} = e'$, and $sch(e',t)$, the probability of reaching a
-configuration where $\texttt{acc} = e$ and $\texttt{t'} = t$. Knowing these, one can define a
-scheduler on $\pcal'$ as
-\[
-    s' : e' \mapsto
-        \begin{cases}
-            t' \mapsto \frac{sch(e',t')}{reach(e')} \\
-            \bot \mapsto 1 - \frac{\sum_{t' \in T'}sch(e',t')}{reach(e')}
-        \end{cases}
-\]
-We conjecture that $\tfrak_{q_\star,s} = \tfrak_{q_\star',s'}$.
+\begin{definition}[Weak Closure]
+    The weak closure of a PLTS $\pcal$ is a PLTS, denoted $\pcal^w$, where transitions are replaced
+    by weak transitions.
+\end{definition}
+
+\begin{lemma}
+    \label{lem:weakclosuresound}
+    Let $\pcal$ be a PLTS, $\text{tdist}(\pcal) = \text{tdist}(\pcal^w)$.
+\end{lemma}
+\begin{proof}
+    The inclusion $\subseteq$ is trivial because any transition of $\pcal$ is a weak transition so
+    schedulers of $\pcal$ are schedulers of $\pcal'$. However, the other inclusion $\supseteq$ is
+    more tricky. [TODO]
+\end{proof}
+
+\subsection{Distribution Monad}
+
+\begin{definition}[Distribution Lifting]
+    The distribution lifting of a PLTS $\pcal$ is the PLTS defined as 
+    $\dcal(\pcal) := (\dcal(Q), \delta_{q_\star}, L, \dcal(T))$ where
+    \[(\mu,l,\mathfrak{m}) \in \dcal(T) \iff \exists \mu' \in \dcal(Q), (\mu,l,\mu') \in H \wedge \sum_{\mu}\mathfrak{m}(\mu)\cdot\mu = \mu'\]
+\end{definition}
+
+\begin{lemma}
+    \label{lem:distliftingsound}
+    Let $\pcal$ be a PLTS, $\text{tdist}(\pcal) = \text{tdist}(\dcal(\pcal))$.
+\end{lemma}
+\begin{proof}
+    The inclusion $\subseteq$ is trivial because Dirac distributions allow to encode any scheduler
+    on $\pcal$ as a scheduler on $\pcal'$. However, the other inclusion $\supseteq$ is more tricky.
+    [Done in Lean]
+\end{proof}
+
+\subsection{Strong Probabilistic Simulation}
+
+\begin{definition}[Strong Probabilistic Simulation]
+    A strong probabilistic simulation of $\pcal$ by $\pcal'$ is a relation $\scal \subseteq Q 
+    \times Q'$ such that $(q_\star,q'_\star) \in \scal$ and, for all $(q,q') \in \scal$ and 
+    $(q,l,\mu) \in T$, there exists $(q',l,\mu') \in T'$ such that $(\mu,\mu') \in \dcal(\scal)$.
+\end{definition}
+
+\begin{lemma}
+    \label{lem:strongprobsim}
+    Let $\pcal$ and $\pcal'$ be two PLTSs, there exists a probabilistic forward simulation of 
+    $\pcal$ by $\pcal'$, if and only if, there exists a strong probabilistic simulation of $\pcal$
+    by $\dcal(\pcal'^w)$.
+\end{lemma}
+\begin{proof}
+    This proof is purely mechanical. It suffices to consider $\scal$ a probabilistic forward 
+    simulation of $\pcal$ by $\pcal'$ (resp. a strong probabilistic simulation of $\pcal$ by 
+    $\dcal(\pcal'^w)$) and check that it is a strong probabilistic simulation of $\pcal$ by 
+    $\dcal(\pcal'^w)$ (resp. a probabilistic forward 
+    simulation of $\pcal$ by $\pcal'$). [Done in Lean]
+\end{proof}
+
+\begin{lemma}
+    \label{lem:strongprobsimsound}
+    Let $\pcal$ and $\pcal'$ be two PLTSs, if there exists a strong probabilistic simulation of 
+    $\pcal$ by $\pcal'$ then $\text{tdist}(\pcal) \subseteq \text{tdist}(\pcal')$.
+\end{lemma}
+\begin{proof}
+    This is a simplified version of the original soundness proof which tractable to formalize in 
+    Lean. [Done in Lean]
+\end{proof}
+
+\begin{theorem}
+    Let $\pcal$ and $\pcal'$ be two PLTSs, if there exists a probabilistic forward simulation of 
+    $\pcal$ by $\pcal'$ then $\text{tdist}(\pcal) \subseteq \text{tdist}(\pcal')$.
+\end{theorem}
+\begin{proof}
+    If there exists a probabilistic forward simulation of $\pcal$ by $\pcal'$ then, by Lemma 
+    \ref{lem:strongprobsim}, there exists a strong probabilistic simulation of $\pcal$ by 
+    $\dcal(\pcal'^w)$ so, by Lemma \ref{lem:strongprobsimsound}, \ref{lem:distliftingsound} and \ref{lem:weakclosuresound},
+    \begin{equation*}
+        \text{tdist}(\pcal) \subseteq \text{tdist}(\dcal(\pcal'^w)) = \text{tdist}(\pcal'^w) = \text{tdist}(\pcal')
+    \end{equation*}
+\end{proof}

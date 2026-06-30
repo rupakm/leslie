@@ -35,9 +35,15 @@ Nancy~A Lynch and Mark~R Tuttle.
 \newblock {\em Form. Asp. Comput.}, January 2026.
 \newblock Just Accepted.
 
-\bibitem[Seg95]{Segala1995Compositional}
+\bibitem[Seg95a]{Segala1995Compositional}
 Roberto Segala.
 \newblock A compositional trace-based semantics for probabilistic automata.
 \newblock In Insup Lee and Scott~A. Smolka, editors, {\em CONCUR '95: Concurrency Theory}, pages 234--248, Berlin, Heidelberg, 1995. Springer Berlin Heidelberg.
+
+\bibitem[Seg95b]{Segala1995PhD}
+Roerto Segala.
+\newblock {\em Modeling and verification of randomized distributed real-time systems}.
+\newblock Phd thesis, Massachusetts Institute of Technology, 1995.
+\newblock Available at \url{https://dspace.mit.edu/entities/publication/e8356692-bb30-4359-9599-165fad91acd2}.
 
 \end{thebibliography}
