@@ -10,16 +10,16 @@
 
 \begin{abstract}
     Our main objective is the verification of an implementation of Asynchronous Byzantine
-    Agreement. The proof of correctness consists of building a simulation relation between
-    the implementation and an implementation running in an idealised setting. The simulation
-    ensures that the correctness of the idealised implementation implies the correctness of the
+    Agreement (ABA). The proof of correctness consists of building a simulation relation between
+    the implementation and a transition system encoding its specification. The simulation
+    ensures that the encoding of the specification implies the correctness of the
     original one. However, this implementation is complex; thus, building the simulation in one
     go is intractable. Fortunately, the implementation is designed as the interlocking of
     multiple sub-protocols (GBCA, WCC, RSD, Gather, AVSS, BRB). This architecture allows us to
     decompose the construction of the overall simulation into smaller steps. Each implementation
-    of sub-protocols will be simulated by an idealised version. Thus, when building the
-    simulation for a protocol using sub-protocols, the sub-implementations will be replaced by
-    their idealised versions, making the construction easier.
+    of sub-protocols will be simulated by the transition system of its specification. Thus, when 
+    building the simulation for a protocol using sub-protocols, the sub-implementations will be 
+    replaced by their specification, making the construction easier.
 \end{abstract}
 
 \input{sections/Preliminaries.tex}

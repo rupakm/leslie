@@ -1,6 +1,6 @@
 \section{Preliminaries}
 
-\subsection{Traditional Framework}
+\subsection{Segala's Framework}
 
 \begin{definition}[Probabilistic Labelled Transition System]
     \lean{PLTS}
@@ -173,10 +173,10 @@ of traces of a PLTS because these sets are downward-closed and, in particular, t
 always contain the Dirac distribution of the empty trace and the empty trace. Therefore, against 
 such sets, liveness properties like termination are not satisfied by any PLTS. This may seem absurd
 but it hints at an implicit progress assumption made when evaluating liveness properties. This
-progess assumption could be stated as: if a transition is enabled then a transition must fire.
+progress assumption could be stated as: if a transition is enabled then a transition must fire.
 Thus, it discards all executions that are finite and whose last state is not a deadlock. Executions 
 satisfying the progress assumptions are said to be maximal and traces of maximal executions are
-also called maximal. Non-probabilistic liveness properties should tested with respect to the set of
+also called maximal. Non-probabilistic liveness properties should be tested with respect to the set of
 maximal traces. Similarly, a scheduler is said to be maximal if it schedules $\bot$ with positive 
 probability only from maximal executions and a trace distribution is said maximal if it is induced
 by a maximal scheduler. Probabilistic liveness properties should be tested against maximal trace 
@@ -184,31 +184,32 @@ distribution.
 
 In the setting of distributed systems suffering from Byzantine failures, another assumption is
 necessary in order to define a sensible evaluation of liveness properties. Indeed, since Byzantine
-processes behave arbitrarily, they can monopilise the execution preventing correct processes from
+processes behave arbitrarily, they can monopolise the execution preventing correct processes from
 taking a step. As a result, a fairness assumption is introduced stating that, in any infinite 
 execution, correct processes must be scheduled infinitely often. To model it formally, a fairness 
 function $\text{fair} : T \rightarrow \bool$ is introduced which indicates which transitions are 
 fair (e.g. transition of correct processes) and which are unfair (e.g. transitions of Byzantine 
 processes). However, Byzantine failures also interfere with the notion of deadlock as they are 
-allowed to crash at any time. We call a fair deadlock any state whose set of enabled transitions
-is included in the set of unfair transition. An execution is said to be fair if (a) it is finite 
-and end in a fair deadlock, or (b) it contains infinitely many fair transitions. A trace is said 
-fair if it is induced by a fair execution. Non-probabilistic liveness properties will be evaluated 
-with respect to the set of fair traces. Similarly, a scheduler is fair if (a) it schedules $\bot$
-with positive probability only from fair executions and (b) all infinite executions consistent with 
-it are fair. A trace distribution is fair if it is induced by a fair scheduler. Probabilistic 
-liveness properties will be evaluated against the set of fair trace distribution.
+allowed to crash at any time, thus, executions may stop if no fair transition is enabled. We call a
+fair deadlock any state whose set of enabled transitions is included in the set of unfair 
+transition. An execution is said to be fair if (a) it is finite and ends in a fair deadlock, or (b)
+it contains infinitely many fair transitions. A trace is said fair if it is induced by a fair 
+execution. Non-probabilistic liveness properties will be evaluated with respect to the set of fair 
+traces. Similarly, a scheduler is fair if (a) it schedules $\bot$ with positive probability only 
+from fair deadlocks and (b) all infinite executions consistent with it are fair. A trace 
+distribution is fair if it is induced by a fair scheduler. Probabilistic liveness properties will 
+be evaluated against the set of fair trace distributions.
 
-The set of fair traces is denoted $\tcal^f$ and the set of fair trace distribution is denoted 
+The set of fair traces is denoted $\tcal^f$ and the set of fair trace distributions is denoted 
 $\text{tdist}^f(\pcal)$. Unfortunately, inclusion of $\tcal^f$ is not preserved by parallel
-composition because synchronisation issue could create new deadlocks. However, in our case, it 
+composition because synchronisation issues could create new deadlocks. However, in our case, it 
 never happens because synchronisation will be used to call sub-processes locally. The modelling 
-solution is to use the input-output approach of \cite{Lynch2026Introduction} where the set of 
-labels is partionned between input labels $In$ and output labels $Out$. We require that the input 
+solution is to use the input-output approach of \cite{InputOutput} where the set of 
+labels is partitioned between input labels $In$ and output labels $Out$. We require that the input 
 labels are always enabled: $\forall q \in Q, l \in In, \exists \mu \in \dcal(Q), (q,l,\mu) \in T$. 
 This requirement is easily fulfilled by adding self-looping transition labelled by each input label
 to all states. Moreover, we restrict composition to PLTSs whose outputs labels are distinct. This 
-restrcition is not problematic either because labels will encode the protocol APIs. Under such 
+restriction is not problematic either because labels will encode the protocol APIs. Under such 
 assumptions, parallel composition does not create new deadlocks and so the inclusion of $\tcal^f$ 
 is preserved by composition. As for $\subseteq^t$, inclusion of $\text{tdist}$ is not preserved by 
 parallel composition, and the problem cannot be solved by harmless restrictions. Thus, the fair 
@@ -216,14 +217,14 @@ trace distribution pre-congruence is defined as:
 \[
     \pcal \sqsubseteq^f \pcal' \iff \forall \pcal'', S \subseteq L, \text{tdist}^f(\pcal \parallel_S \pcal'') \subseteq  \text{tdist}^f(\pcal' \parallel_S \pcal'') 
 \]
-It beneficiates from the same algebraic properties as $\sqsubseteq^f$. 
+It enjoys the same algebraic properties as $\sqsubseteq^t$.
 
 Probabilistic forward simulation and weak simulation preserve $\sqsubseteq^t$, but not 
 $\sqsubseteq^f$. Looking at the folklore construction made in Lemma \ref{lem:weaksim}, a fair 
-execution can be simulated by a unfair execution. If the execution ends with a fair deadlock then
+execution can be simulated by an unfair execution. If the execution ends with a fair deadlock then
 the simulation does not guarantee anything about the last state of the simulating execution.
-Moreover, internal fair transitions can be elided, thus, a infinite fair execution can be simulated
-by an execution with finitely many fair transitions. We call an exection a fair divergence if it is
+Moreover, internal fair transitions can be elided, thus, an infinite fair execution can be simulated
+by an execution with finitely many fair transitions. We call an execution a fair divergence if it is
 fair and its trace is $\tau$. The diagnostic is the following: both simulations do not simulate
 fair divergences properly. We will say that a weak simulation $\scal$ is fair if, for all $(q,p) 
 \in \scal$, if $q$ fairly diverges then $p$ fairly diverges. However, this simple solution has a
@@ -271,7 +272,7 @@ idea stays the same even though it is more convoluted.
     of $\pcal$ by $\pcal'$ then $\pcal \sqsubseteq^f \pcal'$.
 \end{theorem}
 \begin{proof}
-    See Appendix \ref{app:ProofSegala}.
+    [TODO]
 \end{proof}
 
 \begin{lemma}
@@ -293,7 +294,7 @@ executions might look the same to it and it should schedule the same
 probability distribution of transitions.
 
 \begin{definition}[Adversary]
-    An adversary is a couple of observation function $(\ocal_Q, \ocal_L)$ which
+    An adversary is a pair of observation functions $(\ocal_Q, \ocal_L)$ which
     respectively map states and labels to state observation and label observation
     such that, for all $t,t' \in T$, if $src(t) = src(t')$ and
     $\ocal_L(lbl(t)) = \ocal_L(lbl(t'))$ then $t = t'$.

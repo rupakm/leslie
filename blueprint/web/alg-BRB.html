@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+  MathJax = { 
+    tex: {
+		    inlineMath: [['$','$'], ['\\(','\\)']]
+	} }
+</script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js">
+</script>
+<meta name="generator" content="plasTeX" />
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Implementation’s Pseudo-code</title>
+<link rel="next" href="PLTS-AVSS.html" title="Specification" />
+<link rel="prev" href="sect0004.html" title="Bibliography" />
+<link rel="up" href="sect0004.html" title="Bibliography" />
+<link rel="stylesheet" href="styles/theme-white.css" />
+<link rel="stylesheet" href="styles/amsthm.css" />
+<link rel="stylesheet" href="styles/showmore.css" />
+<link rel="stylesheet" href="styles/blueprint.css" />
+<link rel="stylesheet" href="styles/extra_styles.css" />
+</head>
+
+<body>
+<header>
+<svg  id="toc-toggle" class="icon icon-list-numbered "><use xlink:href="symbol-defs.svg#icon-list-numbered"></use></svg>
+<h1 id="doc_title"><a href="index.html">Verifying ABA with Leslie</a></h1>
+</header>
+
+<div class="wrapper">
+<nav class="toc">
+<ul class="sub-toc-0">
+<li class="">
+  <a href="sect0001.html"><span class="toc_ref">0.1</span> <span class="toc_entry">Preliminaries</span></a>
+  <span class="expand-toc">▶</span>
+  <ul class="sub-toc-1">
+     <li class="">
+  <a href="sect0001.html#a0000000006"><span class="toc_ref">0.1.1</span> <span class="toc_entry">Segala’s Framework</span></a>
+ </li>
+<li class="">
+  <a href="sect0001.html#a0000000014"><span class="toc_ref">0.1.2</span> <span class="toc_entry">Non-probabilistic Systems</span></a>
+ </li>
+<li class="">
+  <a href="sect0001.html#a0000000017"><span class="toc_ref">0.1.3</span> <span class="toc_entry">Preserving Liveness</span></a>
+ </li>
+<li class="">
+  <a href="sect0001.html#a0000000023"><span class="toc_ref">0.1.4</span> <span class="toc_entry">Partial Information</span></a>
+ </li>
+
+  </ul>
+ </li>
+<li class="">
+  <a href="sect0002.html"><span class="toc_ref">0.2</span> <span class="toc_entry">List of the Protocols</span></a>
+  <span class="expand-toc">▶</span>
+  <ul class="sub-toc-1">
+     <li class="">
+  <a href="sect0002.html#a0000000029"><span class="toc_ref"></span> <span class="toc_entry">Common Notation.</span></a>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000030"><span class="toc_ref">0.2.1</span> <span class="toc_entry">Asynchronous Byzantine Agreement (<span class="sffamily">ABA</span>)</span></a>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000031"><span class="toc_ref">0.2.2</span> <span class="toc_entry">Graded Binding Crusader Agreement (<span class="sffamily">GBCA</span>)</span></a>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000032"><span class="toc_ref">0.2.3</span> <span class="toc_entry">Weak Common Coin (<span class="sffamily">WCC</span>)</span></a>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000033"><span class="toc_ref">0.2.4</span> <span class="toc_entry"><span class="sffamily">Gather</span></span></a>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000034"><span class="toc_ref">0.2.5</span> <span class="toc_entry">Single Random Secret Draw (<span class="sffamily">SRSD</span>)</span></a>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000035"><span class="toc_ref">0.2.6</span> <span class="toc_entry">Byzantine Reliable Broadcast (<span class="sffamily">BRB</span>)</span></a>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000036"><span class="toc_ref">0.2.7</span> <span class="toc_entry">Asynchronous Verifiable Secret Sharing (<span class="sffamily">AVSS</span>)</span></a>
+ </li>
+
+  </ul>
+ </li>
+<li class="">
+  <a href="sect0003.html"><span class="toc_ref">0.3</span> <span class="toc_entry">Proof Decomposition</span></a>
+  <span class="expand-toc">▶</span>
+  <ul class="sub-toc-1">
+     <li class="">
+  <a href="sect0003.html#a0000000037"><span class="toc_ref">0.3.1</span> <span class="toc_entry">Top-level</span></a>
+ </li>
+<li class="">
+  <a href="sect0003.html#a0000000038"><span class="toc_ref">0.3.2</span> <span class="toc_entry">ABA</span></a>
+ </li>
+<li class="">
+  <a href="sect0003.html#a0000000039"><span class="toc_ref">0.3.3</span> <span class="toc_entry">WCC</span></a>
+ </li>
+<li class="">
+  <a href="sect0003.html#a0000000040"><span class="toc_ref">0.3.4</span> <span class="toc_entry">GBCA</span></a>
+ </li>
+<li class="">
+  <a href="sect0003.html#a0000000041"><span class="toc_ref">0.3.5</span> <span class="toc_entry">Gather</span></a>
+ </li>
+<li class="">
+  <a href="sect0003.html#a0000000042"><span class="toc_ref">0.3.6</span> <span class="toc_entry">SRSD</span></a>
+ </li>
+<li class="">
+  <a href="sect0003.html#a0000000043"><span class="toc_ref">0.3.7</span> <span class="toc_entry">BRB</span></a>
+ </li>
+
+  </ul>
+ </li>
+<li class=" active">
+  <a href="sect0004.html"><span class="toc_ref">1</span> <span class="toc_entry">Bibliography</span></a>
+  <span class="expand-toc">▼</span>
+  <ul class="sub-toc-1 active">
+     <li class=" active current">
+  <a href="alg-BRB.html"><span class="toc_ref">Z.1</span> <span class="toc_entry">Implementation’s Pseudo-code</span></a>
+ </li>
+<li class="">
+  <a href="PLTS-AVSS.html"><span class="toc_ref">Z.2</span> <span class="toc_entry">Specification</span></a>
+ </li>
+<li class="">
+  <a href="app-ProofSegala.html"><span class="toc_ref">Z.3</span> <span class="toc_entry">Proof of Theorem <a href="sect0001.html#thm:Segala">3</a></span></a>
+  <span class="expand-toc">▶</span>
+  <ul class="sub-toc-2">
+     <li class="">
+  <a href="app-ProofSegala.html#a0000000044"><span class="toc_ref">Z.3.1</span> <span class="toc_entry">Weak Transitions</span></a>
+ </li>
+<li class="">
+  <a href="app-ProofSegala.html#a0000000045"><span class="toc_ref">Z.3.2</span> <span class="toc_entry">Distribution Monad</span></a>
+ </li>
+<li class="">
+  <a href="app-ProofSegala.html#a0000000046"><span class="toc_ref">Z.3.3</span> <span class="toc_entry">Strong Probabilistic Simulation</span></a>
+ </li>
+
+  </ul>
+ </li>
+
+  </ul>
+ </li>
+<li ><a href="dep_graph_document.html">Dependency graph</a></li>
+</ul>
+</nav>
+
+<div class="content">
+<div class="content-wrapper">
+
+
+<div class="main-text">
+<h1 id="alg:BRB">Z.1 Implementation’s Pseudo-code</h1>
+<p>  <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>Implementation of <span class="sffamily">ABA</span> from <span class="cite">
+	[
+	<a href="sect0004.html#Abraham2022Efficient" >ABDY22</a>
+	]
+</span>  <b class="bfseries">Input:</b> \(\texttt{b} \in \{ 0,1\} \) <b class="bfseries">Sub-Protocols:</b> Countably many instances of <span class="sffamily">GBCA</span> and <span class="sffamily">WCC</span> \(\texttt{r} \gets 1\) <b class="bfseries">loop</b> &#8195;\((\texttt{b}, \texttt{g}) \gets \textsf{GBCA}_{\texttt{r}}(\texttt{b})\) \(\texttt{b} \in \{ 0,1,\bot \} \), \(\texttt{g} \in \{ A, B, C\} \) &#8195;\(\texttt{c} \gets \textsf{WCC}_{\texttt{r}}()\) &#8195;<b class="bfseries">if</b> \(\texttt{b} = \bot \): &#8195;&#8195;\(\texttt{b} \gets \texttt{c}\) &#8195;<b class="bfseries">elif</b> \(\texttt{g} = A\): &#8195;&#8195;send \(\langle \textsc{decided}, \texttt{b}\rangle \) to all &#8195;\(\texttt{r} \gets \texttt{r} + 1\) <b class="bfseries">upon</b> receiving \(\langle \textsc{decided}, \texttt{b}\rangle \) from \(f+1\) processes and having not sent it: &#8195;send \(\langle \textsc{decided}, \texttt{b}\rangle \) to all <b class="bfseries">upon</b> receiving \(\langle \textsc{decided}, \texttt{b}\rangle \) from \(n-f\) processes and having sent it: &#8195;return \(\texttt{b}\)   </p>
+<p>  <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>Implementation of <span class="sffamily">GBCA</span> from <span class="cite">
+	[
+	<a href="sect0004.html#Abraham2022Efficient" >ABDY22</a>
+	]
+</span>  <b class="bfseries">Input:</b> \(\texttt{b} \in \{ 0,1\} \) send \(\langle \textsc{input}, \texttt{b} \rangle \) to all processes <b class="bfseries">upon</b> receiving \(\langle \textsc{input}, \texttt{b} \rangle \) from at least \(f + 1\) processes and not sent \(\langle \textsc{input}, \texttt{b}\rangle \) yet: &#8195;send \(\langle \textsc{input}, \texttt{b}\rangle \) to all <b class="bfseries">upon</b> receiving \(\langle \textsc{input}, \texttt{b} \rangle \) from at least \(n - f\) processes: &#8195;\(\texttt{Valid} \gets \texttt{Valid} \cup \{ \texttt{b}\} \) &#8195;<b class="bfseries">if</b> not sent \(\langle \textsc{echo}, \cdot \rangle \) yet <b class="bfseries">then</b> send \(\langle \textsc{echo}, \texttt{b}\rangle \) to all <b class="bfseries">wait until</b> &#8195;(a) receiving \(\langle \textsc{echo}, \texttt{b} \rangle \) from at least \(n - f\) processes <b class="bfseries">or</b> &#8195;(b) receiving \(\langle \textsc{echo}, \cdot \rangle \) from at least \(n - f\) processes and \(|\texttt{Valid}| {\gt} 1\) &#8195;<b class="bfseries">if</b> (a) <b class="bfseries">then</b> send \(\langle \textsc{vote}, \texttt{b}\rangle \) to all <b class="bfseries">else</b> send \(\langle \textsc{vote}, \bot \rangle \) to all <b class="bfseries">wait until</b> &#8195;(a) receiving \(\langle \textsc{vote}, \texttt{b} \rangle \) from at least \(n - f\) processes <b class="bfseries">or</b> &#8195;(b) receiving \(\langle \textsc{vote}, \cdot \rangle \) from at least \(n - f\) processes and \(|\texttt{Valid}| {\gt} 1\) &#8195;<b class="bfseries">if</b> (a) <b class="bfseries">then</b> send \(\langle \textsc{bind}, \texttt{b}\rangle \) to all <b class="bfseries">else</b> send \(\langle \textsc{bind}, \bot \rangle \) to all <b class="bfseries">wait until</b> &#8195;(a) receiving \(\langle \textsc{bind}, \texttt{b} \rangle \) from at least \(n - f\) processes <b class="bfseries">or</b> &#8195;(b) receiving \(\langle \textsc{bind}, \cdot \rangle \) from at least \(n - f\) processes and <br />&#8195;there exists \(\texttt{b} \in \{ 0,1\} \) such that \(\langle \textsc{bind}, \texttt{b}\rangle \) has been received once and <br />&#8195;\(\langle \textsc{vote}, \texttt{b}\rangle \) has been received from \(f+1\) processes and \(|\texttt{Valid}| {\gt} 1\) <b class="bfseries">or</b> &#8195;(c) receiving \(\langle \textsc{bind}, \bot \rangle \) from at least \(n - f\) processes and \(|\texttt{Valid}| {\gt} 1\) &#8195;<b class="bfseries">if</b> (a) <b class="bfseries">then</b> return \((\texttt{b},A)\) <b class="bfseries">elif</b> (b) <b class="bfseries">then</b> return \((\texttt{b},B)\) <b class="bfseries">else</b> return \((\bot , C)\)   </p>
+<p>  <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>Implementation of <span class="sffamily">WCC</span> for process \(p_{id}\) adapted from <span class="cite">
+	[
+	<a href="sect0004.html#Freitas2022Distributed" >FKT22</a>
+	]
+</span>  <b class="bfseries">Input:</b> <b class="bfseries">Sub-Protocols:</b> 1 instance of <span class="sffamily">Gather</span>, \(n\) instances of <span class="sffamily">SRSD</span> (process \(p_k\) is the owner of \(\textsf{SRSD}_k\)) \(\forall k \in [n], \textsf{SRSD}_{k}.\textsf{Asg}.call()\) <b class="bfseries">wait until</b> \(\textsf{SRSD}_{id}.\textsf{Asg}.return()\) &#8195;\(\textsf{Gather}.call(id)\) <b class="bfseries">upon</b> \(\textsf{Gather}.return(S)\) &#8195;\(\forall k \in S\), \(\textsf{SRSD}_k.\textsf{Rec}.call()\) &#8195;\(\texttt{T} \gets \emptyset \) <b class="bfseries">upon</b> \(\textsf{SRSD}_k.\textsf{Rec}.return(x)\) and \(k \in S\) &#8195;\(\texttt{T} \gets \texttt{T} \cup \{ x\} \) <b class="bfseries">upon</b> \(|\texttt{T}| = |S|\) &#8195;return 0 if \(0 \in \texttt{T}\) else 1   </p>
+<p>  <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>Implementation of <span class="sffamily">Gather</span> from <span class="cite">
+	[
+	<a href="sect0004.html#Attiya2025Beyond" >AFW25</a>
+	]
+</span>  <b class="bfseries">Input:</b> \(\texttt{m}\) <b class="bfseries">Sub-Protocols:</b> \(n\) instances of <span class="sffamily">BRB</span> (\(p_k\) is leader in \(\textsf{BRB}_k\)) \(\textsf{BRB}_{id}.call(\texttt{m})\) <b class="bfseries">upon</b> \(\textsf{BRB}_k.return(\texttt{m'})\): &#8195;\(\texttt{AP} \gets \texttt{AP} \cup \{ (k, \texttt{m'})\} \) <b class="bfseries">upon</b> \(|\texttt{AP}| \ge n-f\) and not sent \(\langle \textsc{echo}, \cdot \rangle \): &#8195;send \(\langle \textsc{echo}, \texttt{AP}\rangle \) to all <b class="bfseries">upon</b> receiving approved \(\langle \textsc{echo}, \texttt{AP}_{id} \rangle \) from at least \(n - f\) processes and not sent \(\langle \textsc{vote}, \cdot \rangle \): &#8195;send \(\langle \textsc{vote}, \bigcup _{id} \texttt{AP}_{id} \rangle \) to all <b class="bfseries">upon</b> receiving approved \(\langle \textsc{vote}, \texttt{AP}_{id} \rangle \) from at least \(n - f\) processes and not sent \(\langle \textsc{bind}, \cdot \rangle \): &#8195;send \(\langle \textsc{bind}, \bigcup _{id} \texttt{AP}_{id} \rangle \) to all <b class="bfseries">upon</b> receiving approved \(\langle \textsc{bind}, \texttt{AP}_{id} \rangle \) from at least \(n - f\) processes: &#8195;return \(\bigcup _{id} \texttt{AP}_{id}\)   </p>
+<p>  <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>Implementation of <span class="sffamily">SRSD</span> for process \(p_{id}\) adapted from <span class="cite">
+	[
+	<a href="sect0004.html#Freitas2022Distributed" >FKT22</a>
+	]
+</span>  <b class="bfseries">Input:</b> <b class="bfseries">Sub-Protocols:</b> 1 instance of <span class="sffamily">BRB</span> where \(p_o\) is leader and \(n\) instances of <span class="sffamily">AVSS</span> (process \(p_k\) is dealer in \(\textsf{AVSS}_k\)) <b class="bfseries">Protocol:</b> \(\textsf{SRSD}.\textsf{Asg}()\) \(\texttt{S}, \texttt{x} \gets \emptyset , \mu \) \(\mu \): uniform distribution over the domain of secrets \(\textsf{AVSS}_{id}.\textsf{Sh}.call(\texttt{x})\) <b class="bfseries">upon</b> \(\textsf{AVSS}_k.\textsf{Sh}.return()\) and \(p_{id}\) is the owner: &#8195;\(\texttt{S} \gets \texttt{S} \cup \{ k\} \) <b class="bfseries">upon</b> \(|\texttt{S}| \ge n-f\) and \(p_{id}\) is the owner: &#8195;\(\textsf{BRB}.call(S)\) <b class="bfseries">upon</b> \(\textsf{BRB}.return(S')\) and \(\forall k \in S', \textsf{AVSS}_k.\textsf{Sh}.return()\): &#8195;\(\textsf{src} \gets S'\) &#8195;return <b class="bfseries">Protocol:</b> \(\textsf{SRSD}.\textsf{Rec}()\) \(\texttt{sum} \gets 0\) \(\forall k \in \texttt{src}, \textsf{AVSS}_k.\textsf{Rec}.call()\) <b class="bfseries">upon</b> \(\textsf{AVSS}_k.\textsf{Rec}.return(x)\) and \(k \in \texttt{src}\): &#8195;\(\texttt{sum} \gets \texttt{sum} + x\) <b class="bfseries">wait until</b> all \(\textsf{AVSS}_k.\textsf{Rec}\) have returned for \(k \in \texttt{src}\): &#8195;return \(\texttt{sum}\)   </p>
+<p>  <figcaption>
+  <span class="caption_title"></span> 
+  <span class="caption_ref">None</span> 
+  <span class="caption_text"></span> 
+</figcaption>Implementation of <span class="sffamily">BRB</span> for process \(p_{id}\) from <span class="cite">
+	[
+	<a href="sect0004.html#Bracha1987Asynchronous" >Bra87</a>
+	]
+</span>  <b class="bfseries">Input:</b> \(\texttt{m}\) <b class="bfseries">if</b> \(p_{id}\) is leader: &#8195;send \(\langle \textsc{init}, \texttt{m} \rangle \) to all <b class="bfseries">upon</b> receiving \(\langle \textsc{init}, \texttt{m} \rangle \) from leader and having not sent \(\textsc{echo}\) message: &#8195;send \(\langle \textsc{echo}, \texttt{m} \rangle \) to all <b class="bfseries">upon</b> receiving \(\langle \textsc{echo}, \texttt{m} \rangle \) from \(n-f\) processes and having not sent \(\textsc{vote}\) message: &#8195;send \(\langle \textsc{vote}, \texttt{m} \rangle \) to all <b class="bfseries">upon</b> receiving \(\langle \textsc{vote}, \texttt{m} \rangle \) from \(f+1\) processes and having not sent \(\textsc{vote}\) message: &#8195;send \(\langle \textsc{vote}, \texttt{m} \rangle \) to all <b class="bfseries">upon</b> receiving \(\langle \textsc{vote}, \texttt{m} \rangle \) from \(n-f\) processes: &#8195;return \(\texttt{m}\)    <br /></p>
+
+</div> <!--main-text -->
+</div> <!-- content-wrapper -->
+</div> <!-- content -->
+</div> <!-- wrapper -->
+
+<nav class="prev_up_next">
+  <svg  id="showmore-minus" class="icon icon-eye-minus showmore"><use xlink:href="symbol-defs.svg#icon-eye-minus"></use></svg>
+
+  <svg  id="showmore-plus" class="icon icon-eye-plus showmore"><use xlink:href="symbol-defs.svg#icon-eye-plus"></use></svg>
+
+  <a href="sect0004.html" title="Bibliography"><svg  class="icon icon-arrow-left "><use xlink:href="symbol-defs.svg#icon-arrow-left"></use></svg>
+</a>
+  <a href="sect0004.html" title="Bibliography"><svg  class="icon icon-arrow-up "><use xlink:href="symbol-defs.svg#icon-arrow-up"></use></svg>
+</a>
+  <a href="PLTS-AVSS.html" title="Specification"><svg  class="icon icon-arrow-right "><use xlink:href="symbol-defs.svg#icon-arrow-right"></use></svg>
+</a>
+</nav>
+
+<script type="text/javascript" src="js/jquery.min.js"></script>
+<script type="text/javascript" src="js/plastex.js"></script>
+<script type="text/javascript" src="js/svgxuse.js"></script>
+<script type="text/javascript" src="js/js.cookie.min.js"></script>
+<script type="text/javascript" src="js/showmore.js"></script>
+</body>
+</html>

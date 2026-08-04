@@ -3,26 +3,28 @@ Partial Probabilistic Execution
 Parallel Composition
 Probabilistic Forward Simulation
 Weak Simulation
+FairWeakSimulation
+FairProbForwardSimulation
+ABA.Core
 ABA.Spec
 ABA.Impl
-ABA.Concrete
 ABA.Hybrid
-GBCA.Spec
 GBCA.Impl
+GBCA.Spec
+WCC.Core
 WCC.Spec
 WCC.Impl
-WCC.Concrete
 WCC.Hybrid
+Gather.Core
 Gather.Spec
 Gather.Impl
-Gather.Concrete
 Gather.Hybrid
-RSD.Spec
-RSD.Impl
-RSD.Concrete
-RSD.Hybrid
-BRB.Spec
+SRSD.Core
+SRSD.Spec
+SRSD.Impl
+SRSD.Hybrid
 BRB.Impl
+BRB.Spec
 AVSS.Spec
 ABA.Correct
 ABA.Sim
@@ -35,7 +37,7 @@ GBCA.Sim
 Gather.Sim
 Gather.SubstSim
 Gather.CoreSim
-RSD.Sim
-RSD.SubstSim
-RSD.CoreSim
+SRSD.Sim
+SRSD.SubstSim
+SRSD.CoreSim
 BRB.Sim

@@ -1,16 +1,16 @@
 # Fdb version 4
-["bibtex /home/greghem/leslie/blueprint/print/print"] 1782398327.47536 "/home/greghem/leslie/blueprint/print/print.aux" "/home/greghem/leslie/blueprint/print/print.bbl" "/home/greghem/leslie/blueprint/print/print" 1782398328.8513 0
-  "./biblio.bib" 1781772290.51041 8221 3e4fd995504d5a26d3872e20883e09db ""
-  "/home/greghem/leslie/blueprint/print/print.aux" 1782398328.58775 21327 e9b7e06936d3498094eef35614cad360 "pdflatex"
+["bibtex /home/greghem/leslie/blueprint/print/print"] 1782978127.75711 "/home/greghem/leslie/blueprint/print/print.aux" "/home/greghem/leslie/blueprint/print/print.bbl" "/home/greghem/leslie/blueprint/print/print" 1782978128.97491 0
+  "./biblio.bib" 1782724430.35867 8647 443b09eb062d537d9a52bfe46dfcce07 ""
+  "/home/greghem/leslie/blueprint/print/print.aux" 1782978128.79936 22018 15565019c60ec13289f6ea87919d1820 "pdflatex"
   "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/bibtex/bst/base/alpha.bst" 1 23907 a5f93555796fb564b924339521f10a7c ""
   (generated)
   "/home/greghem/leslie/blueprint/print/print.bbl"
   "/home/greghem/leslie/blueprint/print/print.blg"
   (rewritten before read)
-["pdflatex"] 1782398327.55017 "print.tex" "/home/greghem/leslie/blueprint/print/print.pdf" "print" 1782398328.85165 0
-  "/home/greghem/leslie/blueprint/print/print.aux" 1782398328.58775 21327 e9b7e06936d3498094eef35614cad360 "pdflatex"
-  "/home/greghem/leslie/blueprint/print/print.bbl" 1782398327.54372 3023 ddd47f13d23b1546eec67c235ec7e300 "bibtex /home/greghem/leslie/blueprint/print/print"
-  "/home/greghem/leslie/blueprint/print/print.out" 1782398328.58875 2951 cf96b78f5b9cfd3ccd07a8001ecb2db1 "pdflatex"
+["pdflatex"] 1782978127.82546 "print.tex" "/home/greghem/leslie/blueprint/print/print.pdf" "print" 1782978128.97508 0
+  "/home/greghem/leslie/blueprint/print/print.aux" 1782978128.79936 22018 15565019c60ec13289f6ea87919d1820 "pdflatex"
+  "/home/greghem/leslie/blueprint/print/print.bbl" 1782978127.82135 2594 7f65cd5a673739cfbd466b93242370df "bibtex /home/greghem/leslie/blueprint/print/print"
+  "/home/greghem/leslie/blueprint/print/print.out" 1782978128.80036 4302 f86d453218deb7c3d383dffe06248e4e "pdflatex"
   "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/fonts/map/fontname/texfonts.map" 1 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/fonts/tfm/adobe/zapfding/pzdr.tfm" 1 1528 f853c4d1b4e0550255e02831fdc8496f ""
   "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/fonts/tfm/public/amsfonts/symbols/msam10.tfm" 1 916 f87d7c45f9c908e672703b83b72241a3 ""
@@ -103,16 +103,16 @@
   "/nix/store/3b1j5jipjpakdak6par146z865lwq8rp-texlive-2025-r78234-final-env-texmfdist/tex/latex/url/url.sty" 1 12796 8edb7d69a20b857904dd0ea757c14ec9 ""
   "/nix/store/4mq3aq4gi5qwdhgw3x45akw8fjac8g7p-texlive-2025-r78234-final-env/share/texmf-var/web2c/texmf.cnf" 1 44263 f2130afbe3eaaaf8d5d682eee635b1d1 ""
   "/nix/store/4mq3aq4gi5qwdhgw3x45akw8fjac8g7p-texlive-2025-r78234-final-env/share/texmf-var/web2c/xetex/xelatex.fmt" 1 5949304 5e7c4eb703f27ab70b2fcbc92898e4d2 ""
-  "content.tex" 1782390222.82091 1703 a421beb4a7103f33253e158dc876a5d6 ""
+  "content.tex" 1782471610.30708 1714 467d3e684ee17eb15a84bcb7677e8599 ""
   "macros/common.tex" 1782200339.38757 1387 f588d8ec00359735c039337c86a92d79 ""
   "macros/print.tex" 1780051330.62034 1101 87627b2ec24fef68edc71c13f43f7bab ""
   "print.tex" 1782201617.58454 1776 1b0e689b333e70bd8cf013f45281823a ""
-  "sections/Algorithm.tex" 1782397306.03766 9483 83e49499429888ce23bcfe35a6c18dab ""
-  "sections/Preliminaries.tex" 1782392871.96552 23981 e43bcc4d03925307cb6e682a99192d39 ""
-  "sections/ProofStructure.tex" 1782394586.73626 8401 736468772bb6b6507da8dd8cc376e519 ""
-  "sections/Protocols.tex" 1782397960.03587 19281 3761203cbda3dae5b76a13639151d64e ""
-  "sections/SegalaProof.tex" 1782391009.566 4201 b111f028fdfa5b5f0da485b19e85cb8e ""
-  "sections/Specification.tex" 1782301072.44406 14310 bfda43b590fe45594f3eecaf77d8242d ""
+  "sections/Algorithm.tex" 1782472512.63641 9743 a8d4190786c4980e29299eac8b4ef31f ""
+  "sections/Preliminaries.tex" 1782485006.1932 21423 cfe9f1341362a4d771cdfff5b4191ddc ""
+  "sections/ProofStructure.tex" 1782472055.96151 9311 e5db62b615bb1d4b9ae2129bb933b3d5 ""
+  "sections/Protocols.tex" 1782978081.1467 19963 966820d8a3641004626700d3ef25e2a1 ""
+  "sections/SegalaProof.tex" 1782735119.16472 4081 6ec2e495a4c689bf083b89722a853674 ""
+  "sections/Specification.tex" 1782472626.42165 14409 760ed61f02c7f232936620107cbfcdc1 ""
   (generated)
   "/home/greghem/leslie/blueprint/print/print.aux"
   "/home/greghem/leslie/blueprint/print/print.log"

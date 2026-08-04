@@ -76,7 +76,7 @@
       </span>
       <span class="definition_thmlabel">1</span><span class="definition_thmtitle">Probabilistic Labelled Transition System</span></div>
     <div class="thm_thmcontent">
-<p>A probabilistic labelled transition system (PLTS) is a tuple \(\mathcal{P}:= (Q,q_\star ,L,T)\) where \(Q\) is a (countable) set of states, \(q_\star \in Q\) is a set of initial states, \(L\) is a (countable) set of labels and \(T \subseteq Q \times (L \cup \{ \tau \} ) \times \mathcal{D}(Q)\) is a set of probabilitsic transitions. </p>
+<p>A probabilistic labelled transition system (PLTS) is a tuple \(\mathcal{P}:= (Q,q_\star ,L,T)\) where \(Q\) is a (countable) set of states, \(q_\star \in Q\) is the initial state, \(L\) is a (countable) set of labels and \(T \subseteq Q \times (L \cup \{ \tau \} ) \times \mathcal{D}(Q)\) is a set of probabilistic transitions. </p>
 </div>
 
     <a class="latex_link" href="sect0001.html#a0000000007">LaTeX</a>
@@ -107,7 +107,7 @@
       </span>
       <span class="definition_thmlabel">2</span><span class="definition_thmtitle">Partial Probabilistic Execution</span></div>
     <div class="thm_thmcontent">
-<p>Given \(\mu \in \mathcal{D}(Q)\) and \(s \in Sch\), one can define a partial probabilistic execution induced by \((\mu ,s)\) as the function \(\mathfrak {e}_{\mu ,s}\) from \(\mathcal{E}^*\) to \([0,1]\) such that if \(e \in Q\) then \(\mathfrak {e}_{\mu ,s} = \mu (e)\); else, \(e = e'.l.q\) and \(\mathfrak {e}_{\mu ,s}(e) = \mathfrak {e}_{\mu ,s}(e')\cdot \sum _{t \in T \mid lbl(t) = l}s(e')(t)\cdot out(t)(q)\). </p>
+<p>Given \(\mu \in \mathcal{D}(Q)\) and \(s \in Sch\), one can define the partial probabilistic execution induced by \((\mu ,s)\) as the function \(\mathfrak {e}_{\mu ,s}\) from \(\mathcal{E}^*\) to \([0,1]\) such that if \(e \in Q\) then \(\mathfrak {e}_{\mu ,s}(e) = \mu (e)\); otherwise, \(e = e'.l.q\) and \(\mathfrak {e}_{\mu ,s}(e) = \mathfrak {e}_{\mu ,s}(e')\cdot \sum _{t \in T \mid lbl(t) = l}s(e')(t)\cdot out(t)(q)\). </p>
 </div>
 
     <a class="latex_link" href="sect0001.html#a0000000008">LaTeX</a>
@@ -138,7 +138,7 @@
       </span>
       <span class="definition_thmlabel">3</span><span class="definition_thmtitle">Parallel Composition of PLTS</span></div>
     <div class="thm_thmcontent">
-<p>Given \(\mathcal{P}\) and \(\mathcal{P}'\) two PLTSs and \(S \subseteq L \cup L'\), the composed PLTS \(\mathcal{P}\parallel _S \mathcal{P}'\) is defined as \((Q \times Q', (q_\star , q_\star '), L \cup L', T \parallel _S T')\) where \(((q,q'), l, \mu '') \in T \parallel _S T'\) if and only if </p>
+<p>Given two PLTSs \(\mathcal{P}\) and \(\mathcal{P}'\) and \(S \subseteq L \cap L'\), the composed PLTS \(\mathcal{P}\parallel _S \mathcal{P}'\) is defined as \((Q \times Q', (q_\star , q_\star '), L \cup L', T \parallel _S T')\) where \(((q,q'), l, \mu '') \in T \parallel _S T'\) if and only if </p>
 <ul class="itemize">
   <li><p>\(l \in S\) and there exist \((q,l,\mu ) \in T\) and \((q',l,\mu ') \in T'\) such that \(\mu \otimes \mu ' = \mu ''\); or </p>
 </li>
@@ -164,26 +164,25 @@
 
 
     
-    <div class="dep-modal-container" id="a0000000010_modal">
+    <div class="dep-modal-container" id="a0000000011_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
 <svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
 </button>
         
-  <div class="thm" id="a0000000010" style="display: none">
+  <div class="thm" id="a0000000011" style="display: none">
     <div class="thm_thmheading">
       <span class="definition_thmcaption">
       Definition
       </span>
-      <span class="definition_thmlabel">4</span><span class="definition_thmtitle">Probabilistic Forward Simulation</span></div>
-    <div class="thm_thmcontent">
-<p>Given \(\mathcal{P}\) and \(\mathcal{P}'\) two PLTSs, a probabilistic forward simulation of \(\mathcal{P}\) by \(\mathcal{P}'\) is a relation \(\mathcal{S}\subseteq Q \times \mathcal{D}(Q')\) such that \((q_\star ,\delta _{q_\star '}) \in \mathcal{S}\) and, for all \((q,\mu ') \in \mathcal{S}\) and \((q,l,\mu ) \in T\); there exists \(\mu ' \xRightarrow {l} \mu ''\) such that \((\mu ,\mu '') \in \mathcal{D}(\mathcal{S})\). </p>
+      <span class="definition_thmlabel">4</span><span class="definition_thmtitle">Abstraction Operator</span></div>
+    <div class="thm_thmcontent"><p> Given a PLTS \(\mathcal{P}\) and \(I \subseteq L\), the abstract PLTS \(\tau _I(\mathcal{P})\) is obtained by replacing all labels in \(I\) by \(\tau \). </p>
 </div>
 
-    <a class="latex_link" href="sect0001.html#a0000000010">LaTeX</a>
+    <a class="latex_link" href="sect0001.html#a0000000011">LaTeX</a>
     
     
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/Probabilistic Forward Simulation">Lean</a>
+  
     
     
   
@@ -195,26 +194,26 @@
 
 
     
-    <div class="dep-modal-container" id="a0000000014_modal">
+    <div class="dep-modal-container" id="a0000000012_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
 <svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
 </button>
         
-  <div class="thm" id="a0000000014" style="display: none">
+  <div class="thm" id="a0000000012" style="display: none">
     <div class="thm_thmheading">
       <span class="definition_thmcaption">
       Definition
       </span>
-      <span class="definition_thmlabel">5</span><span class="definition_thmtitle">Weak Simulation</span></div>
+      <span class="definition_thmlabel">5</span><span class="definition_thmtitle">Probabilistic Forward Simulation</span></div>
     <div class="thm_thmcontent">
-<p>Given \(\mathcal{P}\) and \(\mathcal{P}'\) two LTSs, a weak simulation of \(\mathcal{P}\) by \(\mathcal{P}'\) is a relation \(\mathcal{S}\subseteq Q \times Q'\) such that \((q_\star ,q_\star ') \in \mathcal{S}\) and, for all \((q,q') \in \mathcal{S}\) and \((q,l,p) \in T\); there exists \(q' \xRightarrow {l} p'\) such that \((p,p') \in \mathcal{S}\). </p>
+<p>Given two PLTSs \(\mathcal{P}\) and \(\mathcal{P}'\), a probabilistic forward simulation of \(\mathcal{P}\) by \(\mathcal{P}'\) is a relation \(\mathcal{S}\subseteq Q \times \mathcal{D}(Q')\) such that \((q_\star ,\delta _{q_\star '}) \in \mathcal{S}\) and, for all \((q,\mu ') \in \mathcal{S}\) and \((q,l,\mu ) \in T\), there exists \(\mu ' \xRightarrow {l} \mu ''\) such that \((\mu ,\mu '') \in \mathcal{D}(\mathcal{S})\). </p>
 </div>
 
-    <a class="latex_link" href="sect0001.html#a0000000014">LaTeX</a>
+    <a class="latex_link" href="sect0001.html#a0000000012">LaTeX</a>
     
     
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/Weak Simulation">Lean</a>
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/Probabilistic Forward Simulation">Lean</a>
     
     
   
@@ -234,17 +233,18 @@
         
   <div class="thm" id="a0000000015" style="display: none">
     <div class="thm_thmheading">
-      <span class="theorem_thmcaption">
-      Theorem
+      <span class="definition_thmcaption">
+      Definition
       </span>
-      <span class="theorem_thmlabel">2</span></div>
-    <div class="thm_thmcontent"><p>Given two LTSs \(\mathcal{P}\) and \(\mathcal{P}'\), \(\mathcal{P}\sqsubseteq ^t \mathcal{P}'\) if and only if there exists a weak simulation of \(\mathcal{P}\) by \(\mathcal{P}'\). </p>
+      <span class="definition_thmlabel">6</span><span class="definition_thmtitle">Weak Simulation</span></div>
+    <div class="thm_thmcontent">
+<p>Given two LTSs \(\mathcal{P}\) and \(\mathcal{P}'\), a weak simulation of \(\mathcal{P}\) by \(\mathcal{P}'\) is a relation \(\mathcal{S}\subseteq Q \times Q'\) such that \((q_\star ,q_\star ') \in \mathcal{S}\) and, for all \((q,q') \in \mathcal{S}\) and \((q,l,p) \in T\), there exists \(q' \xRightarrow {l} p'\) such that \((p,p') \in \mathcal{S}\). </p>
 </div>
 
     <a class="latex_link" href="sect0001.html#a0000000015">LaTeX</a>
     
     
-  
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/Weak Simulation">Lean</a>
     
     
   
@@ -267,14 +267,15 @@
       <span class="definition_thmcaption">
       Definition
       </span>
-      <span class="definition_thmlabel">6</span><span class="definition_thmtitle">Maximal Weak Simulation</span></div>
-    <div class="thm_thmcontent"><p> Given two PLTSs \(\mathcal{P}\) and \(\mathcal{P}'\), a weak simulation \(\mathcal{S}\) of \(\mathcal{P}\) by \(\mathcal{P}'\) is said to be maximal if, for all \((q,q') \in \mathcal{S}\), if \(q\) weakly diverges then \(q'\) weakly diverges. </p>
+      <span class="definition_thmlabel">7</span><span class="definition_thmtitle">Fair Weak Simulation</span></div>
+    <div class="thm_thmcontent">
+<p>Given two LTSs \(\mathcal{P}\) and \(\mathcal{P}'\), a fair weak simulation of \(\mathcal{P}\) by \(\mathcal{P}'\) is a relation \(\mathcal{S}\subseteq Q \times Q'\) equipped with a well-founded preorder \(\le \) on \(Q\) such that \((q_\star ,q_\star ') \in \mathcal{S}\) and, for all \((q,q') \in \mathcal{S}\) and \((q,l,p) \in T\), there exists \(q' \xRightarrow {l} p'\) such that \((p,p') \in \mathcal{S}\). Furthermore, if \(l = \tau \) and \(q' \xRightarrow {\tau } p'\) contain no fair transition then if \((q,l,p)\) is fair then \(q {\gt} p\); else \(q \ge p\). Moreover, for all \((q,q') \in \mathcal{S}\), if \(q\) is a fair deadlock then \(q'\) fairly diverges. </p>
 </div>
 
     <a class="latex_link" href="sect0001.html#a0000000019">LaTeX</a>
     
     
-  
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/FairWeakSimulation">Lean</a>
     
     
   
@@ -294,17 +295,18 @@
         
   <div class="thm" id="a0000000020" style="display: none">
     <div class="thm_thmheading">
-      <span class="theorem_thmcaption">
-      Theorem
+      <span class="definition_thmcaption">
+      Definition
       </span>
-      <span class="theorem_thmlabel">4</span></div>
-    <div class="thm_thmcontent"><p>Given two PLTSs \(\mathcal{P}\) and \(\mathcal{P}'\), \(\mathcal{T}^{\max } \subseteq \mathcal{T}'^{\max }\) only if there exists a weak simulation of \(\mathcal{P}\) by \(\mathcal{P}'\). </p>
+      <span class="definition_thmlabel">8</span><span class="definition_thmtitle">Fair Probabilistic Forward Simulation</span></div>
+    <div class="thm_thmcontent">
+<p>Given two LTSs \(\mathcal{P}\) and \(\mathcal{P}'\), a fair probabilistic forward simulation of \(\mathcal{P}\) by \(\mathcal{P}'\) is a relation \(\mathcal{S}\subseteq Q \times \mathcal{D}(Q')\) equipped with a well-founded preorder \(\le \) on \(Q\) such that \((q_\star ,\delta _{q_\star '}) \in \mathcal{S}\) and, for all \((q,\mu ') \in \mathcal{S}\) and \((q,l,\mu ) \in T\), there exists \(\mu ' \xRightarrow {l} \mu ''\) such that \((\mu ',\mu '') \in \mathcal{D}(\mathcal{S})\). Furthermore, let \(s\) be the scheduler inducing \(\mu ' \xRightarrow {\tau } \mu ''\) and \(w\) the witness of \((\mu ',\mu '') \in \mathcal{D}(\mathcal{S})\), if \(l = \tau \) and there exist \(q' \in \bar\mu ' \xRightarrow {\tau } p'\) consistent with \(s\) which contain no fair transition then, for all \(p \in \bar\mu \), if there exists \(\mu _p \in \mathcal{D}(Q')\) such that \(w(p,\mu _p) {\gt} 0\) and \(\mu _p(p') {\gt} 0\) then if \((q,l,\mu )\) is fair then \(q {\gt} p\); else \(q \ge p\). Moreover, for all \((q,\mu ') \in \mathcal{S}\), if \(q\) is a fair deadlock then there exists a fair scheduler \(s\) such that \(\mathfrak {t}_{\mu ',s} = \delta _\tau \). </p>
 </div>
 
     <a class="latex_link" href="sect0001.html#a0000000020">LaTeX</a>
     
     
-  
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/FairProbForwardSimulation">Lean</a>
     
     
   
@@ -316,28 +318,22 @@
 
 
     
-    <div class="dep-modal-container" id="a0000000022_modal">
+    <div class="dep-modal-container" id="a0000000024_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
 <svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
 </button>
         
-  <div class="thm" id="a0000000022" style="display: none">
+  <div class="thm" id="a0000000024" style="display: none">
     <div class="thm_thmheading">
       <span class="definition_thmcaption">
       Definition
       </span>
-      <span class="definition_thmlabel">7</span><span class="definition_thmtitle">Progressive Weak Simulation</span></div>
-    <div class="thm_thmcontent"><p> Given two PLTSs \(\mathcal{P}\) and \(\mathcal{P}'\), a weak simulation \(\mathcal{S}\) of \(\mathcal{P}\) by \(\mathcal{P}'\) is said to be progressive if </p>
-<ul class="itemize">
-  <li><p>for all \((q,q') \in \mathcal{S}\), if \(q\) is a deadlock then \(q'\) weakly diverges. </p>
-</li>
-  <li><p>there exists \({\lt} \subseteq Q \times Q\) well-founded such that, for all \((q,q') \in \mathcal{S}\) and \((q,l,p) \in T\), if \((q,l,q')\) is elided by \(\mathcal{S}\) then \(q {\gt} p\) or \(q'\) weakly diverges. </p>
-</li>
-</ul>
+      <span class="definition_thmlabel">9</span><span class="definition_thmtitle">Adversary</span></div>
+    <div class="thm_thmcontent"><p> An adversary is a pair of observation functions \((\mathcal{O}_Q, \mathcal{O}_L)\) which respectively map states and labels to state observation and label observation such that, for all \(t,t' \in T\), if \(src(t) = src(t')\) and \(\mathcal{O}_L(lbl(t)) = \mathcal{O}_L(lbl(t'))\) then \(t = t'\). </p>
 </div>
 
-    <a class="latex_link" href="sect0001.html#a0000000022">LaTeX</a>
+    <a class="latex_link" href="sect0001.html#a0000000024">LaTeX</a>
     
     
   
@@ -352,22 +348,148 @@
 
 
     
-    <div class="dep-modal-container" id="a0000000023_modal">
+    <div class="dep-modal-container" id="a0000000025_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
 <svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
 </button>
         
-  <div class="thm" id="a0000000023" style="display: none">
+  <div class="thm" id="a0000000025" style="display: none">
+    <div class="thm_thmheading">
+      <span class="definition_thmcaption">
+      Definition
+      </span>
+      <span class="definition_thmlabel">10</span><span class="definition_thmtitle">Belief PLTS</span></div>
+    <div class="thm_thmcontent"><p> Given a PLTS \(\mathcal{P}\) and an adversary \(\mathcal{A}:=(\mathcal{O}_Q,\mathcal{O}_L)\), the belief PLTS \(\mathcal{P}_{\mathcal{A}}\) is defined as the tuple \((\{ \mu \in \mathcal{D}(Q) \mid \mathcal{O}_Q(\bar\mu ) = \{ \cdot \}  \} , \delta _{q_\star }, \mathcal{O}_L(L), T_{\mathcal{A}})\) where </p>
+<div class="displaymath" id="a0000000026">
+  \[  \mu \xrightarrow {l} \mu ' \in T_{\mathcal{A}} \iff \exists \mu \xrightarrow {l} \mu '' \in H, \mu ' = (q \mapsto \frac{\mathbb {1}_{\mathcal{O}_Q(q) = o} \cdot \mu ''(q)}{\mu ''(\{ q \mid \mathcal{O}_Q(q) = o\} )}) \mapsto \mu ''(\{ q \mid \mathcal{O}_Q(q) = o\} )  \]
+</div>
+</div>
+
+    <a class="latex_link" href="sect0001.html#a0000000025">LaTeX</a>
+    
+    
+  
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="a0000000063_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="a0000000063" style="display: none">
+    <div class="thm_thmheading">
+      <span class="definition_thmcaption">
+      Definition
+      </span>
+      <span class="definition_thmlabel">25</span><span class="definition_thmtitle">Weak Closure</span></div>
+    <div class="thm_thmcontent"><p> The weak closure of a PLTS \(\mathcal{P}\) is a PLTS, denoted \(\mathcal{P}^w\), where transitions are replaced by weak transitions. </p>
+</div>
+
+    <a class="latex_link" href="app-ProofSegala.html#a0000000063">LaTeX</a>
+    
+    
+  
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="a0000000065_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="a0000000065" style="display: none">
+    <div class="thm_thmheading">
+      <span class="definition_thmcaption">
+      Definition
+      </span>
+      <span class="definition_thmlabel">26</span><span class="definition_thmtitle">Distribution Lifting</span></div>
+    <div class="thm_thmcontent"><p> The distribution lifting of a PLTS \(\mathcal{P}\) is the PLTS defined as \(\mathcal{D}(\mathcal{P}) := (\mathcal{D}(Q), \delta _{q_\star }, L, \mathcal{D}(T))\) where </p>
+<div class="displaymath" id="a0000000066">
+  \[ (\mu ,l,\mathfrak {m}) \in \mathcal{D}(T) \iff \exists \mu ' \in \mathcal{D}(Q), (\mu ,l,\mu ') \in H \wedge \sum _{\mu }\mathfrak {m}(\mu )\cdot \mu = \mu ' \]
+</div>
+</div>
+
+    <a class="latex_link" href="app-ProofSegala.html#a0000000065">LaTeX</a>
+    
+    
+  
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="a0000000068_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="a0000000068" style="display: none">
+    <div class="thm_thmheading">
+      <span class="definition_thmcaption">
+      Definition
+      </span>
+      <span class="definition_thmlabel">27</span><span class="definition_thmtitle">Strong Probabilistic Simulation</span></div>
+    <div class="thm_thmcontent"><p> A strong probabilistic simulation of \(\mathcal{P}\) by \(\mathcal{P}'\) is a relation \(\mathcal{S}\subseteq Q \times Q'\) such that \((q_\star ,q'_\star ) \in \mathcal{S}\) and, for all \((q,q') \in \mathcal{S}\) and \((q,l,\mu ) \in T\), there exists \((q',l,\mu ') \in T'\) such that \((\mu ,\mu ') \in \mathcal{D}(\mathcal{S})\). </p>
+</div>
+
+    <a class="latex_link" href="app-ProofSegala.html#a0000000068">LaTeX</a>
+    
+    
+  
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="a0000000071_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="a0000000071" style="display: none">
     <div class="thm_thmheading">
       <span class="theorem_thmcaption">
       Theorem
       </span>
-      <span class="theorem_thmlabel">5</span></div>
-    <div class="thm_thmcontent"><p>A weak simulation \(\mathcal{S}\) is maximal if and only if it is progressive. </p>
+      <span class="theorem_thmlabel">28</span></div>
+    <div class="thm_thmcontent"><p>Let \(\mathcal{P}\) and \(\mathcal{P}'\) be two PLTSs, if there exists a probabilistic forward simulation of \(\mathcal{P}\) by \(\mathcal{P}'\) then \(\text{tdist}(\mathcal{P}) \subseteq \text{tdist}(\mathcal{P}')\). </p>
 </div>
 
-    <a class="latex_link" href="sect0001.html#a0000000023">LaTeX</a>
+    <a class="latex_link" href="app-ProofSegala.html#a0000000071">LaTeX</a>
     
     
   
@@ -382,59 +504,26 @@
 
 
     
-    <div class="dep-modal-container" id="alg:simulation_modal">
+    <div class="dep-modal-container" id="ABA:Core_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
 <svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
 </button>
         
-  <div class="thm" id="alg:simulation" style="display: none">
-    <div class="thm_thmheading">
-      <span class="theorem_thmcaption">
-      Theorem
-      </span>
-      <span class="theorem_thmlabel">1</span><span class="theorem_thmtitle">from <span class="cite">
-	[
-	<a href="sect0004.html#Segala1995Compositional" >Seg95</a>
-	]
-</span></span></div>
-    <div class="thm_thmcontent"><p>  Given two PLTSs \(\mathcal{P}\) and \(\mathcal{P}'\), \(\mathcal{P}\sqsubseteq ^t \mathcal{P}'\) if and only if there exists a probabilistic forward simulation of \(\mathcal{P}\) by \(\mathcal{P}'\). </p>
-</div>
-
-    <a class="latex_link" href="sect0001.html#alg:simulation">LaTeX</a>
-    
-    
-  
-    
-    
-  
-    
-  </div>
-    
-      </div>
-    </div>
-
-
-    
-    <div class="dep-modal-container" id="def:ABAConcrete_modal">
-      <div class="dep-modal-content">
-          <button class="dep-closebtn">
-<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
-</button>
-        
-  <div class="thm" id="def:ABAConcrete" style="display: none">
+  <div class="thm" id="ABA:Core" style="display: none">
     <div class="thm_thmheading">
       <span class="definition_thmcaption">
       Definition
       </span>
-      <span class="definition_thmlabel">8</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{ABA.Concrete} := \mathsf{ABA.Impl}[\mathsf{GBCA.Impl}, \mathsf{WCC.Impl}]\), the instantiation of \(\mathsf{ABA.Impl}\) with concrete implementations of the sub-protocols. </p>
+      <span class="definition_thmlabel">11</span></div>
+    <div class="thm_thmcontent">
+<p>The PLTS encoding Algorithm <a href="alg-BRB.html">Z.1</a> is denoted <span class="sffamily">ABA.Core</span>. Its adversary is omniscient. </p>
 </div>
 
-    <a class="latex_link" href="sect0002.html#def:ABAConcrete">LaTeX</a>
+    <a class="latex_link" href="sect0002.html#ABA:Core">LaTeX</a>
     
     
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/ABA.Concrete">Lean</a>
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/ABA.Core">Lean</a>
     
     
   
@@ -446,22 +535,23 @@
 
 
     
-    <div class="dep-modal-container" id="def:ABAHybrid_modal">
+    <div class="dep-modal-container" id="ABA:Hybrid_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
 <svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
 </button>
         
-  <div class="thm" id="def:ABAHybrid" style="display: none">
+  <div class="thm" id="ABA:Hybrid" style="display: none">
     <div class="thm_thmheading">
       <span class="definition_thmcaption">
       Definition
       </span>
-      <span class="definition_thmlabel">9</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{ABA.Hybrid} := \mathsf{ABA.Impl}[\mathsf{GBCA.Spec}, \mathsf{WCC.Spec}]\), the instantiation of \(\mathsf{ABA.Impl}\) with ideal specifications of the sub-protocols. </p>
+      <span class="definition_thmlabel">13</span></div>
+    <div class="thm_thmcontent">
+<p> <span class="sffamily">ABA.Hybrid</span> is defined as the parallel composition of <span class="sffamily">ABA.Core</span>, <span class="sffamily">GBCA.Spec</span> and <span class="sffamily">WCC.Spec</span> synchronised on calls, returns and failures from which the API of <span class="sffamily">GBCA</span> and <span class="sffamily">WCC</span> have been abstracted. Since all of their adversaries are omniscient, the composed adversary is well-defined and omniscient. </p>
 </div>
 
-    <a class="latex_link" href="sect0002.html#def:ABAHybrid">LaTeX</a>
+    <a class="latex_link" href="sect0002.html#ABA:Hybrid">LaTeX</a>
     
     
   <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/ABA.Hybrid">Lean</a>
@@ -476,25 +566,26 @@
 
 
     
-    <div class="dep-modal-container" id="def:GatherConcrete_modal">
+    <div class="dep-modal-container" id="ABA:Impl_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
 <svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
 </button>
         
-  <div class="thm" id="def:GatherConcrete" style="display: none">
+  <div class="thm" id="ABA:Impl" style="display: none">
     <div class="thm_thmheading">
       <span class="definition_thmcaption">
       Definition
       </span>
       <span class="definition_thmlabel">12</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{Gather.Concrete} := \mathsf{Gather.Impl}[\mathsf{BRB.Impl}]\), the instantiation of \(\mathsf{Gather.Impl}\) with the concrete implementation of BRB. </p>
+    <div class="thm_thmcontent">
+<p> <span class="sffamily">ABA.Impl</span> is defined as the parallel composition of <span class="sffamily">ABA.Core</span>, <span class="sffamily">GBCA.Impl</span> and <span class="sffamily">WCC.Impl</span> synchronised on calls, returns and failures from which the API of <span class="sffamily">GBCA</span> and <span class="sffamily">WCC</span> have been abstracted. Since the adversaries of <span class="sffamily">ABA.Core</span> and <span class="sffamily">GBCA.Impl</span> are omniscient and the adversary of <span class="sffamily">WCC.Impl</span> is omniscient on its interface, the composed adversary is well-defined. </p>
 </div>
 
-    <a class="latex_link" href="sect0002.html#def:GatherConcrete">LaTeX</a>
+    <a class="latex_link" href="sect0002.html#ABA:Impl">LaTeX</a>
     
     
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/Gather.Concrete">Lean</a>
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/ABA.Impl">Lean</a>
     
     
   
@@ -506,22 +597,84 @@
 
 
     
-    <div class="dep-modal-container" id="def:GatherHybrid_modal">
+    <div class="dep-modal-container" id="BRB:Impl_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
 <svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
 </button>
         
-  <div class="thm" id="def:GatherHybrid" style="display: none">
+  <div class="thm" id="BRB:Impl" style="display: none">
     <div class="thm_thmheading">
       <span class="definition_thmcaption">
       Definition
       </span>
-      <span class="definition_thmlabel">13</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{Gather.Hybrid} := \mathsf{Gather.Impl}[\mathsf{BRB.Spec}]\), the instantiation of \(\mathsf{Gather.Impl}\) with the ideal specification of BRB. </p>
+      <span class="definition_thmlabel">24</span></div>
+    <div class="thm_thmcontent">
+<p>The PLTS encoding Algorithm <a href="alg-BRB.html">Z.1</a> is denoted <span class="sffamily">BRB.Impl</span>. Its adversary is omniscient. </p>
 </div>
 
-    <a class="latex_link" href="sect0002.html#def:GatherHybrid">LaTeX</a>
+    <a class="latex_link" href="sect0002.html#BRB:Impl">LaTeX</a>
+    
+    
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/BRB.Impl">Lean</a>
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="Gather:Core_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="Gather:Core" style="display: none">
+    <div class="thm_thmheading">
+      <span class="definition_thmcaption">
+      Definition
+      </span>
+      <span class="definition_thmlabel">18</span></div>
+    <div class="thm_thmcontent">
+<p>The PLTS encoding Algorithm <a href="alg-BRB.html">Z.1</a> is denoted <span class="sffamily">Gather.Core</span>. Its adversary is omniscient. </p>
+</div>
+
+    <a class="latex_link" href="sect0002.html#Gather:Core">LaTeX</a>
+    
+    
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/Gather.Core">Lean</a>
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="Gather:Hybrid_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="Gather:Hybrid" style="display: none">
+    <div class="thm_thmheading">
+      <span class="definition_thmcaption">
+      Definition
+      </span>
+      <span class="definition_thmlabel">20</span></div>
+    <div class="thm_thmcontent"><p>   <span class="sffamily">Gather.Hybrid</span> is defined as the parallel composition of <span class="sffamily">Gather.Core</span> and <span class="sffamily">BRB.Spec</span> synchronised on calls, returns and failures from which the API of <span class="sffamily">BRB</span> has been abstracted. Since all of their adversaries are omniscient, the composed adversary is well-defined and omniscient. </p>
+</div>
+
+    <a class="latex_link" href="sect0002.html#Gather:Hybrid">LaTeX</a>
     
     
   <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/Gather.Hybrid">Lean</a>
@@ -536,115 +689,56 @@
 
 
     
-    <div class="dep-modal-container" id="def:RSDConcrete_modal">
+    <div class="dep-modal-container" id="Gather:Impl_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
 <svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
 </button>
         
-  <div class="thm" id="def:RSDConcrete" style="display: none">
+  <div class="thm" id="Gather:Impl" style="display: none">
+    <div class="thm_thmheading">
+      <span class="definition_thmcaption">
+      Definition
+      </span>
+      <span class="definition_thmlabel">19</span></div>
+    <div class="thm_thmcontent"><p>   <span class="sffamily">Gather.Impl</span> is defined as the parallel composition of <span class="sffamily">Gather.Core</span> and <span class="sffamily">BRB.Impl</span> synchronised on calls, returns and failures from which the API of <span class="sffamily">BRB</span> has been abstracted. Since all of their adversaries are omniscient, the composed adversary is well-defined and omniscient. </p>
+</div>
+
+    <a class="latex_link" href="sect0002.html#Gather:Impl">LaTeX</a>
+    
+    
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/Gather.Impl">Lean</a>
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="GBCA:Impl_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="GBCA:Impl" style="display: none">
     <div class="thm_thmheading">
       <span class="definition_thmcaption">
       Definition
       </span>
       <span class="definition_thmlabel">14</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{RSD.Concrete} := \mathsf{RSD.Impl}[\mathsf{BRB.Impl}, \mathsf{AVSS.Spec}]\), the instantiation of \(\mathsf{RSD.Impl}\) with the concrete implementation of BRB. \(\mathsf{AVSS}\) is used as a black-box, so its specification is plugged in directly. </p>
+    <div class="thm_thmcontent">
+<p>The PLTS encoding Algorithm <a href="alg-BRB.html">Z.1</a> is denoted <span class="sffamily">GBCA.Impl</span>. Its adversary is omniscient. </p>
 </div>
 
-    <a class="latex_link" href="sect0002.html#def:RSDConcrete">LaTeX</a>
+    <a class="latex_link" href="sect0002.html#GBCA:Impl">LaTeX</a>
     
     
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/RSD.Concrete">Lean</a>
-    
-    
-  
-    
-  </div>
-    
-      </div>
-    </div>
-
-
-    
-    <div class="dep-modal-container" id="def:RSDHybrid_modal">
-      <div class="dep-modal-content">
-          <button class="dep-closebtn">
-<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
-</button>
-        
-  <div class="thm" id="def:RSDHybrid" style="display: none">
-    <div class="thm_thmheading">
-      <span class="definition_thmcaption">
-      Definition
-      </span>
-      <span class="definition_thmlabel">15</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{RSD.Hybrid} := \mathsf{RSD.Impl}[\mathsf{BRB.Spec}, \mathsf{AVSS.Spec}]\), the instantiation of \(\mathsf{RSD.Impl}\) with the ideal specifications of BRB and AVSS. </p>
-</div>
-
-    <a class="latex_link" href="sect0002.html#def:RSDHybrid">LaTeX</a>
-    
-    
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/RSD.Hybrid">Lean</a>
-    
-    
-  
-    
-  </div>
-    
-      </div>
-    </div>
-
-
-    
-    <div class="dep-modal-container" id="def:WCCConcrete_modal">
-      <div class="dep-modal-content">
-          <button class="dep-closebtn">
-<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
-</button>
-        
-  <div class="thm" id="def:WCCConcrete" style="display: none">
-    <div class="thm_thmheading">
-      <span class="definition_thmcaption">
-      Definition
-      </span>
-      <span class="definition_thmlabel">10</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{WCC.Concrete} := \mathsf{WCC.Impl}[\mathsf{Gather.Concrete}, \mathsf{RSD.Concrete}]\), the instantiation of \(\mathsf{WCC.Impl}\) with fully concrete sub-protocols. </p>
-</div>
-
-    <a class="latex_link" href="sect0002.html#def:WCCConcrete">LaTeX</a>
-    
-    
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/WCC.Concrete">Lean</a>
-    
-    
-  
-    
-  </div>
-    
-      </div>
-    </div>
-
-
-    
-    <div class="dep-modal-container" id="def:WCCHybrid_modal">
-      <div class="dep-modal-content">
-          <button class="dep-closebtn">
-<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
-</button>
-        
-  <div class="thm" id="def:WCCHybrid" style="display: none">
-    <div class="thm_thmheading">
-      <span class="definition_thmcaption">
-      Definition
-      </span>
-      <span class="definition_thmlabel">11</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{WCC.Hybrid} := \mathsf{WCC.Impl}[\mathsf{Gather.Spec}, \mathsf{RSD.Spec}]\), the instantiation of \(\mathsf{WCC.Impl}\) with ideal specifications of the sub-protocols. </p>
-</div>
-
-    <a class="latex_link" href="sect0002.html#def:WCCHybrid">LaTeX</a>
-    
-    
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/WCC.Hybrid">Lean</a>
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/GBCA.Impl">Lean</a>
     
     
   
@@ -667,8 +761,8 @@
       <span class="lemma_thmcaption">
       Lemma
       </span>
-      <span class="lemma_thmlabel">9</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{ABA.Spec}\) simulates \(\mathsf{ABA.Hybrid}\). </p>
+      <span class="lemma_thmlabel">12</span></div>
+    <div class="thm_thmcontent"><p>   <span class="sffamily">ABA.Hybrid</span> \(\sqsubseteq ^f\) <span class="sffamily">ABA.Spec</span>. </p>
 </div>
 
     <a class="latex_link" href="sect0003.html#lem:ABACore">LaTeX</a>
@@ -697,14 +791,104 @@
       <span class="lemma_thmcaption">
       Lemma
       </span>
-      <span class="lemma_thmlabel">8</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{ABA.Hybrid}\) is simulated by \(\mathsf{ABA.Concrete}\). </p>
+      <span class="lemma_thmlabel">11</span></div>
+    <div class="thm_thmcontent"><p>   <span class="sffamily">ABA.Impl</span> \(\sqsubseteq ^f\) <span class="sffamily">ABA.Hybrid</span>. </p>
 </div>
 
     <a class="latex_link" href="sect0003.html#lem:ABASubst">LaTeX</a>
     
     
   <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/ABA.SubstSim">Lean</a>
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="lem:abstract_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="lem:abstract" style="display: none">
+    <div class="thm_thmheading">
+      <span class="lemma_thmcaption">
+      Lemma
+      </span>
+      <span class="lemma_thmlabel">2</span></div>
+    <div class="thm_thmcontent"><p> If \(\mathcal{P}\sqsubseteq ^t \mathcal{P}'\) then, for all \(I \subseteq L\), \(\tau _I(\mathcal{P}) \sqsubseteq ^t \tau _I(\mathcal{P}')\). </p>
+</div>
+
+    <a class="latex_link" href="sect0001.html#lem:abstract">LaTeX</a>
+    
+    
+  
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="lem:distliftingsound_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="lem:distliftingsound" style="display: none">
+    <div class="thm_thmheading">
+      <span class="lemma_thmcaption">
+      Lemma
+      </span>
+      <span class="lemma_thmlabel">25</span></div>
+    <div class="thm_thmcontent"><p> Let \(\mathcal{P}\) be a PLTS, \(\text{tdist}(\mathcal{P}) = \text{tdist}(\mathcal{D}(\mathcal{P}))\). </p>
+</div>
+
+    <a class="latex_link" href="app-ProofSegala.html#lem:distliftingsound">LaTeX</a>
+    
+    
+  
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="lem:fairweaksim_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="lem:fairweaksim" style="display: none">
+    <div class="thm_thmheading">
+      <span class="lemma_thmcaption">
+      Lemma
+      </span>
+      <span class="lemma_thmlabel">6</span></div>
+    <div class="thm_thmcontent"><p> Given two LTSs \(\mathcal{P}\) and \(\mathcal{P}'\), if there exists a fair weak simulation of \(\mathcal{P}\) by \(\mathcal{P}'\) then \(\mathcal{P}\sqsubseteq ^f \mathcal{P}'\). </p>
+</div>
+
+    <a class="latex_link" href="sect0001.html#lem:fairweaksim">LaTeX</a>
+    
+    
+  
     
     
   
@@ -727,8 +911,8 @@
       <span class="lemma_thmcaption">
       Lemma
       </span>
-      <span class="lemma_thmlabel">16</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{Gather.Spec}\) simulates \(\mathsf{Gather.Hybrid}\). </p>
+      <span class="lemma_thmlabel">19</span></div>
+    <div class="thm_thmcontent"><p>   <span class="sffamily">Gather.Hybrid</span> \(\sqsubseteq ^f\) <span class="sffamily">Gather.Spec</span>. </p>
 </div>
 
     <a class="latex_link" href="sect0003.html#lem:GatherCore">LaTeX</a>
@@ -757,8 +941,8 @@
       <span class="lemma_thmcaption">
       Lemma
       </span>
-      <span class="lemma_thmlabel">15</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{Gather.Hybrid}\) is simulated by \(\mathsf{Gather.Concrete}\). </p>
+      <span class="lemma_thmlabel">18</span></div>
+    <div class="thm_thmcontent"><p>   <span class="sffamily">Gather.Impl</span> \(\sqsubseteq ^f\) <span class="sffamily">Gather.Hybrid</span>. </p>
 </div>
 
     <a class="latex_link" href="sect0003.html#lem:GatherSubst">LaTeX</a>
@@ -776,25 +960,25 @@
 
 
     
-    <div class="dep-modal-container" id="lem:RSDCore_modal">
+    <div class="dep-modal-container" id="lem:precong_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
 <svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
 </button>
         
-  <div class="thm" id="lem:RSDCore" style="display: none">
+  <div class="thm" id="lem:precong" style="display: none">
     <div class="thm_thmheading">
       <span class="lemma_thmcaption">
       Lemma
       </span>
-      <span class="lemma_thmlabel">19</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{RSD.Spec}\) simulates \(\mathsf{RSD.Hybrid}\). </p>
+      <span class="lemma_thmlabel">1</span></div>
+    <div class="thm_thmcontent"><p> If \(\mathcal{P}\sqsubseteq ^t \mathcal{P}'\) then, for all PLTSs \(\mathcal{P}''\) and \(S \subseteq L \cap L' \cap L''\), \(\mathcal{P}\parallel _S \mathcal{P}'' \sqsubseteq ^t \mathcal{P}' \parallel _S \mathcal{P}''\) </p>
 </div>
 
-    <a class="latex_link" href="sect0003.html#lem:RSDCore">LaTeX</a>
+    <a class="latex_link" href="sect0001.html#lem:precong">LaTeX</a>
     
     
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/RSD.CoreSim">Lean</a>
+  
     
     
   
@@ -806,25 +990,115 @@
 
 
     
-    <div class="dep-modal-container" id="lem:RSDSubst_modal">
+    <div class="dep-modal-container" id="lem:SRSDCore_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
 <svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
 </button>
         
-  <div class="thm" id="lem:RSDSubst" style="display: none">
+  <div class="thm" id="lem:SRSDCore" style="display: none">
     <div class="thm_thmheading">
       <span class="lemma_thmcaption">
       Lemma
       </span>
-      <span class="lemma_thmlabel">18</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{RSD.Hybrid}\) is simulated by \(\mathsf{RSD.Concrete}\). Only BRB is substituted; \(\mathsf{AVSS.Spec}\) stays fixed on both sides. </p>
+      <span class="lemma_thmlabel">22</span></div>
+    <div class="thm_thmcontent"><p>   <span class="sffamily">SRSD.Hybrid</span> \(\sqsubseteq ^f\) <span class="sffamily">SRSD.Spec</span>. </p>
 </div>
 
-    <a class="latex_link" href="sect0003.html#lem:RSDSubst">LaTeX</a>
+    <a class="latex_link" href="sect0003.html#lem:SRSDCore">LaTeX</a>
     
     
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/RSD.SubstSim">Lean</a>
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/SRSD.CoreSim">Lean</a>
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="lem:SRSDSubst_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="lem:SRSDSubst" style="display: none">
+    <div class="thm_thmheading">
+      <span class="lemma_thmcaption">
+      Lemma
+      </span>
+      <span class="lemma_thmlabel">21</span></div>
+    <div class="thm_thmcontent"><p>   <span class="sffamily">SRSD.Impl</span> \(\sqsubseteq ^f\) <span class="sffamily">SRSD.Hybrid</span>. </p>
+</div>
+
+    <a class="latex_link" href="sect0003.html#lem:SRSDSubst">LaTeX</a>
+    
+    
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/SRSD.SubstSim">Lean</a>
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="lem:strongprobsim_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="lem:strongprobsim" style="display: none">
+    <div class="thm_thmheading">
+      <span class="lemma_thmcaption">
+      Lemma
+      </span>
+      <span class="lemma_thmlabel">26</span></div>
+    <div class="thm_thmcontent"><p> Let \(\mathcal{P}\) and \(\mathcal{P}'\) be two PLTSs, there exists a probabilistic forward simulation of \(\mathcal{P}\) by \(\mathcal{P}'\), if and only if, there exists a strong probabilistic simulation of \(\mathcal{P}\) by \(\mathcal{D}(\mathcal{P}'^w)\). </p>
+</div>
+
+    <a class="latex_link" href="app-ProofSegala.html#lem:strongprobsim">LaTeX</a>
+    
+    
+  
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="lem:strongprobsimsound_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="lem:strongprobsimsound" style="display: none">
+    <div class="thm_thmheading">
+      <span class="lemma_thmcaption">
+      Lemma
+      </span>
+      <span class="lemma_thmlabel">27</span></div>
+    <div class="thm_thmcontent"><p> Let \(\mathcal{P}\) and \(\mathcal{P}'\) be two PLTSs, if there exists a strong probabilistic simulation of \(\mathcal{P}\) by \(\mathcal{P}'\) then \(\text{tdist}(\mathcal{P}) \subseteq \text{tdist}(\mathcal{P}')\). </p>
+</div>
+
+    <a class="latex_link" href="app-ProofSegala.html#lem:strongprobsimsound">LaTeX</a>
+    
+    
+  
     
     
   
@@ -847,8 +1121,8 @@
       <span class="lemma_thmcaption">
       Lemma
       </span>
-      <span class="lemma_thmlabel">12</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{WCC.Spec}\) simulates \(\mathsf{WCC.Hybrid}\). </p>
+      <span class="lemma_thmlabel">15</span></div>
+    <div class="thm_thmcontent"><p>   <span class="sffamily">WCC.Hybrid</span> \(\sqsubseteq ^f\) <span class="sffamily">WCC.Spec</span>. </p>
 </div>
 
     <a class="latex_link" href="sect0003.html#lem:WCCCore">LaTeX</a>
@@ -877,8 +1151,8 @@
       <span class="lemma_thmcaption">
       Lemma
       </span>
-      <span class="lemma_thmlabel">11</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{WCC.Hybrid}\) is simulated by \(\mathsf{WCC.Concrete}\). </p>
+      <span class="lemma_thmlabel">14</span></div>
+    <div class="thm_thmcontent"><p>   <span class="sffamily">WCC.Impl</span> \(\sqsubseteq ^f\) <span class="sffamily">WCC.Hybrid</span>. </p>
 </div>
 
     <a class="latex_link" href="sect0003.html#lem:WCCSubst">LaTeX</a>
@@ -896,33 +1170,25 @@
 
 
     
-    <div class="dep-modal-container" id="prot:ImplABA_modal">
+    <div class="dep-modal-container" id="lem:weakclosuresound_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
 <svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
 </button>
         
-  <div class="thm" id="prot:ImplABA" style="display: none">
+  <div class="thm" id="lem:weakclosuresound" style="display: none">
     <div class="thm_thmheading">
-      <span class="protocol_thmcaption">
-      Protocol
+      <span class="lemma_thmcaption">
+      Lemma
       </span>
-      <span class="protocol_thmlabel">2</span></div>
-    <div class="thm_thmcontent"><p>  <em>Concrete implementation.</em> Round-based protocol combining Graded Binding Crusader Agreement (GBCA) with a Weak Common Coin (WCC). Each round, the process refines its bit through GBCA and tosses a coin via WCC; it adopts the coin if GBCA was undecided (\(b = \bot \)) and otherwise decides on \(b\) when GBCA returned the highest grade \(A\), while continuing to run to help the others terminate.  <figcaption>
-  <span class="caption_title"></span> 
-  <span class="caption_ref">None</span> 
-  <span class="caption_text"></span> 
-</figcaption>Implementation of ABA taken from <span class="cite">
-	[
-	<a href="sect0004.html#Abraham2022Efficient" >ABDY22</a>
-	]
-</span>  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) \(r \gets 1\) \(decided \gets \bot \) \((b, g) \gets \textsc{GBCA}_r(b)\) \(b \in \{ 0,1,\bot \} \), \(g \in \{ A, B, C\} \) \(c \gets \textsc{WCC}_r()\) common coin for round \(r\) \(b = \bot \) \(b \gets c\) \(g = A\) \(decided \gets b\) keep participating to help others \(r \gets r + 1\) TODO: verify termination rule   </p>
+      <span class="lemma_thmlabel">24</span></div>
+    <div class="thm_thmcontent"><p> Let \(\mathcal{P}\) be a PLTS, \(\text{tdist}(\mathcal{P}) = \text{tdist}(\mathcal{P}^w)\). </p>
 </div>
 
-    <a class="latex_link" href="sect0002.html#prot:ImplABA">LaTeX</a>
+    <a class="latex_link" href="app-ProofSegala.html#lem:weakclosuresound">LaTeX</a>
     
     
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/ABA.Impl">Lean</a>
+  
     
     
   
@@ -934,33 +1200,25 @@
 
 
     
-    <div class="dep-modal-container" id="prot:ImplBRB_modal">
+    <div class="dep-modal-container" id="lem:weaksim_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
 <svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
 </button>
         
-  <div class="thm" id="prot:ImplBRB" style="display: none">
+  <div class="thm" id="lem:weaksim" style="display: none">
     <div class="thm_thmheading">
-      <span class="protocol_thmcaption">
-      Protocol
+      <span class="lemma_thmcaption">
+      Lemma
       </span>
-      <span class="protocol_thmlabel">12</span></div>
-    <div class="thm_thmcontent"><p>  <em>Concrete implementation.</em> Requires no sub-protocol. Parameters: \(n\) processes with at most \(f {\lt} n/3\) corrupted; leader \(\ell \) with input \(m\). Standard Bracha broadcast: \(\langle \textsc{init}, \cdot \rangle \) from the leader is echoed by all processes; an \(n-f\) echo quorum or an \(f+1\) ready quorum triggers \(\langle \textsc{ready}, \cdot \rangle \); a \(2f+1\) ready quorum triggers delivery.  <figcaption>
-  <span class="caption_title"></span> 
-  <span class="caption_ref">None</span> 
-  <span class="caption_text"></span> 
-</figcaption>Implementation of BRB taken from <span class="cite">
-	[
-	<a href="sect0004.html#Bracha1987Asynchronous" >Bra87</a>
-	]
-</span>  <b class="bfseries">Code for the leader \(\ell \) with input \(m\):</b> &#8195;send \(\langle \textsc{init}, m \rangle \) to all processes <b class="bfseries">Code for every process:</b> <b class="bfseries">upon</b> first reception of \(\langle \textsc{init}, m \rangle \) from \(\ell \) <b class="bfseries">do</b> &#8195;send \(\langle \textsc{echo}, m \rangle \) to all processes <b class="bfseries">upon</b> reception of \(\langle \textsc{echo}, m \rangle \) from at least \(n-f\) distinct processes <b class="bfseries">do</b> &#8195;<b class="bfseries">if</b> \(\langle \textsc{ready}, \cdot \rangle \) has not yet been sent <b class="bfseries">then</b> &#8195;&#8195;send \(\langle \textsc{ready}, m \rangle \) to all processes <b class="bfseries">upon</b> reception of \(\langle \textsc{ready}, m \rangle \) from at least \(f+1\) distinct processes <b class="bfseries">do</b> &#8195;<b class="bfseries">if</b> \(\langle \textsc{ready}, \cdot \rangle \) has not yet been sent <b class="bfseries">then</b> &#8195;&#8195;send \(\langle \textsc{ready}, m \rangle \) to all processes <b class="bfseries">upon</b> reception of \(\langle \textsc{ready}, m \rangle \) from at least \(2f+1\) distinct processes <b class="bfseries">do</b> &#8195;return \(m\)   </p>
+      <span class="lemma_thmlabel">4</span></div>
+    <div class="thm_thmcontent"><p> Given two LTSs \(\mathcal{P}\) and \(\mathcal{P}'\), \(\mathcal{P}\sqsubseteq ^t \mathcal{P}'\) if and only if there exists a weak simulation of \(\mathcal{P}\) by \(\mathcal{P}'\). </p>
 </div>
 
-    <a class="latex_link" href="sect0002.html#prot:ImplBRB">LaTeX</a>
+    <a class="latex_link" href="sect0001.html#lem:weaksim">LaTeX</a>
     
     
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/BRB.Impl">Lean</a>
+  
     
     
   
@@ -972,33 +1230,26 @@
 
 
     
-    <div class="dep-modal-container" id="prot:ImplGather_modal">
+    <div class="dep-modal-container" id="SRSD:Core_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
 <svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
 </button>
         
-  <div class="thm" id="prot:ImplGather" style="display: none">
+  <div class="thm" id="SRSD:Core" style="display: none">
     <div class="thm_thmheading">
-      <span class="protocol_thmcaption">
-      Protocol
+      <span class="definition_thmcaption">
+      Definition
       </span>
-      <span class="protocol_thmlabel">8</span></div>
-    <div class="thm_thmcontent"><p>  <em>Concrete implementation.</em> Requires \(|Id|\) instances of BRB (process \(id\) is leader in \(BRB_{id}\)). Each process first broadcasts its input via its own BRB instance, then amplifies the set of approved pairs \(AP\) through three rounds of \(\langle \textsc{echo}, \cdot \rangle \), \(\langle \textsc{vote}, \cdot \rangle \), \(\langle \textsc{bind}, \cdot \rangle \) messages before returning the union of the approved sets.  <figcaption>
-  <span class="caption_title"></span> 
-  <span class="caption_ref">None</span> 
-  <span class="caption_text"></span> 
-</figcaption>Implementation of Gather from <span class="cite">
-	[
-	<a href="sect0004.html#Attiya2025Beyond" >AFW25</a>
-	]
-</span>  <b class="bfseries">Input:</b> \(m\) <b class="bfseries">Sub-Protocols:</b> \(|Id|\) instances of BRB (process \(id\) is leader in \(BRB_{id}\)) \(BRB_{id}.call(m)\) <b class="bfseries">upon</b> \(BRB_i.return(m')\): &#8195;\(AP \gets AP \cup \{ (i, m')\} \) <b class="bfseries">upon</b> \(|AP| \ge n-f\) and not sent \(\langle \textsc{echo}, \cdot \rangle \): &#8195;send \(\langle \textsc{echo}, AP\rangle \) to all <b class="bfseries">upon</b> receiving approved \(\langle \textsc{echo}, AP_{id} \rangle \) from at least \(n - f\) processes and not sent \(\langle \textsc{vote}, \cdot \rangle \): &#8195;send \(\langle \textsc{vote}, \bigcup _{id} AP_{id} \rangle \) to all <b class="bfseries">upon</b> receiving approved \(\langle \textsc{vote}, AP_{id} \rangle \) from at least \(n - f\) processes and not sent \(\langle \textsc{bind}, \cdot \rangle \): &#8195;send \(\langle \textsc{bind}, \bigcup _{id} AP_{id} \rangle \) to all <b class="bfseries">upon</b> receiving approved \(\langle \textsc{bind}, AP_{id} \rangle \) from at least \(n - f\) processes: &#8195;return \(\bigcup _{id} AP_{id}\)   </p>
+      <span class="definition_thmlabel">21</span></div>
+    <div class="thm_thmcontent">
+<p>The PLTS encoding Algorithm <a href="alg-BRB.html">Z.1</a> is denoted <span class="sffamily">SRSD.Core</span>. Its adversary has partial information as it should not see the valuation of <span class="ttfamily">x</span> when it is picked and when <span class="sffamily">AVSS.Sh</span> is called unless the process is Byzantine. </p>
 </div>
 
-    <a class="latex_link" href="sect0002.html#prot:ImplGather">LaTeX</a>
+    <a class="latex_link" href="sect0002.html#SRSD:Core">LaTeX</a>
     
     
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/Gather.Impl">Lean</a>
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/SRSD.Core">Lean</a>
     
     
   
@@ -1010,33 +1261,26 @@
 
 
     
-    <div class="dep-modal-container" id="prot:ImplGBCA_modal">
+    <div class="dep-modal-container" id="SRSD:Hybrid_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
 <svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
 </button>
         
-  <div class="thm" id="prot:ImplGBCA" style="display: none">
+  <div class="thm" id="SRSD:Hybrid" style="display: none">
     <div class="thm_thmheading">
-      <span class="protocol_thmcaption">
-      Protocol
+      <span class="definition_thmcaption">
+      Definition
       </span>
-      <span class="protocol_thmlabel">4</span></div>
-    <div class="thm_thmcontent"><p>  <em>Concrete implementation.</em> Requires no sub-protocol. Parameters: \(n\) processes with at most \(f {\lt} n/3\) corrupted, each holding an input bit \(b \in \{ 0,1\} \). After an input-amplification phase, the protocol runs three Bracha-style rounds of \(\langle \textsc{echo}, \cdot \rangle \), \(\langle \textsc{vote}, \cdot \rangle \), \(\langle \textsc{bind}, \cdot \rangle \) messages to settle the bound value and assign the grade.  <figcaption>
-  <span class="caption_title"></span> 
-  <span class="caption_ref">None</span> 
-  <span class="caption_text"></span> 
-</figcaption>Implementation of GBCA taken from <span class="cite">
-	[
-	<a href="sect0004.html#Abraham2022Efficient" >ABDY22</a>
-	]
-</span>  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) send \(\langle \textsc{input}, b \rangle \) to all processes <b class="bfseries">upon</b> receiving \(\langle \textsc{input}, b \rangle \) from at least \(f + 1\) processes and not sent \(\langle \textsc{input}, b\rangle \) yet: &#8195;send \(\langle \textsc{input}, b\rangle \) to all <b class="bfseries">upon</b> receiving \(\langle \textsc{input}, b \rangle \) from at least \(n - f\) processes: &#8195;\(Approved \gets Approved \cup \{ b\} \) &#8195;<b class="bfseries">if</b> not sent \(\langle \textsc{echo}, \cdot \rangle \) yet <b class="bfseries">then</b> send \(\langle \textsc{echo}, b\rangle \) to all wait until &#8195;(a) receiving \(\langle \textsc{echo}, b \rangle \) from at least \(n - f\) processes <b class="bfseries">or</b> &#8195;(b) receiving \(\langle \textsc{echo}, \cdot \rangle \) from at least \(n - f\) processes and \(|Approved| {\gt} 1\) &#8195;<b class="bfseries">if</b> (a) <b class="bfseries">then</b> send \(\langle \textsc{vote}, b\rangle \) to all <b class="bfseries">else</b> send \(\langle \textsc{vote}, \bot \rangle \) to all wait until &#8195;(a) receiving \(\langle \textsc{vote}, b \rangle \) from at least \(n - f\) processes <b class="bfseries">or</b> &#8195;(b) receiving \(\langle \textsc{vote}, \cdot \rangle \) from at least \(n - f\) processes and \(|Approved| {\gt} 1\) &#8195;<b class="bfseries">if</b> (a) <b class="bfseries">then</b> send \(\langle \textsc{bind}, b\rangle \) to all <b class="bfseries">else</b> send \(\langle \textsc{bind}, \bot \rangle \) to all wait until &#8195;(a) receiving \(\langle \textsc{bind}, b \rangle \) from at least \(n - f\) processes <b class="bfseries">or</b> &#8195;(b) receiving \(\langle \textsc{bind}, \cdot \rangle \) from at least \(n - f\) processes and there exists \(b \in \{ 0,1\} \) such that \(\langle \textsc{bind}, b\rangle \) has been received once and \(\langle \textsc{vote}, b\rangle \) has been received from \(f+1\) processes and \(|Approved| {\gt} 1\) <b class="bfseries">or</b> &#8195;(c) receiving \(\langle \textsc{bind}, \bot \rangle \) from at least \(n - f\) processes and \(|Approved| {\gt} 1\) &#8195;<b class="bfseries">if</b> (a) <b class="bfseries">then</b> return \((b,A)\) <b class="bfseries">elif</b> (b) <b class="bfseries">then</b> return \((b,B)\) <b class="bfseries">else</b> return \((\bot , C)\)   </p>
+      <span class="definition_thmlabel">23</span></div>
+    <div class="thm_thmcontent">
+<p> <span class="sffamily">SRSD.Hybrid</span> is defined as the parallel composition of <span class="sffamily">SRSD.Core</span>, <span class="sffamily">BRB.Spec</span> and <span class="sffamily">AVSS.Spec</span> synchronised on calls, returns and failures from which the API of <span class="sffamily">BRB</span> and <span class="sffamily">AVSS</span> have been abstracted. The adversary of <span class="sffamily">BRB.Spec</span> is omniscient and the adversary of <span class="sffamily">SRSD.Core</span> is omniscient on its interface with <span class="sffamily">BRB.Spec</span>. Furthermore, the adversaries of <span class="sffamily">SRSD.Core</span> and <span class="sffamily">AVSS.Spec</span> agree on their interface. Thus, the composed adversary is well-defined. </p>
 </div>
 
-    <a class="latex_link" href="sect0002.html#prot:ImplGBCA">LaTeX</a>
+    <a class="latex_link" href="sect0002.html#SRSD:Hybrid">LaTeX</a>
     
     
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/GBCA.Impl">Lean</a>
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/SRSD.Hybrid">Lean</a>
     
     
   
@@ -1048,305 +1292,26 @@
 
 
     
-    <div class="dep-modal-container" id="prot:ImplRSD_modal">
+    <div class="dep-modal-container" id="SRSD:Impl_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
 <svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
 </button>
         
-  <div class="thm" id="prot:ImplRSD" style="display: none">
+  <div class="thm" id="SRSD:Impl" style="display: none">
     <div class="thm_thmheading">
-      <span class="protocol_thmcaption">
-      Protocol
+      <span class="definition_thmcaption">
+      Definition
       </span>
-      <span class="protocol_thmlabel">10</span></div>
-    <div class="thm_thmcontent"><p>  <em>Concrete implementation.</em> Requires \(|Id|\) instances of BRB and \(|Id|^2\) instances of AVSS. Each process \(id\) draws a fresh secret \(x_{id'}\) for every \(id' \in Id\) and shares it through an AVSS instance, then uses its own BRB to publish the set \(S\) of dealers it received shares from. A process is assigned a value once it has collected, for each entry of the committed set \(S'\), the corresponding AVSS sharing return; the retrieved value is the sum of the AVSS reconstructions.  <figcaption>
-  <span class="caption_title"></span> 
-  <span class="caption_ref">None</span> 
-  <span class="caption_text"></span> 
-</figcaption>Implementation of RSD from <span class="cite">
-	[
-	<a href="sect0004.html#Freitas2022Distributed" >FKT22</a>
-	]
-</span>  <b class="bfseries">Sub-Protocols:</b> \(|Id|\) instances of BRB (process \(id\) is leader in \(BRB_{id}\)) and \(|Id|^2\) instances of AVSS (process \(id\) is dealer in \(AVSS_{id}^{k}\) for each \(k \in Id\)) <b class="bfseries">Operation:</b> \(RSD.Asg()\) \(S \gets \emptyset \) for all \(id' \in Id\): &#8195;\(x_{id'} \gets \mu \) \(\mu \): uniform distribution over the domain of secrets &#8195;\(AVSS_{id}^{id'}.Sh.call(x_{id'})\) <b class="bfseries">upon</b> \(AVSS_{id}^{id'}.Sh.return()\): &#8195;\(S \gets S \cup \{ id'\} \) <b class="bfseries">upon</b> \(|S| \ge n-f\) and not called \(BRB_{id}\): &#8195;\(BRB_{id}.call(S)\) <b class="bfseries">upon</b> \(BRB_{id'}.return(S')\) and \(\forall k \in S', AVSS_k^{id'}.Sh.return()\): &#8195;\(src[id'] \gets S'\) &#8195;<b class="bfseries">event</b> \(ValueAssigned(id')\) &#8195;\(\forall k \in S', AVSS_k^{id'}.Rec.call()\) <b class="bfseries">Operation:</b> \(RSD.Rec()\) return \(id' \mapsto \sum _{k \in src[id']} AVSS_k^{id'}.Rec.return()\)   </p>
+      <span class="definition_thmlabel">22</span></div>
+    <div class="thm_thmcontent">
+<p> <span class="sffamily">SRSD.Impl</span> is defined as the parallel composition of <span class="sffamily">SRSD.Core</span>, <span class="sffamily">BRB.Impl</span> and <span class="sffamily">AVSS.Spec</span> synchronised on calls, returns and failures from which the API of <span class="sffamily">BRB</span> and <span class="sffamily">AVSS</span> have been abstracted. The adversary of <span class="sffamily">BRB.Impl</span> is omniscient and the adversary of <span class="sffamily">SRSD.Core</span> is omniscient on its interface with <span class="sffamily">BRB.Impl</span>. Furthermore, the adversaries of <span class="sffamily">SRSD.Core</span> and <span class="sffamily">AVSS.Spec</span> agree on their interface. Thus, the composed adversary is well-defined. </p>
 </div>
 
-    <a class="latex_link" href="sect0002.html#prot:ImplRSD">LaTeX</a>
+    <a class="latex_link" href="sect0002.html#SRSD:Impl">LaTeX</a>
     
     
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/RSD.Impl">Lean</a>
-    
-    
-  
-    
-  </div>
-    
-      </div>
-    </div>
-
-
-    
-    <div class="dep-modal-container" id="prot:ImplWCC_modal">
-      <div class="dep-modal-content">
-          <button class="dep-closebtn">
-<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
-</button>
-        
-  <div class="thm" id="prot:ImplWCC" style="display: none">
-    <div class="thm_thmheading">
-      <span class="protocol_thmcaption">
-      Protocol
-      </span>
-      <span class="protocol_thmlabel">6</span></div>
-    <div class="thm_thmcontent"><p>  <em>Concrete implementation.</em> Requires Gather and RSD. Details to be determined.  <figcaption>
-  <span class="caption_title"></span> 
-  <span class="caption_ref">None</span> 
-  <span class="caption_text"></span> 
-</figcaption>Implementation of WCC (yet to be determined)  \(x \gets 0\) \(y {\gt} 0\) loop   </p>
-</div>
-
-    <a class="latex_link" href="sect0002.html#prot:ImplWCC">LaTeX</a>
-    
-    
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/WCC.Impl">Lean</a>
-    
-    
-  
-    
-  </div>
-    
-      </div>
-    </div>
-
-
-    
-    <div class="dep-modal-container" id="prot:SpecABA_modal">
-      <div class="dep-modal-content">
-          <button class="dep-closebtn">
-<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
-</button>
-        
-  <div class="thm" id="prot:SpecABA" style="display: none">
-    <div class="thm_thmheading">
-      <span class="protocol_thmcaption">
-      Protocol
-      </span>
-      <span class="protocol_thmlabel">1</span></div>
-    <div class="thm_thmcontent"><p>  <em>Ideal implementation.</em> The trusted third party collects each process’s input bit and, once at least \(n-f\) contributions support some bit \(b\), fixes the bound value to \(b\) and broadcasts \(\langle \textsc{output}, b\rangle \) to all processes. Late callers are coerced to the bound value or to a random draw from a non-Dirac distribution \(\mu \), which preserves the bound while modelling the adversary’s ability to skew honest participation.  <figcaption>
-  <span class="caption_title"></span> 
-  <span class="caption_ref">None</span> 
-  <span class="caption_text"></span> 
-</figcaption>Ideal Implementation of ABA  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) <b class="bfseries">Code for every process:</b> send \(\langle \textsc{input}, b\rangle \) to the third party <b class="bfseries">upon</b> receiving \(\langle \textsc{output}, b\rangle \) from the third party: &#8195;return \(b\) <b class="bfseries">Code for the third party:</b> \(bind, call \gets \bot , (\bot )^{Id}\) <b class="bfseries">upon</b> receiving \(\langle \textsc{input}, b\rangle \) from a process \(id\) and \(bind = \bot \): &#8195;\(call[id] \gets b\) <b class="bfseries">upon</b> \(|F \cup \{ id \in Id \setminus F \mid call[id] = b\} | \ge n-f\): &#8195;\(bind, call \gets b, (\bot )^{Id}\) &#8195;<b class="bfseries">if</b> \(\{ id \in Id \setminus F \mid call[id] = 1-b\}  = \emptyset \): &#8195;&#8195;send \(\langle \textsc{output}, b\rangle \) to all <b class="bfseries">upon</b> \(call[id] = \bot \) and \(bind \ne \bot \): &#8195;\(call[id] \gets bind\) <b class="bfseries">or</b> \(\mu \) \(\mu \) is any non-Dirac distribution over \(\{ 0,1\} \)   </p>
-</div>
-
-    <a class="latex_link" href="sect0002.html#prot:SpecABA">LaTeX</a>
-    
-    
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/ABA.Spec">Lean</a>
-    
-    
-  
-    
-  </div>
-    
-      </div>
-    </div>
-
-
-    
-    <div class="dep-modal-container" id="prot:SpecAVSS_modal">
-      <div class="dep-modal-content">
-          <button class="dep-closebtn">
-<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
-</button>
-        
-  <div class="thm" id="prot:SpecAVSS" style="display: none">
-    <div class="thm_thmheading">
-      <span class="protocol_thmcaption">
-      Protocol
-      </span>
-      <span class="protocol_thmlabel">13</span></div>
-    <div class="thm_thmcontent"><p>  <em>Ideal implementation.</em> The trusted third party stores the dealer’s secret (or an adversarially-chosen one if the dealer is corrupted) and immediately notifies every process that sharing has completed. On Retrieval, as soon as more than \(f\) processes have asked, the stored secret is broadcast to all processes.  <figcaption>
-  <span class="caption_title"></span> 
-  <span class="caption_ref">None</span> 
-  <span class="caption_text"></span> 
-</figcaption>Ideal Implementation of AVSS  <b class="bfseries">Input:</b> \(s \in \{ 0,1\} ^*\) for the dealer <b class="bfseries">Operation:</b> \(AVSS.Sh()\) <b class="bfseries">Code for the dealer:</b> send \(\langle \textsc{Sh.input}, s\rangle \) to the third party <b class="bfseries">Code for every process:</b> <b class="bfseries">upon</b> receiving \(\langle \textsc{Sh.output}\rangle \) from the third party: &#8195;return <b class="bfseries">Code for the third party:</b> <b class="bfseries">upon</b> receiving \(\langle \textsc{Sh.input}, s\rangle \) from dealer or dealer is corrupted: &#8195;\(secret \gets s\) \(s\) is chosen non-deterministically if no message received &#8195;send \(\langle \textsc{Sh.output}\rangle \) to all <b class="bfseries">Operation:</b> \(AVSS.Ret()\) <b class="bfseries">Code for every process:</b> send \(\langle \textsc{Ret.input} \rangle \) to the third party <b class="bfseries">upon</b> receiving \(\langle \textsc{Ret.output}, m\rangle \) from the third party: &#8195;return \(m\) <b class="bfseries">Code for the third party:</b> \(call \gets (\bot )^{Id}\) <b class="bfseries">upon</b> receiving \(\langle \textsc{Ret.input}\rangle \) from process \(id\): &#8195;\(call[id] \gets \top \) <b class="bfseries">upon</b> \(|F \cup \{ id \in Id \setminus F \mid call[id] = \top \} | \ge f+1\): &#8195;send \(\langle \textsc{Ret.output}, secret\rangle \) to all   </p>
-</div>
-
-    <a class="latex_link" href="sect0002.html#prot:SpecAVSS">LaTeX</a>
-    
-    
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/AVSS.Spec">Lean</a>
-    
-    
-  
-    
-  </div>
-    
-      </div>
-    </div>
-
-
-    
-    <div class="dep-modal-container" id="prot:SpecBRB_modal">
-      <div class="dep-modal-content">
-          <button class="dep-closebtn">
-<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
-</button>
-        
-  <div class="thm" id="prot:SpecBRB" style="display: none">
-    <div class="thm_thmheading">
-      <span class="protocol_thmcaption">
-      Protocol
-      </span>
-      <span class="protocol_thmlabel">11</span></div>
-    <div class="thm_thmcontent"><p>  <em>Ideal implementation.</em> The trusted third party receives the leader’s input and broadcasts it to every process when the leader is correct; otherwise it broadcasts an arbitrary message \(m'\) chosen non-deterministically.  <figcaption>
-  <span class="caption_title"></span> 
-  <span class="caption_ref">None</span> 
-  <span class="caption_text"></span> 
-</figcaption>Ideal Implementation of BRB  <b class="bfseries">Input:</b> \(m \in \{ 0,1\} ^*\) for the leader <b class="bfseries">Code for the leader:</b> send \(\langle \textsc{input}, m\rangle \) to the third party <b class="bfseries">Code for every process:</b> <b class="bfseries">upon</b> receiving \(\langle \textsc{output}, m\rangle \) from the third party: &#8195;return \(m\) <b class="bfseries">Code for the third party:</b> <b class="bfseries">upon</b> receiving \(\langle \textsc{input}, m\rangle \) from leader: &#8195;<b class="bfseries">if</b> leader is correct: &#8195;&#8195;send \(\langle \textsc{output}, m\rangle \) to all &#8195;<b class="bfseries">else</b> &#8195;&#8195;send \(\langle \textsc{output}, m'\rangle \) to all Arbitrary \(m'\)   </p>
-</div>
-
-    <a class="latex_link" href="sect0002.html#prot:SpecBRB">LaTeX</a>
-    
-    
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/BRB.Spec">Lean</a>
-    
-    
-  
-    
-  </div>
-    
-      </div>
-    </div>
-
-
-    
-    <div class="dep-modal-container" id="prot:SpecGather_modal">
-      <div class="dep-modal-content">
-          <button class="dep-closebtn">
-<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
-</button>
-        
-  <div class="thm" id="prot:SpecGather" style="display: none">
-    <div class="thm_thmheading">
-      <span class="protocol_thmcaption">
-      Protocol
-      </span>
-      <span class="protocol_thmlabel">7</span></div>
-    <div class="thm_thmcontent"><p>  <em>Ideal implementation.</em> The trusted third party records each process’s input, and once a quorum of correct contributions has been received, non-deterministically commits to a binding common core \(bind \subseteq Id\). Each process is then served a partial function whose domain \(S\) is non-deterministically extended above \(bind\), returning the recorded inputs of correct members of \(S\) and arbitrary values for corrupted members.  <figcaption>
-  <span class="caption_title"></span> 
-  <span class="caption_ref">None</span> 
-  <span class="caption_text"></span> 
-</figcaption>Ideal Implementation of Gather  <b class="bfseries">Input:</b> \(m\) <b class="bfseries">Code for every process:</b> send \(\langle \textsc{input}, m\rangle \) to the third party <b class="bfseries">upon</b> receiving \(\langle \textsc{output}, f\rangle \) from the third party: &#8195;return \(f\) <b class="bfseries">Code for the third party:</b> \(call, bind \gets \emptyset , \bot \) <b class="bfseries">upon</b> receiving \(\langle \textsc{input}, m\rangle \) from process \(id\): &#8195;\(call \gets call \cup \{ (id, m)\} \) <b class="bfseries">upon</b> \(|F \cup \{ id \in Id \setminus F \mid (id, \cdot ) \in call\} | \ge n-f\) and \(bind = \bot \): &#8195;\(bind \gets S\) for some \(S \subseteq F \cup \{ j \in Id \setminus F \mid (j, \cdot ) \in call\} \) Non-deterministic choice <b class="bfseries">upon</b> \(bind \ne \bot \) and not sent \(\langle \textsc{output}, \cdot \rangle \) to process \(id\): &#8195;select \(bind \subseteq S \subseteq F \cup \{ j \in Id \setminus F \mid (j, \cdot ) \in call\} \) and &#8195;send \(\langle \textsc{output}, \{ (j, m) \in call \mid j \in S \setminus F\}  \cup \{ (j, \cdot ) \mid j \in S \cap F\} \rangle \) to process \(id\)   </p>
-</div>
-
-    <a class="latex_link" href="sect0002.html#prot:SpecGather">LaTeX</a>
-    
-    
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/Gather.Spec">Lean</a>
-    
-    
-  
-    
-  </div>
-    
-      </div>
-    </div>
-
-
-    
-    <div class="dep-modal-container" id="prot:SpecGBCA_modal">
-      <div class="dep-modal-content">
-          <button class="dep-closebtn">
-<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
-</button>
-        
-  <div class="thm" id="prot:SpecGBCA" style="display: none">
-    <div class="thm_thmheading">
-      <span class="protocol_thmcaption">
-      Protocol
-      </span>
-      <span class="protocol_thmlabel">3</span></div>
-    <div class="thm_thmcontent"><p>  <em>Ideal implementation.</em> The trusted third party tallies the contributions and, as soon as a quorum supports some bit \(b\), fixes \(bind\) to \(b\) and sets the global grade: \(A\) if no correct process input \(1-b\), otherwise \(C\). Each process is then served either the highest grade pair \((bind, A)\) (resp. \((\bot , C)\)) or the conservative \((bind, B)\) as chosen non-deterministically by the adversary.  <figcaption>
-  <span class="caption_title"></span> 
-  <span class="caption_ref">None</span> 
-  <span class="caption_text"></span> 
-</figcaption>Ideal Implementation of GBCA  <b class="bfseries">Input:</b> \(b \in \{ 0,1\} \) <b class="bfseries">Code for every process:</b> send \(\langle \textsc{input}, b\rangle \) to the third party <b class="bfseries">upon</b> receiving \(\langle \textsc{output}, (b,g)\rangle \) from the third party: &#8195;return \((b,g)\) <b class="bfseries">Code for the third party:</b> \(bind, grade, call \gets \bot , \bot , (\bot )^{Id}\) <b class="bfseries">upon</b> receiving \(\langle \textsc{input}, b\rangle \) from a process \(id\): &#8195;\(call[id] \gets b\) <b class="bfseries">upon</b> \(|F \cup \{ id \in Id \setminus F \mid call[id] = b\} | \ge n-f\): &#8195;\(bind \gets b\) &#8195;<b class="bfseries">if</b> \(\{ id \in Id \setminus F \mid call[id] = 1-b\}  = \emptyset \): &#8195;&#8195;\(grade \gets A\) &#8195;<b class="bfseries">else</b> &#8195;&#8195;\(grade \gets C\) <b class="bfseries">upon</b> \(bind \ne \bot \) and \(grade = A\) and not sent \(\langle \textsc{output}, \cdot \rangle \) to process \(id\): &#8195;send \(\langle \textsc{output}, (bind, B)\rangle \) or \(\langle \textsc{output}, (bind, A)\rangle \) to process \(id\) <b class="bfseries">upon</b> \(bind \ne \bot \) and \(grade = C\) and not sent \(\langle \textsc{output}, \cdot \rangle \) to process \(id\): &#8195;send \(\langle \textsc{output}, (bind, B)\rangle \) or \(\langle \textsc{output}, (\bot , C)\rangle \) to process \(id\)   </p>
-</div>
-
-    <a class="latex_link" href="sect0002.html#prot:SpecGBCA">LaTeX</a>
-    
-    
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/GBCA.Spec">Lean</a>
-    
-    
-  
-    
-  </div>
-    
-      </div>
-    </div>
-
-
-    
-    <div class="dep-modal-container" id="prot:SpecRSD_modal">
-      <div class="dep-modal-content">
-          <button class="dep-closebtn">
-<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
-</button>
-        
-  <div class="thm" id="prot:SpecRSD" style="display: none">
-    <div class="thm_thmheading">
-      <span class="protocol_thmcaption">
-      Protocol
-      </span>
-      <span class="protocol_thmlabel">9</span></div>
-    <div class="thm_thmcontent"><p>  <em>Ideal implementation.</em> The trusted third party tracks which processes have called Assignment; once a quorum is reached, it issues an \(\langle \textsc{assign}, id\rangle \) notification for every \(id \in Id\). On Retrieval, after enough processes have asked, it samples a fresh value \(\mu \) uniformly over the output domain and delivers it to every process.  <figcaption>
-  <span class="caption_title"></span> 
-  <span class="caption_ref">None</span> 
-  <span class="caption_text"></span> 
-</figcaption>Ideal Implementation of RSD  <b class="bfseries">Operation:</b> \(RSD.Asg()\) <b class="bfseries">Code for every process:</b> send \(\langle \textsc{input} \rangle \) to the third party. <b class="bfseries">upon</b> receiving \(\langle \textsc{assign}, id\rangle \) from the third party: &#8195;<b class="bfseries">event</b> \(ValueAssigned(id)\) <b class="bfseries">Code for the third party:</b> \(call \gets (\bot )^{Id}\) <b class="bfseries">upon</b> receiving \(\langle \textsc{input} \rangle \) from process \(id\): &#8195;\(call[id] \gets \top \) <b class="bfseries">upon</b> \(|F \cup \{ id \in Id \setminus F \mid call[id] = \top \} | \ge n-f\): &#8195;\(\forall id \in Id\), send \(\langle \textsc{assign}, id\rangle \) to all <b class="bfseries">Operation:</b> \(RSD.Ret()\) <b class="bfseries">Code for every process:</b> send \(\langle \textsc{retrieve} \rangle \) to the third party. <b class="bfseries">upon</b> receiving \(\langle \textsc{output}, x\rangle \) from the third party: &#8195;return \(x\) <b class="bfseries">Code for the third party:</b> \(call', out \gets (\bot )^{Id}, (\bot )^{Id}\) <b class="bfseries">upon</b> receiving \(\langle \textsc{retrieve} \rangle \) from process \(id\): &#8195;\(call'[id] \gets \top \) <b class="bfseries">upon</b> \(|F \cup \{ id \in Id \setminus F \mid call'[id] = \top \} | \ge n-f\) and \(out[id] = \bot \): &#8195;\(out[id] \gets \mu \) \(\mu \) samples uniformly on the domain of outputs &#8195;send \(\langle \textsc{output}, out[id] \rangle \) to all   </p>
-</div>
-
-    <a class="latex_link" href="sect0002.html#prot:SpecRSD">LaTeX</a>
-    
-    
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/RSD.Spec">Lean</a>
-    
-    
-  
-    
-  </div>
-    
-      </div>
-    </div>
-
-
-    
-    <div class="dep-modal-container" id="prot:SpecWCC_modal">
-      <div class="dep-modal-content">
-          <button class="dep-closebtn">
-<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
-</button>
-        
-  <div class="thm" id="prot:SpecWCC" style="display: none">
-    <div class="thm_thmheading">
-      <span class="protocol_thmcaption">
-      Protocol
-      </span>
-      <span class="protocol_thmlabel">5</span></div>
-    <div class="thm_thmcontent"><p>  <em>Ideal implementation.</em> The trusted third party samples a coin \(r\) from a distribution \(\mu \) such that \(\mu (0) = \mu (1) = \epsilon \) and \(\mu (\bot ) = 1 - 2\epsilon \). If \(r \in \{ 0,1\} \) the same value is broadcast to every process; otherwise each process is delivered an adversarially-chosen bit, modelling the worst case where the coin does not coordinate the honest parties.  <figcaption>
-  <span class="caption_title"></span> 
-  <span class="caption_ref">None</span> 
-  <span class="caption_text"></span> 
-</figcaption>Ideal Implementation of WCC  <b class="bfseries">Input:</b> none <b class="bfseries">Code for every process:</b> send \(\langle \textsc{input} \rangle \) to the third party <b class="bfseries">upon</b> receiving \(\langle \textsc{output}, b\rangle \) from the third party: &#8195;return \(b\) <b class="bfseries">Code for the third party:</b> \(r \gets \mu \) \(\mu \): \(1 \mapsto \epsilon \), \(0 \mapsto \epsilon \), \(\bot \mapsto 1 - 2\epsilon \) <b class="bfseries">if</b> \(r \ne \bot \): &#8195;send \(\langle \textsc{output}, r \rangle \) to all <b class="bfseries">else</b> &#8195;for all \(id \in Id\), send \(\langle \textsc{output}, 0\rangle \) <b class="bfseries">or</b> \(\langle \textsc{output}, 1\rangle \) to process \(id\)   </p>
-</div>
-
-    <a class="latex_link" href="sect0002.html#prot:SpecWCC">LaTeX</a>
-    
-    
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/WCC.Spec">Lean</a>
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/SRSD.Impl">Lean</a>
     
     
   
@@ -1369,8 +1334,8 @@
       <span class="theorem_thmcaption">
       Theorem
       </span>
-      <span class="theorem_thmlabel">6</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{ABA.Concrete}\) satisfies Validity, Agreement and Almost-Sure Termination. </p>
+      <span class="theorem_thmlabel">9</span></div>
+    <div class="thm_thmcontent"><p>   <span class="sffamily">ABA.Impl</span> satisfies Validity, Agreement and Almost-Sure Termination. </p>
 </div>
 
     <a class="latex_link" href="sect0003.html#thm:ABACorrect">LaTeX</a>
@@ -1399,8 +1364,8 @@
       <span class="theorem_thmcaption">
       Theorem
       </span>
-      <span class="theorem_thmlabel">7</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{ABA.Spec}\) simulates \(\mathsf{ABA.Concrete}\). </p>
+      <span class="theorem_thmlabel">10</span></div>
+    <div class="thm_thmcontent"><p>   <span class="sffamily">ABA.Impl</span> \(\sqsubseteq ^f\) <span class="sffamily">ABA.Spec</span>. </p>
 </div>
 
     <a class="latex_link" href="sect0003.html#thm:ABASim">LaTeX</a>
@@ -1429,8 +1394,8 @@
       <span class="theorem_thmcaption">
       Theorem
       </span>
-      <span class="theorem_thmlabel">20</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{BRB.Spec}\) simulates \(\mathsf{BRB.Impl}\). No sub-protocol: direct proof. </p>
+      <span class="theorem_thmlabel">23</span></div>
+    <div class="thm_thmcontent"><p>   <span class="sffamily">BRB.Impl</span> \(\sqsubseteq ^f\) <span class="sffamily">BRB.Spec</span>. </p>
 </div>
 
     <a class="latex_link" href="sect0003.html#thm:BRBSim">LaTeX</a>
@@ -1459,8 +1424,8 @@
       <span class="theorem_thmcaption">
       Theorem
       </span>
-      <span class="theorem_thmlabel">14</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{Gather.Spec}\) simulates \(\mathsf{Gather.Concrete}\). </p>
+      <span class="theorem_thmlabel">17</span></div>
+    <div class="thm_thmcontent"><p>   <span class="sffamily">Gather.Impl</span> \(\sqsubseteq ^f\) <span class="sffamily">Gather.Spec</span>. </p>
 </div>
 
     <a class="latex_link" href="sect0003.html#thm:GatherSim">LaTeX</a>
@@ -1489,8 +1454,8 @@
       <span class="theorem_thmcaption">
       Theorem
       </span>
-      <span class="theorem_thmlabel">13</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{GBCA.Spec}\) simulates \(\mathsf{GBCA.Impl}\). No sub-protocol: direct proof. </p>
+      <span class="theorem_thmlabel">16</span></div>
+    <div class="thm_thmcontent"><p>   <span class="sffamily">GBCA.Impl</span> \(\sqsubseteq ^f\) <span class="sffamily">GBCA.Spec</span>. </p>
 </div>
 
     <a class="latex_link" href="sect0003.html#thm:GBCASim">LaTeX</a>
@@ -1508,25 +1473,149 @@
 
 
     
-    <div class="dep-modal-container" id="thm:RSDSim_modal">
+    <div class="dep-modal-container" id="thm:partialinfocompo_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
 <svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
 </button>
         
-  <div class="thm" id="thm:RSDSim" style="display: none">
+  <div class="thm" id="thm:partialinfocompo" style="display: none">
     <div class="thm_thmheading">
       <span class="theorem_thmcaption">
       Theorem
       </span>
-      <span class="theorem_thmlabel">17</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{RSD.Spec}\) simulates \(\mathsf{RSD.Concrete}\). </p>
+      <span class="theorem_thmlabel">8</span></div>
+    <div class="thm_thmcontent"><p> Given two PLTSs \(\mathcal{P}\) and \(\mathcal{P}'\) and their respective adversary \(\mathcal{A}\) and \(\mathcal{A}'\) and \(S \subseteq L\cap L'\), if \(\mathcal{A}\) and \(\mathcal{A}'\) are compatible on \(S\) then \(\mathcal{P}_{\mathcal{A}} \parallel _S \mathcal{P}'_{\mathcal{A}'}\) and \((\mathcal{P}\parallel _S \mathcal{P}')_{\mathcal{A}\parallel _S \mathcal{A}'}\) are isomorphic. </p>
 </div>
 
-    <a class="latex_link" href="sect0003.html#thm:RSDSim">LaTeX</a>
+    <a class="latex_link" href="sect0001.html#thm:partialinfocompo">LaTeX</a>
     
     
-  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/RSD.Sim">Lean</a>
+  
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="thm:partialinfosound_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="thm:partialinfosound" style="display: none">
+    <div class="thm_thmheading">
+      <span class="theorem_thmcaption">
+      Theorem
+      </span>
+      <span class="theorem_thmlabel">7</span></div>
+    <div class="thm_thmcontent"><p> Given a PLTS \(\mathcal{P}\) and an adversary \(\mathcal{A}\), the set of trace distributions of \(\mathcal{P}\) induced by a scheduler consistent with \(\mathcal{A}\) is equal to \( \text{tdist}(\mathcal{P})\). </p>
+</div>
+
+    <a class="latex_link" href="sect0001.html#thm:partialinfosound">LaTeX</a>
+    
+    
+  
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="thm:Segala_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="thm:Segala" style="display: none">
+    <div class="thm_thmheading">
+      <span class="theorem_thmcaption">
+      Theorem
+      </span>
+      <span class="theorem_thmlabel">3</span><span class="theorem_thmtitle">from <span class="cite">
+	[
+	<a href="sect0004.html#Segala1995Compositional" >Seg95a</a>
+	]
+</span></span></div>
+    <div class="thm_thmcontent"><p>  Given two PLTSs \(\mathcal{P}\) and \(\mathcal{P}'\), \(\mathcal{P}\sqsubseteq ^t \mathcal{P}'\) if and only if there exists a probabilistic forward simulation of \(\mathcal{P}\) by \(\mathcal{P}'\). </p>
+</div>
+
+    <a class="latex_link" href="sect0001.html#thm:Segala">LaTeX</a>
+    
+    
+  
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="thm:Segalafair_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="thm:Segalafair" style="display: none">
+    <div class="thm_thmheading">
+      <span class="theorem_thmcaption">
+      Theorem
+      </span>
+      <span class="theorem_thmlabel">5</span></div>
+    <div class="thm_thmcontent"><p> Given two PLTSs \(\mathcal{P}\) and \(\mathcal{P}'\), if there exists a fair probabilistic forward simulation of \(\mathcal{P}\) by \(\mathcal{P}'\) then \(\mathcal{P}\sqsubseteq ^f \mathcal{P}'\). </p>
+</div>
+
+    <a class="latex_link" href="sect0001.html#thm:Segalafair">LaTeX</a>
+    
+    
+  
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="thm:SRSDSim_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="thm:SRSDSim" style="display: none">
+    <div class="thm_thmheading">
+      <span class="theorem_thmcaption">
+      Theorem
+      </span>
+      <span class="theorem_thmlabel">20</span></div>
+    <div class="thm_thmcontent"><p>   <span class="sffamily">SRSD.Impl</span> \(\sqsubseteq ^f\) <span class="sffamily">SRSD.Spec</span>. </p>
+</div>
+
+    <a class="latex_link" href="sect0003.html#thm:SRSDSim">LaTeX</a>
+    
+    
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/SRSD.Sim">Lean</a>
     
     
   
@@ -1549,8 +1638,8 @@
       <span class="theorem_thmcaption">
       Theorem
       </span>
-      <span class="theorem_thmlabel">10</span></div>
-    <div class="thm_thmcontent"><p>   \(\mathsf{WCC.Spec}\) simulates \(\mathsf{WCC.Concrete}\). </p>
+      <span class="theorem_thmlabel">13</span></div>
+    <div class="thm_thmcontent"><p>   <span class="sffamily">WCC.Impl</span> \(\sqsubseteq ^f\) <span class="sffamily">WCC.Spec</span>. </p>
 </div>
 
     <a class="latex_link" href="sect0003.html#thm:WCCSim">LaTeX</a>
@@ -1568,25 +1657,88 @@
 
 
     
-    <div class="dep-modal-container" id="thm:weaksim_modal">
+    <div class="dep-modal-container" id="WCC:Core_modal">
       <div class="dep-modal-content">
           <button class="dep-closebtn">
 <svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
 </button>
         
-  <div class="thm" id="thm:weaksim" style="display: none">
+  <div class="thm" id="WCC:Core" style="display: none">
     <div class="thm_thmheading">
-      <span class="theorem_thmcaption">
-      Theorem
+      <span class="definition_thmcaption">
+      Definition
       </span>
-      <span class="theorem_thmlabel">3</span></div>
-    <div class="thm_thmcontent"><p> Given two PLTSs \(\mathcal{P}\) and \(\mathcal{P}'\), \(\mathcal{T}\subseteq \mathcal{T}'\) only if there exists a weak simulation of \(\mathcal{P}\) by \(\mathcal{P}'\). </p>
+      <span class="definition_thmlabel">15</span></div>
+    <div class="thm_thmcontent">
+<p>The PLTS encoding Algorithm <a href="alg-BRB.html">Z.1</a> is denoted <span class="sffamily">WCC.Core</span>. Its adversary is omniscient. </p>
 </div>
 
-    <a class="latex_link" href="sect0001.html#thm:weaksim">LaTeX</a>
+    <a class="latex_link" href="sect0002.html#WCC:Core">LaTeX</a>
+    
+    
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/WCC.Core">Lean</a>
     
     
   
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="WCC:Hybrid_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="WCC:Hybrid" style="display: none">
+    <div class="thm_thmheading">
+      <span class="definition_thmcaption">
+      Definition
+      </span>
+      <span class="definition_thmlabel">17</span></div>
+    <div class="thm_thmcontent">
+<p> <span class="sffamily">WCC.Hybrid</span> is defined as the parallel composition of <span class="sffamily">WCC.Core</span>, <span class="sffamily">Gather.Spec</span> and <span class="sffamily">SRSD.Spec</span> synchronised on calls, returns and failures from which the API of <span class="sffamily">SRSD</span> and <span class="sffamily">Gather</span> have been abstracted. Since all of their adversaries are omniscient, the composed adversary is well-defined and omniscient. </p>
+</div>
+
+    <a class="latex_link" href="sect0002.html#WCC:Hybrid">LaTeX</a>
+    
+    
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/WCC.Hybrid">Lean</a>
+    
+    
+  
+    
+  </div>
+    
+      </div>
+    </div>
+
+
+    
+    <div class="dep-modal-container" id="WCC:Impl_modal">
+      <div class="dep-modal-content">
+          <button class="dep-closebtn">
+<svg  class="icon icon-cross "><use xlink:href="symbol-defs.svg#icon-cross"></use></svg>
+</button>
+        
+  <div class="thm" id="WCC:Impl" style="display: none">
+    <div class="thm_thmheading">
+      <span class="definition_thmcaption">
+      Definition
+      </span>
+      <span class="definition_thmlabel">16</span></div>
+    <div class="thm_thmcontent">
+<p> <span class="sffamily">WCC.Impl</span> is defined as the parallel composition of <span class="sffamily">WCC.Core</span>, <span class="sffamily">SRSD.Impl</span> and <span class="sffamily">Gather.Impl</span> synchronised on calls, returns and failures from which the API of <span class="sffamily">SRSD</span> and <span class="sffamily">Gather</span> have been abstracted. Since the adversaries of <span class="sffamily">WCC.Core</span> and <span class="sffamily">Gather.Impl</span> are omniscient and the adversary of <span class="sffamily">SRSD.Impl</span> is omniscient on its interface, the composed adversary is well-defined. </p>
+</div>
+
+    <a class="latex_link" href="sect0002.html#WCC:Impl">LaTeX</a>
+    
+    
+  <a class="lean_link lean_decl" href="https://rupakm.github.io/leslie/docs/find/#doc/WCC.Impl">Lean</a>
     
     
   
@@ -1614,7 +1766,7 @@ graphContainer.graphviz({useWorker: true})
     .width(width)
     .height(height)
     .fit(true)
-    .renderDot(`strict digraph "" {	graph [bgcolor=transparent];	node [label="\N",		penwidth=1.8	];	edge [arrowhead=vee];	"prot:SpecGBCA"	[color=blue,		label=SpecGBCA,		shape=ellipse];	"thm:GBCASim"	[label=GBCASim,		shape=ellipse];	"prot:SpecGBCA" -> "thm:GBCASim"	[style=dashed];	"def:ABAHybrid"	[label=ABAHybrid,		shape=box];	"prot:SpecGBCA" -> "def:ABAHybrid"	[style=dashed];	"lem:ABASubst"	[label=ABASubst,		shape=ellipse];	"thm:GBCASim" -> "lem:ABASubst";	"def:ABAHybrid" -> "lem:ABASubst"	[style=dashed];	"lem:ABACore"	[label=ABACore,		shape=ellipse];	"def:ABAHybrid" -> "lem:ABACore"	[style=dashed];	"thm:ABASim"	[label=ABASim,		shape=ellipse];	"lem:ABASubst" -> "thm:ABASim";	"lem:ABACore" -> "thm:ABASim";	a0000000007	[color=blue,		fillcolor="#A3D6FF",		label=a0000000007,		shape=box,		style=filled];	"alg:simulation"	[color=blue,		fillcolor="#A3D6FF",		label=simulation,		shape=ellipse,		style=filled];	"thm:RSDSim"	[label=RSDSim,		shape=ellipse];	"lem:WCCSubst"	[label=WCCSubst,		shape=ellipse];	"thm:RSDSim" -> "lem:WCCSubst";	"thm:WCCSim"	[label=WCCSim,		shape=ellipse];	"lem:WCCSubst" -> "thm:WCCSim";	"thm:WCCSim" -> "lem:ABASubst";	"prot:SpecGather"	[color=blue,		label=SpecGather,		shape=ellipse];	"lem:GatherCore"	[label=GatherCore,		shape=ellipse];	"prot:SpecGather" -> "lem:GatherCore"	[style=dashed];	"def:WCCHybrid"	[label=WCCHybrid,		shape=box];	"prot:SpecGather" -> "def:WCCHybrid"	[style=dashed];	"thm:GatherSim"	[label=GatherSim,		shape=ellipse];	"lem:GatherCore" -> "thm:GatherSim";	"def:WCCHybrid" -> "lem:WCCSubst"	[style=dashed];	"lem:WCCCore"	[label=WCCCore,		shape=ellipse];	"def:WCCHybrid" -> "lem:WCCCore"	[style=dashed];	"thm:GatherSim" -> "lem:WCCSubst";	"lem:WCCCore" -> "thm:WCCSim";	"prot:SpecRSD"	[color=blue,		label=SpecRSD,		shape=ellipse];	"prot:SpecRSD" -> "def:WCCHybrid"	[style=dashed];	"lem:RSDCore"	[label=RSDCore,		shape=ellipse];	"prot:SpecRSD" -> "lem:RSDCore"	[style=dashed];	"lem:RSDCore" -> "thm:RSDSim";	"prot:ImplRSD"	[color=blue,		label=ImplRSD,		shape=ellipse];	"def:RSDConcrete"	[label=RSDConcrete,		shape=box];	"prot:ImplRSD" -> "def:RSDConcrete"	[style=dashed];	"def:RSDHybrid"	[label=RSDHybrid,		shape=box];	"prot:ImplRSD" -> "def:RSDHybrid"	[style=dashed];	"def:WCCConcrete"	[label=WCCConcrete,		shape=box];	"def:RSDConcrete" -> "def:WCCConcrete"	[style=dashed];	"lem:RSDSubst"	[label=RSDSubst,		shape=ellipse];	"def:RSDConcrete" -> "lem:RSDSubst"	[style=dashed];	"def:RSDHybrid" -> "lem:RSDCore"	[style=dashed];	"def:RSDHybrid" -> "lem:RSDSubst"	[style=dashed];	"def:WCCConcrete" -> "lem:WCCSubst"	[style=dashed];	"def:ABAConcrete"	[label=ABAConcrete,		shape=box];	"def:WCCConcrete" -> "def:ABAConcrete"	[style=dashed];	"lem:RSDSubst" -> "thm:RSDSim";	"prot:SpecAVSS"	[color=blue,		label=SpecAVSS,		shape=ellipse];	"prot:SpecAVSS" -> "def:RSDConcrete"	[style=dashed];	"prot:SpecAVSS" -> "def:RSDHybrid"	[style=dashed];	a0000000008	[color=blue,		fillcolor="#A3D6FF",		label=a0000000008,		shape=box,		style=filled];	"def:ABAConcrete" -> "lem:ABASubst"	[style=dashed];	"thm:ABACorrect"	[label=ABACorrect,		shape=ellipse];	"thm:ABASim" -> "thm:ABACorrect";	"def:GatherConcrete"	[label=GatherConcrete,		shape=box];	"def:GatherConcrete" -> "def:WCCConcrete"	[style=dashed];	"lem:GatherSubst"	[label=GatherSubst,		shape=ellipse];	"def:GatherConcrete" -> "lem:GatherSubst"	[style=dashed];	"lem:GatherSubst" -> "thm:GatherSim";	a0000000015	[color=blue,		fillcolor="#A3D6FF",		label=a0000000015,		shape=ellipse,		style=filled];	"thm:BRBSim"	[label=BRBSim,		shape=ellipse];	"thm:BRBSim" -> "lem:RSDSubst";	"thm:BRBSim" -> "lem:GatherSubst";	"def:GatherHybrid"	[label=GatherHybrid,		shape=box];	"def:GatherHybrid" -> "lem:GatherCore"	[style=dashed];	"def:GatherHybrid" -> "lem:GatherSubst"	[style=dashed];	a0000000019	[color=blue,		fillcolor="#A3D6FF",		label=a0000000019,		shape=box,		style=filled];	a0000000023	[color=blue,		fillcolor="#A3D6FF",		label=a0000000023,		shape=ellipse,		style=filled];	"prot:SpecABA"	[color=blue,		label=SpecABA,		shape=ellipse];	"prot:SpecABA" -> "lem:ABACore"	[style=dashed];	"prot:ImplWCC"	[color=blue,		label=ImplWCC,		shape=ellipse];	"prot:ImplWCC" -> "def:WCCHybrid"	[style=dashed];	"prot:ImplWCC" -> "def:WCCConcrete"	[style=dashed];	a0000000009	[color=blue,		fillcolor="#A3D6FF",		label=a0000000009,		shape=box,		style=filled];	a0000000010	[color=blue,		fillcolor="#A3D6FF",		label=a0000000010,		shape=box,		style=filled];	"prot:SpecWCC"	[color=blue,		label=SpecWCC,		shape=ellipse];	"prot:SpecWCC" -> "def:ABAHybrid"	[style=dashed];	"prot:SpecWCC" -> "lem:WCCCore"	[style=dashed];	"prot:ImplABA"	[color=blue,		label=ImplABA,		shape=ellipse];	"prot:ImplABA" -> "def:ABAHybrid"	[style=dashed];	"prot:ImplABA" -> "def:ABAConcrete"	[style=dashed];	a0000000014	[color=blue,		fillcolor="#A3D6FF",		label=a0000000014,		shape=box,		style=filled];	a0000000022	[color=blue,		fillcolor="#A3D6FF",		label=a0000000022,		shape=box,		style=filled];	"prot:ImplGBCA"	[color=blue,		label=ImplGBCA,		shape=ellipse];	"prot:ImplGBCA" -> "thm:GBCASim"	[style=dashed];	"prot:ImplGBCA" -> "def:ABAConcrete"	[style=dashed];	"prot:SpecBRB"	[color=blue,		label=SpecBRB,		shape=ellipse];	"prot:SpecBRB" -> "def:RSDHybrid"	[style=dashed];	"prot:SpecBRB" -> "thm:BRBSim"	[style=dashed];	"prot:SpecBRB" -> "def:GatherHybrid"	[style=dashed];	"thm:weaksim"	[color=blue,		fillcolor="#A3D6FF",		label=weaksim,		shape=ellipse,		style=filled];	a0000000020	[color=blue,		fillcolor="#A3D6FF",		label=a0000000020,		shape=ellipse,		style=filled];	"prot:ImplGather"	[color=blue,		label=ImplGather,		shape=ellipse];	"prot:ImplGather" -> "def:GatherConcrete"	[style=dashed];	"prot:ImplGather" -> "def:GatherHybrid"	[style=dashed];	"prot:ImplBRB"	[color=blue,		label=ImplBRB,		shape=ellipse];	"prot:ImplBRB" -> "def:RSDConcrete"	[style=dashed];	"prot:ImplBRB" -> "def:GatherConcrete"	[style=dashed];	"prot:ImplBRB" -> "thm:BRBSim"	[style=dashed];}`)
+    .renderDot(`strict digraph "" {	graph [bgcolor=transparent];	node [label="\N",		penwidth=1.8	];	edge [arrowhead=vee];	"lem:precong"	[color=blue,		fillcolor="#A3D6FF",		label=precong,		shape=ellipse,		style=filled];	"lem:WCCSubst"	[label=WCCSubst,		shape=ellipse];	"lem:precong" -> "lem:WCCSubst";	"lem:GatherSubst"	[label=GatherSubst,		shape=ellipse];	"lem:precong" -> "lem:GatherSubst";	"thm:WCCSim"	[label=WCCSim,		shape=ellipse];	"lem:WCCSubst" -> "thm:WCCSim";	"thm:GatherSim"	[label=GatherSim,		shape=ellipse];	"lem:GatherSubst" -> "thm:GatherSim";	"lem:ABASubst"	[label=ABASubst,		shape=ellipse];	"thm:WCCSim" -> "lem:ABASubst";	"thm:ABASim"	[label=ABASim,		shape=ellipse];	"lem:ABASubst" -> "thm:ABASim";	"thm:ABACorrect"	[label=ABACorrect,		shape=ellipse];	"thm:ABASim" -> "thm:ABACorrect";	"lem:weaksim"	[color=blue,		fillcolor="#A3D6FF",		label=weaksim,		shape=ellipse,		style=filled];	"thm:GBCASim"	[label=GBCASim,		shape=ellipse];	"lem:weaksim" -> "thm:GBCASim";	"thm:BRBSim"	[label=BRBSim,		shape=ellipse];	"lem:weaksim" -> "thm:BRBSim";	"lem:GatherCore"	[label=GatherCore,		shape=ellipse];	"lem:weaksim" -> "lem:GatherCore";	"thm:GBCASim" -> "lem:WCCSubst";	"thm:BRBSim" -> "lem:GatherSubst";	"lem:SRSDSubst"	[label=SRSDSubst,		shape=ellipse];	"thm:BRBSim" -> "lem:SRSDSubst";	"lem:GatherCore" -> "thm:GatherSim";	"thm:SRSDSim"	[label=SRSDSim,		shape=ellipse];	"lem:SRSDSubst" -> "thm:SRSDSim";	"lem:fairweaksim"	[color=blue,		fillcolor="#A3D6FF",		label=fairweaksim,		shape=ellipse,		style=filled];	"thm:SRSDSim" -> "lem:WCCSubst";	"lem:strongprobsimsound"	[color=blue,		fillcolor="#A3D6FF",		label=strongprobsimsound,		shape=ellipse,		style=filled];	"GBCA:Impl"	[color=blue,		fillcolor="#A3D6FF",		label=Impl,		shape=box,		style=filled];	"ABA:Impl"	[label=Impl,		shape=box];	"GBCA:Impl" -> "ABA:Impl"	[style=dashed];	"ABA:Impl" -> "lem:ABASubst"	[style=dashed];	a0000000008	[color=blue,		fillcolor="#A3D6FF",		label=a0000000008,		shape=box,		style=filled];	a0000000019	[color=blue,		fillcolor="#A3D6FF",		label=a0000000019,		shape=box,		style=filled];	"ABA:Core"	[color=blue,		fillcolor="#A3D6FF",		label=Core,		shape=box,		style=filled];	"ABA:Core" -> "ABA:Impl"	[style=dashed];	"ABA:Hybrid"	[label=Hybrid,		shape=box];	"ABA:Core" -> "ABA:Hybrid"	[style=dashed];	"ABA:Hybrid" -> "lem:ABASubst"	[style=dashed];	"lem:ABACore"	[label=ABACore,		shape=ellipse];	"ABA:Hybrid" -> "lem:ABACore"	[style=dashed];	"lem:ABACore" -> "thm:ABASim";	"SRSD:Core"	[color=blue,		fillcolor="#A3D6FF",		label=Core,		shape=box,		style=filled];	"SRSD:Hybrid"	[label=Hybrid,		shape=box];	"SRSD:Core" -> "SRSD:Hybrid"	[style=dashed];	"SRSD:Impl"	[label=Impl,		shape=box];	"SRSD:Core" -> "SRSD:Impl"	[style=dashed];	"SRSD:Hybrid" -> "lem:SRSDSubst"	[style=dashed];	"lem:SRSDCore"	[label=SRSDCore,		shape=ellipse];	"SRSD:Hybrid" -> "lem:SRSDCore"	[style=dashed];	"SRSD:Impl" -> "lem:SRSDSubst"	[style=dashed];	"WCC:Impl"	[label=Impl,		shape=box];	"SRSD:Impl" -> "WCC:Impl"	[style=dashed];	"lem:SRSDCore" -> "thm:SRSDSim";	"WCC:Impl" -> "lem:WCCSubst"	[style=dashed];	"WCC:Impl" -> "ABA:Impl"	[style=dashed];	a0000000063	[color=blue,		fillcolor="#A3D6FF",		label=a0000000063,		shape=box,		style=filled];	a0000000065	[color=blue,		fillcolor="#A3D6FF",		label=a0000000065,		shape=box,		style=filled];	a0000000068	[color=blue,		fillcolor="#A3D6FF",		label=a0000000068,		shape=box,		style=filled];	"lem:weakclosuresound"	[color=blue,		fillcolor="#A3D6FF",		label=weakclosuresound,		shape=ellipse,		style=filled];	a0000000007	[color=blue,		fillcolor="#A3D6FF",		label=a0000000007,		shape=box,		style=filled];	"thm:partialinfosound"	[color=blue,		label=partialinfosound,		shape=ellipse];	"thm:partialinfosound" -> "lem:SRSDCore";	"thm:Segalafair"	[color=blue,		label=Segalafair,		shape=ellipse];	"thm:Segala"	[color=blue,		fillcolor="#A3D6FF",		label=Segala,		shape=ellipse,		style=filled];	"thm:Segala" -> "lem:ABACore";	"thm:Segala" -> "lem:SRSDCore";	"lem:WCCCore"	[label=WCCCore,		shape=ellipse];	"thm:Segala" -> "lem:WCCCore";	"lem:WCCCore" -> "thm:WCCSim";	"WCC:Core"	[color=blue,		fillcolor="#A3D6FF",		label=Core,		shape=box,		style=filled];	"WCC:Core" -> "WCC:Impl"	[style=dashed];	"WCC:Hybrid"	[label=Hybrid,		shape=box];	"WCC:Core" -> "WCC:Hybrid"	[style=dashed];	"WCC:Hybrid" -> "lem:WCCSubst"	[style=dashed];	"WCC:Hybrid" -> "lem:WCCCore"	[style=dashed];	"BRB:Impl"	[color=blue,		fillcolor="#A3D6FF",		label=Impl,		shape=box,		style=filled];	"BRB:Impl" -> "SRSD:Impl"	[style=dashed];	"Gather:Impl"	[label=Impl,		shape=box];	"BRB:Impl" -> "Gather:Impl"	[style=dashed];	"Gather:Impl" -> "lem:GatherSubst"	[style=dashed];	"Gather:Impl" -> "WCC:Impl"	[style=dashed];	"lem:distliftingsound"	[color=blue,		fillcolor="#A3D6FF",		label=distliftingsound,		shape=ellipse,		style=filled];	"lem:strongprobsim"	[color=blue,		fillcolor="#A3D6FF",		label=strongprobsim,		shape=ellipse,		style=filled];	"thm:partialinfocompo"	[color=blue,		fillcolor="#A3D6FF",		label=partialinfocompo,		shape=ellipse,		style=filled];	"thm:partialinfocompo" -> "lem:SRSDSubst";	a0000000071	[color=blue,		fillcolor="#A3D6FF",		label=a0000000071,		shape=ellipse,		style=filled];	"Gather:Core"	[color=blue,		fillcolor="#A3D6FF",		label=Core,		shape=box,		style=filled];	"Gather:Core" -> "Gather:Impl"	[style=dashed];	"Gather:Hybrid"	[label=Hybrid,		shape=box];	"Gather:Core" -> "Gather:Hybrid"	[style=dashed];	"Gather:Hybrid" -> "lem:GatherSubst"	[style=dashed];	"Gather:Hybrid" -> "lem:GatherCore"	[style=dashed];	a0000000012	[color=blue,		fillcolor="#A3D6FF",		label=a0000000012,		shape=box,		style=filled];	a0000000011	[color=blue,		fillcolor="#A3D6FF",		label=a0000000011,		shape=box,		style=filled];	a0000000024	[color=blue,		fillcolor="#A3D6FF",		label=a0000000024,		shape=box,		style=filled];	a0000000025	[color=blue,		fillcolor="#A3D6FF",		label=a0000000025,		shape=box,		style=filled];	"lem:abstract"	[color=blue,		label=abstract,		shape=ellipse];	a0000000009	[color=blue,		fillcolor="#A3D6FF",		label=a0000000009,		shape=box,		style=filled];	a0000000015	[color=blue,		fillcolor="#A3D6FF",		label=a0000000015,		shape=box,		style=filled];	a0000000020	[color=blue,		fillcolor="#A3D6FF",		label=a0000000020,		shape=box,		style=filled];}`)
     .on("end", interactive);
 
 latexLabelEscaper = function(label) {

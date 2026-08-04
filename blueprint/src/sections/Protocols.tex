@@ -19,12 +19,12 @@ agree on a common output.
 Processes start with a bit $\{0,1\}$ and may return a bit.
 Its interface is composed of a $call$ and a $return$ statement.
 A program implements \textsf{ABA} if it satisfies three
-properties: Validity, Agreement, Almost-Sure Termination.
+properties: Validity, Agreement, $\epsilon$-Sure Termination.
 \begin{itemize}
     \item Validity: if a correct process returns $b$ then a correct process had $b$ as input.
     \item Agreement: if two correct processes return, then their outputs are equal.
-    \item Almost-sure Termination: if $n-f$ correct processes take part in the protocol then, with
-    probability 1, all correct processes will eventually return.
+    \item $\epsilon$-sure Termination: if $n-f$ correct processes take part in the protocol then, with
+    probability $1-\epsilon$, all correct processes will eventually return.
 \end{itemize}
 
 \begin{implementation}[from \cite{Abraham2022Efficient}]
@@ -136,14 +136,14 @@ Binding, Termination.
 
 Processes start with no input and may return a bit.
 A program implements \textsf{WCC} if it satisfies three properties: $\epsilon$-Goodness,
-Unpredictability, Termination.
+Unpredictability, $\epsilon'$-sure Termination.
 \begin{itemize}
     \item $\epsilon$-Goodness: with probability $\epsilon$, all correct processes return 0
     (resp.\ 1).
     \item Unpredictability: until $f+1$ processes have called \textsf{WCC}, all outcomes are still
     possible.
-    \item Termination: if $n-f$ correct processes take part in the protocol then all correct
-    processes will eventually return.
+    \item $\epsilon'$-sure Termination: if $n-f$ correct processes take part in the protocol then all correct
+    processes will return with probability $1-\epsilon'$.
 \end{itemize}
 
 \begin{implementation}[simplified from \cite{Freitas2022Distributed}]
@@ -285,16 +285,17 @@ owner such that the assigned value is unknown to all. Reconstruction reveals the
 assigned value to processes. A correct implementation of \textsf{SRSD} should
 satisfy five properties.
 \begin{itemize}
-    \item Assignment Termination: if all correct processes call \textsf{SRSD}.\textsf{Asg},
-    then all correct processes will eventually terminate \textsf{SRSD}.\textsf{Asg}.
+    \item Assignment Termination: if all correct processes call \textsf{SRSD}.\textsf{Asg} and the 
+    owner is correct, then all correct processes will terminate \textsf{SRSD}.\textsf{Asg} with 
+    probability $1-\epsilon$.
     \item Assignment Totality: if a correct process terminates \textsf{SRSD}.\textsf{Asg}
     then all correct processes will eventually terminate \textsf{SRSD}.\textsf{Asg}.
     \item Randomness: the return value of \textsf{SRSD}.\textsf{Rec} follows the uniform
-    distribution.
+    distribution\footnote{rather a distribution which is close from uniform distribution}.
     \item Secrecy: if no correct process has called \textsf{SRSD}.\textsf{Rec} then the adversary
     has no information about the return value of \textsf{SRSD}.\textsf{Rec}.
-    \item Retrieval Termination: if all correct processes call \textsf{SRSD}.\textsf{Rec} then all
-    correct processes will eventually terminate \textsf{SRSD}.\textsf{Rec}.
+    \item Reconstruction Termination: if all correct processes call \textsf{SRSD}.\textsf{Rec} then
+    all correct processes will terminate \textsf{SRSD}.\textsf{Rec} with probability $1-\epsilon$.
 \end{itemize}
 
 \textcolor{red}{\large No Agreement properties ???}
@@ -418,8 +419,8 @@ Termination, Correctness, Secrecy.
 \begin{itemize}
     \item Termination:
     \begin{itemize}
-        \item if the dealer is correct and has called \textsf{AVSS.Sh}
-        then all correct processes will eventually terminate \textsf{AVSS.Sh};
+        \item if the dealer is correct and has called \textsf{AVSS.Sh} then, with probability 
+        $1- \epsilon$, all correct processes will eventually terminate \textsf{AVSS.Sh};
         \item if a correct process has terminated \textsf{AVSS.Sh}
         then all correct processes will eventually terminate \textsf{AVSS.Sh};
         \item with probability $1-\epsilon$, if all correct processes have terminated
@@ -427,10 +428,10 @@ Termination, Correctness, Secrecy.
         then all correct processes will eventually terminate \textsf{AVSS.Rec}.
     \end{itemize}
     \item Correctness: Once a correct process has terminated \textsf{AVSS.Sh},
-    there exists $x \in X$ such that,
+    there exists $x \in X$ such that, with probability $1-\epsilon$,
     \begin{itemize}
         \item if the dealer is correct then it has called \textsf{AVSS.Sh} with $x$;
-        \item with probability $1-\epsilon$, no correct process will terminate \textsf{AVSS.Rec}
+        \item no correct process will terminate \textsf{AVSS.Rec}
         with a value different from $x$.
     \end{itemize}
     \item Secrecy: if the dealer is correct and no correct process has called \textsf{AVSS.Rec}
@@ -439,10 +440,8 @@ Termination, Correctness, Secrecy.
 Some properties always hold while others hold with probability $1- \epsilon$.
 The specification of \cite{Canetti1993Fast} states that all properties hold with
 probability $1-\epsilon$, but it seems that the specification can be strengthened.
-For instance, if the dealer is correct then the committed value can be chosen to be
-its input to \textsf{AVSS.Sh}. Moreover, the second point of termination should also
-always hold because correct processes broadcast a certificate to terminate \textsf{AVSS.Sh};
-thus, if one correct process gets it then all of them will get it.
+In particular, the second point of Termination holds deterministically because it is a
+consequence of the Totality of \textsf{BRB}.
 
 Our proof will stop at this level of abstraction, meaning that all considered
 implementations will be correct up to the correctness of their underlying \textsf{AVSS}.

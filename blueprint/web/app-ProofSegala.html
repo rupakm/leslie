@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+  MathJax = { 
+    tex: {
+		    inlineMath: [['$','$'], ['\\(','\\)']]
+	} }
+</script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js">
+</script>
+<meta name="generator" content="plasTeX" />
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Proof of Theorem <a href="sect0001.html#thm:Segala">3</a></title>
+<link rel="prev" href="PLTS-AVSS.html" title="Specification" />
+<link rel="up" href="sect0004.html" title="Bibliography" />
+<link rel="stylesheet" href="styles/theme-white.css" />
+<link rel="stylesheet" href="styles/amsthm.css" />
+<link rel="stylesheet" href="styles/showmore.css" />
+<link rel="stylesheet" href="styles/blueprint.css" />
+<link rel="stylesheet" href="styles/extra_styles.css" />
+</head>
+
+<body>
+<header>
+<svg  id="toc-toggle" class="icon icon-list-numbered "><use xlink:href="symbol-defs.svg#icon-list-numbered"></use></svg>
+<h1 id="doc_title"><a href="index.html">Verifying ABA with Leslie</a></h1>
+</header>
+
+<div class="wrapper">
+<nav class="toc">
+<ul class="sub-toc-0">
+<li class="">
+  <a href="sect0001.html"><span class="toc_ref">0.1</span> <span class="toc_entry">Preliminaries</span></a>
+  <span class="expand-toc">▶</span>
+  <ul class="sub-toc-1">
+     <li class="">
+  <a href="sect0001.html#a0000000006"><span class="toc_ref">0.1.1</span> <span class="toc_entry">Segala’s Framework</span></a>
+ </li>
+<li class="">
+  <a href="sect0001.html#a0000000014"><span class="toc_ref">0.1.2</span> <span class="toc_entry">Non-probabilistic Systems</span></a>
+ </li>
+<li class="">
+  <a href="sect0001.html#a0000000017"><span class="toc_ref">0.1.3</span> <span class="toc_entry">Preserving Liveness</span></a>
+ </li>
+<li class="">
+  <a href="sect0001.html#a0000000023"><span class="toc_ref">0.1.4</span> <span class="toc_entry">Partial Information</span></a>
+ </li>
+
+  </ul>
+ </li>
+<li class="">
+  <a href="sect0002.html"><span class="toc_ref">0.2</span> <span class="toc_entry">List of the Protocols</span></a>
+  <span class="expand-toc">▶</span>
+  <ul class="sub-toc-1">
+     <li class="">
+  <a href="sect0002.html#a0000000029"><span class="toc_ref"></span> <span class="toc_entry">Common Notation.</span></a>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000030"><span class="toc_ref">0.2.1</span> <span class="toc_entry">Asynchronous Byzantine Agreement (<span class="sffamily">ABA</span>)</span></a>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000031"><span class="toc_ref">0.2.2</span> <span class="toc_entry">Graded Binding Crusader Agreement (<span class="sffamily">GBCA</span>)</span></a>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000032"><span class="toc_ref">0.2.3</span> <span class="toc_entry">Weak Common Coin (<span class="sffamily">WCC</span>)</span></a>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000033"><span class="toc_ref">0.2.4</span> <span class="toc_entry"><span class="sffamily">Gather</span></span></a>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000034"><span class="toc_ref">0.2.5</span> <span class="toc_entry">Single Random Secret Draw (<span class="sffamily">SRSD</span>)</span></a>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000035"><span class="toc_ref">0.2.6</span> <span class="toc_entry">Byzantine Reliable Broadcast (<span class="sffamily">BRB</span>)</span></a>
+ </li>
+<li class="">
+  <a href="sect0002.html#a0000000036"><span class="toc_ref">0.2.7</span> <span class="toc_entry">Asynchronous Verifiable Secret Sharing (<span class="sffamily">AVSS</span>)</span></a>
+ </li>
+
+  </ul>
+ </li>
+<li class="">
+  <a href="sect0003.html"><span class="toc_ref">0.3</span> <span class="toc_entry">Proof Decomposition</span></a>
+  <span class="expand-toc">▶</span>
+  <ul class="sub-toc-1">
+     <li class="">
+  <a href="sect0003.html#a0000000037"><span class="toc_ref">0.3.1</span> <span class="toc_entry">Top-level</span></a>
+ </li>
+<li class="">
+  <a href="sect0003.html#a0000000038"><span class="toc_ref">0.3.2</span> <span class="toc_entry">ABA</span></a>
+ </li>
+<li class="">
+  <a href="sect0003.html#a0000000039"><span class="toc_ref">0.3.3</span> <span class="toc_entry">WCC</span></a>
+ </li>
+<li class="">
+  <a href="sect0003.html#a0000000040"><span class="toc_ref">0.3.4</span> <span class="toc_entry">GBCA</span></a>
+ </li>
+<li class="">
+  <a href="sect0003.html#a0000000041"><span class="toc_ref">0.3.5</span> <span class="toc_entry">Gather</span></a>
+ </li>
+<li class="">
+  <a href="sect0003.html#a0000000042"><span class="toc_ref">0.3.6</span> <span class="toc_entry">SRSD</span></a>
+ </li>
+<li class="">
+  <a href="sect0003.html#a0000000043"><span class="toc_ref">0.3.7</span> <span class="toc_entry">BRB</span></a>
+ </li>
+
+  </ul>
+ </li>
+<li class=" active">
+  <a href="sect0004.html"><span class="toc_ref">1</span> <span class="toc_entry">Bibliography</span></a>
+  <span class="expand-toc">▼</span>
+  <ul class="sub-toc-1 active">
+     <li class="">
+  <a href="alg-BRB.html"><span class="toc_ref">Z.1</span> <span class="toc_entry">Implementation’s Pseudo-code</span></a>
+ </li>
+<li class="">
+  <a href="PLTS-AVSS.html"><span class="toc_ref">Z.2</span> <span class="toc_entry">Specification</span></a>
+ </li>
+<li class=" active current">
+  <a href="app-ProofSegala.html"><span class="toc_ref">Z.3</span> <span class="toc_entry">Proof of Theorem <a href="sect0001.html#thm:Segala">3</a></span></a>
+  <span class="expand-toc">▼</span>
+  <ul class="sub-toc-2 active">
+     <li class="">
+  <a href="app-ProofSegala.html#a0000000044"><span class="toc_ref">Z.3.1</span> <span class="toc_entry">Weak Transitions</span></a>
+ </li>
+<li class="">
+  <a href="app-ProofSegala.html#a0000000045"><span class="toc_ref">Z.3.2</span> <span class="toc_entry">Distribution Monad</span></a>
+ </li>
+<li class="">
+  <a href="app-ProofSegala.html#a0000000046"><span class="toc_ref">Z.3.3</span> <span class="toc_entry">Strong Probabilistic Simulation</span></a>
+ </li>
+
+  </ul>
+ </li>
+
+  </ul>
+ </li>
+<li ><a href="dep_graph_document.html">Dependency graph</a></li>
+</ul>
+</nav>
+
+<div class="content">
+<div class="content-wrapper">
+
+
+<div class="main-text">
+<h1 id="app:ProofSegala">Z.3 Proof of Theorem <a href="sect0001.html#thm:Segala">3</a></h1>
+
+<p>In order to extend Segala’s result to liveness, we need to display how a scheduler of \(\mathcal{P}\) can be translated into a scheduler of \(\mathcal{P}'\). Unfortunately, Segala’s proof does not follow that route <span class="cite">
+	[
+	<a href="sect0004.html#Segala1995PhD" >Seg95b</a>
+	]
+</span>. Indeed, this construction is not trivial at all. Thus, we are going to split it into multiple steps corresponding to the three main difficulties: weak transitions, simulation by probability distribution and translating \(\mathcal{P}\) to \(\mathcal{P}'\). </p>
+<h2 id="a0000000044">Z.3.1 Weak Transitions</h2>
+<div class="definition_thmwrapper theorem-style-definition" id="a0000000063">
+  <div class="definition_thmheading">
+    <span class="definition_thmcaption">
+    Definition
+    </span>
+    <span class="definition_thmlabel">25</span>
+    <span class="definition_thmtitle">Weak Closure</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="app-ProofSegala.html#a0000000063">#</a>
+    
+    
+    
+        </div>
+  </div>
+  <div class="definition_thmcontent">
+  <p> The weak closure of a PLTS \(\mathcal{P}\) is a PLTS, denoted \(\mathcal{P}^w\), where transitions are replaced by weak transitions. </p>
+
+  </div>
+</div>
+<div class="lemma_thmwrapper theorem-style-plain" id="lem:weakclosuresound">
+  <div class="lemma_thmheading">
+    <span class="lemma_thmcaption">
+    Lemma
+    </span>
+    <span class="lemma_thmlabel">24</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="app-ProofSegala.html#lem:weakclosuresound">#</a>
+    
+    <a class="icon proof" href="app-ProofSegala.html#a0000000064"><svg  class="icon icon-cogs "><use xlink:href="symbol-defs.svg#icon-cogs"></use></svg>
+</a>
+    
+    
+    
+        </div>
+  </div>
+  <div class="lemma_thmcontent">
+  <p> Let \(\mathcal{P}\) be a PLTS, \(\text{tdist}(\mathcal{P}) = \text{tdist}(\mathcal{P}^w)\). </p>
+
+  </div>
+</div>
+<div class="proof_wrapper" id="a0000000064">
+  <div class="proof_heading">
+    <span class="proof_caption">
+    Proof
+    </span>
+    <span class="expand-proof">▶</span>
+  </div>
+  <div class="proof_content">
+  <p>The inclusion \(\subseteq \) is trivial because any transition of \(\mathcal{P}\) is a weak transition so schedulers of \(\mathcal{P}\) are schedulers of \(\mathcal{P}'\). However, the other inclusion \(\supseteq \) is more tricky. [Done in Lean] </p>
+
+  </div>
+</div>
+<h2 id="a0000000045">Z.3.2 Distribution Monad</h2>
+<div class="definition_thmwrapper theorem-style-definition" id="a0000000065">
+  <div class="definition_thmheading">
+    <span class="definition_thmcaption">
+    Definition
+    </span>
+    <span class="definition_thmlabel">26</span>
+    <span class="definition_thmtitle">Distribution Lifting</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="app-ProofSegala.html#a0000000065">#</a>
+    
+    
+    
+        </div>
+  </div>
+  <div class="definition_thmcontent">
+  <p> The distribution lifting of a PLTS \(\mathcal{P}\) is the PLTS defined as \(\mathcal{D}(\mathcal{P}) := (\mathcal{D}(Q), \delta _{q_\star }, L, \mathcal{D}(T))\) where </p>
+<div class="displaymath" id="a0000000066">
+  \[ (\mu ,l,\mathfrak {m}) \in \mathcal{D}(T) \iff \exists \mu ' \in \mathcal{D}(Q), (\mu ,l,\mu ') \in H \wedge \sum _{\mu }\mathfrak {m}(\mu )\cdot \mu = \mu ' \]
+</div>
+
+  </div>
+</div>
+<div class="lemma_thmwrapper theorem-style-plain" id="lem:distliftingsound">
+  <div class="lemma_thmheading">
+    <span class="lemma_thmcaption">
+    Lemma
+    </span>
+    <span class="lemma_thmlabel">25</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="app-ProofSegala.html#lem:distliftingsound">#</a>
+    
+    <a class="icon proof" href="app-ProofSegala.html#a0000000067"><svg  class="icon icon-cogs "><use xlink:href="symbol-defs.svg#icon-cogs"></use></svg>
+</a>
+    
+    
+    
+        </div>
+  </div>
+  <div class="lemma_thmcontent">
+  <p> Let \(\mathcal{P}\) be a PLTS, \(\text{tdist}(\mathcal{P}) = \text{tdist}(\mathcal{D}(\mathcal{P}))\). </p>
+
+  </div>
+</div>
+<div class="proof_wrapper" id="a0000000067">
+  <div class="proof_heading">
+    <span class="proof_caption">
+    Proof
+    </span>
+    <span class="expand-proof">▶</span>
+  </div>
+  <div class="proof_content">
+  <p>The inclusion \(\subseteq \) is trivial because Dirac distributions allow to encode any scheduler on \(\mathcal{P}\) as a scheduler on \(\mathcal{P}'\). However, the other inclusion \(\supseteq \) is more tricky. [Done in Lean] </p>
+
+  </div>
+</div>
+<h2 id="a0000000046">Z.3.3 Strong Probabilistic Simulation</h2>
+<div class="definition_thmwrapper theorem-style-definition" id="a0000000068">
+  <div class="definition_thmheading">
+    <span class="definition_thmcaption">
+    Definition
+    </span>
+    <span class="definition_thmlabel">27</span>
+    <span class="definition_thmtitle">Strong Probabilistic Simulation</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="app-ProofSegala.html#a0000000068">#</a>
+    
+    
+    
+        </div>
+  </div>
+  <div class="definition_thmcontent">
+  <p> A strong probabilistic simulation of \(\mathcal{P}\) by \(\mathcal{P}'\) is a relation \(\mathcal{S}\subseteq Q \times Q'\) such that \((q_\star ,q'_\star ) \in \mathcal{S}\) and, for all \((q,q') \in \mathcal{S}\) and \((q,l,\mu ) \in T\), there exists \((q',l,\mu ') \in T'\) such that \((\mu ,\mu ') \in \mathcal{D}(\mathcal{S})\). </p>
+
+  </div>
+</div>
+<div class="lemma_thmwrapper theorem-style-plain" id="lem:strongprobsim">
+  <div class="lemma_thmheading">
+    <span class="lemma_thmcaption">
+    Lemma
+    </span>
+    <span class="lemma_thmlabel">26</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="app-ProofSegala.html#lem:strongprobsim">#</a>
+    
+    <a class="icon proof" href="app-ProofSegala.html#a0000000069"><svg  class="icon icon-cogs "><use xlink:href="symbol-defs.svg#icon-cogs"></use></svg>
+</a>
+    
+    
+    
+        </div>
+  </div>
+  <div class="lemma_thmcontent">
+  <p> Let \(\mathcal{P}\) and \(\mathcal{P}'\) be two PLTSs, there exists a probabilistic forward simulation of \(\mathcal{P}\) by \(\mathcal{P}'\), if and only if, there exists a strong probabilistic simulation of \(\mathcal{P}\) by \(\mathcal{D}(\mathcal{P}'^w)\). </p>
+
+  </div>
+</div>
+<div class="proof_wrapper" id="a0000000069">
+  <div class="proof_heading">
+    <span class="proof_caption">
+    Proof
+    </span>
+    <span class="expand-proof">▶</span>
+  </div>
+  <div class="proof_content">
+  <p>This proof is purely mechanical. It suffices to consider \(\mathcal{S}\) a probabilistic forward simulation of \(\mathcal{P}\) by \(\mathcal{P}'\) (resp. a strong probabilistic simulation of \(\mathcal{P}\) by \(\mathcal{D}(\mathcal{P}'^w)\)) and check that it is a strong probabilistic simulation of \(\mathcal{P}\) by \(\mathcal{D}(\mathcal{P}'^w)\) (resp. a probabilistic forward simulation of \(\mathcal{P}\) by \(\mathcal{P}'\)). [Done in Lean] </p>
+
+  </div>
+</div>
+<div class="lemma_thmwrapper theorem-style-plain" id="lem:strongprobsimsound">
+  <div class="lemma_thmheading">
+    <span class="lemma_thmcaption">
+    Lemma
+    </span>
+    <span class="lemma_thmlabel">27</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="app-ProofSegala.html#lem:strongprobsimsound">#</a>
+    
+    <a class="icon proof" href="app-ProofSegala.html#a0000000070"><svg  class="icon icon-cogs "><use xlink:href="symbol-defs.svg#icon-cogs"></use></svg>
+</a>
+    
+    
+    
+        </div>
+  </div>
+  <div class="lemma_thmcontent">
+  <p> Let \(\mathcal{P}\) and \(\mathcal{P}'\) be two PLTSs, if there exists a strong probabilistic simulation of \(\mathcal{P}\) by \(\mathcal{P}'\) then \(\text{tdist}(\mathcal{P}) \subseteq \text{tdist}(\mathcal{P}')\). </p>
+
+  </div>
+</div>
+<div class="proof_wrapper" id="a0000000070">
+  <div class="proof_heading">
+    <span class="proof_caption">
+    Proof
+    </span>
+    <span class="expand-proof">▶</span>
+  </div>
+  <div class="proof_content">
+  <p>This is a simplified version of the original soundness proof which is tractable to formalize in Lean. [Done in Lean] </p>
+
+  </div>
+</div>
+<div class="theorem_thmwrapper theorem-style-plain" id="a0000000071">
+  <div class="theorem_thmheading">
+    <span class="theorem_thmcaption">
+    Theorem
+    </span>
+    <span class="theorem_thmlabel">28</span>
+    <div class="thm_header_extras">
+
+        </div>
+    <div class="thm_header_hidden_extras">
+
+    <a class="icon proof" href="app-ProofSegala.html#a0000000071">#</a>
+    
+    <a class="icon proof" href="app-ProofSegala.html#a0000000072"><svg  class="icon icon-cogs "><use xlink:href="symbol-defs.svg#icon-cogs"></use></svg>
+</a>
+    
+    
+    
+        </div>
+  </div>
+  <div class="theorem_thmcontent">
+  <p>Let \(\mathcal{P}\) and \(\mathcal{P}'\) be two PLTSs, if there exists a probabilistic forward simulation of \(\mathcal{P}\) by \(\mathcal{P}'\) then \(\text{tdist}(\mathcal{P}) \subseteq \text{tdist}(\mathcal{P}')\). </p>
+
+  </div>
+</div>
+<div class="proof_wrapper" id="a0000000072">
+  <div class="proof_heading">
+    <span class="proof_caption">
+    Proof
+    </span>
+    <span class="expand-proof">▶</span>
+  </div>
+  <div class="proof_content">
+  <p>If there exists a probabilistic forward simulation of \(\mathcal{P}\) by \(\mathcal{P}'\) then, by Lemma <a href="app-ProofSegala.html#lem:strongprobsim">26</a>, there exists a strong probabilistic simulation of \(\mathcal{P}\) by \(\mathcal{D}(\mathcal{P}'^w)\) so, by Lemma <a href="app-ProofSegala.html#lem:strongprobsimsound">27</a>, <a href="app-ProofSegala.html#lem:distliftingsound">25</a> and <a href="app-ProofSegala.html#lem:weakclosuresound">24</a>, </p>
+<div class="displaymath" id="a0000000073">
+  \begin{equation*}  \text{tdist}(\mathcal{P}) \subseteq \text{tdist}(\mathcal{D}(\mathcal{P}’^w)) = \text{tdist}(\mathcal{P}’^w) = \text{tdist}(\mathcal{P}’) \end{equation*}
+</div>
+
+  </div>
+</div>
+
+</div> <!--main-text -->
+</div> <!-- content-wrapper -->
+</div> <!-- content -->
+</div> <!-- wrapper -->
+
+<nav class="prev_up_next">
+  <svg  id="showmore-minus" class="icon icon-eye-minus showmore"><use xlink:href="symbol-defs.svg#icon-eye-minus"></use></svg>
+
+  <svg  id="showmore-plus" class="icon icon-eye-plus showmore"><use xlink:href="symbol-defs.svg#icon-eye-plus"></use></svg>
+
+  <a href="PLTS-AVSS.html" title="Specification"><svg  class="icon icon-arrow-left "><use xlink:href="symbol-defs.svg#icon-arrow-left"></use></svg>
+</a>
+  <a href="sect0004.html" title="Bibliography"><svg  class="icon icon-arrow-up "><use xlink:href="symbol-defs.svg#icon-arrow-up"></use></svg>
+</a>
+</nav>
+
+<script type="text/javascript" src="js/jquery.min.js"></script>
+<script type="text/javascript" src="js/plastex.js"></script>
+<script type="text/javascript" src="js/svgxuse.js"></script>
+<script type="text/javascript" src="js/js.cookie.min.js"></script>
+<script type="text/javascript" src="js/showmore.js"></script>
+</body>
+</html>
